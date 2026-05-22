@@ -781,7 +781,34 @@ def _build_page_html(project_context=False, version_lock_params=False):
     };
     document.getElementById('btnStop').onclick=function(){
         var num=this.getAttribute('data-build'); if(!num) return;
-        fetch('/api/build/'+num+'/stop', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCsrfToken()}, body: JSON.stringify(apiBody({})), credentials:'same-origin'}).then(r=>r.json()).then(function(x){ document.getElementById('buildStatus').textContent=x.success?'已请求停止':(x.error||''); });
+        fetch('/api/build/'+num+'/stop', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCsrfToken()}, body: JSON.stringify(apiBody({})), credentials:'same-origin'})
+        .then(r=>r.json())
+        .then(function(x){
+            if(x && x.success){
+                stopPoll();
+                clearActiveBuild();
+                setBuilding(false);
+                var st=document.getElementById('buildStatus');
+                if(st){
+                    st.textContent='已停止构建 #'+num;
+                    st.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
+                }
+                loadHistory();
+            }else{
+                var stErr=document.getElementById('buildStatus');
+                if(stErr){
+                    stErr.textContent='停止失败: '+((x&&x.error)||'未知错误');
+                    stErr.className='mt-3 text-sm text-red-600 min-h-[1.5rem]';
+                }
+            }
+        })
+        .catch(function(){
+            var stErr=document.getElementById('buildStatus');
+            if(stErr){
+                stErr.textContent='停止失败: 网络异常';
+                stErr.className='mt-3 text-sm text-red-600 min-h-[1.5rem]';
+            }
+        });
     };
     applyVersionCanonicalFields();
     applyVersionLockParams();

@@ -332,9 +332,32 @@ def trigger_build(params, base_url=None, builds_dir=None, instance_id=None):
     if crumb_header:
         req.add_header(crumb_header[0], crumb_header[1])
     try:
+        queue_url = None
         with _open(req, timeout=15) as response:
             if response.getcode() not in (200, 201):
-                return (False, None, f'Jenkins 响应: {response.getcode()}')
+                return (False, None, f'Jenkins ??: {response.getcode()}')
+            queue_url = response.headers.get('Location')
+
+        # ???? Queue API ????????????????
+        if queue_url:
+            queue_api = queue_url.rstrip('/') + "/api/json"
+            for _ in range(16):  # ????? 16 ?
+                try:
+                    q_req = urllib.request.Request(queue_api, headers={"Accept": "application/json"})
+                    q_resp = _open(q_req, timeout=6)
+                    if q_resp.getcode() == 200:
+                        q_data = json.loads(q_resp.read().decode(errors='replace'))
+                        executable = q_data.get('executable') or {}
+                        real_num = executable.get('number')
+                        if isinstance(real_num, int) and real_num > 0:
+                            return (True, real_num, None)
+                        if q_data.get('cancelled'):
+                            return (False, None, '?????????')
+                except Exception:
+                    pass
+                time.sleep(1)
+
+        # ?????????????? lastBuild
         time.sleep(1)
         try:
             r_req = urllib.request.Request(url + "/job/" + JOB_NAME + "/lastBuild/buildNumber")
