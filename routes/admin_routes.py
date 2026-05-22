@@ -3174,6 +3174,53 @@ document.addEventListener('click', function(e){
     }catch(_err){}
 });
 
+window._versionBuildState = window._versionBuildState || {};
+window._versionBuildStateLoading = false;
+window._versionBuildStateTimer = window._versionBuildStateTimer || null;
+function _isVersionBuilding(versionId){
+    if(!window._versionBuildState || typeof window._versionBuildState !== 'object'){
+        window._versionBuildState = {};
+    }
+    var st = window._versionBuildState[String(versionId||'')] || {};
+    return !!st.building;
+}
+function refreshVersionBuildState(){
+    if(window._versionBuildStateLoading) return;
+    if(!window._versionBuildState || typeof window._versionBuildState !== 'object'){
+        window._versionBuildState = {};
+    }
+    var ids = (allVersions||[]).map(function(v){ return String(v.id||'').trim(); }).filter(Boolean);
+    if(!ids.length){ window._versionBuildState = {}; return; }
+    window._versionBuildStateLoading = true;
+    Promise.all(ids.map(function(id){
+        return fetch('/api/build/history-by-version?version_id='+encodeURIComponent(id), {credentials:'same-origin'})
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                var builds = (d&&d.builds) ? d.builds : [];
+                if(!builds.length) return [id, {building:false, build_number:null}];
+                var sorted = builds.slice().sort(function(a,b){ return (parseInt(b.number||0,10)||0) - (parseInt(a.number||0,10)||0); });
+                var latest = sorted[0] || {};
+                var latestNo = parseInt(latest.number||0,10)||null;
+                var building = !!latest.building || String(latest.result||'').toUpperCase()==='BUILDING' || String(latest.result||'').toUpperCase()==='QUEUED';
+                return [id, {building: building, build_number: latestNo}];
+            })
+            .catch(function(){ return [id, {building:false, build_number:null}]; });
+    })).then(function(rows){
+        var next = {};
+        rows.forEach(function(row){ next[row[0]] = row[1]; });
+        var prev = JSON.stringify(window._versionBuildState||{});
+        var curr = JSON.stringify(next);
+        window._versionBuildState = next;
+        if(prev !== curr) renderChannelsView();
+    }).finally(function(){
+        window._versionBuildStateLoading = false;
+    });
+}
+function ensureVersionBuildStateTimer(){
+    if(window._versionBuildStateTimer) return;
+    window._versionBuildStateTimer = setInterval(refreshVersionBuildState, 5000);
+}
+
 function renderChannelsView(){
     var wrap = document.getElementById('channelsVersionsWrap');
     var empty = document.getElementById('channelsEmpty');
@@ -3288,11 +3335,15 @@ function renderChannelsView(){
                 }
                 for(var vj=0; vj<gVers.length; vj++){
                     var v = gVers[vj]; var vid = v.id||'';
+                    var isBuilding = _isVersionBuilding(vid);
                     var stMeta = getVersionStatusMeta(v.version_status);
                     var stBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] '+stMeta.badge+'">'+_esc(stMeta.label)+'</span>';
                     var apkBadge = (v.apk_status==='found') ? '<span class="text-[10px] text-emerald-600"><i class="fas fa-check-circle mr-0.5"></i>已落盘</span>' : ((v.apk_status==='not_found') ? '<span class="text-[10px] text-slate-400" style="display:block;line-height:1;margin-bottom:1px;">未找到</span>' : '—');
-                    var vActions = '<a href="/admin/projects/'+PROJECT_ID+'/versions/'+_esc(vid)+'/workflow" class="text-emerald-600 hover:text-emerald-800 text-[11px] mr-2" title="构建"><i class="fas fa-cogs" style="pointer-events:none;"></i></a>';
-                    if(CAN_EDIT) vActions += '<button type="button" data-version-id="'+_esc(vid)+'" class="version-code-edit-btn text-indigo-500 hover:text-indigo-700 text-[11px] mr-2" title="编辑 VersionCode"><i class="fas fa-pen" style="pointer-events:none;"></i></button><button type="button" data-version-id="'+_esc(vid)+'" class="version-delete-btn text-rose-500 hover:text-rose-700 text-[11px]" title="删除"><i class="fas fa-trash" style="pointer-events:none;"></i></button>';
+                    var buildCls = isBuilding ? 'text-amber-500 animate-pulse' : 'text-emerald-600 hover:text-emerald-800';
+                    var buildIconCls = isBuilding ? 'fas fa-cogs fa-spin' : 'fas fa-cogs';
+                    var buildTitle = isBuilding ? '构建中（仅可查看）' : '构建';
+                    var vActions = '<a href="/admin/projects/'+PROJECT_ID+'/versions/'+_esc(vid)+'/workflow" class="'+buildCls+' text-[11px] mr-2" title="'+buildTitle+'"><i class="'+buildIconCls+'" style="pointer-events:none;"></i></a>';
+                    if(CAN_EDIT && !isBuilding) vActions += '<button type="button" data-version-id="'+_esc(vid)+'" class="version-code-edit-btn text-indigo-500 hover:text-indigo-700 text-[11px] mr-2" title="编辑 VersionCode"><i class="fas fa-pen" style="pointer-events:none;"></i></button><button type="button" data-version-id="'+_esc(vid)+'" class="version-delete-btn text-rose-500 hover:text-rose-700 text-[11px]" title="删除"><i class="fas fa-trash" style="pointer-events:none;"></i></button>';
                     var rowBg = vj%2===0 ? 'bg-white' : 'bg-slate-50/30';
                     var isCommercialV = (v.version_mode||'general')==='commercial';
                     var vModeBg = isCommercialV ? '' : rowBg; var vModeStyle = isCommercialV ? 'background:linear-gradient(to right,#ede9fe,#f5f3ff);' : '';
@@ -3790,6 +3841,8 @@ function deleteVersion(id){ if(!requireDeleteConfirm('VersionCode: '+id)) return
 function saveVersion(){ var id=document.getElementById('versionEditId').value; var current=id?allVersions.find(function(x){ return (x.id||'')===id; }):null; var ch=document.getElementById('versionChannel').value; var stageEl=document.getElementById('versionStage'); var stageVal=stageEl?stageEl.value:'dev'; var platform=document.getElementById('versionPlatform').value||'android'; var versionStatus=normalizeVersionStatus((document.getElementById('versionStatus')||{}).value||'active'); var vn=document.getElementById('versionName').value.trim()||'1.0.0'; var apkPath=document.getElementById('versionApkPath').value.trim(); if(!apkPath){ var info=CHANNELS_FULL&&CHANNELS_FULL[ch]; var sd=STAGE_DIR_MAP[stageVal]||'dev'; var ext=platform==='ios'?'.ipa':'.apk'; var an=PROJECT_ID+'_'+vn.replace(new RegExp("\\\\s","g"),"")+ext; apkPath=(info&&info.apk_subdir)?(info.apk_subdir+'/'+sd+'/'+an):(sd+'/'+an); } var payload={ channel: ch, stage: stageVal, platform: platform, version_status: versionStatus, version_name: vn, version_mode: _versionMode, version_code: current&&current.version_code ? String(current.version_code).trim() : '', distribution_method: (document.getElementById('versionDistributionMethod')||{}).value||'', package_name: (document.getElementById('versionPackageName')||{}).value||'', min_sdk: (document.getElementById('versionMinSdk')||{}).value||'', bundle_id: (document.getElementById('versionBundleId')||{}).value||'', min_ios_version: (document.getElementById('versionMinIosVersion')||{}).value||'', apk_path: apkPath, resource_path: document.getElementById('versionResourcePath').value.trim(), config_path: document.getElementById('versionConfigPath').value.trim(), jenkins_job_id: document.getElementById('versionJenkinsJob').value.trim(), changelog: document.getElementById('versionChangelog').value.trim(), changelog_recommended: !!document.getElementById('versionChangelogRecommended').checked, notes: document.getElementById('versionNotes').value.trim(), edit_scope:'version_group' }; if(_versionMode==='commercial'){ payload.pipeline=collectPipeline(); var err=validateCommercialPipeline(payload.pipeline); if(err){ alert(err); return; } } var url='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/create'; var method='POST'; if(id){ payload.id=id; url='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/update'; } fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } if(d.version){ var chOpt=document.getElementById('versionChannel'); d.version.channel_label=chOpt&&chOpt.options[chOpt.selectedIndex]?chOpt.options[chOpt.selectedIndex].text:d.version.channel; d.version.stage=stageVal; d.version.stage_label=(stageEl&&stageEl.options[stageEl.selectedIndex]?stageEl.options[stageEl.selectedIndex].text:'开发'); d.version.platform=platform; d.version.platform_label=platform==='ios'?'iOS':'Android'; d.version.version_status=versionStatus; d.version.version_mode=_versionMode; d.version.commercial_release=payload.commercial_release||null; d.version.distribution_method=payload.distribution_method || (platform==='ios'?'testflight':'direct'); d.version.package_name=payload.package_name; d.version.min_sdk=payload.min_sdk; d.version.bundle_id=payload.bundle_id; d.version.min_ios_version=payload.min_ios_version; d.version.changelog_text=payload.changelog; d.version.changelog_recommended=payload.changelog_recommended; var idx=allVersions.findIndex(function(x){ return (x.id||'')===(d.version.id||''); }); if(idx>=0) allVersions[idx]=d.version; else allVersions.push(d.version); } closeVersionModal(); renderChannelsView(); }); }
 
 renderChannelsView();
+refreshVersionBuildState();
+ensureVersionBuildStateTimer();
 syncVersionPlatformFields();
 fetchUnityVersionCatalog(function(){ renderUnityVersionSelect(''); });
 </script>
