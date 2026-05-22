@@ -593,6 +593,27 @@ def _build_page_html(project_context=False, version_lock_params=False):
             return d;
         });
     }
+    function resolveEffectiveBuildNumber(triggeredBuildNumber){
+        var triggeredNum = parseInt(triggeredBuildNumber, 10);
+        if(!triggeredNum || triggeredNum<=0) return Promise.resolve(triggeredBuildNumber);
+        if(!VERSION_ID) return Promise.resolve(triggeredNum);
+        var q='version_id='+encodeURIComponent(VERSION_ID);
+        return fetch('/api/build/history-by-version?'+q, {credentials:'same-origin'})
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                var builds=(d&&d.builds)||[];
+                if(!builds.length) return triggeredNum;
+                var top=builds[0]||{};
+                var topNum=parseInt(top.number,10)||0;
+                var topBuilding=!!top.building || String(top.result||'').toUpperCase()==='BUILDING';
+                // 触发后若 Jenkins 已产生更高编号（或最新正在构建），以最新编号为准
+                if(topNum>triggeredNum || (topNum>=triggeredNum && topBuilding)){
+                    return topNum;
+                }
+                return triggeredNum;
+            })
+            .catch(function(){ return triggeredNum; });
+    }
     function loadLog(num, optInstanceId){
         var el=document.getElementById('buildLog');
         var instId=optInstanceId||selectedInstanceId();
@@ -729,15 +750,21 @@ def _build_page_html(project_context=False, version_lock_params=False):
             var d=res.data||{};
             if(res.ok&&d.success){
                 persistInstanceChoice();
-                saveActiveBuild(selectedInstanceId(), d.build_number);
-                document.getElementById('buildStatus').textContent='已触发构建 #'+d.build_number;
-                document.getElementById('buildStatus').className='mt-3 text-sm text-green-600 min-h-[1.5rem]';
-                document.getElementById('btnStop').setAttribute('data-build', d.build_number);
-                setBuilding(true);
-                pollLogAndStatus(d.build_number, selectedInstanceId());
-                loadHistory();
-                var el=document.getElementById('buildSuccessLinks');
-                if(el&&PROJECT_ID){ el.innerHTML='<a href="/admin/projects/'+PROJECT_ID+'" class="text-blue-600 hover:underline">返回项目中心</a> <a href="/admin/projects/'+PROJECT_ID+'/versions/'+VERSION_ID+'/workflow" class="text-blue-600 hover:underline">刷新本页</a>'; }
+                resolveEffectiveBuildNumber(d.build_number).then(function(effectiveBuildNumber){
+                    saveActiveBuild(selectedInstanceId(), effectiveBuildNumber);
+                    var statusText = '已触发构建 #'+effectiveBuildNumber;
+                    if(parseInt(effectiveBuildNumber,10)!==parseInt(d.build_number,10)){
+                        statusText += '（已自动对齐 Jenkins 实际构建号）';
+                    }
+                    document.getElementById('buildStatus').textContent=statusText;
+                    document.getElementById('buildStatus').className='mt-3 text-sm text-green-600 min-h-[1.5rem]';
+                    document.getElementById('btnStop').setAttribute('data-build', effectiveBuildNumber);
+                    setBuilding(true);
+                    pollLogAndStatus(effectiveBuildNumber, selectedInstanceId());
+                    loadHistory();
+                    var el=document.getElementById('buildSuccessLinks');
+                    if(el&&PROJECT_ID){ el.innerHTML='<a href="/admin/projects/'+PROJECT_ID+'" class="text-blue-600 hover:underline">返回项目中心</a> <a href="/admin/projects/'+PROJECT_ID+'/versions/'+VERSION_ID+'/workflow" class="text-blue-600 hover:underline">刷新本页</a>'; }
+                });
             } else {
                 var errMsg=d.error||d.message||('HTTP '+res.status);
                 if(res.status===400&&!errMsg) errMsg='请求被拒绝（400）：请确认已选 Jenkins 实例、实例已启动，并刷新页面后重试';
