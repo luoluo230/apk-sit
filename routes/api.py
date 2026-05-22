@@ -214,8 +214,9 @@ def resolve_runtime_version():
     )
 
     row_channel = str(selected.get('channel') or channel or 'common')
-    row_platform = str(selected.get('platform') or platform or 'android')
-    platform_title = 'iOS' if row_platform.lower() == 'ios' else 'Android'
+    row_platform_raw = str(selected.get('platform') or platform or 'android')
+    row_platform = 'ios' if row_platform_raw.lower() == 'ios' else 'android'
+    platform_title = row_platform
     release_env = normalize_release_environment(
         str(selected.get('release_environment') or ''),
         str(selected.get('stage') or ''),

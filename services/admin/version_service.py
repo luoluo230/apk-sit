@@ -9,6 +9,11 @@ from typing import Any, Dict, Tuple
 
 from repositories.admin import versions_repo
 from services.admin.version_domain import normalize_version_status, normalize_edit_scope, build_status_audit_tags
+from services.commercial_release_plan import (
+    build_runtime_resolve_paths,
+    normalize_release_channel,
+    normalize_release_environment,
+)
 
 VERSION_STAGES = [("dev", "开发"), ("test", "测试"), ("production", "线上")]
 VERSION_STATUSES = [("draft", "草稿"), ("testing", "测试中"), ("active", "有效"), ("disabled", "失效"), ("archived", "归档")]
@@ -112,6 +117,29 @@ def _validate_version_payload(platform, version):
     return None
 
 
+def _derive_runtime_paths(version_row: Dict[str, Any]) -> Dict[str, str]:
+    stage_id = str(version_row.get("stage") or "dev").strip()
+    channel_raw = str(version_row.get("channel") or "common").strip()
+    platform_raw = str(version_row.get("platform") or "android").strip().lower()
+    version_name = str(version_row.get("version_name") or "").strip()
+    version_code = str(version_row.get("version_code") or "").strip()
+    release_env = normalize_release_environment("", stage_id)
+    release_channel = normalize_release_channel(channel_raw)
+    release_platform = "ios" if platform_raw == "ios" else "android"
+    runtime_paths = build_runtime_resolve_paths(
+        resource_server_url=str(version_row.get("resource_server_url") or ""),
+        release_environment=release_env,
+        release_channel=release_channel,
+        release_platform=release_platform,
+        release_version=version_name,
+        version_code=version_code,
+    )
+    return {
+        "resource_path": runtime_paths.get("resource_relative_path") or "",
+        "config_path": runtime_paths.get("config_relative_path") or "",
+    }
+
+
 def project_download_stats(project_id: str, username: str) -> Tuple[Dict[str, Any], int]:
     if not versions_repo.has_project(project_id) or not versions_repo.can_view(project_id, username):
         return {"error": "无权限"}, 403
@@ -207,6 +235,7 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     if isinstance(pipeline, dict):
         v["pipeline"] = _sync_pipeline_release_fields(pipeline)
     v.update(_clean_version_platform_fields(data, platform))
+    v.update(_derive_runtime_paths(v))
     validation_error = _validate_version_payload(platform, v)
     if validation_error:
         return {"error": validation_error}, 400
@@ -288,6 +317,7 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     if isinstance(pipeline, dict):
         update_payload["pipeline"] = _sync_pipeline_release_fields(pipeline)
     update_payload.update(_clean_version_platform_fields(data, platform, current_row))
+    update_payload.update(_derive_runtime_paths(update_payload))
     validation_error = _validate_version_payload(platform, update_payload)
     if validation_error:
         return {"error": validation_error}, 400

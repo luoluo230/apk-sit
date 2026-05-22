@@ -76,6 +76,14 @@ def normalize_release_channel(value: str) -> str:
     return ch
 
 
+def normalize_release_platform(value: str) -> str:
+    """Normalize platform segment for remote path compatibility."""
+    p = (value or "").strip().lower()
+    if p in ("ios", "iphone", "iphoneos"):
+        return "ios"
+    return "android"
+
+
 def build_version_relative_path(
     release_environment: str,
     release_channel: str,
@@ -189,7 +197,7 @@ def plan_to_jenkins_params(
         str(version_obj.get("stage") or ""),
     )
     release_channel = normalize_release_channel(str(plan.get("releaseChannel") or "common"))
-    release_platform = str(plan.get("releasePlatform") or "Android")
+    release_platform = normalize_release_platform(str(plan.get("releasePlatform") or "Android"))
     version_code = str(
         plan.get("versionCode") or version_obj.get("version_code") or ""
     ).strip()
