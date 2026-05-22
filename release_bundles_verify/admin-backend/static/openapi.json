@@ -1,0 +1,19 @@
+{
+  "openapi": "3.0.2",
+  "info": { "title": "APK 下载中心 API", "version": "1.0" },
+  "paths": {
+    "/health": {
+      "get": { "summary": "健康检查", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/status": {
+      "get": { "summary": "扩展状态与统计", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/apks": {
+      "get": { "summary": "APK 列表", "security": [{"sessionAuth": []}], "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/stats": {
+      "get": { "summary": "统计汇总", "security": [{"sessionAuth": []}], "responses": { "200": { "description": "OK" } } }
+    }
+  },
+  "components": { "securitySchemes": { "sessionAuth": { "type": "apiKey", "in": "cookie", "name": "session" } } }
+}

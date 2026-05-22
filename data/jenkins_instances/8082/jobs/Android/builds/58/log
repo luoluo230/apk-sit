@@ -1,0 +1,27 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\jobs\Android\workspace
+[workspace] $ cmd /c call C:\Users\Administrator\AppData\Local\Temp\jenkins2517949394701037989.bat
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.15f1
+  版本号: 1.0.0
+  版本代码: 100
+  应用名称: GomeKu
+  Git 分支: main
+跳过基础 APK 预构建（RUN_BASE_APK_BUILD_FIRST=false）
+
+======= 可插拔版本构建流水线 =======
+Unity 可执行文件: （未解析）
+=== Step 1: 配置导出发布 (ConfigRemotePublish) ===
+上传: ConfigContent Excel 导表 + CloudUpload/OSS
+Step1 参数: env=Dev channel=wechat platform=Android version=1.0.0 versionCode=100 prefix=MyGame1
+Unity Editor 程序集预热编译...
+⚠ Unity 路径无效: 
+⚠ Step1 未出现 [ConfigRemotePublishCli] Success
+FAIL: Step1 ConfigRemotePublish 退出
+Build step 'Execute Windows batch command' marked build as failure
+Finished: FAILURE

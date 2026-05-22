@@ -1,0 +1,30 @@
+[
+  {
+    "id": "welcome-thread",
+    "title": "欢迎来到玩家论坛",
+    "content": "这里可以聊攻略、反馈问题、晒截图，也可以等待官方发布更新与活动动态。",
+    "product_id": "",
+    "category_id": "general",
+    "created_at": "2026-03-13T18:15:00",
+    "updated_at": "2026-03-13T18:15:00",
+    "display_name": "官方运营",
+    "author_type": "developer",
+    "role": "admin",
+    "is_official": true,
+    "pinned": true,
+    "video_url": "",
+    "media_urls": [],
+    "comments": [
+      {
+        "id": "welcome-comment-1",
+        "parent_id": "",
+        "content": "后续可以按不同游戏单独开版区吗？",
+        "created_at": "2026-03-13T18:16:00",
+        "display_name": "游客玩家",
+        "author_type": "guest",
+        "role": "guest",
+        "is_official": false
+      }
+    ]
+  }
+]

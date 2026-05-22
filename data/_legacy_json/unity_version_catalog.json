@@ -1,0 +1,29 @@
+{
+  "entries": [
+    {
+      "id": "7bf2c0a7-4616-4062-832e-9d5bd8d85861",
+      "version": "6000.3.15f1",
+      "path": "C:\\Program Files\\Unity\\Hub\\Editor\\6000.3.15f1\\Editor\\Unity.exe",
+      "category": "Unity6",
+      "status": "active",
+      "note": "从 Jenkins 实例迁移",
+      "created_at": "2026-05-21T04:27:34Z",
+      "updated_at": "2026-05-21T04:27:34Z"
+    },
+    {
+      "id": "0152f9ad-5f55-4278-aea1-7f1971310dcf",
+      "version": "2022.3.62f3",
+      "path": "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.62f3\\Editor\\Unity.exe",
+      "category": "Unity2022",
+      "status": "active",
+      "note": "从 Jenkins 实例迁移",
+      "created_at": "2026-05-21T04:27:34Z",
+      "updated_at": "2026-05-21T04:27:34Z"
+    }
+  ],
+  "categories": [
+    "Unity6",
+    "Unity2022",
+    "其他"
+  ]
+}

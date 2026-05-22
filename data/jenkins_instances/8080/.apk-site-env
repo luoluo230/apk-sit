@@ -1,0 +1,8 @@
+# 本实例环境，构建步骤会 source 此文件
+export JENKINS_CLONE="E:\\apk-site_backup_20260323_070015\\data\\jenkins_instances\\8080"
+export APK_DIR="E:\\apk-site\\jenkins-clone\\workspace\\Android\\jenkins_8080"
+export APK_SCAN_DIR="E:\\apk-site\\jenkins-clone\\workspace\\Android"
+export JENKINS_JOB_DIR="E:\\apk-site_backup_20260323_070015\\data\\jenkins_instances\\8080\\jobs\\Android\\builds"
+export APKSITE_BASE_URL="http://10.0.41.21:5003"
+export UNITY_PATH_MAP_FILE="E:\\apk-site_backup_20260323_070015\\data\\jenkins_instances\\8080\\unity_paths.json"
+export UNITY_HUB="/Applications/Unity/Hub"

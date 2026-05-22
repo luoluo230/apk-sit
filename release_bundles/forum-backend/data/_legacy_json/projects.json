@@ -1,0 +1,30 @@
+{
+  "GomeKu": {
+    "name": "五子棋",
+    "name_en": "GomeKu",
+    "description": "",
+    "intro": "五子棋",
+    "detail": "五子棋",
+    "icon": "/admin/projects/icon/fc43e589_494337199.jpg.jpg",
+    "phase": "production",
+    "network_connection": "",
+    "git_url": "",
+    "git_ssh_key_path": "",
+    "created_at": "2026-03-08T22:19:31.608294",
+    "created_by": "admin",
+    "order": 1,
+    "status": "active",
+    "viewers": [],
+    "editors": [
+      "wl230230",
+      "admin"
+    ],
+    "member_roles": {
+      "wl230230": "策划",
+      "admin": "策划"
+    },
+    "channels": [
+      "1001"
+    ]
+  }
+}

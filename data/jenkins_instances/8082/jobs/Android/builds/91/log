@@ -1,0 +1,7 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\jobs\Android\workspace
+[workspace] $ cmd /c call C:\Users\Administrator\AppData\Local\Temp\jenkins18173381492707149705.bat
+E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\scripts\commercial_android_pipeline.sh: line 11: syntax error near unexpected token `fi'
+Build step 'Execute Windows batch command' marked build as failure
+Finished: FAILURE

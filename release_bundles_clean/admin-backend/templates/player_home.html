@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }}</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Noto+Sans+SC:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Noto Sans SC', sans-serif;
+            color: #172033;
+            background:
+                radial-gradient(circle at 10% 15%, rgba(132, 235, 255, 0.45), transparent 24%),
+                radial-gradient(circle at 86% 10%, rgba(132, 110, 255, 0.16), transparent 20%),
+                linear-gradient(180deg, #92defd 0%, #ddf7ff 26%, #fff4da 58%, #fffaf2 100%);
+        }
+        .font-display { font-family: 'Marcellus', serif; }
+        .glass {
+            background: rgba(255,255,255,0.86);
+            border: 1px solid rgba(255,255,255,0.76);
+            box-shadow: 0 24px 70px rgba(23,32,51,0.14);
+            backdrop-filter: blur(16px);
+        }
+        .hero {
+            background: linear-gradient(145deg, rgba(52,116,255,0.94), rgba(123,112,255,0.9) 42%, rgba(255,128,164,0.85));
+        }
+    </style>
+</head>
+<body>
+    {% set brand_title = site_title or portal_content.site_name or company_name %}
+    <header class="sticky top-0 z-30 border-b border-white/40 bg-white/72 backdrop-blur-xl">
+        <div class="mx-auto flex max-w-7xl items-center justify-between gap-5 px-4 py-4 lg:px-8">
+            <a href="/" class="flex items-center gap-3">
+                <span class="flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-yellow-300 via-orange-400 to-rose-400 text-white shadow-lg shadow-orange-300/40">
+                    <i class="fas {{ portal_content.logo_icon or 'fa-gamepad' }} text-xl"></i>
+                </span>
+                <span>
+                    <span class="font-display block text-3xl leading-none text-slate-900">{{ brand_title }}</span>
+                    <span class="mt-1 block text-xs font-bold uppercase tracking-[0.24em] text-slate-500">{{ portal_content.site_subtitle }}</span>
+                </span>
+            </a>
+            <nav class="hidden items-center gap-6 text-sm font-bold text-slate-700 lg:flex">
+                {% if module_flags.company %}
+                <a href="/about/company" class="transition hover:text-violet-700">{{ portal_content.nav_about }}</a>
+                {% endif %}
+                {% if module_flags.products %}
+                <a href="#games" class="transition hover:text-violet-700">{{ portal_content.nav_games }}</a>
+                {% endif %}
+                {% if module_flags.news %}
+                <a href="/news" class="transition hover:text-violet-700">新闻公告</a>
+                {% endif %}
+                {% if module_flags.welfare %}
+                <a href="/welfare" class="transition hover:text-violet-700">福利中心</a>
+                {% endif %}
+                {% if module_flags.forum %}
+                <a href="{{ forum_entry_url }}" class="transition hover:text-violet-700">玩家论坛</a>
+                {% endif %}
+                <a href="{{ download_center_url }}" class="transition hover:text-violet-700">下载中心</a>
+            </nav>
+            <div class="flex items-center gap-3">
+                {% if current_user %}
+                <span class="hidden sm:inline-flex text-xs font-semibold text-slate-500">{{ current_user }}</span>
+                <a href="{{ admin_entry_url }}" class="hidden rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 sm:inline-flex">进入工作台</a>
+                <a href="{{ logout_url }}" class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20">
+                    <i class="fas fa-right-from-bracket"></i>退出
+                </a>
+                {% else %}
+                <a href="{{ login_url }}" class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20">
+                    <i class="fas fa-right-to-bracket"></i>登录工作台
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        {% if use_visual_layout %}
+            {% include '_portal_visual_home.html' %}
+        {% else %}
+        {% for block in home_blocks %}
+            {% if block.kind == 'hero' %}
+            {% set hero_module = block.module %}
+            {% set hero_title = hero_module.title or portal_content.hero_title %}
+            {% set hero_desc = hero_module.description or portal_content.hero_description %}
+            {% set hero_image = hero_module.image_url or portal_content.hero_image_url or (featured.cover if featured else '') %}
+            {% set hero_video = hero_module.video_url or portal_content.hero_video_url %}
+            {% set hero_gallery = hero_module.media_urls if hero_module.media_urls else (portal_content.hero_gallery_urls or (featured.gallery if featured else [])) %}
+            {% set hero_primary_text = hero_module.cta_text or portal_content.hero_button or '浏览游戏' %}
+            {% set hero_primary_link = hero_module.cta_link or '#games' %}
+            <section class="hero overflow-hidden rounded-[36px] px-6 py-8 text-white shadow-[0_30px_80px_rgba(23,32,51,0.18)] sm:px-10 lg:px-12 lg:py-12">
+                <div class="grid items-center gap-10 lg:grid-cols-[1.04fr_0.96fr]">
+                    <div>
+                        <div class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-4 py-2 text-sm font-bold">
+                            <span class="h-2.5 w-2.5 rounded-full bg-emerald-300"></span>{{ portal_content.hero_badge }}
+                        </div>
+                        <h1 class="font-display mt-5 max-w-3xl text-5xl leading-[0.94] sm:text-6xl lg:text-7xl">{{ hero_title|replace('\n', '<br>')|safe }}</h1>
+                        <p class="mt-6 max-w-2xl text-base leading-8 text-white/90 sm:text-lg">{{ hero_desc }}</p>
+                        <div class="mt-8 flex flex-wrap gap-4">
+                            <a href="{{ hero_primary_link }}" class="inline-flex items-center gap-2 rounded-full bg-amber-300 px-6 py-4 text-sm font-extrabold text-slate-900 shadow-lg shadow-amber-300/30">
+                                <i class="fas fa-star"></i>{{ hero_primary_text }}
+                            </a>
+                            <a href="{{ forum_entry_url }}" class="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-6 py-4 text-sm font-bold text-white">
+                                <i class="fas fa-comments"></i>进入社区
+                            </a>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-center justify-center gap-4">
+                        {% if hero_video %}
+                            {% if 'youtube' in hero_video or 'youtu.be' in hero_video %}
+                            <div class="w-full overflow-hidden rounded-[32px] border-[10px] border-white/25 bg-black shadow-[0_28px_65px_rgba(14,21,53,0.34)]">
+                                <iframe src="{{ hero_video }}" class="aspect-video w-full" frameborder="0" allowfullscreen></iframe>
+                            </div>
+                            {% else %}
+                            <video class="w-full rounded-[32px] border-[10px] border-white/25 bg-black shadow-[0_28px_65px_rgba(14,21,53,0.34)]" controls src="{{ hero_video }}"></video>
+                            {% endif %}
+                        {% elif hero_image %}
+                            <img src="{{ hero_image }}" alt="{{ featured.name if featured else brand_title }}" class="w-full max-w-[520px] rounded-[34px] border-[10px] border-white/25 object-cover shadow-[0_28px_65px_rgba(14,21,53,0.34)]">
+                        {% endif %}
+                        {% if hero_gallery %}
+                        <div class="grid w-full max-w-[520px] grid-cols-3 gap-3">
+                            {% for url in hero_gallery[:3] %}
+                            <img src="{{ url }}" alt="gallery" class="h-20 w-full rounded-2xl border border-white/30 object-cover">
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+            {% elif block.kind == 'section' %}
+            {% set module = block.module %}
+            {% if module.type == 'products' %}
+            <section id="games" class="mt-14">
+                <div class="mb-8">
+                    <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">{{ module.title or portal_content.games_title }}</div>
+                    <h2 class="font-display mt-2 text-4xl text-slate-900 sm:text-5xl">进入你感兴趣的项目</h2>
+                    <p class="mt-3 max-w-2xl leading-7 text-slate-600">{{ module.description or portal_content.games_description }}</p>
+                </div>
+                {% set product_limit = module.limit or 6 %}
+                <div class="grid gap-7 md:grid-cols-2 xl:grid-cols-3">
+                    {% for product in products[:product_limit] %}
+                    <article class="glass overflow-hidden rounded-[30px] transition hover:-translate-y-1">
+                        <img src="{{ product.cover }}" alt="{{ product.name }}" class="aspect-[1.08/1] w-full object-cover">
+                        <div class="p-6">
+                            <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-slate-500">{{ product.eyebrow }}</div>
+                            <h3 class="font-display mt-2 text-4xl text-slate-900">{{ product.name }}</h3>
+                            <p class="mt-4 min-h-[84px] leading-7 text-slate-600">{{ product.intro }}</p>
+                            <div class="mt-5 flex flex-wrap gap-2">
+                                {% for platform in product.platforms %}
+                                <span class="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">{{ platform }}</span>
+                                {% endfor %}
+                            </div>
+                            <div class="mt-6 flex gap-3">
+                                <a href="{{ product.detail_href }}" class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white">
+                                    <i class="fas fa-chevron-right"></i>进入详情
+                                </a>
+                                <a href="{{ download_center_url }}?project={{ product.project_id }}" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-800">
+                                    <i class="fas fa-download"></i>下载入口
+                                </a>
+                            </div>
+                        </div>
+                    </article>
+                    {% else %}
+                    <div class="glass col-span-full rounded-[32px] p-10 text-center text-slate-600">当前还没有公开游戏项目。</div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif module.type == 'news' %}
+            <section class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">Newsroom</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">{{ module.title or '最近 5 条新闻公告' }}</h2>
+                    </div>
+                    <a href="/news" class="text-sm font-bold text-violet-700 hover:underline">查看全部</a>
+                </div>
+                {% set news_limit = module.limit or 5 %}
+                <div class="mt-6 space-y-4">
+                    {% for item in latest_news[:news_limit] %}
+                    <a href="/news/{{ item.id }}" class="block rounded-[24px] border border-slate-200 bg-white/80 px-5 py-4 transition hover:-translate-y-0.5">
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-xs font-extrabold uppercase tracking-[0.18em] text-violet-600">{{ item.kind or '新闻公告' }}</span>
+                            <span class="text-sm text-slate-500">{{ (item.published_at or item.created_at or '')[:10] }}</span>
+                        </div>
+                        <h3 class="mt-2 text-lg font-bold text-slate-900">{{ item.title }}</h3>
+                        {% if item.summary %}
+                        <p class="mt-2 text-sm text-slate-500 line-clamp-2">{{ item.summary }}</p>
+                        {% endif %}
+                    </a>
+                    {% else %}
+                    <div class="rounded-[24px] border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-slate-500">当前还没有已发布的新闻公告。</div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif module.type == 'welfare' %}
+            <section class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-emerald-600">Benefits</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">{{ module.title or '福利中心' }}</h2>
+                    </div>
+                    <a href="/welfare" class="text-sm font-bold text-emerald-700 hover:underline">进入福利中心</a>
+                </div>
+                {% set welfare_limit = module.limit or 4 %}
+                <div class="mt-6 grid gap-6 md:grid-cols-2">
+                    {% for item in latest_welfare[:welfare_limit] %}
+                    <a href="/welfare/{{ item.id }}" class="glass rounded-[28px] p-6 transition hover:-translate-y-1">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-600">福利活动</div>
+                                <h3 class="mt-3 text-2xl font-semibold text-slate-900">{{ item.title }}</h3>
+                            </div>
+                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">{{ item.status or '进行中' }}</span>
+                        </div>
+                        <p class="mt-3 text-slate-600">{{ item.description or '暂无说明' }}</p>
+                        <div class="mt-5 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700">兑换码：{{ item.redeem_code or '敬请期待' }}</div>
+                    </a>
+                    {% else %}
+                    <div class="glass rounded-[28px] p-8 text-center text-slate-500">当前还没有可领取福利。</div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif module.type == 'forum' %}
+            <section class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-cyan-600">Community</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">{{ module.title or '玩家论坛' }}</h2>
+                    </div>
+                    <a href="{{ forum_entry_url }}" class="text-sm font-bold text-cyan-700 hover:underline">进入论坛</a>
+                </div>
+                {% set forum_limit = module.limit or 4 %}
+                <div class="mt-6 grid gap-5 md:grid-cols-2">
+                    {% for item in featured_posts[:forum_limit] %}
+                    <a href="{{ forum_entry_url }}/{{ item.id }}" class="glass rounded-[26px] p-5">
+                        <div class="flex items-center justify-between text-sm text-slate-500">
+                            <span>{{ item.display_name }}</span>
+                            <span>{{ (item.created_at or '')[:10] }}</span>
+                        </div>
+                        <h3 class="mt-3 text-2xl font-semibold text-slate-900">{{ item.title }}</h3>
+                        <p class="mt-2 text-slate-600 line-clamp-2">{{ item.content }}</p>
+                    </a>
+                    {% else %}
+                    <div class="glass rounded-[26px] p-8 text-center text-slate-500">暂无论坛内容。</div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif module.type == 'company' %}
+            <section class="mt-14">
+                <div class="glass rounded-[32px] p-7">
+                    <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">{{ company_profile.hero_eyebrow }}</div>
+                    <h2 class="font-display mt-3 text-4xl text-slate-900 sm:text-5xl">{{ company_profile.hero_title }}</h2>
+                    <p class="mt-4 leading-8 text-slate-600">{{ company_profile.company_intro }}</p>
+                    <div class="mt-6 grid gap-4 md:grid-cols-3">
+                        {% for item in company_profile.achievements %}
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                            <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-slate-500">{{ item.label }}</div>
+                            <div class="mt-2 text-xl font-semibold text-slate-900">{{ item.value }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <a href="/about/company" class="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white">
+                        <i class="fas fa-arrow-right"></i>公司简介
+                    </a>
+                </div>
+            </section>
+            {% elif module.type == 'media' %}
+            <section id="media" class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">{{ module.title or portal_content.nav_showcase }}</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">视觉展示</h2>
+                        <p class="mt-3 max-w-2xl leading-7 text-slate-600">{{ module.description or '精选游戏视觉与素材' }}</p>
+                    </div>
+                </div>
+                {% set media_urls = module.media_urls if module.media_urls else (portal_content.hero_gallery_urls or (featured.gallery if featured else [])) %}
+                <div class="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                    <div class="glass rounded-[30px] p-6">
+                        {% if module.video_url %}
+                            {% if 'youtube' in module.video_url or 'youtu.be' in module.video_url %}
+                            <div class="w-full overflow-hidden rounded-[24px] border border-slate-200 bg-black">
+                                <iframe src="{{ module.video_url }}" class="aspect-video w-full" frameborder="0" allowfullscreen></iframe>
+                            </div>
+                            {% else %}
+                            <video class="w-full rounded-[24px] border border-slate-200 bg-black" controls src="{{ module.video_url }}"></video>
+                            {% endif %}
+                        {% elif featured and featured.cover %}
+                            <img src="{{ featured.cover }}" alt="{{ featured.name }}" class="w-full rounded-[24px] border border-slate-200 object-cover">
+                        {% endif %}
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        {% for url in media_urls[:4] %}
+                        <img src="{{ url }}" alt="media" class="h-40 w-full rounded-[22px] border border-slate-200 object-cover">
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+            {% elif module.type == 'timeline' %}
+            <section class="mt-14">
+                <div class="glass rounded-[32px] p-7">
+                    <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-amber-600">Timeline</div>
+                    <h2 class="font-display mt-2 text-4xl text-slate-900">公司历程</h2>
+                    <div class="mt-6 space-y-4">
+                        {% for item in company_profile.timeline %}
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-5 py-4">
+                            <div class="text-xs font-semibold text-slate-500">{{ item.year }}</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900">{{ item.title }}</div>
+                            <p class="mt-2 text-sm text-slate-600">{{ item.description }}</p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+            {% elif block.kind == 'grid' %}
+            <section class="mt-14">
+                <div class="grid gap-6 md:grid-cols-4 lg:grid-cols-6">
+                    {% for item in block.items %}
+                        {% if item.size == 'half' %}
+                            {% set span = 'md:col-span-2 lg:col-span-3' %}
+                        {% elif item.size == 'third' %}
+                            {% set span = 'md:col-span-2 lg:col-span-2' %}
+                        {% else %}
+                            {% set span = 'md:col-span-4 lg:col-span-6' %}
+                        {% endif %}
+                        <div class="glass rounded-[28px] p-6 {{ span }}">
+                            {% if item.type == 'image' %}
+                                {% if item.image_url %}
+                                <img src="{{ item.image_url }}" alt="{{ item.title }}" class="h-48 w-full rounded-2xl object-cover">
+                                {% endif %}
+                                <h3 class="mt-4 text-2xl font-semibold text-slate-900">{{ item.title }}</h3>
+                                <p class="mt-2 text-slate-600">{{ item.description }}</p>
+                            {% elif item.type == 'video' %}
+                                {% if item.video_url %}
+                                    {% if 'youtube' in item.video_url or 'youtu.be' in item.video_url %}
+                                    <div class="w-full overflow-hidden rounded-2xl border border-slate-200 bg-black">
+                                        <iframe src="{{ item.video_url }}" class="aspect-video w-full" frameborder="0" allowfullscreen></iframe>
+                                    </div>
+                                    {% else %}
+                                    <video class="w-full rounded-2xl border border-slate-200 bg-black" controls src="{{ item.video_url }}"></video>
+                                    {% endif %}
+                                {% endif %}
+                                <h3 class="mt-4 text-2xl font-semibold text-slate-900">{{ item.title }}</h3>
+                                <p class="mt-2 text-slate-600">{{ item.description }}</p>
+                            {% elif item.type == 'stat' %}
+                                <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-slate-500">{{ item.title }}</div>
+                                <div class="mt-3 text-4xl font-black text-slate-900">{{ item.description }}</div>
+                            {% else %}
+                                <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-slate-500">{{ item.title }}</div>
+                                <div class="mt-3 text-lg text-slate-700">{{ item.description }}</div>
+                            {% endif %}
+                            {% if item.cta_text and item.cta_link %}
+                            <a href="{{ item.cta_link }}" class="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white">
+                                <i class="fas fa-arrow-right"></i>{{ item.cta_text }}
+                            </a>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+        {% endfor %}
+        {% endif %}
+    </main>
+</body>
+</html>

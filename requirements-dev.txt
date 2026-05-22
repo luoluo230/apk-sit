@@ -1,0 +1,7 @@
+# 开发与测试依赖（商业级项目标准）
+# 安装：pip install -r requirements-dev.txt
+# 运行测试：pytest tests/ -v
+
+-r requirements.txt
+pytest>=7.0.0
+pytest-cov>=4.0.0

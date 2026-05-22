@@ -1,0 +1,109 @@
+Started by user [8mha:////4Of88tvTwHkv/h7i4lweLdw47R2j+QwE3BzCDi32boPXAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/workspace/Android
+[Android] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins10752777222172683867.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.1
+  版本代码: 6
+  应用名称: GameKu
+  Git 分支: codex/add-ui-elements-for-money-and-purchases-4znp17
+步骤: Git 拉取/更新 (/Users/wangling/Desktop/MyGame/GameKu)
+Reset branch 'codex/add-ui-elements-for-money-and-purchases-4znp17'
+branch 'codex/add-ui-elements-for-money-and-purchases-4znp17' set up to track 'origin/codex/add-ui-elements-for-money-and-purchases-4znp17'.
+Your branch is up to date with 'origin/codex/add-ui-elements-for-money-and-purchases-4znp17'.
+Git 拉取完成
+=========================================
+  GameKu Android 打包工具 (Jenkins)
+=========================================
+
+配置:
+  项目: /Users/wangling/Desktop/MyGame/GameKu
+  Unity: 6000.3.8f1
+  版本: 1.0.1 (code: 6)
+  应用名称: GameKu
+  输出基础目录: /Users/wangling/Desktop/Builds/GomeKu
+  构建输出目录: /Users/wangling/Desktop/Builds/GomeKu/GameKu_1.0.1_20260309_164451
+  Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android
+  Git 分支: codex/add-ui-elements-for-money-and-purchases-4znp17
+
+📝 日志文件: /Users/wangling/Desktop/Builds/GomeKu/GameKu_1.0.1_20260309_164451/logs/build.log
+=========================================
+  构建开始时间: 2026年 3月 9日 星期一 16时44分51秒 CST
+=========================================
+
+步骤 1: 清理旧的 Unity 构建缓存
+✅ 已清理 Bee/Android 缓存
+
+步骤 2: 查找 Unity 版本
+✅ Unity: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app
+
+步骤 3: Git 更新
+📥 拉取代码...
+Already up to date.
+✅ Git 更新完成
+   分支: codex/add-ui-elements-for-money-and-purchases-4znp17
+   提交: a306ec6
+
+步骤 4: 生成 Unity 构建脚本
+✅ Unity 构建脚本已生成
+
+步骤 5: Unity 构建（ARM64 架构）
+开始构建，这可能需要 3-5 分钟...
+
+✅ Unity 构建成功
+
+步骤 6: 处理 APK 文件
+✅ APK 生成成功！
+   原始路径: /Users/wangling/Desktop/MyGame/GameKu/Builds/Android/GameKu.apk
+   最终路径: /Users/wangling/Desktop/Builds/GomeKu/GameKu_1.0.1_20260309_164451/GameKu_1.0.1.apk
+   文件大小:  79M
+-rw-r--r--@ 1 wangling  staff    79M  3  9 16:46 /Users/wangling/Desktop/Builds/GomeKu/GameKu_1.0.1_20260309_164451/GameKu_1.0.1.apk
+
+步骤 7: 生成构建信息文件
+✅ 构建信息已生成
+
+步骤 8: 复制 APK 到 Jenkins 工作空间
+✅ APK 已复制到 Jenkins 工作空间
+   Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android/GameKu_1.0.1.apk
+-rw-r--r--@ 1 wangling  staff    79M  3  9 16:46 /Users/wangling/.jenkins/workspace/Android/GameKu_1.0.1.apk
+✅ APK 也已复制到输出根目录
+✅ APK 也已复制到 HTTP 服务器目录 for download (/Users/wangling/Downloads/APK_Builds)
+
+步骤 9: 保存构建参数
+✅ 构建参数已保存到: /Users/wangling/.jenkins/jobs/Android/last_params.txt
+
+
+=========================================
+✅ Android 版本 1.0.1 构建成功！
+=========================================
+
+版本号: 1.0.1
+构建时间: 1分44秒
+构建状态: SUCCESS
+📱 下载链接: http://192.168.0.106:5003/pub/download/GameKu_1.0.1.apk
+
+[Android] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins504385750491276576.sh
+=======================================
+  步骤: 提交并推送本地变更到远端
+=======================================
+Git 工作目录: /Users/wangling/Desktop/MyGame/GameKu
+发现未提交变更，执行 add/commit/push
+[codex/add-ui-elements-for-money-and-purchases-4znp17 65c9bcd] Jenkins 构建 #25 自动提交 (GameKu 1.0.1)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+To github.com:luoluo230/WuziQi.git
+   a306ec6..65c9bcd  HEAD -> codex/add-ui-elements-for-money-and-purchases-4znp17
+✅ 已推送到远端
+Git 提交与推送步骤结束
+
+=== 更新 Jenkins 参数默认值 ===
+=== 更新 Jenkins 参数默认值 ===
+✅ Jenkins 配置已更新
+  VERSION_NAME: 1.0.1
+调用通知脚本...
+✅ 通知已发送
+Finished: SUCCESS

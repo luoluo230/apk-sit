@@ -1,0 +1,72 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<build>
+  <actions>
+    <hudson.model.ParametersAction>
+      <safeParameters class="sorted-set"/>
+      <parameters>
+        <hudson.model.StringParameterValue>
+          <name>UNITY_VERSION</name>
+          <description>Unity 版本（对应安装路径见 JENKINS_HOME/unity_paths.json）</description>
+          <value>6000.3.8f1</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>VERSION_NAME</name>
+          <description>版本号</description>
+          <value>1.0.15</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>VERSION_CODE</name>
+          <description>版本代码</description>
+          <value>4</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>APP_NAME</name>
+          <description>应用名称</description>
+          <value>GomeKu</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>OUTPUT_BASE_DIR</name>
+          <description>输出基础目录</description>
+          <value>/Users/wangling/Desktop/Builds</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>GIT_BRANCH</name>
+          <description>Git 分支</description>
+          <value>origin/codex/add-ui-elements-for-money-and-purchases-4znp17</value>
+        </hudson.model.StringParameterValue>
+      </parameters>
+      <parameterDefinitionNames>
+        <string>UNITY_VERSION</string>
+        <string>VERSION_NAME</string>
+        <string>VERSION_CODE</string>
+        <string>APP_NAME</string>
+        <string>OUTPUT_BASE_DIR</string>
+        <string>GIT_BRANCH</string>
+      </parameterDefinitionNames>
+    </hudson.model.ParametersAction>
+    <hudson.model.CauseAction>
+      <causeBag class="linked-hash-map">
+        <entry>
+          <hudson.model.Cause_-UserIdCause>
+            <userId>admin</userId>
+          </hudson.model.Cause_-UserIdCause>
+          <int>1</int>
+        </entry>
+      </causeBag>
+    </hudson.model.CauseAction>
+  </actions>
+  <queueId>8</queueId>
+  <timestamp>1772968496339</timestamp>
+  <startTime>1772968496358</startTime>
+  <result>FAILURE</result>
+  <duration>9805</duration>
+  <charset>UTF-8</charset>
+  <keepLog>false</keepLog>
+  <builtOn></builtOn>
+  <workspace>/Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/workspace/Android</workspace>
+  <hudsonVersion>2.541.2</hudsonVersion>
+  <scm class="hudson.scm.NullChangeLogParser"/>
+  <culprits class="java.util.Collections$UnmodifiableSet">
+    <c class="sorted-set"/>
+  </culprits>
+</build>

@@ -1,0 +1,29 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\jobs\Android\workspace
+[workspace] $ cmd /c call C:\Users\Administrator\AppData\Local\Temp\jenkins5150542978595352384.bat
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.0
+  版本代码: 1
+  应用名称: GomeKu
+  Git 分支: codex/replace-logging-with-custom-logger-fvtg9m
+
+==============================
+[阶段 0] 环境准备
+说明: 输出构建参数、加载实例环境变量、准备 Git/Unity 执行上下文。
+时间: 2026-05-21 18:54:08
+==============================
+
+==============================
+[阶段 0A] 基础 APK 预构建
+说明: 启用 RUN_BASE_APK_BUILD_FIRST=true，先执行传统 APK 预构建脚本。
+时间: 2026-05-21 18:54:08
+==============================
+bash: /c/Users/Administrator/build_gameku_android.sh: No such file or directory
+Build step 'Execute Windows batch command' marked build as failure
+Finished: FAILURE

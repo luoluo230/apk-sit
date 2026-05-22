@@ -1,0 +1,306 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<build>
+  <actions>
+    <hudson.model.ParametersAction>
+      <safeParameters class="sorted-set"/>
+      <parameters>
+        <hudson.model.StringParameterValue>
+          <name>UNITY_VERSION</name>
+          <description>Unity 版本（对应安装路径见 JENKINS_HOME/unity_paths.json）</description>
+          <value>6000.3.15f1</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>VERSION_NAME</name>
+          <description>版本号</description>
+          <value>1.0.0</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>VERSION_CODE</name>
+          <description>版本代码</description>
+          <value>100</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>APP_NAME</name>
+          <description>应用名称</description>
+          <value>GomeKu</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>OUTPUT_BASE_DIR</name>
+          <description>输出基础目录</description>
+          <value>E:\maclient_e2e\Builds\GomeKu</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>GIT_BRANCH</name>
+          <description>Git 分支</description>
+          <value>main</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>UNITY_PROJECT_PATH</name>
+          <description>Unity 项目目录（可选；未填则自动从 GIT_WORKSPACE 探测 Assets/Editor）</description>
+          <value>E:\maclient</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CHANNEL</name>
+          <description>渠道（dev/test/production 等，用于多渠道构建与输出子目录）</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CONFIG_EXPORT_ENABLED</name>
+          <description>Step1 配置导出: true / false</description>
+          <value>true</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CONFIG_ENVIRONMENT</name>
+          <description>配置导出环境: Development / Testing / Staging / Production</description>
+          <value>Development</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CONFIG_PLATFORM</name>
+          <description>配置导出平台: Android / iOS / Windows</description>
+          <value>Android</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CONFIG_CLIENT_VERSION</name>
+          <description>配置导出客户端版本</description>
+          <value>1.0.0</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CONFIG_REMOTE_PREFIX</name>
+          <description>配置远端路径前缀</description>
+          <value>MyGame1</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>CONFIG_INCLUDE_CODE</name>
+          <description>配置导出包含代码: true / false</description>
+          <value>false</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RESOURCE_BUILD_ENABLED</name>
+          <description>Step2 资源打包: true / false</description>
+          <value>true</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RESOURCE_PROVIDER</name>
+          <description>资源打包引擎: addressables-v2 / legacy-bundle-builder</description>
+          <value>addressables-v2</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RESOURCE_SCENARIO</name>
+          <description>资源打包场景方案</description>
+          <value>default</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>HOT_RELEASE_ENABLED</name>
+          <description>Step3 热更发布: true / false</description>
+          <value>true</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_VERSION</name>
+          <description>热更版本号</description>
+          <value>1.0.0</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_ENVIRONMENT</name>
+          <description>热更环境</description>
+          <value>Development</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_CHANNEL</name>
+          <description>热更渠道</description>
+          <value>wechat</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_PLATFORM</name>
+          <description>热更平台</description>
+          <value>Android</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_TARGETS</name>
+          <description>热更目标: code,resource</description>
+          <value>code,resource</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_HOT_LABELS</name>
+          <description>热更标签</description>
+          <value>hotupdate,aotmeta</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_UPLOAD_MODE</name>
+          <description>上传模式: incremental / full</description>
+          <value>incremental</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_MODE</name>
+          <description>发布模式: build-upload / build / upload / activate / rollback</description>
+          <value>build-upload</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_PLAN_FILE</name>
+          <description>发布计划 JSON 文件绝对路径（由后台生成）</description>
+          <value>E:\apk-site_backup_20260323_070015\data\release_plans\release_plan_57db1573_20260521_071921.json</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_UPLOAD</name>
+          <description>是否上传: true / false</description>
+          <value>true</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_ACTIVATE</name>
+          <description>上传后是否激活: true / false</description>
+          <value>false</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>COMMERCIAL_RESULT_OUT</name>
+          <description>商业发布结果输出文件路径</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>COMMERCIAL_AUTOMATION_OUT</name>
+          <description>商业发布自动化计划输出文件路径</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_CODE_COMPRESSION</name>
+          <description>代码包压缩: Zip / None / Lz4</description>
+          <value>Zip</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_CODE_ENCRYPTION</name>
+          <description>代码包加密: Aes / None / Xor</description>
+          <value>Aes</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_CODE_SIGNATURE</name>
+          <description>代码包签名: builtin-signature / 空</description>
+          <value>builtin-signature</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_CODE_UNITS</name>
+          <description>代码包单元</description>
+          <value>aotmeta, hotupdate, scriptpatch, symbols</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_RESOURCE_COMPRESSION</name>
+          <description>资源包压缩: Zip / None / Lz4</description>
+          <value>None</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_RESOURCE_ENCRYPTION</name>
+          <description>资源包加密: Aes / None</description>
+          <value>None</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_RESOURCE_SIGNATURE</name>
+          <description>资源包签名: builtin-signature / 空</description>
+          <value>builtin-signature</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_RESOURCE_UNITS</name>
+          <description>资源包单元</description>
+          <value>addressable, hotupdate, optional, platform, hd, streaming</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_COMPRESSION_OVERRIDE</name>
+          <description>压缩覆盖</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_ENCRYPTION_OVERRIDE</name>
+          <description>加密覆盖</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_SIGNATURE_OVERRIDE</name>
+          <description>签名覆盖</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RELEASE_ROLLBACK_TARGET</name>
+          <description>回滚目标版本</description>
+          <value></value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>APK_BUILD_ENABLED</name>
+          <description>Step4 APK打包: true / false</description>
+          <value>false</value>
+        </hudson.model.StringParameterValue>
+        <hudson.model.StringParameterValue>
+          <name>RUN_BASE_APK_BUILD_FIRST</name>
+          <description>是否先执行传统 build_gameku_android.sh（商业建议 false）</description>
+          <value>false</value>
+        </hudson.model.StringParameterValue>
+      </parameters>
+      <parameterDefinitionNames>
+        <string>UNITY_VERSION</string>
+        <string>VERSION_NAME</string>
+        <string>VERSION_CODE</string>
+        <string>APP_NAME</string>
+        <string>OUTPUT_BASE_DIR</string>
+        <string>GIT_BRANCH</string>
+        <string>UNITY_PROJECT_PATH</string>
+        <string>CHANNEL</string>
+        <string>CONFIG_EXPORT_ENABLED</string>
+        <string>CONFIG_ENVIRONMENT</string>
+        <string>CONFIG_PLATFORM</string>
+        <string>CONFIG_CLIENT_VERSION</string>
+        <string>CONFIG_REMOTE_PREFIX</string>
+        <string>CONFIG_INCLUDE_CODE</string>
+        <string>RESOURCE_BUILD_ENABLED</string>
+        <string>RESOURCE_PROVIDER</string>
+        <string>RESOURCE_SCENARIO</string>
+        <string>HOT_RELEASE_ENABLED</string>
+        <string>RELEASE_VERSION</string>
+        <string>RELEASE_ENVIRONMENT</string>
+        <string>RELEASE_CHANNEL</string>
+        <string>RELEASE_PLATFORM</string>
+        <string>RELEASE_TARGETS</string>
+        <string>RELEASE_HOT_LABELS</string>
+        <string>RELEASE_UPLOAD_MODE</string>
+        <string>RELEASE_MODE</string>
+        <string>RELEASE_PLAN_FILE</string>
+        <string>RELEASE_UPLOAD</string>
+        <string>RELEASE_ACTIVATE</string>
+        <string>COMMERCIAL_RESULT_OUT</string>
+        <string>COMMERCIAL_AUTOMATION_OUT</string>
+        <string>RELEASE_CODE_COMPRESSION</string>
+        <string>RELEASE_CODE_ENCRYPTION</string>
+        <string>RELEASE_CODE_SIGNATURE</string>
+        <string>RELEASE_CODE_UNITS</string>
+        <string>RELEASE_RESOURCE_COMPRESSION</string>
+        <string>RELEASE_RESOURCE_ENCRYPTION</string>
+        <string>RELEASE_RESOURCE_SIGNATURE</string>
+        <string>RELEASE_RESOURCE_UNITS</string>
+        <string>RELEASE_COMPRESSION_OVERRIDE</string>
+        <string>RELEASE_ENCRYPTION_OVERRIDE</string>
+        <string>RELEASE_SIGNATURE_OVERRIDE</string>
+        <string>RELEASE_ROLLBACK_TARGET</string>
+        <string>APK_BUILD_ENABLED</string>
+        <string>RUN_BASE_APK_BUILD_FIRST</string>
+      </parameterDefinitionNames>
+    </hudson.model.ParametersAction>
+    <hudson.model.CauseAction>
+      <causeBag class="linked-hash-map">
+        <entry>
+          <hudson.model.Cause_-UserIdCause>
+            <userId>admin</userId>
+          </hudson.model.Cause_-UserIdCause>
+          <int>1</int>
+        </entry>
+      </causeBag>
+    </hudson.model.CauseAction>
+  </actions>
+  <queueId>38</queueId>
+  <timestamp>1779347968270</timestamp>
+  <startTime>1779347968273</startTime>
+  <result>FAILURE</result>
+  <duration>97050</duration>
+  <charset>UTF-8</charset>
+  <keepLog>false</keepLog>
+  <builtOn></builtOn>
+  <workspace>E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\jobs\Android\workspace</workspace>
+  <hudsonVersion>2.541.2</hudsonVersion>
+  <scm class="hudson.scm.NullChangeLogParser"/>
+  <culprits class="java.util.Collections$UnmodifiableSet">
+    <c class="sorted-set"/>
+  </culprits>
+</build>

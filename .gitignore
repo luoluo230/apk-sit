@@ -1,0 +1,16 @@
+# 本地环境与密钥（勿提交）
+.env
+jenkins_credentials.json
+config/settings.json
+data/secret.key
+
+# 用户上传与工作区（可选：备份时排除）
+# data/workspaces/
+# data/doc_attachments/
+
+# 日志与缓存
+logs/
+backups/
+__pycache__/
+*.pyc
+.pytest_cache/

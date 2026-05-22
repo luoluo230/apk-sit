@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="ImZkZWE0NzNhZTllODkyYzY4NDlkNzNmNjEwZGYxZjhmMjExMmY4N2Qi.agbP7w.OWS9kn2iC8Mu_w6xw2MtR2zWFI4">
+    <title>项目工作台 - APK 下载中心</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .admin-nav { background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #4f46e5 100%); }
+        .admin-card { transition: box-shadow 0.18s ease, transform 0.18s ease, background-color 0.18s ease; }
+        .admin-card:hover { box-shadow: 0 18px 45px -20px rgba(15,23,42,0.35); transform: translateY(-2px); }
+        .stat-card { background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 antialiased">
+    <div class="min-h-screen flex flex-col">
+        <header class="admin-nav shadow-lg">
+            <div class="max-w-6xl mx-auto px-4">
+                <div class="flex items-center justify-between h-14 md:h-16 gap-3">
+                    <div class="flex items-center gap-3">
+                        <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-white/10 text-white">
+                            <i class="fas fa-sliders-h text-lg"></i>
+                        </span>
+                        <div>
+                            <h1 class="text-lg md:text-xl font-semibold text-white tracking-tight">项目工作台</h1>
+                            <p class="hidden md:block text-[11px] text-slate-200/80">管理 APK 项目、版本、构建与权限</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a href="/download-center" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
+                            <i class="fas fa-box-open"></i><span>下载中心</span>
+                        </a>
+                        <div class="hidden md:flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-slate-100">
+                            <i class="fas fa-user-circle text-slate-200"></i>
+                            <span class="font-semibold">admin</span>
+                        </div>
+                        <a href="/profile" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
+                            <i class="fas fa-id-badge"></i><span>个人中心</span>
+                        </a>
+                        <a href="/logout" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
+                            <i class="fas fa-right-from-bracket"></i><span>退出</span>
+                        </a>
+                        <form method="get" action="/admin/search" class="hidden sm:flex items-center bg-slate-900/20 rounded-lg px-2 py-1.5">
+                            <i class="fas fa-search text-slate-300 text-xs mr-1.5"></i>
+                            <input type="text" name="q" placeholder="全局搜索…" class="bg-transparent outline-none border-0 text-xs text-slate-50 placeholder:text-slate-400 w-40 focus:ring-0">
+                        </form>
+                        <a href="/admin/projects" class="inline-flex items-center gap-1.5 text-xs md:text-sm font-medium text-slate-100 hover:text-white hover:underline">
+                            <i class="fas fa-arrow-left text-slate-200"></i><span>返回</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <main class="flex-1">
+            <div class="max-w-6xl mx-auto px-4 py-6 md:py-8">
+                <div class="space-y-6">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+        <div class="border-b border-slate-200/80 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-700 px-6 py-6">
+            <div class="flex items-start justify-between flex-wrap gap-4">
+                <div class="flex items-start gap-4">
+                    <a href="/admin/projects" class="mt-1 inline-flex items-center justify-center w-9 h-9 rounded-xl bg-white/10 text-slate-100 hover:bg-white/20 transition">
+                        <i class="fas fa-arrow-left"></i>
+                    </a>
+                    <div>
+                        <p class="text-[11px] font-semibold text-slate-300/80 tracking-[0.18em] uppercase">项目中心</p>
+                        <h2 class="text-2xl font-semibold text-white mt-1">项目工作台</h2>
+                        <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-slate-200/90">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-900/40 font-mono tracking-wide">GomeKu</span>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-400/15 text-amber-100 border border-amber-300/30"><i class="fas fa-flag-checkered mr-1 text-amber-200"></i>正式开发</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-900/40 text-[11px] text-slate-200/90"><i class="fas fa-clock mr-1 text-slate-300/80"></i>创建于 2026-03-08</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <a href="/admin/projects/GomeKu/tasks" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-medium shadow-sm hover:bg-indigo-400 transition"><i class="fas fa-tasks mr-1.5"></i> 任务</a>
+                    <a href="/admin/projects/GomeKu/build" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-medium shadow-sm hover:bg-orange-400 transition"><i class="fas fa-cogs mr-1.5"></i> 构建</a>
+                    <a href="/admin/projects/GomeKu?tab=channels" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-medium shadow-sm hover:bg-emerald-400 transition"><i class="fas fa-layer-group mr-1.5"></i> 版本</a>
+                    <a href="/admin/gm-ops?project_id=GomeKu" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-cyan-500 text-white text-sm font-medium shadow-sm hover:bg-cyan-400 transition"><i class="fas fa-sitemap mr-1.5"></i> GM运营</a>
+                    <a href="/admin/projects/GomeKu/tasks/stats" class="inline-flex items-center px-4 py-2.5 rounded-xl bg-white/10 text-slate-100 text-sm font-medium hover:bg-white/20 transition"><i class="fas fa-chart-bar mr-1.5"></i> 统计</a>
+                    <a href="/docs?module=projects" class="inline-flex items-center px-3 py-2 rounded-xl bg-white/10 text-slate-200 text-sm font-medium hover:bg-white/20 transition" title="查看项目中心相关文档"><i class="fas fa-question-circle mr-1"></i> 文档</a>
+                </div>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-2 md:grid-cols-7 gap-4 mb-6">
+        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
+            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">任务总数</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">2</p>
+            <a href="/admin/projects/GomeKu/tasks" class="text-xs text-indigo-600 hover:text-indigo-700 hover:underline mt-1 inline-flex items-center gap-1">查看全部<i class="fas fa-arrow-right text-[10px]"></i></a>
+        </div>
+        <div class="stat-card rounded-2xl border border-indigo-100 shadow-sm p-4 bg-indigo-50/70">
+            <p class="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.14em]">进行中</p>
+            <p class="text-2xl font-bold text-indigo-700 mt-1">1</p>
+        </div>
+        <div class="stat-card rounded-2xl border border-amber-100 shadow-sm p-4 bg-amber-50/70">
+            <p class="text-[11px] font-semibold text-amber-600 uppercase tracking-[0.14em]">待验收</p>
+            <p class="text-2xl font-bold text-amber-700 mt-1">0</p>
+        </div>
+        <div class="stat-card rounded-2xl border border-emerald-100 shadow-sm p-4 bg-emerald-50/70">
+            <p class="text-[11px] font-semibold text-emerald-600 uppercase tracking-[0.14em]">已完成</p>
+            <p class="text-2xl font-bold text-emerald-700 mt-1">0</p>
+        </div>
+        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
+            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">版本数</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">1</p>
+        </div>
+        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
+            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">安装包数</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">0</p>
+        </div>
+        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
+            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">下载量</p>
+            <p class="text-2xl font-bold text-slate-900 mt-1">0</p>
+            <p id="projectTrend7d" class="text-xs text-slate-500 mt-0.5">—</p>
+        </div>
+    </div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 space-y-4">
+                    <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2"><i class="fas fa-list text-indigo-500"></i> 最近任务</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead><tr class="text-left text-slate-500 border-b"><th class="pb-2 text-xs font-semibold">标题</th><th class="pb-2 text-xs font-semibold">负责人</th><th class="pb-2 text-xs font-semibold">状态</th></tr></thead>
+                                <tbody><tr class="border-b border-gray-100 hover:bg-indigo-50/50"><td class="py-2.5 text-sm"><a href="/admin/projects/GomeKu/tasks" class="text-indigo-600 hover:underline font-medium">测试</a></td><td class="py-2.5 text-xs text-gray-500">admin</td><td class="py-2.5"><span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">已作废</span></td></tr><tr class="border-b border-gray-100 hover:bg-indigo-50/50"><td class="py-2.5 text-sm"><a href="/admin/projects/GomeKu/tasks" class="text-indigo-600 hover:underline font-medium">未命名任务</a></td><td class="py-2.5 text-xs text-gray-500">admin</td><td class="py-2.5"><span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">进行中</span></td></tr></tbody>
+                            </table>
+                        </div>
+                        <a href="/admin/projects/GomeKu/tasks" class="block text-center py-2 mt-2 text-indigo-600 hover:text-indigo-700 hover:underline text-sm">查看全部任务 →</a>
+                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2"><i class="fas fa-info-circle text-slate-500"></i> 项目信息</h3>
+                        <p class="text-sm text-slate-600 leading-relaxed">五子棋</p>
+                        
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2"><i class="fas fa-users text-amber-500"></i> 团队成员</h3>
+                        <ul class="space-y-1.5 text-sm"><li class="flex items-center gap-2"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-semibold">A</span><span class="text-slate-800">admin</span><span class="text-[11px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">编辑</span></li><li class="flex items-center gap-2"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-semibold">W</span><span class="text-slate-800">wl230230</span><span class="text-[11px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">编辑</span></li></ul>
+                        <p class="text-xs text-slate-500 mt-2">共 2 人</p>
+                    </div>
+                    <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-100 p-4">
+                        <h3 class="text-sm font-semibold text-amber-900 mb-2">快捷操作</h3>
+                        <div class="space-y-2">
+                            <a href="/admin/projects/GomeKu/tasks" class="flex items-center gap-2 py-2 px-3 rounded-xl bg-white/80 hover:bg-white text-slate-800 text-sm transition"><i class="fas fa-plus text-indigo-500"></i> 新建任务</a>
+                            <a href="/admin/projects/GomeKu?tab=channels" class="flex items-center gap-2 py-2 px-3 rounded-xl bg-white/80 hover:bg-white text-slate-800 text-sm transition"><i class="fas fa-layer-group text-amber-500"></i> 渠道与版本</a>
+                            <a href="/admin/projects/GomeKu/build" class="flex items-center gap-2 py-2 px-3 rounded-xl bg-white/80 hover:bg-white text-slate-800 text-sm transition"><i class="fas fa-cogs text-orange-500"></i> 项目构建</a>
+                            <a href="/admin/gm-ops?project_id=GomeKu" class="flex items-center gap-2 py-2 px-3 rounded-xl bg-white/80 hover:bg-white text-slate-800 text-sm transition"><i class="fas fa-sitemap text-cyan-500"></i> GM运营中心</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+    <div class="p-6">
+        <div class="flex border-b border-slate-200 mb-6 gap-2 items-center">
+            <button type="button" onclick="switchTab('overview')" id="tabOverview" class="tab-btn px-4 py-2 text-sm font-medium text-amber-700 border-b-2 border-amber-600 -mb-px">仪表盘</button>
+            <button type="button" onclick="switchTab('channels')" id="tabChannels" class="tab-btn px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">渠道</button>
+            <a href="/docs?module=versions" class="ml-auto text-slate-400 hover:text-indigo-600 text-sm" title="渠道与版本相关文档"><i class="fas fa-question-circle"></i></a>
+        </div>
+        <!-- switchTab 在下方统一脚本定义，避免重复定义导致行为不一致 -->
+        <div id="panelOverview" class="tab-panel">
+            <p class="text-slate-500 text-sm">上方为项目仪表盘，包含任务统计、最近动态、团队成员与快捷操作。切换至「渠道」可管理项目要发布的渠道及不同阶段（开发、测试、线上）的版本配置。</p>
+        </div>
+        <div id="panelChannels" class="tab-panel hidden">
+            <div class="mb-6 p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-slate-100">
+                <h3 class="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-2"><i class="fas fa-layer-group text-indigo-500"></i> 项目要发布的渠道 <a href="/docs?module=versions" class="text-slate-400 hover:text-indigo-600" title="帮助"><i class="fas fa-question-circle text-xs"></i></a></h3>
+                <p class="text-xs text-slate-500 mb-3">选择本项目的发布渠道，每个渠道下有开发、测试、线上三阶段，可分别配置版本。</p>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <div class="flex flex-wrap gap-2" id="projectChannelsList"><span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 border border-slate-200/80 text-slate-700 text-sm shadow-sm" data-channel="1001">微信<button type="button" data-channel-id="1001" class="remove-channel-btn text-slate-400 hover:text-red-500 -mr-0.5 transition"><i class="fas fa-times text-xs"></i></button></span></div>
+                    <div class="relative"><button type="button" onclick="toggleAddChannelDropdown()" class="inline-flex items-center px-4 py-2 rounded-xl border-2 border-dashed border-indigo-200 text-indigo-600 text-sm hover:bg-indigo-50 hover:border-indigo-300 transition"><i class="fas fa-plus mr-1.5"></i> 添加渠道</button><div id="addChannelDropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-2 z-20 min-w-[160px]"></div></div>
+                </div>
+            </div>
+            <div class="space-y-5" id="channelsVersionsWrap"></div>
+            <p id="channelsEmpty" class="py-12 text-center text-slate-500 hidden"><i class="fas fa-inbox text-4xl text-slate-200 mb-3 block"></i>请先添加项目渠道，再为各渠道创建版本</p>
+        </div>
+        <div id="panelBuild" class="tab-panel hidden" style="display:none">
+            <div class="flex flex-col md:flex-row gap-6">
+                <div class="bg-amber-50 border border-amber-100 rounded-xl p-6 max-w-lg flex-shrink-0">
+                    <h3 class="text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2"><i class="fas fa-cogs text-orange-500"></i> 触发构建 <a href="/docs?module=build" class="text-amber-600 hover:text-amber-800 ml-1" title="构建相关文档"><i class="fas fa-question-circle text-xs"></i></a></h3>
+                    <p class="text-sm text-amber-800 mb-4">选择 Jenkins 实例并填写构建参数，触发本项目的 APK 构建。构建完成后产物将出现在版本列表与下载区域。</p>
+                    <a href="/admin/projects/GomeKu/build" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 shadow-sm transition"><i class="fas fa-play"></i> 前往构建</a>
+                </div>
+                <div class="flex-1 bg-white rounded-xl border border-slate-200 p-4">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2"><i class="fas fa-history text-slate-500"></i> 最近构建</h3>
+                    <ul id="projectRecentBuilds" class="space-y-2 text-sm text-slate-600">加载中…</ul>
+                    <a href="/admin/projects/GomeKu/build" class="text-xs text-indigo-600 hover:underline mt-2 inline-block">查看全部 →</a>
+                </div>
+            </div>
+        </div>
+        <div id="panelDownload" class="tab-panel hidden">
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-900 flex items-center gap-2">本项目安装包 <a href="/docs?module=download" class="text-slate-400 hover:text-indigo-600" title="下载相关文档"><i class="fas fa-question-circle text-xs"></i></a></h3>
+                <a href="/download-center?project=GomeKu" class="text-indigo-600 hover:text-indigo-700 text-sm">在下载中心查看 →</a>
+            </div>
+            <div class="py-12 text-center text-slate-500 rounded-xl border border-slate-100 bg-slate-50/50"><p class="text-sm">暂无安装包，构建或上传后将在此展示</p><a href="/admin/projects/GomeKu/build" class="mt-2 inline-block text-indigo-600 hover:underline text-sm">前往构建</a></div>
+        </div>
+    </div>
+</div>
+<!-- 版本编辑弹窗 -->
+<div id="versionModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center z-50 p-3 pt-6" onclick="if(event.target===this) closeVersionModal()">
+<div class="bg-white rounded-2xl shadow-2xl w-full max-w-[920px] max-h-[94vh] overflow-hidden flex flex-col border border-slate-100" onclick="event.stopPropagation()">
+<div class="px-5 py-2 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 to-indigo-50/60 shadow-sm flex items-center justify-between shrink-0"><h3 class="font-semibold text-slate-800 text-base" id="versionModalTitle">????</h3><button onclick="closeVersionModal()" class="w-7 h-7 rounded-lg hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times text-xs"></i></button></div>
+<div class="px-5 py-3 overflow-y-auto flex-1">
+<input type="hidden" id="versionEditId" value="">
+<label class="flex items-center gap-2.5 px-3 py-2 mb-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:border-violet-300 transition-all" id="labelCommercialMode"><input type="checkbox" id="chkCommercialMode" class="w-4 h-4 rounded text-violet-600" onchange="toggleCommercialMode()"><div><span class="text-[14px] font-semibold text-slate-700">??????</span><span class="text-[11px] text-slate-400 ml-1.5">??????????</span></div></label>
+<div class="mb-3"><div id="versionMainTabs" class="flex gap-1 bg-slate-100 rounded-lg p-1"><button type="button" class="flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition bg-white text-indigo-700 shadow-sm" data-vtab="identity" onclick="switchVersionModalTab('identity')">????</button><button type="button" class="flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition text-slate-600 hover:bg-white/70" data-vtab="package" onclick="switchVersionModalTab('package')">????</button><button type="button" class="flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition text-slate-600 hover:bg-white/70" data-vtab="release" onclick="switchVersionModalTab('release')">????</button><button type="button" id="versionPipelineTabBtn" class="hidden flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition text-slate-600 hover:bg-white/70" data-vtab="pipeline" onclick="switchVersionModalTab('pipeline')">?????</button></div></div>
+<div id="vmTabIdentity" class="version-main-panel"><div class="rounded-lg border border-slate-200 mb-2.5 overflow-hidden"><div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200/80"><span class="text-[13px] font-semibold text-slate-600">????</span></div><div class="px-3 py-2 grid grid-cols-6 gap-2"><div><span class="block text-[11px] text-slate-500">??</span><select id="versionChannel" onchange="suggestVersionApkPath()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"><option value="1001">??</option><option value="1002">??</option></select></div><div><span class="block text-[11px] text-slate-500">??</span><select id="versionStage" onchange="suggestVersionApkPath()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"><option value="dev">??</option><option value="test">??</option><option value="production">??</option></select></div><div><span class="block text-[11px] text-slate-500">??</span><select id="versionPlatform" onchange="suggestVersionApkPath();syncVersionPlatformFields()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"><option value="android">Android</option><option value="ios">iOS</option></select></div><div><span class="block text-[11px] text-slate-500">???</span><input id="versionName" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" value="1.0.0"></div><div><span class="block text-[11px] text-slate-500">Version Code</span><input id="versionCode" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" value="100"></div><div><span class="block text-[11px] text-slate-500">??</span><select id="versionStatus" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"><option value="active">??</option><option value="testing">???</option><option value="deprecated">??</option><option value="archived">??</option></select></div></div></div></div>
+<div id="vmTabPackage" class="version-main-panel hidden"><div class="rounded-lg border border-slate-200 mb-2.5 overflow-hidden"><div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200/80"><span class="text-[13px] font-semibold text-slate-600">????</span></div><div class="px-3 py-2 space-y-2"><div class="grid grid-cols-3 gap-2"><div><span class="block text-[11px] text-slate-500">????</span><select id="versionDistributionMethod" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"><option value="direct">????</option><option value="enterprise">????</option><option value="store">????</option><option value="testflight">TestFlight</option><option value="internal">????</option></select></div><div><span class="block text-[11px] text-slate-500">??</span><input id="versionPackageName" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div><div><span class="block text-[11px] text-slate-500">??SDK</span><input id="versionMinSdk" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div></div><div class="grid grid-cols-3 gap-2"><div><span class="block text-[11px] text-slate-500">?????</span><input id="versionApkPath" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div><div><span class="block text-[11px] text-slate-500">????</span><input id="versionResourcePath" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div><div><span class="block text-[11px] text-slate-500">????</span><input id="versionConfigPath" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div></div><div id="androidVersionFields" style="display:none"></div><div id="iosVersionFields" class="hidden" style="display:none"></div><input id="versionBundleId" type="hidden"><input id="versionMinIosVersion" type="hidden"></div></div></div>
+<div id="vmTabRelease" class="version-main-panel hidden"><div class="rounded-lg border border-slate-200 mb-2.5 overflow-hidden"><div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200/80"><span class="text-[13px] font-semibold text-slate-600">????</span></div><div class="px-3 py-2 grid grid-cols-2 gap-3"><div><span class="block text-[11px] text-slate-500">????</span><textarea id="versionChangelog" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" rows="2"></textarea><label class="flex items-center gap-1 text-sm mt-2"><input type="checkbox" id="versionChangelogRecommended" class="rounded"> ????</label><span class="block text-[11px] text-slate-500 mt-2">Jenkins Job ID</span><input id="versionJenkinsJob" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"><span class="block text-[11px] text-slate-500 mt-2">??</span><textarea id="versionNotes" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" rows="1"></textarea></div><div><div class="grid grid-cols-1 gap-2"><div><span class="block text-[11px] text-slate-500">Unity??</span><input id="ppApkUnity" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" value="6000.3.8f1"></div><div><span class="block text-[11px] text-slate-500">Git??</span><input id="ppApkBranch" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" value="main"></div><div><span class="block text-[11px] text-slate-500">APP_NAME</span><input id="ppApkAppName" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div><div><span class="block text-[11px] text-slate-500">????</span><input id="ppApkOutput" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"></div></div></div></div></div></div>
+<div id="vmTabPipeline" class="version-main-panel hidden"><div id="versionPipeline" class="hidden rounded-lg border border-violet-200 mb-2 overflow-hidden"><div class="px-3 py-1.5 bg-violet-50/80 border-b border-violet-100"><span class="text-[13px] font-semibold text-violet-700">?????</span></div><div class="p-3"><div class="text-xs text-slate-500">????????????????????</div></div></div></div>
+</div>
+<div class="px-5 py-2.5 border-t border-slate-100 bg-slate-50/80 flex justify-end gap-2 shrink-0"><button type="button" onclick="closeVersionModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">??</button><button type="button" onclick="saveVersion()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-md hover:shadow-lg transition-all">????</button></div>
+</div></div>
+<div id="projectQRModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this) document.getElementById('projectQRModal').classList.add('hidden')">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-100" onclick="event.stopPropagation()">
+        <h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-qrcode text-indigo-500"></i> 扫码下载</h3>
+        <div id="projectQRCode" class="flex justify-center mb-4 min-h-[200px] items-center bg-slate-50 rounded-xl"></div>
+        <button type="button" onclick="document.getElementById('projectQRModal').classList.add('hidden')" class="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition">关闭</button>
+    </div>
+</div>
+<div id="versionDownloadsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this) document.getElementById('versionDownloadsModal').classList.add('hidden')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between"><h3 class="font-semibold text-slate-800"><i class="fas fa-download text-emerald-500 mr-2"></i>本版本可下载 APK</h3><button type="button" onclick="document.getElementById('versionDownloadsModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button></div>
+        <div id="versionDownloadsList" class="p-6 overflow-y-auto flex-1">加载中…</div>
+    </div>
+</div>
+<script type="application/json" id="project-detail-data">{"project_id": "GomeKu", "can_edit": true, "channels_full": {"1001": {"apk_subdir": "wechat", "build_param": "wechat"}, "1002": {"apk_subdir": "douyin", "build_param": "douyin"}}, "project_channels": [{"id": "1001", "name": "\u5fae\u4fe1"}], "all_channels": [{"id": "1001", "name": "\u5fae\u4fe1"}, {"id": "1002", "name": "\u6296\u97f3"}], "version_stages": [{"id": "dev", "name": "\u5f00\u53d1"}, {"id": "test", "name": "\u6d4b\u8bd5"}, {"id": "production", "name": "\u7ebf\u4e0a"}], "project_name_en": "GomeKu", "versions": [{"id": "87164035", "channel": "1001", "stage": "dev", "platform": "android", "version_name": "1.0.0", "version_code": "1", "apk_path": "GameKu_1.0.0.apk", "resource_path": "", "config_path": "", "jenkins_job_id": "1", "notes": "", "created_at": "2026-03-10T00:36:57.453397", "updated_at": "2026-05-14T09:38:05.960041", "jenkins_params": {"UNITY_VERSION": "6000.3.8f1", "VERSION_NAME": "1.0.0", "VERSION_CODE": "1", "APP_NAME": "GomeKu", "OUTPUT_BASE_DIR": "/Users/wangling/Desktop/Builds/wechat/dev", "GIT_BRANCH": "codex/add-ui-elements-for-money-and-purchases-4znp17", "CHANNEL": "1001"}, "jenkins_instance_id": "5f2cf2bc", "env": "staging", "publish_status": "rolled_back", "apk_version": "1.0.0", "resource_version": "res-1", "config_version": "cfg-1", "apk_url": "https://example.com/app.apk", "resource_url": "https://example.com/res.zip", "config_url": "https://example.com/config.json", "server_profile": "default", "rollback_trace_id": "374a1c83bc434784", "updated_by": "admin", "platform_label": "Android", "distribution_method": "direct", "package_name": "", "min_sdk": "", "bundle_id": "", "min_ios_version": "", "stage_label": "\u5f00\u53d1", "channel_label": "\u5fae\u4fe1", "apk_status": "not_found", "download_count": 0, "recommended": true, "changelog_text": "", "changelog_recommended": true}]}</script>
+<script>
+var _pd=(function(){var el=document.getElementById("project-detail-data");return el?JSON.parse(el.textContent):{};})();
+var PROJECT_ID=_pd.project_id||"";
+var CAN_EDIT=_pd.can_edit||false;
+var CHANNELS_FULL=_pd.channels_full||{};
+var PROJECT_CHANNELS=_pd.project_channels||[];
+var ALL_CHANNELS=_pd.all_channels||[];
+var VERSION_STAGES=_pd.version_stages||[{id:'dev',name:'开发'},{id:'test',name:'测试'},{id:'production',name:'线上'}];
+var PROJECT_NAME_EN=(_pd.project_name_en||PROJECT_ID||'').replace(new RegExp("\\s","g"),"");
+var STAGE_DIR_MAP={dev:'dev',test:'test',production:'release'};
+var allVersions=(_pd.versions||[]).map(function(v){v.channel_label=v.channel_label||v.channel;v.stage=v.stage||'dev';v.stage_label=v.stage_label||'开发';return v;});
+function _esc(s){if(s==null||s===undefined)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+window.switchTab=function switchTab(name){
+    var allowed={overview:1,channels:1,build:1,download:1};
+    name = String(name||'overview').toLowerCase().trim();
+    if(!allowed[name]) name='overview';
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('text-amber-600','border-b-2','border-amber-600'); b.classList.add('text-gray-500'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.add('hidden'); });
+    var btn = document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1));
+    var panel = document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1));
+    if(btn){ btn.classList.remove('text-gray-500'); btn.classList.add('text-amber-600','border-b-2','border-amber-600'); }
+    if(panel){ panel.classList.remove('hidden'); }
+    if(name==='channels'){
+        try{ renderChannelsView(); }catch(e){ console.error('renderChannelsView failed', e); alert('版本页面初始化失败，请刷新后重试。'); }
+    }
+    if(typeof history!=='undefined'&&history.replaceState){ var u=new URL(window.location.href); u.searchParams.set('tab',name); history.replaceState(null,'',u.pathname+u.search); }
+};
+function loadProjectRecentBuilds(){
+    var el=document.getElementById('projectRecentBuilds'); if(!el) return;
+    fetch('/api/build/recent?limit=5', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+        var builds=d.builds||[];
+        if(builds.length===0){ el.innerHTML='<li class="text-slate-500">暂无构建记录，请先启动 Jenkins 并前往构建页</li>'; return; }
+        var statusCls=function(r){ r=(r||'').toUpperCase(); if(r==='SUCCESS') return 'bg-green-100 text-green-800'; if(r==='FAILURE'||r==='ABORTED') return 'bg-red-100 text-red-800'; if(r==='UNSTABLE') return 'bg-yellow-100 text-yellow-800'; return 'bg-gray-100 text-gray-700'; };
+        el.innerHTML=builds.map(function(b){ var badge='<span class="ml-1 px-2 py-0.5 rounded text-xs '+statusCls(b.result)+'">'+(b.result||'中')+'</span>'; return '<li><a href="/admin/projects/'+PROJECT_ID+'/build" class="text-indigo-600 hover:underline">#'+b.number+'</a> '+badge+'</li>'; }).join('');
+    }).catch(function(){ el.innerHTML='<li class="text-slate-500">加载失败</li>'; });
+}
+window._showQR=function(filename){
+    var modal=document.getElementById('projectQRModal'); var box=document.getElementById('projectQRCode');
+    if(!modal||!box) return;
+    box.innerHTML='<p class="text-slate-400 text-sm">加载中…</p>';
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    fetch('/qr/'+encodeURIComponent(filename),{credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+        box.innerHTML= d.qr_code ? '<img src="'+d.qr_code+'" alt="QR" class="w-48 h-48 object-contain rounded-lg">' : '<p class="text-red-500 text-sm">加载失败</p>';
+    }).catch(function(){ box.innerHTML='<p class="text-red-500 text-sm">加载失败</p>'; });
+};
+function openVersionDownloadsModal(vid){
+    var modal=document.getElementById('versionDownloadsModal'); var list=document.getElementById('versionDownloadsList');
+    if(!modal||!list) return;
+    list.innerHTML='<p class="text-slate-400 text-sm">加载中…</p>';
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    fetch('/api/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/'+encodeURIComponent(vid)+'/downloads', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+        var files=d.files||[];
+        if(files.length===0){ list.innerHTML='<p class="text-slate-500 text-sm py-4">该版本暂无可下载的 APK</p>'; return; }
+        var html='<div class="space-y-3">';
+        files.forEach(function(f){
+            var urlPath=f.url.replace('/pub/download/','');
+            html+='<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0"><div><p class="font-medium text-slate-800">'+_esc(f.name)+'</p><p class="text-xs text-slate-500">'+f.size_mb+' MB · 下载 '+f.downloads+' 次</p></div><div class="flex items-center gap-3"><a href="'+_esc(f.url)+'" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs hover:bg-indigo-700">下载</a><button type="button" data-qr-url="'+_esc(urlPath)+'" onclick="window._showQR(this.getAttribute(String.fromCharCode(100,97,116,97,45,113,114,45,117,114,108)))" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50">二维码</button></div></div>';
+        });
+        html+='</div>';
+        list.innerHTML=html;
+    }).catch(function(){ list.innerHTML='<p class="text-red-500 text-sm">加载失败</p>'; });
+}
+(function(){
+    var h=window.location.hash;
+    var qTab=(new URLSearchParams(window.location.search)).get('tab');
+    if(qTab){ switchTab(qTab); }
+    else if(h&&h.indexOf('tab=')>=0){ var m=h.match(/tab=([a-z]+)/); if(m) switchTab(m[1]); }
+    else { switchTab('overview'); }
+    fetch('/api/projects/'+encodeURIComponent(PROJECT_ID)+'/download-stats', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+        var el=document.getElementById('projectTrend7d'); if(el) el.textContent = (d.sum_7d!=null) ? '最近7日：'+d.sum_7d+' 次' : '—';
+    }).catch(function(){});
+})();
+
+function renderChannelsView(){
+    var wrap = document.getElementById('channelsVersionsWrap');
+    var empty = document.getElementById('channelsEmpty');
+    if(!wrap) return;
+    var chs = PROJECT_CHANNELS || [];
+    var stages = VERSION_STAGES || [{id:'dev',name:'开发'},{id:'test',name:'测试'},{id:'production',name:'线上'}];
+    if(chs.length===0){ wrap.innerHTML=''; if(empty) empty.classList.remove('hidden'); return; }
+    if(empty) empty.classList.add('hidden');
+    var html = '';
+    for(var i=0;i<chs.length;i++){
+        var ch = chs[i]; var cid = ch.id||''; var cname = ch.name||cid; var blockId = 'ch-block-' + i;
+        html += '<div class="channel-card bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden" data-block-id="'+blockId+'">';
+        html += '<div class="px-5 py-3.5 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">';
+        html += '<h4 class="font-semibold text-slate-800 flex items-center gap-2"><span class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm"><i class="fas fa-mobile-alt"></i></span>'+_esc(cname)+'</h4>';
+        html += '<div class="flex rounded-lg bg-slate-100/80 p-0.5">';
+        for(var s=0;s<stages.length;s++){
+            var st=stages[s]; var sid=st.id||'dev'; var sname=st.name||'开发';
+            var isFirst = s===0;
+            html += '<button type="button" class="channel-stage-tab px-3.5 py-1.5 text-xs font-medium rounded-md transition '+(isFirst?'bg-white text-slate-800 shadow-sm':'text-slate-600 hover:text-slate-800')+'" data-block="'+blockId+'" data-stage="'+_esc(sid)+'">'+_esc(sname)+'</button>';
+        }
+        html += '</div></div>';
+        for(var s=0;s<stages.length;s++){
+            var st=stages[s]; var sid=st.id||'dev'; var sname=st.name||'开发';
+            var vers = allVersions.filter(function(v){ return ((v.channel||'').toLowerCase()===(cid||'').toLowerCase()) && ((v.stage||'dev')===(sid||'dev')); });
+            var panelHidden = s>0 ? ' hidden' : '';
+            html += '<div class="channel-stage-panel'+panelHidden+'" data-block="'+blockId+'" data-stage="'+_esc(sid)+'">';
+            html += '<div class="px-5 py-3 flex justify-between items-center border-b border-slate-50">';
+            html += '<span class="text-xs text-slate-500">'+_esc(sname)+' 阶段 · '+vers.length+' 个版本</span>';
+            html += '<span class="inline-flex gap-2">';
+            if(CAN_EDIT) html += '<button type="button" data-channel-id="'+_esc(cid)+'" data-stage="'+_esc(sid)+'" class="ch-open-version-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 shadow-sm transition"><i class="fas fa-plus text-[10px]"></i>新建版本</button>';
+            html += '</span></div><div class="p-5">';
+            if(vers.length===0){
+                html += '<div class="py-10 text-center rounded-xl bg-slate-50/60 border border-dashed border-slate-200"><i class="fas fa-cube text-3xl text-slate-200 mb-2"></i><p class="text-slate-500 text-sm">暂无版本</p><p class="text-slate-400 text-xs mt-0.5">点击「新建版本」添加</p></div>';
+            } else {
+html += '<div class="overflow-x-auto rounded-xl border border-slate-100"><table class="w-full text-sm"><thead><tr class="bg-slate-50/80 text-left text-slate-500"><th class="px-4 py-3 text-xs font-medium w-8"></th><th class="px-4 py-3 text-xs font-medium">版本号</th><th class="px-4 py-3 text-xs font-medium">平台</th><th class="px-4 py-3 text-xs font-medium">Version Code</th><th class="px-4 py-3 text-xs font-medium">安装包状态</th><th class="px-4 py-3 text-xs font-medium">下载量</th><th class="px-4 py-3 text-xs font-medium">下载路径</th>'+(CAN_EDIT?'<th class="px-4 py-3 text-xs font-medium w-36">操作</th>':'')+'</tr></thead><tbody>';
+                for(var j=0;j<vers.length;j++){
+                    var v=vers[j]; var vid=v.id||''; var rowCls = j%2===0 ? 'bg-white' : 'bg-slate-50/40';
+                    var actions = CAN_EDIT ? '<span class="inline-flex gap-2"><a href="/admin/projects/'+PROJECT_ID+'/versions/'+_esc(vid)+'/workflow" class="version-build-link inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500 text-white text-xs font-medium hover:bg-indigo-600"><i class="fas fa-cogs text-[10px]"></i>构建</a><button type="button" data-version-id="'+_esc(vid)+'" class="version-downloads-btn text-emerald-600 hover:text-emerald-700 text-xs">下载列表</button><button type="button" data-version-id="'+_esc(vid)+'" class="version-edit-btn text-indigo-600 hover:text-indigo-700 text-xs">编辑</button><button type="button" data-version-id="'+_esc(vid)+'" class="version-delete-btn text-red-500 hover:text-red-600 text-xs">删除</button></span>' : '<span class="inline-flex gap-2"><a href="/admin/projects/'+PROJECT_ID+'/versions/'+_esc(vid)+'/workflow" class="version-build-link inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500 text-white text-xs font-medium hover:bg-indigo-600"><i class="fas fa-cogs text-[10px]"></i>构建</a><button type="button" data-version-id="'+_esc(vid)+'" class="version-downloads-btn text-emerald-600 hover:text-emerald-700 text-xs">下载列表</button></span>';
+                    var apkBadge = (v.apk_status==='found') ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs bg-emerald-50 text-emerald-700 border border-emerald-100"><i class="fas fa-check-circle text-[10px]"></i>已落盘</span>' : ((v.apk_status==='not_found') ? '<span class="px-2 py-0.5 rounded-md text-xs bg-slate-100 text-slate-500">未找到</span>' : '—');
+                    var recBadge = (v.recommended) ? ' <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">推荐</span>' : '';
+                    var platformDetails = v.platform==='ios'
+                        ? '<span>Bundle ID: '+_esc(v.bundle_id||'-')+'</span><span>最低 iOS: '+_esc(v.min_ios_version||'-')+'</span>'
+                        : '<span>Android 包名: '+_esc(v.package_name||'-')+'</span><span>最低 SDK: '+_esc(v.min_sdk||'-')+'</span>';
+                    var paramsHtml = '<div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-slate-600"><span>发布方式: '+_esc(v.distribution_method||'-')+'</span>'+platformDetails+'<span>Jenkins: '+_esc(v.jenkins_job_id||'-')+'</span><span>备注: '+_esc((v.notes||'-').slice(0,50))+'</span><span>资源路径: '+_esc(v.resource_path||'-')+'</span><span>配置路径: '+_esc(v.config_path||'-')+'</span></div>';
+                    html += '<tr class="'+rowCls+' border-b border-slate-50 hover:bg-indigo-50/30 transition"><td class="px-2 py-1"><button type="button" class="version-fold-btn text-slate-400 hover:text-slate-600 p-1" data-version-id="'+_esc(vid)+'" title="展开/收起"><i class="fas fa-chevron-down text-[10px]"></i></button></td><td class="px-4 py-2.5 font-medium text-slate-800">'+_esc(v.version_name||'-')+recBadge+'</td><td class="px-4 py-2.5 text-slate-600 text-xs">'+_esc(v.platform_label||v.platform||'-')+'</td><td class="px-4 py-2.5 text-slate-600 font-mono text-xs">'+_esc(v.version_code||'-')+'</td><td class="px-4 py-2.5">'+apkBadge+'</td><td class="px-4 py-2.5 text-slate-600">'+(v.download_count!=null&&v.download_count>0?v.download_count:'0')+'</td><td class="px-4 py-2.5 text-slate-500 truncate max-w-[140px]" title="'+_esc(v.apk_path||'')+'">'+_esc(v.apk_path||'-')+'</td>'+(CAN_EDIT?'<td class="px-4 py-2.5">'+actions+'</td>':'')+'</tr>';
+                    html += '<tr class="version-params-row hidden '+rowCls+' border-b border-slate-50" data-version-id="'+_esc(vid)+'"><td colspan="'+(CAN_EDIT?8:7)+'" class="px-4 py-2 pb-3 bg-slate-50/50">'+paramsHtml+'</td></tr>';
+                }
+                html += '</tbody></table></div>';
+            }
+            html += '</div></div>';
+        }
+        html += '</div>';
+    }
+    wrap.innerHTML = html;
+    document.querySelectorAll('.channel-stage-tab').forEach(function(btn){
+        btn.onclick = function(){
+            var block = btn.getAttribute('data-block'); var stage = btn.getAttribute('data-stage');
+            var card = document.querySelector('[data-block-id="'+block+'"]');
+            if(!card) return;
+            card.querySelectorAll('.channel-stage-tab').forEach(function(b){ b.classList.remove('bg-white','text-slate-800','shadow-sm'); b.classList.add('text-slate-600'); });
+            btn.classList.add('bg-white','text-slate-800','shadow-sm'); btn.classList.remove('text-slate-600');
+            card.querySelectorAll('.channel-stage-panel').forEach(function(p){ p.classList.add('hidden'); });
+            var pan = card.querySelector('.channel-stage-panel[data-stage="'+stage+'"]'); if(pan) pan.classList.remove('hidden');
+        };
+    });
+}
+document.getElementById("channelsVersionsWrap")&&document.getElementById("channelsVersionsWrap").addEventListener("click",function(e){
+    var t=e.target.closest(".ch-open-version-btn");
+    if(t){openVersionModal(t.getAttribute("data-channel-id")||"",t.getAttribute("data-stage")||"dev");return;}
+    t=e.target.closest(".version-fold-btn");if(t){var vid=t.getAttribute("data-version-id"); var row=document.querySelector('.version-params-row[data-version-id="'+vid+'"]'); if(row){ row.classList.toggle('hidden'); t.querySelector('i').className=row.classList.contains('hidden')?'fas fa-chevron-down text-[10px]':'fas fa-chevron-up text-[10px]'; } return;}
+    t=e.target.closest(".version-downloads-btn");if(t){openVersionDownloadsModal(t.getAttribute("data-version-id"));return;}
+    t=e.target.closest(".version-edit-btn");if(t){editVersion(t.getAttribute("data-version-id"));return;}
+    t=e.target.closest(".version-delete-btn");if(t){deleteVersion(t.getAttribute("data-version-id"));}
+});
+function toggleAddChannelDropdown(){
+    var dd = document.getElementById('addChannelDropdown');
+    if(!dd) return;
+    if(dd.classList.contains('hidden')){ dd.classList.remove('hidden'); dd.innerHTML = ''; var cur = (PROJECT_CHANNELS||[]).map(function(c){ return (c.id||'').toLowerCase(); }); var opts = ALL_CHANNELS||[]; for(var i=0;i<opts.length;i++){ var o=opts[i]; if(cur.indexOf((o.id||'').toLowerCase())>=0) continue; dd.innerHTML += '<button type="button" data-channel-id='+JSON.stringify(o.id||'')+' class="add-channel-btn w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">'+_esc(o.name||o.id)+'</button>'; } if(dd.innerHTML==='') dd.innerHTML='<p class="px-4 py-2 text-slate-500 text-sm">无更多渠道可添加</p>'; }
+    else dd.classList.add('hidden');
+}
+document.addEventListener('click', function(e){ var dd=document.getElementById('addChannelDropdown'); var b=e.target.closest('.add-channel-btn'); if(b&&b.closest('#addChannelDropdown')){ addProjectChannel(b.dataset.channelId); if(dd) dd.classList.add('hidden'); return; } var rb=e.target.closest('.remove-channel-btn'); if(rb){ removeProjectChannel(rb.getAttribute('data-channel-id')||''); return; } if(dd&&!dd.classList.contains('hidden')&&!e.target.closest('.relative')) dd.classList.add('hidden'); });
+function addProjectChannel(cid){ fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/channels/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({channel_id:cid}), credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); }); }
+function removeProjectChannel(cid){ if(!confirm('确定从项目中移除此渠道？该渠道下的版本将不再在渠道列表中显示。')) return; fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/channels/remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({channel_id:cid}), credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); }); }
+
+function suggestVersionApkPath(){ var ch=document.getElementById('versionChannel').value; var st=(document.getElementById('versionStage')||{}).value||'dev'; var platform=(document.getElementById('versionPlatform')||{}).value||'android'; var vn=(document.getElementById('versionName')||{}).value.trim()||'1.0.0'; var info=CHANNELS_FULL&&CHANNELS_FULL[ch]; var stageDir=STAGE_DIR_MAP[st]||'dev'; var ext=platform==='ios'?'.ipa':'.apk'; var pkgName=PROJECT_ID+'_'+vn.replace(new RegExp("\\s","g"),"")+ext; var sug; if(info&&info.apk_subdir){ sug=info.apk_subdir+'/'+stageDir+'/'+pkgName; } else { sug=stageDir+'/'+pkgName; } var apkEl=document.getElementById('versionApkPath'); if(apkEl&&!apkEl.value) apkEl.placeholder='建议: '+sug; }
+function syncVersionPlatformFields(){ var platform=(document.getElementById('versionPlatform')||{}).value||'android'; var androidFields=document.getElementById('androidVersionFields'); var iosFields=document.getElementById('iosVersionFields'); var distribution=document.getElementById('versionDistributionMethod'); if(androidFields) androidFields.classList.toggle('hidden', platform==='ios'); if(iosFields) iosFields.classList.toggle('hidden', platform!=='ios'); if(distribution && !distribution.value){ distribution.value = platform==='ios' ? 'testflight' : 'direct'; } }
+function openVersionModal(preselectedChannel, preselectedStage){ document.getElementById('versionModalTitle').textContent='新建版本'; document.getElementById('versionEditId').value=''; var defCh = preselectedChannel || ((PROJECT_CHANNELS&&PROJECT_CHANNELS[0]) ? PROJECT_CHANNELS[0].id : 'dev'); var defSt = preselectedStage || 'dev'; ['versionChannel','versionStage','versionPlatform','versionName','versionCode','versionApkPath','versionResourcePath','versionConfigPath','versionJenkinsJob','versionChangelog','versionNotes','versionPackageName','versionMinSdk','versionBundleId','versionMinIosVersion'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=e.type==='textarea' ? '' : (id==='versionChannel' ? defCh : (id==='versionStage' ? defSt : (id==='versionPlatform' ? 'android' : ''))); }); var distributionEl=document.getElementById('versionDistributionMethod'); if(distributionEl) distributionEl.value='direct'; var rec=document.getElementById('versionChangelogRecommended'); if(rec) rec.checked=false; syncVersionPlatformFields(); suggestVersionApkPath(); switchVersionModalTab('identity'); document.getElementById('versionModal').classList.remove('hidden'); }
+
+function switchVersionModalTab(tab){
+  var panelMap={identity:'vmTabIdentity',package:'vmTabPackage',release:'vmTabRelease',pipeline:'vmTabPipeline'};
+  if(tab==='pipeline'&&!(window._versionMode==='commercial')) tab='identity';
+  var tabs=document.querySelectorAll('#versionMainTabs [data-vtab]');
+  tabs.forEach(function(btn){
+    var active=btn.getAttribute('data-vtab')===tab;
+    btn.className='flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition '+(active?'bg-white text-indigo-700 shadow-sm':'text-slate-600 hover:bg-white/70');
+  });
+  Object.keys(panelMap).forEach(function(k){
+    var el=document.getElementById(panelMap[k]); if(el) el.classList.toggle('hidden',k!==tab);
+  });
+}
+function closeVersionModal(){ document.getElementById('versionModal').classList.add('hidden'); }
+
+function editVersion(id){ var v=allVersions.find(function(x){ return (x.id||'')===id; }); if(!v) return; document.getElementById('versionModalTitle').textContent='编辑版本'; document.getElementById('versionEditId').value=v.id||''; document.getElementById('versionChannel').value=v.channel||'dev'; var stageEl=document.getElementById('versionStage'); if(stageEl) stageEl.value=v.stage||'dev'; var platformEl=document.getElementById('versionPlatform'); if(platformEl) platformEl.value=v.platform||'android'; document.getElementById('versionName').value=v.version_name||''; document.getElementById('versionCode').value=v.version_code||''; document.getElementById('versionApkPath').value=v.apk_path||''; document.getElementById('versionResourcePath').value=v.resource_path||''; document.getElementById('versionConfigPath').value=v.config_path||''; document.getElementById('versionJenkinsJob').value=v.jenkins_job_id||''; document.getElementById('versionChangelog').value=v.changelog_text||''; document.getElementById('versionChangelogRecommended').checked=!!v.changelog_recommended; document.getElementById('versionNotes').value=v.notes||''; var distributionEl=document.getElementById('versionDistributionMethod'); if(distributionEl) distributionEl.value=v.distribution_method||''; var packageNameEl=document.getElementById('versionPackageName'); if(packageNameEl) packageNameEl.value=v.package_name||''; var minSdkEl=document.getElementById('versionMinSdk'); if(minSdkEl) minSdkEl.value=v.min_sdk||''; var bundleIdEl=document.getElementById('versionBundleId'); if(bundleIdEl) bundleIdEl.value=v.bundle_id||''; var minIosEl=document.getElementById('versionMinIosVersion'); if(minIosEl) minIosEl.value=v.min_ios_version||''; syncVersionPlatformFields(); suggestVersionApkPath(); switchVersionModalTab('identity'); document.getElementById('versionModal').classList.remove('hidden'); }
+
+function deleteVersion(id){ if(!confirm('确定删除该版本？')) return; fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/delete/'+encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } allVersions = allVersions.filter(function(x){ return (x.id||'')!==id; }); renderChannelsView(); }); }
+
+function saveVersion(){ var id=document.getElementById('versionEditId').value; var ch=document.getElementById('versionChannel').value; var stageEl=document.getElementById('versionStage'); var stageVal=stageEl?stageEl.value:'dev'; var platform=document.getElementById('versionPlatform').value||'android'; var vn=document.getElementById('versionName').value.trim()||'1.0.0'; var apkPath=document.getElementById('versionApkPath').value.trim(); if(!apkPath){ var info=CHANNELS_FULL&&CHANNELS_FULL[ch]; var sd=STAGE_DIR_MAP[stageVal]||'dev'; var ext=platform==='ios'?'.ipa':'.apk'; var an=PROJECT_ID+'_'+vn.replace(new RegExp("\\s","g"),"")+ext; apkPath=(info&&info.apk_subdir)?(info.apk_subdir+'/'+sd+'/'+an):(sd+'/'+an); } var payload={ channel: ch, stage: stageVal, platform: platform, version_name: vn, version_code: document.getElementById('versionCode').value.trim(), distribution_method: (document.getElementById('versionDistributionMethod')||{}).value||'', package_name: (document.getElementById('versionPackageName')||{}).value||'', min_sdk: (document.getElementById('versionMinSdk')||{}).value||'', bundle_id: (document.getElementById('versionBundleId')||{}).value||'', min_ios_version: (document.getElementById('versionMinIosVersion')||{}).value||'', apk_path: apkPath, resource_path: document.getElementById('versionResourcePath').value.trim(), config_path: document.getElementById('versionConfigPath').value.trim(), jenkins_job_id: document.getElementById('versionJenkinsJob').value.trim(), changelog: document.getElementById('versionChangelog').value.trim(), changelog_recommended: !!document.getElementById('versionChangelogRecommended').checked, notes: document.getElementById('versionNotes').value.trim() }; var url='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/create'; var method='POST'; if(id){ payload.id=id; url='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/update'; } fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } if(d.version){ var chOpt=document.getElementById('versionChannel'); d.version.channel_label=chOpt&&chOpt.options[chOpt.selectedIndex]?chOpt.options[chOpt.selectedIndex].text:d.version.channel; d.version.stage=stageVal; d.version.stage_label=(stageEl&&stageEl.options[stageEl.selectedIndex]?stageEl.options[stageEl.selectedIndex].text:'开发'); d.version.platform=platform; d.version.platform_label=platform==='ios'?'iOS':'Android'; d.version.distribution_method=payload.distribution_method || (platform==='ios'?'testflight':'direct'); d.version.package_name=payload.package_name; d.version.min_sdk=payload.min_sdk; d.version.bundle_id=payload.bundle_id; d.version.min_ios_version=payload.min_ios_version; d.version.changelog_text=payload.changelog; d.version.changelog_recommended=payload.changelog_recommended; var idx=allVersions.findIndex(function(x){ return (x.id||'')===(d.version.id||''); }); if(idx>=0) allVersions[idx]=d.version; else allVersions.push(d.version); } closeVersionModal(); renderChannelsView(); }); }
+
+renderChannelsView();
+syncVersionPlatformFields();
+</script>
+
+            </div>
+        </main>
+    </div>
+    <script>
+        (function() {
+            var tokenEl = document.querySelector('meta[name="csrf-token"]');
+            var csrfToken = tokenEl && tokenEl.content ? tokenEl.content : '';
+            if (!csrfToken || !window.fetch || window.__adminFetchCsrfPatched) return;
+            var originalFetch = window.fetch.bind(window);
+            window.fetch = function(resource, init) {
+                init = init || {};
+                var method = String(init.method || 'GET').toUpperCase();
+                var target = typeof resource === 'string' ? resource : ((resource && resource.url) || '');
+                var isRelative = target && !/^https?:\/\//i.test(target);
+                if (isRelative && ['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(method) >= 0) {
+                    var headers = new Headers(init.headers || (resource && resource.headers) || undefined);
+                    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
+                    init.headers = headers;
+                }
+                return originalFetch(resource, init);
+            };
+            window.__adminFetchCsrfPatched = true;
+        })();
+    </script>
+</body>
+</html>

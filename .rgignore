@@ -1,0 +1,11 @@
+﻿# Build/output/archives
+venv/
+node_modules/
+dist/
+backups/
+release_bundles/
+release_bundles_clean/
+release_bundles_deploy/
+release_bundles_final/
+release_bundles_verify/
+legacy/

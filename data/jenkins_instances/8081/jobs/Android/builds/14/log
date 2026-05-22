@@ -1,0 +1,103 @@
+Started by user [8mha:////4Of88tvTwHkv/h7i4lweLdw47R2j+QwE3BzCDi32boPXAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/workspace/Android
+[Android] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins8250169022546469740.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.15
+  版本代码: 4
+  应用名称: GomeKu
+  Git 分支: main
+步骤: Git 拉取/更新 (/Users/wangling/Desktop/MyGame/GameKu)
+Switched to branch 'main'
+Your branch is up to date with 'origin/main'.
+From github.com:luoluo230/WuziQi
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+Git 拉取完成
+=========================================
+  GameKu Android 打包工具 (Jenkins)
+=========================================
+
+配置:
+  项目: /Users/wangling/Desktop/MyGame/GameKu
+  Unity: 6000.3.8f1
+  版本: 1.0.15 (code: 4)
+  应用名称: GomeKu
+  输出基础目录: /Users/wangling/Desktop/Builds
+  构建输出目录: /Users/wangling/Desktop/Builds/GomeKu_1.0.15_20260308_195212
+  Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android
+  Git 分支: main
+
+📝 日志文件: /Users/wangling/Desktop/Builds/GomeKu_1.0.15_20260308_195212/logs/build.log
+=========================================
+  构建开始时间: 2026年 3月 8日 星期日 19时52分12秒 CST
+=========================================
+
+步骤 1: 清理旧的 Unity 构建缓存
+✅ 已清理 Bee/Android 缓存
+
+步骤 2: 查找 Unity 版本
+✅ Unity: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app
+
+步骤 3: Git 更新
+📥 拉取代码...
+Already up to date.
+✅ Git 更新完成
+   分支: main
+   提交: 90ea8ed
+
+步骤 4: 生成 Unity 构建脚本
+✅ Unity 构建脚本已生成
+
+步骤 5: Unity 构建（ARM64 架构）
+开始构建，这可能需要 3-5 分钟...
+
+
+=========================================
+❌ Android 版本 1.0.15 构建失败！
+=========================================
+
+版本号: 1.0.15
+构建时间: 0分24秒
+错误原因: Unity 构建失败（退出码: ��
+
+构建日志（最后部分）:
+Killing ADB server in 0.022122 seconds.
+Start importing ProjectSettings/ProjectSettings.asset using Guid(00000000000000004000000000000000) (LibraryAssetImporter) -> (artifact id: '6fe955431f432ea829f844f076f418d7') in 0.0010615 seconds
+Loading style catalogs (6)
+	StyleSheets/Extensions/base/common.uss
+	UIPackageResources/StyleSheets/Default/Variables/Public/common.uss
+	StyleSheets/Northstar/common.uss
+	StyleSheets/Extensions/fonts/inter.uss
+	StyleSheets/Extensions/base/dark.uss
+	UIPackageResources/StyleSheets/Default/Northstar/Palette/dark.uss
+Refreshing native plugins compatible for Editor in 0.02 ms, found 0 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Asset Pipeline Refresh (id=514f6d9aea90745f2b0971923b195287): Total: 0.043 seconds - Initiated by StopAssetImportingV2(NoUpdateAssetOptions)
+Thread 0x17986b000 may have been prematurely finalized
+Input System module state changed to: ShutdownInProgress.
+Input System polling thread exited.
+Input System module state changed to: Shutdown.
+[Physics::Module] Cleanup current backend.
+[Physics::Module] Id: 0xf2b8ea05
+[Licensing::IpcConnector] LicenseClient-wangling-notifications channel disconnected successfully.
+[Licensing::IpcConnector] LicenseClient-wangling channel disconnected successfully.
+Thread 0x1785d3000 may have been prematurely finalized
+Thread 0x17865f000 may have been prematurely finalized
+AcceleratorClientConnectionCallback - disconnected - :0
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...
+Cleanup mono
+debugger-agent: Unable to listen on 45
+[usbmuxd] Stop listen thread
+[usbmuxd] Error: 
+[usbmuxd] Listen thread exiting
+
+请检查构建日志并重试
+Build step 'Execute shell' marked build as failure
+Finished: FAILURE

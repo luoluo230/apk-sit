@@ -1,0 +1,28 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\jobs\Android\workspace
+[workspace] $ cmd /c call C:\Users\Administrator\AppData\Local\Temp\jenkins8376430006662016220.bat
+=======================================
+  GameKu Android 閺嬪嫬缂?(Jenkins)
+=======================================
+
+閺嬪嫬缂撻崣鍌涙殶:
+  Unity 閻楀牊婀? 6000.3.15f1
+  閻楀牊婀伴崣? 0.0.1
+  閻楀牊婀版禒锝囩垳: 6
+  鎼存梻鏁ら崥宥囆? GameKu
+E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\scripts\commercial_android_pipeline.sh: line 34: _resolve_apk_build_script: command not found
+  Git 閸掑棙鏁? codex/replace-logging-with-custom-logger-fvtg9m
+  done
+  return 1
+}
+
+# 閸欘垶鈧绱伴崗鍫熷⒔鐞涘奔绱剁紒?APK 閺嬪嫬缂撻懘姘拱閿涘牆鏅㈡稉姘卞劰閺囨挳绮拋銈呭彠闂傤叏绱辨禒?APK_BUILD_ENABLED 閹存牗妯夊?RUN_BASE_APK_BUILD_FIRST=true 閺冭埖澧界悰宀嬬礆
+if [ false = true ]; then
+  _log_stage 0A 閸╄櫣顢?APK 妫板嫭鐎? 閸氼垳鏁?RUN_BASE_APK_BUILD_FIRST=true閿涘苯鍘涢幍褑顢戞导鐘电埠 APK 妫板嫭鐎楦垮壖閺堫兙鈧?
+  APK_SCRIPT=
+  if [ -z  ]; then
+    echo WARN: 閺堫亝澹橀崚?build_gameku_android.sh閿涘矁鐑︽潻鍥х唨绾偓 APK 妫板嫭鐎鐚寸礄鐠囩兘鍘ょ純?APK_BUILD_SCRIPT 閹?JENKINS_HOME/scripts/閿?
+E:\apk-site_backup_20260323_070015\data\jenkins_instances\8082\scripts\commercial_android_pipeline.sh: line 80: syntax error near unexpected token `else'
+Build step 'Execute Windows batch command' marked build as failure
+Finished: FAILURE

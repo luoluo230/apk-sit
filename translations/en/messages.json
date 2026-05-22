@@ -1,0 +1,27 @@
+{
+  "common": {
+    "home": "Home",
+    "admin": "Admin",
+    "login": "Login",
+    "logout": "Logout",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back"
+  },
+  "error": {
+    "404_title": "Page Not Found",
+    "404_msg": "The page you are looking for may have been moved or does not exist.",
+    "500_title": "Server Error",
+    "500_msg": "Something went wrong. Please try again later or contact the administrator.",
+    "403_title": "Access Denied",
+    "403_msg": "You do not have permission to access this resource. Please log in or contact the administrator."
+  },
+  "product": {
+    "title": "Our Products",
+    "intro": "Explore amazing games, one-tap download",
+    "detail": "Learn More",
+    "download": "Download"
+  }
+}

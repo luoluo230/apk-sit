@@ -1,0 +1,27 @@
+[
+  {
+    "id": "10477171",
+    "port": 8082,
+    "task_name": "GomeKu",
+    "instance_type": "commercial",
+    "status": "running",
+    "pid": 14068,
+    "jenkins_home": "/Users/wangling/Desktop/MyGame/apk-site_backup_20260323_070015/data/jenkins_instances/8082",
+    "build_defaults": {
+      "app_name": "GomeKu",
+      "version_name": "1.0.7",
+      "unity_versions": [
+        {
+          "version": "6000.3.8f1"
+        }
+      ],
+      "git_branches": [
+        "main"
+      ],
+      "output_base_dir": "/Users/wangling/Desktop/MyGame/GameClient/BuildOutput",
+      "unity_project_path": "/Users/wangling/Desktop/MyGame/GameClient",
+      "git_workspace": "/Users/wangling/Desktop/MyGame/GameClient"
+    },
+    "default_creds": true
+  }
+]
