@@ -129,7 +129,7 @@ def get_last_successful_params(base_url=None, builds_dir=None):
         return {}
 
 
-def get_build_status(build_number, base_url=None, builds_dir=None):
+def get_build_status(build_number, base_url=None, builds_dir=None, instance_id=None):
     """获取单次构建状态。"""
     url, bdir = _base_url_and_builds(base_url, builds_dir)
     try:
@@ -149,19 +149,23 @@ def get_build_status(build_number, base_url=None, builds_dir=None):
 
         # 本地未拿到终态时，回退查询 Jenkins API（避免页面一直“构建中”）
         try:
-            resp = requests.get(
-                f"{url}/job/{JOB_NAME}/{int(build_number)}/api/json?tree=building,result",
-                timeout=8,
+            req = urllib.request.Request(
+                url + "/job/" + JOB_NAME + "/" + str(int(build_number)) + "/api/json?tree=building,result",
+                headers={"Accept": "application/json"}
             )
-            if resp.status_code == 200:
-                data = resp.json() or {}
-                api_building = bool(data.get('building'))
-                api_result = (data.get('result') or '').strip()
-                if api_building:
-                    return {'building': True, 'status': 'BUILDING'}
-                if api_result:
-                    return {'building': False, 'status': api_result}
-                return {'building': False, 'status': 'UNKNOWN'}
+            auth = auth_header(instance_id)
+            if auth:
+                req.add_header('Authorization', auth)
+            with urllib.request.urlopen(req, timeout=8) as r:
+                if r.getcode() == 200:
+                    data = json.loads(r.read().decode('utf-8', errors='replace')) or {}
+                    api_building = bool(data.get('building'))
+                    api_result = (data.get('result') or '').strip()
+                    if api_building:
+                        return {'building': True, 'status': 'BUILDING'}
+                    if api_result:
+                        return {'building': False, 'status': api_result}
+                    return {'building': False, 'status': 'UNKNOWN'}
         except Exception:
             pass
 
@@ -196,15 +200,53 @@ def _read_text_file_best_encoding(path, max_bytes=None):
     return candidates[0][2]
 
 
-def get_build_log_content(build_number, max_chars=500000, base_url=None, builds_dir=None):
-    """读取构建日志文件内容。"""
-    _, bdir = _base_url_and_builds(base_url, builds_dir)
+def _decode_text_best_encoding(raw):
+    """按 UTF-8 / GBK 择优解码原始字节。"""
+    if not raw:
+        return ''
+    candidates = []
+    for enc in ('utf-8-sig', 'utf-8', 'gbk', 'cp936'):
+        try:
+            text = raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+        replacement = text.count('\ufffd')
+        cjk = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        score = cjk * 4 - replacement * 200 - (len(text) - len(text.encode(enc, errors='ignore'))) * 0.01
+        candidates.append((score, enc, text))
+    if not candidates:
+        return raw.decode('utf-8', errors='replace')
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[0][2]
+
+
+def get_build_log_content(build_number, max_chars=500000, base_url=None, builds_dir=None, instance_id=None):
+    """读取构建日志文件内容。优先本地日志；不存在时回退 Jenkins consoleText。"""
+    url, bdir = _base_url_and_builds(base_url, builds_dir)
     log_file = os.path.join(bdir, str(build_number), "log")
     if os.path.exists(log_file):
         log_content = _read_text_file_best_encoding(log_file, max_bytes=max_chars * 8)
         if len(log_content) > max_chars:
             log_content = log_content[-max_chars:]
         return log_content
+    # 本地日志尚未落盘时，回退读 Jenkins 实时控制台，避免页面“不同步”。
+    try:
+        req = urllib.request.Request(
+            url + "/job/" + JOB_NAME + "/" + str(int(build_number)) + "/consoleText",
+            headers={"Accept": "text/plain"}
+        )
+        auth = auth_header(instance_id)
+        if auth:
+            req.add_header('Authorization', auth)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            if r.getcode() == 200:
+                text = _decode_text_best_encoding(r.read())
+                if len(text) > max_chars:
+                    text = text[-max_chars:]
+                if text.strip():
+                    return text
+    except Exception:
+        pass
     return "构建日志尚未生成（Jenkins 可能仍在排队或未创建该构建）"
 
 
