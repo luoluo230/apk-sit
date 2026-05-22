@@ -637,7 +637,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
         function tick(){
             fetch(statusUrl(), {credentials:'same-origin'}).then(r=>r.json()).then(function(st){
                 var status=(st&&st.status)||'';
-                var done=st&&!st.building&&status&&status!=='BUILDING'&&status!=='QUEUED';
+                var done=st&&!st.building&&status!=='BUILDING'&&status!=='QUEUED';
                 if(done){
                     stopPoll();
                     fetchLogOnce(function(){
@@ -1359,3 +1359,4 @@ def stop_build(build_number):
         log_audit('stop_build', f'已请求停止构建 #{build_number}')
         return jsonify({'success': True, 'message': '已请求停止构建'})
     return jsonify({'success': False, 'error': err or '停止失败'})
+

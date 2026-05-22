@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Jenkins API：认证、状态、触发、停止、日志、构建详情等"""
 
 import os
@@ -131,28 +131,45 @@ def get_last_successful_params(base_url=None, builds_dir=None):
 
 def get_build_status(build_number, base_url=None, builds_dir=None):
     """获取单次构建状态。"""
-    _, bdir = _base_url_and_builds(base_url, builds_dir)
+    url, bdir = _base_url_and_builds(base_url, builds_dir)
     try:
         build_path = os.path.join(bdir, str(build_number))
-        if not os.path.isdir(build_path):
-            return {'building': True, 'status': 'QUEUED'}
         result_file = os.path.join(build_path, 'build.xml')
-        building = True
-        status = 'BUILDING'
+
+        # 优先读取本地 build.xml
         if os.path.exists(result_file):
             try:
                 tree = ET.parse(result_file)
                 root = tree.getroot()
                 re_el = root.find('result')
                 if re_el is not None and re_el.text and re_el.text.strip():
-                    building = False
-                    status = re_el.text.strip()
+                    return {'building': False, 'status': re_el.text.strip()}
             except Exception:
                 pass
-        return {'building': building, 'status': status}
+
+        # 本地未拿到终态时，回退查询 Jenkins API（避免页面一直“构建中”）
+        try:
+            resp = requests.get(
+                f"{url}/job/{JOB_NAME}/{int(build_number)}/api/json?tree=building,result",
+                timeout=8,
+            )
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                api_building = bool(data.get('building'))
+                api_result = (data.get('result') or '').strip()
+                if api_building:
+                    return {'building': True, 'status': 'BUILDING'}
+                if api_result:
+                    return {'building': False, 'status': api_result}
+                return {'building': False, 'status': 'UNKNOWN'}
+        except Exception:
+            pass
+
+        if not os.path.isdir(build_path):
+            return {'building': True, 'status': 'QUEUED'}
+        return {'building': True, 'status': 'BUILDING'}
     except Exception as e:
         return {'building': True, 'status': 'UNKNOWN', 'error': str(e)}
-
 
 def _read_text_file_best_encoding(path, max_bytes=None):
     """按 UTF-8 / GBK 择优解码 Jenkins 日志（Windows 控制台常为 GBK，流水线脚本为 UTF-8）。"""
@@ -424,3 +441,4 @@ def delete_build_folder(build_number, base_url=None, builds_dir=None):
         return (False, '构建不存在')
     except Exception as e:
         return (False, str(e))
+
