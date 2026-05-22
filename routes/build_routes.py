@@ -1259,9 +1259,15 @@ def build_history_by_version():
             'instance_id': iid,
         }
         if iid and bn:
+            iurl = jm.get_jenkins_url_for_instance(instance_id=iid)
             bdir = jm.get_builds_dir_for_instance(instance_id=iid)
-            if bdir:
-                st = jenkins_svc.get_build_status(bn, builds_dir=bdir)
+            if bdir or iurl:
+                st = jenkins_svc.get_build_status(
+                    bn,
+                    base_url=iurl,
+                    builds_dir=bdir,
+                    instance_id=iid
+                )
                 item['building'] = bool(st.get('building'))
                 status = (st.get('status') or '').strip()
                 if not item['building'] and status not in ('BUILDING', 'QUEUED', 'UNKNOWN', ''):
@@ -1318,7 +1324,7 @@ def build_status(build_number):
     base_url, builds_dir, instance_id = _jenkins_context()
     if not (has_scope('build.view') or has_scope('build.trigger')):
         return jsonify({'error': '无权限查看构建状态'}), 403
-    return jsonify(jenkins_svc.get_build_status(build_number, base_url=base_url, builds_dir=builds_dir))
+    return jsonify(jenkins_svc.get_build_status(build_number, base_url=base_url, builds_dir=builds_dir, instance_id=instance_id))
 
 
 @bp.route('/api/build/log/<int:build_number>')
@@ -1328,7 +1334,12 @@ def build_log(build_number):
     base_url, builds_dir, instance_id = _jenkins_context()
     if not (has_scope('build.view') or has_scope('build.trigger')):
         return make_response('无权限查看构建日志', 403)
-    content = jenkins_svc.get_build_log_content(build_number, base_url=base_url, builds_dir=builds_dir)
+    content = jenkins_svc.get_build_log_content(
+        build_number,
+        base_url=base_url,
+        builds_dir=builds_dir,
+        instance_id=instance_id,
+    )
     resp = make_response(content)
     resp.headers['Content-Type'] = 'text/plain; charset=utf-8'
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
