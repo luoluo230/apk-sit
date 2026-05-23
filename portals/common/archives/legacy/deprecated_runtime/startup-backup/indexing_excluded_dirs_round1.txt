@@ -1,0 +1,14 @@
+Windows content indexing disabled via NTFS "not content indexed" attribute on:
+F:\Client\Library
+F:\Project\Client\Library
+F:\Project\ClientFrame\Library
+F:\Project\ClientNet\Library
+F:\game-server\game-server2.1\node_modules
+F:\game-server\game-server2.1\game-server\node_modules
+F:\game-server\game-server2.0\node_modules
+F:\Wuziqi\Library
+E:\alche_client\alche_client\trunk\client\alche\Library
+E:\alche_client\alche_client\trunk\client\alche\Temp
+E:\Client\Library
+E:\Client\Temp
+E:\ClientMachine\Library

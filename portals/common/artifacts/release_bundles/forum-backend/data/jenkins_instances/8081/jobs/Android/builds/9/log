@@ -1,0 +1,22 @@
+Started by user [8mha:////4Of88tvTwHkv/h7i4lweLdw47R2j+QwE3BzCDi32boPXAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/workspace/Android
+[Android] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins559192440707556229.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.15
+  版本代码: 4
+  应用名称: GomeKu
+  Git 分支: main
+步骤: Git 拉取/更新 (/Users/wangling/Desktop/MyGame/GameKu)
+error: Your local changes to the following files would be overwritten by checkout:
+	Assets/Scripts/UI/UIMain.cs
+	ProjectSettings/ProjectSettings.asset
+Please commit your changes or stash them before you switch branches.
+Aborting
+Build step 'Execute shell' marked build as failure
+Finished: FAILURE

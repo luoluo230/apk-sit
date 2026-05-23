@@ -1,0 +1,79 @@
+{
+  "_comment": "APK Site unified settings file.",
+  "_usage": "Environment variables can override values in this file.",
+  "app": {
+    "_comment": "Application basics",
+    "port": 5003,
+    "host": "0.0.0.0",
+    "debug": false,
+    "log_dir": "logs",
+    "use_sqlite": true,
+    "sqlite_mirror_json": false,
+    "sqlite_import_json_on_miss": false
+  },
+  "portal": {
+    "_comment": "Split portal deployment",
+    "mode": "admin",
+    "admin_port": 5003,
+    "player_port": 5004,
+    "forum_port": 5005,
+    "admin_domain": "",
+    "player_domain": "",
+    "forum_domain": "",
+    "admin_public_url": "",
+    "player_public_url": "",
+    "forum_public_url": ""
+  },
+  "apk": {
+    "_comment": "APK storage",
+    "dir": "data/apk"
+  },
+  "jenkins": {
+    "_comment": "Jenkins build integration",
+    "url": "http://localhost:8080",
+    "port": "8080",
+    "job_name": "Android",
+    "builds_dir": "data/jenkins_instances/default/jobs/Android/builds",
+    "war_path": "",
+    "instances_dir": "data/jenkins_instances",
+    "default_user": "admin",
+    "default_password": "admin123",
+    "_note_user_token": "Set JENKINS_USER and JENKINS_TOKEN in .env or jenkins_credentials.json"
+  },
+  "security": {
+    "_comment": "Security and login",
+    "force_login": true,
+    "inner_net": "192.168.,10.,127.,26.26.",
+    "ip_whitelist": "",
+    "login_attempts_limit": 5,
+    "login_lockout_minutes": 15
+  },
+  "external": {
+    "_comment": "Public access",
+    "public_url": "",
+    "external_domain": ""
+  },
+  "smtp": {
+    "_comment": "Scheduled report email",
+    "host": "",
+    "port": 0,
+    "user": "",
+    "password": "",
+    "report_email_to": "",
+    "report_hour": 8
+  },
+  "feishu": {
+    "_comment": "Feishu alerting",
+    "webhook": "",
+    "disk_alert_gb": 5
+  },
+  "workspace": {
+    "_comment": "Workspace storage",
+    "base_dir": "data/workspaces"
+  },
+  "docs": {
+    "_comment": "Docs module",
+    "attachments_dir": "data/doc_attachments",
+    "max_attachment_mb": 20
+  }
+}

@@ -1,0 +1,1367 @@
+[
+  {
+    "timestamp": "2026-03-07T18:33:32.921254",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:34:15.947794",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:34:34.595879",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:34:56.641362",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:40:48.494750",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:40:59.273232",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:41:05.492329",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T18:42:54.944968",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T19:00:16.770498",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #74 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T19:02:36.872816",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #75 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T19:06:17.207721",
+    "user": "admin",
+    "action": "trigger_build_script",
+    "details": "本地脚本构建已启动 #75 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T19:53:46.327716",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #75 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:00:47.321285",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #76 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:03:12.222849",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #77 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:06:32.868417",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #78 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:09:48.064368",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #79 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:21:43.968115",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #80 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:46:25.838515",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #81 - GomeKu 1.0.16",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:51:49.111903",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #82 - RecycleTycoon 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T20:55:54.676099",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #83 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-07T21:07:29.805524",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #84 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T09:26:17.180243",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #85 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T09:26:25.685161",
+    "user": "admin",
+    "action": "stop_build",
+    "details": "已请求停止构建 #85",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T09:26:45.362768",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建已触发 #86 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T09:26:54.463661",
+    "user": "admin",
+    "action": "stop_build",
+    "details": "已请求停止构建 #86",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T10:52:54.889272",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #87 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T11:02:00.316774",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #88 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T11:04:46.004319",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #89 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T11:11:31.218106",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #90 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:13:22.402175",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 86ed55ae 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:23:02.352230",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 86ed55ae",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:23:07.596467",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 fa6ab2bb 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:24:04.162098",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #91 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:28:15.123295",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 fa6ab2bb",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:28:19.739695",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 19a23eaa 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:31:47.831786",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 19a23eaa",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:31:51.276713",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 183122f9 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:32:54.873045",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #1 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:41:45.701174",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 183122f9",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:42:08.111192",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 713edc2b 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:43:03.302753",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #2 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:47:15.690040",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 713edc2b",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:47:23.252830",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 d2e04f81 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:47:46.538412",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #3 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:56:50.857115",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 d2e04f81",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T17:59:42.405213",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 aeadb306 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:00:07.635545",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #4 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:05:59.617998",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 aeadb306",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:06:25.732394",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 14384428 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:06:53.250359",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #5 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:15:56.656998",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 14384428",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:16:25.196496",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 0f75e6d6 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:16:43.116358",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #6 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:23:45.139190",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 0f75e6d6",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:24:08.759775",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 c488fefc 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:24:37.339712",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #7 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T18:58:14.845608",
+    "user": "admin",
+    "action": "jenkins_delete",
+    "details": "删除 Jenkins 实例 c488fefc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:14:14.975065",
+    "user": "admin",
+    "action": "jenkins_start",
+    "details": "启动 Jenkins 实例 5f2cf2bc 端口 8081",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:14:47.631370",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #8 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:16:07.308001",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #9 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:34:20.665847",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:34:51.877488",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #10 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:38:32.418190",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:39:25.254911",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #11 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:44:34.038878",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:44:54.292271",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #12 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:48:04.402531",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:48:27.743160",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #13 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:50:46.633753",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:51:42.545383",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:51:57.892051",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #14 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:53:40.655546",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:53:52.670634",
+    "user": "admin",
+    "action": "jenkins_stop",
+    "details": "停止 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:54:01.038590",
+    "user": "admin",
+    "action": "jenkins_stop",
+    "details": "停止 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:57:00.779272",
+    "user": "admin",
+    "action": "jenkins_start_instance",
+    "details": "启动已有 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T19:57:26.808914",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #15 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:07:59.055278",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #16 - GomeKu 1.0.15",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:15:58.022294",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #17 - GameKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:18:28.369356",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:18:43.449737",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #18 - GameKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:22:57.782401",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:23:11.519556",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #19 - GameKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:27:39.772746",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #20 - GameKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:32:08.926943",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #21 - GameKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:35:20.720982",
+    "user": "admin",
+    "action": "jenkins_stop",
+    "details": "停止 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:35:22.902457",
+    "user": "admin",
+    "action": "jenkins_start_instance",
+    "details": "启动已有 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:35:35.931839",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #22 - GameKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:40:11.892767",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #23 - GameKu 1.0.1",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:56:43.445998",
+    "user": "admin",
+    "action": "create_user",
+    "details": "wangling",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:57:11.007006",
+    "user": "admin",
+    "action": "update_user",
+    "details": "wangling",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T20:58:02.469920",
+    "user": "admin",
+    "action": "update_user",
+    "details": "wangling",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T21:02:40.954502",
+    "user": "admin",
+    "action": "update_user",
+    "details": "wangling",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T21:10:30.758283",
+    "user": "admin",
+    "action": "create_user",
+    "details": "wl230230",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T21:11:17.693231",
+    "user": "admin",
+    "action": "update_user",
+    "details": "wl230230",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T21:12:11.988885",
+    "user": "admin",
+    "action": "update_user",
+    "details": "wl230230",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T21:18:16.617005",
+    "user": "admin",
+    "action": "update_user",
+    "details": "wl230230",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T21:19:06.851110",
+    "user": "wl230230",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #24 - GameKu 1.0.1",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T22:18:39.618467",
+    "user": "admin",
+    "action": "delete_project",
+    "details": "RecycleTycoon",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T22:19:31.609336",
+    "user": "admin",
+    "action": "create_project",
+    "details": "GomeKu",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T22:20:43.226660",
+    "user": "admin",
+    "action": "create_task",
+    "details": "GomeKu ee85e36a1c93ae67",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T22:43:15.199097",
+    "user": "admin",
+    "action": "task_delete",
+    "details": "GomeKu ee85e36a1c93ae67",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T22:43:54.549064",
+    "user": "admin",
+    "action": "create_task",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T22:44:40.188034",
+    "user": "admin",
+    "action": "update_project",
+    "details": "GomeKu",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T23:09:26.393529",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T23:10:43.423372",
+    "user": "admin",
+    "action": "create_task",
+    "details": "GomeKu d69794dbc158b3ba",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-08T23:37:52.687839",
+    "user": "admin",
+    "action": "task_update_status",
+    "details": "GomeKu d69794dbc158b3ba -> abandoned",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:06:15.489045",
+    "user": "admin",
+    "action": "task_update_status",
+    "details": "GomeKu f0be43e64b23f5b3 -> in_progress",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:06:26.064433",
+    "user": "admin",
+    "action": "task_update_status",
+    "details": "GomeKu f0be43e64b23f5b3 -> pending_review",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:06:31.879940",
+    "user": "admin",
+    "action": "task_update_status",
+    "details": "GomeKu f0be43e64b23f5b3 -> review_passed",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:12:58.154146",
+    "user": "admin",
+    "action": "task_update_status",
+    "details": "GomeKu f0be43e64b23f5b3 -> in_progress",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:32:28.675126",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu d69794dbc158b3ba",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:34:43.827934",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:34:49.985752",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:35:04.874662",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:35:09.408954",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:35:22.860008",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:37:55.887246",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu d69794dbc158b3ba",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:42:44.735039",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:43:10.582561",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:56:14.516592",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu d69794dbc158b3ba",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:57:06.516322",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:57:29.300371",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:58:58.389596",
+    "user": "admin",
+    "action": "task_handoff",
+    "details": "GomeKu d69794dbc158b3ba -> wl230230",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:59:34.319578",
+    "user": "admin",
+    "action": "jenkins_stop",
+    "details": "停止 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T00:59:44.367763",
+    "user": "admin",
+    "action": "jenkins_update",
+    "details": "更新 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T13:47:13.899275",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T15:09:13.663437",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 63e592c1",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T16:44:25.489652",
+    "user": "admin",
+    "action": "jenkins_start_instance",
+    "details": "启动已有 Jenkins 实例 5f2cf2bc",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T16:44:39.907727",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #25 - GameKu 1.0.1",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T16:46:08.853069",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 012d623b",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T20:36:29.243114",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #26 - GameKu 1.0.1",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T22:07:39.103698",
+    "user": "admin",
+    "action": "report_template_create",
+    "details": "周报",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T22:07:40.821487",
+    "user": "admin",
+    "action": "report_export",
+    "details": "周报",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T22:28:09.494178",
+    "user": "admin",
+    "action": "update_project",
+    "details": "GomeKu",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T22:29:26.040271",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T22:29:34.182080",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu d69794dbc158b3ba",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:01:45.700570",
+    "user": "admin",
+    "action": "channel_create",
+    "details": "1001",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:33:20.217659",
+    "user": "admin",
+    "action": "delete_project_version",
+    "details": "GomeKu 63e592c1",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:33:23.497832",
+    "user": "admin",
+    "action": "delete_project_version",
+    "details": "GomeKu 012d623b",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:35:03.693982",
+    "user": "admin",
+    "action": "project_remove_channel",
+    "details": "GomeKu test",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:35:06.766522",
+    "user": "admin",
+    "action": "project_remove_channel",
+    "details": "GomeKu production",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:44:56.160126",
+    "user": "admin",
+    "action": "channel_delete",
+    "details": "dev",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:45:01.282757",
+    "user": "admin",
+    "action": "channel_delete",
+    "details": "test",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:45:09.335774",
+    "user": "admin",
+    "action": "channel_delete",
+    "details": "production",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:45:52.718968",
+    "user": "admin",
+    "action": "channel_create",
+    "details": "1002",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:46:02.686940",
+    "user": "admin",
+    "action": "project_add_channel",
+    "details": "GomeKu 1002",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:46:25.230948",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 5ec95b01",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-09T23:51:40.530441",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 2c920aad",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:04:34.457265",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 67b9a47c",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:23:24.477095",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:23:29.586701",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu d69794dbc158b3ba",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:36:19.027740",
+    "user": "admin",
+    "action": "delete_project_version",
+    "details": "GomeKu 5ec95b01",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:36:22.536565",
+    "user": "admin",
+    "action": "delete_project_version",
+    "details": "GomeKu 2c920aad",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:36:25.458090",
+    "user": "admin",
+    "action": "delete_project_version",
+    "details": "GomeKu 67b9a47c",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:36:57.455282",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 87164035",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:48:50.827816",
+    "user": "admin",
+    "action": "project_remove_channel",
+    "details": "GomeKu 1002",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:48:59.654120",
+    "user": "admin",
+    "action": "update_project_version",
+    "details": "GomeKu 87164035",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-10T00:57:57.855493",
+    "user": "admin",
+    "action": "trigger_build",
+    "details": "Jenkins 构建 #27 - GomeKu 1.0.0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T15:09:04.738083",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 2f0fa46f",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T15:16:47.832533",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu ff2cd90e",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T15:32:43.140573",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 03639738",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T15:39:43.879467",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu af510b52",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T15:41:00.753118",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu abb3a9be",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T15:53:04.726035",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 2a6387a5",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:02:42.623835",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 4012c756",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:13:01.658718",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 28ffac74",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:24:00.287027",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 017d40e5",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:24:33.887251",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu f162756b",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:25:07.398165",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 09459891",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:28:28.035435",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 77a70d32",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:50:30.967947",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 41de91e4",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:50:31.103164",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 5f5ce71d",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:51:01.042358",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 9521f116",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:51:01.171768",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu eeff76fe",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:59:36.766418",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 64d21181",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T16:59:36.908572",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 66236e94",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:05:28.955497",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu fe723a91",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:05:29.090304",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 031c9493",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:08:02.841185",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 3336ccfb",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:08:02.967520",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 747b86d4",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:11:47.839559",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:12:03.102410",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:15:21.737174",
+    "user": "admin",
+    "action": "task_update",
+    "details": "GomeKu f0be43e64b23f5b3",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:50:14.173463",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 5d2df27c",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T17:50:14.280888",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 477b75db",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:30:59.632577",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 8a8f6b2b",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:30:59.739227",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 2293f0e5",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:36:36.438192",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu a3dec60b",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:36:36.585078",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 64a3d2eb",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:39:21.319766",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu c741d725",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:39:21.441561",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 3071d2e0",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:54:20.761921",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu cf6d48cb",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T18:54:20.894497",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu c53856d5",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T19:00:37.687195",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu 8f46dcf9",
+    "ip": "127.0.0.1"
+  },
+  {
+    "timestamp": "2026-03-13T19:00:37.797376",
+    "user": "admin",
+    "action": "create_project_version",
+    "details": "GomeKu db8c5c1f",
+    "ip": "127.0.0.1"
+  }
+]

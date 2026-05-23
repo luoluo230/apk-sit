@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星云游戏站</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Noto+Sans+SC:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Noto Sans SC', sans-serif;
+            color: #172033;
+            background:
+                radial-gradient(circle at 10% 15%, rgba(132, 235, 255, 0.45), transparent 24%),
+                radial-gradient(circle at 86% 10%, rgba(132, 110, 255, 0.16), transparent 20%),
+                linear-gradient(180deg, #92defd 0%, #ddf7ff 26%, #fff4da 58%, #fffaf2 100%);
+        }
+        .font-display { font-family: 'Marcellus', serif; }
+        .glass {
+            background: rgba(255,255,255,0.86);
+            border: 1px solid rgba(255,255,255,0.76);
+            box-shadow: 0 24px 70px rgba(23,32,51,0.14);
+            backdrop-filter: blur(16px);
+        }
+        .hero {
+            background: linear-gradient(145deg, rgba(52,116,255,0.94), rgba(123,112,255,0.9) 42%, rgba(255,128,164,0.85));
+        }
+    </style>
+</head>
+<body>
+    
+    <header class="sticky top-0 z-30 border-b border-white/40 bg-white/72 backdrop-blur-xl">
+        <div class="mx-auto flex max-w-7xl items-center justify-between gap-5 px-4 py-4 lg:px-8">
+            <a href="/" class="flex items-center gap-3">
+                <span class="flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-yellow-300 via-orange-400 to-rose-400 text-white shadow-lg shadow-orange-300/40">
+                    <i class="fas fa-gamepad text-xl"></i>
+                </span>
+                <span>
+                    <span class="font-display block text-3xl leading-none text-slate-900">星云游戏站</span>
+                    <span class="mt-1 block text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Nebula Game Studio</span>
+                </span>
+            </a>
+            <nav class="hidden items-center gap-6 text-sm font-bold text-slate-700 lg:flex">
+                
+                <a href="/about/company" class="transition hover:text-violet-700">公司简介</a>
+                
+                
+                <a href="#games" class="transition hover:text-violet-700">游戏产品</a>
+                
+                
+                <a href="/news" class="transition hover:text-violet-700">新闻公告</a>
+                
+                
+                <a href="/welfare" class="transition hover:text-violet-700">福利中心</a>
+                
+                
+                <a href="http://127.0.0.1:5005/forum" class="transition hover:text-violet-700">玩家论坛</a>
+                
+                <a href="http://127.0.0.1:5003/download-center" class="transition hover:text-violet-700">下载中心</a>
+            </nav>
+            <div class="flex items-center gap-3">
+                
+                <a href="http://127.0.0.1:5003/login" class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/20">
+                    <i class="fas fa-right-to-bracket"></i>登录工作台
+                </a>
+                
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        
+        
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            <section class="hero overflow-hidden rounded-[36px] px-6 py-8 text-white shadow-[0_30px_80px_rgba(23,32,51,0.18)] sm:px-10 lg:px-12 lg:py-12">
+                <div class="grid items-center gap-10 lg:grid-cols-[1.04fr_0.96fr]">
+                    <div>
+                        <div class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-4 py-2 text-sm font-bold">
+                            <span class="h-2.5 w-2.5 rounded-full bg-emerald-300"></span>面向玩家的项目官网入口
+                        </div>
+                        <h1 class="font-display mt-5 max-w-3xl text-5xl leading-[0.94] sm:text-6xl lg:text-7xl">主视觉</h1>
+                        <p class="mt-6 max-w-2xl text-base leading-8 text-white/90 sm:text-lg">星云游戏站专注于打造高品质、长线运营的游戏产品。玩家可以先认识品牌，再快速进入感兴趣的项目详情、新闻、福利和社区。</p>
+                        <div class="mt-8 flex flex-wrap gap-4">
+                            <a href="#games" class="inline-flex items-center gap-2 rounded-full bg-amber-300 px-6 py-4 text-sm font-extrabold text-slate-900 shadow-lg shadow-amber-300/30">
+                                <i class="fas fa-star"></i>浏览游戏产品
+                            </a>
+                            <a href="http://127.0.0.1:5005/forum" class="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/18 px-6 py-4 text-sm font-bold text-white">
+                                <i class="fas fa-comments"></i>进入社区
+                            </a>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-center justify-center gap-4">
+                        
+                            <img src="/product-media/54ad770a6585/cover.jpg" alt="Gomoku Clash" class="w-full max-w-[520px] rounded-[34px] border-[10px] border-white/25 object-cover shadow-[0_28px_65px_rgba(14,21,53,0.34)]">
+                        
+                        
+                        <div class="grid w-full max-w-[520px] grid-cols-3 gap-3">
+                            
+                            <img src="/product-media/54ad770a6585/0d400886.jpg" alt="gallery" class="h-20 w-full rounded-2xl border border-white/30 object-cover">
+                            
+                        </div>
+                        
+                    </div>
+                </div>
+            </section>
+            
+        
+            
+            
+            
+            <section id="games" class="mt-14">
+                <div class="mb-8">
+                    <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">产品入口</div>
+                    <h2 class="font-display mt-2 text-4xl text-slate-900 sm:text-5xl">进入你感兴趣的项目</h2>
+                    <p class="mt-3 max-w-2xl leading-7 text-slate-600">点击游戏卡片进入详情页，查看项目介绍、新闻公告、福利活动与下载入口。</p>
+                </div>
+                
+                <div class="grid gap-7 md:grid-cols-2 xl:grid-cols-3">
+                    
+                    <article class="glass overflow-hidden rounded-[30px] transition hover:-translate-y-1">
+                        <img src="/product-media/54ad770a6585/cover.jpg" alt="Gomoku Clash" class="aspect-[1.08/1] w-full object-cover">
+                        <div class="p-6">
+                            <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-slate-500">本周主推</div>
+                            <h3 class="font-display mt-2 text-4xl text-slate-900">Gomoku Clash</h3>
+                            <p class="mt-4 min-h-[84px] leading-7 text-slate-600">A bright board-game duel built for quick strategy sessions and cheerful social competition.</p>
+                            <div class="mt-5 flex flex-wrap gap-2">
+                                
+                                <span class="rounded-full bg-violet-100 px-3 py-1 text-xs font-bold text-violet-700">Android</span>
+                                
+                            </div>
+                            <div class="mt-6 flex gap-3">
+                                <a href="/product/54ad770a6585" class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white">
+                                    <i class="fas fa-chevron-right"></i>进入详情
+                                </a>
+                                <a href="http://127.0.0.1:5003/download-center?project=GomeKu" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-800">
+                                    <i class="fas fa-download"></i>下载入口
+                                </a>
+                            </div>
+                        </div>
+                    </article>
+                    
+                </div>
+            </section>
+            
+            
+        
+            
+            
+            
+            <section class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">Newsroom</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">新闻公告</h2>
+                    </div>
+                    <a href="/news" class="text-sm font-bold text-violet-700 hover:underline">查看全部</a>
+                </div>
+                
+                <div class="mt-6 space-y-4">
+                    
+                    <a href="/news/launch-note-001" class="block rounded-[24px] border border-slate-200 bg-white/80 px-5 py-4 transition hover:-translate-y-0.5">
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-xs font-extrabold uppercase tracking-[0.18em] text-violet-600">官方公告</span>
+                            <span class="text-sm text-slate-500">2026-03-13</span>
+                        </div>
+                        <h3 class="mt-2 text-lg font-bold text-slate-900">星云游戏站玩家社区已上线</h3>
+                        
+                        <p class="mt-2 text-sm text-slate-500 line-clamp-2">现在玩家可以查看游戏资讯、活动福利与论坛讨论，开发团队也可以在同一套公开站里发布官方动态。</p>
+                        
+                    </a>
+                    
+                </div>
+            </section>
+            
+            
+        
+            
+            
+            
+            <section class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-emerald-600">Benefits</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">福利中心</h2>
+                    </div>
+                    <a href="/welfare" class="text-sm font-bold text-emerald-700 hover:underline">进入福利中心</a>
+                </div>
+                
+                <div class="mt-6 grid gap-6 md:grid-cols-2">
+                    
+                    <a href="/welfare/starter-pack-001" class="glass rounded-[28px] p-6 transition hover:-translate-y-1">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-emerald-600">福利活动</div>
+                                <h3 class="mt-3 text-2xl font-semibold text-slate-900">新玩家启程礼包</h3>
+                            </div>
+                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">进行中</span>
+                        </div>
+                        <p class="mt-3 text-slate-600">进入游戏后可兑换基础资源礼包，用于快速开启首日体验。</p>
+                        <div class="mt-5 rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700">兑换码：WELCOME-2026</div>
+                    </a>
+                    
+                </div>
+            </section>
+            
+            
+        
+            
+            
+            
+            <section class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-cyan-600">Community</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">玩家论坛</h2>
+                    </div>
+                    <a href="http://127.0.0.1:5005/forum" class="text-sm font-bold text-cyan-700 hover:underline">进入论坛</a>
+                </div>
+                
+                <div class="mt-6 grid gap-5 md:grid-cols-2">
+                    
+                    <a href="http://127.0.0.1:5005/forum/welcome-thread" class="glass rounded-[26px] p-5">
+                        <div class="flex items-center justify-between text-sm text-slate-500">
+                            <span>官方运营</span>
+                            <span>2026-03-13</span>
+                        </div>
+                        <h3 class="mt-3 text-2xl font-semibold text-slate-900">欢迎来到玩家论坛</h3>
+                        <p class="mt-2 text-slate-600 line-clamp-2">这里可以聊攻略、反馈问题、晒截图，也可以等待官方发布更新与活动动态。</p>
+                    </a>
+                    
+                </div>
+            </section>
+            
+            
+        
+            
+            
+            
+            <section class="mt-14">
+                <div class="glass rounded-[32px] p-7">
+                    <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">Studio Profile</div>
+                    <h2 class="font-display mt-3 text-4xl text-slate-900 sm:text-5xl">以品牌叙事、长线运营和玩家社区搭建游戏产品价值</h2>
+                    <p class="mt-4 leading-8 text-slate-600">我们以游戏品牌首页、新闻公告、福利活动、玩家论坛与下载转化为主线，为不同游戏项目提供可迭代的官网产品体系。前台承接玩家认知与转化，后台支持按角色分工、按项目隔离、按审批流发布。</p>
+                    <div class="mt-6 grid gap-4 md:grid-cols-3">
+                        
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-4 py-4">
+                            <div class="text-xs font-extrabold uppercase tracking-[0.18em] text-slate-500"></div>
+                            <div class="mt-2 text-xl font-semibold text-slate-900">1 ?</div>
+                        </div>
+                        
+                    </div>
+                    <a href="/about/company" class="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm font-bold text-white">
+                        <i class="fas fa-arrow-right"></i>公司简介
+                    </a>
+                </div>
+            </section>
+            
+            
+        
+            
+            
+            
+            <section id="media" class="mt-14">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-violet-600">视觉展示</div>
+                        <h2 class="font-display mt-2 text-4xl text-slate-900">视觉展示</h2>
+                        <p class="mt-3 max-w-2xl leading-7 text-slate-600">精选游戏视觉与素材</p>
+                    </div>
+                </div>
+                
+                <div class="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                    <div class="glass rounded-[30px] p-6">
+                        
+                            <img src="/product-media/54ad770a6585/cover.jpg" alt="Gomoku Clash" class="w-full rounded-[24px] border border-slate-200 object-cover">
+                        
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        
+                        <img src="/product-media/54ad770a6585/0d400886.jpg" alt="media" class="h-40 w-full rounded-[22px] border border-slate-200 object-cover">
+                        
+                    </div>
+                </div>
+            </section>
+            
+            
+        
+            
+            
+            
+            <section class="mt-14">
+                <div class="glass rounded-[32px] p-7">
+                    <div class="text-xs font-extrabold uppercase tracking-[0.22em] text-amber-600">Timeline</div>
+                    <h2 class="font-display mt-2 text-4xl text-slate-900">公司历程</h2>
+                    <div class="mt-6 space-y-4">
+                        
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-5 py-4">
+                            <div class="text-xs font-semibold text-slate-500">2022</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900"></div>
+                            <p class="mt-2 text-sm text-slate-600"></p>
+                        </div>
+                        
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-5 py-4">
+                            <div class="text-xs font-semibold text-slate-500">2023</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900"></div>
+                            <p class="mt-2 text-sm text-slate-600"></p>
+                        </div>
+                        
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-5 py-4">
+                            <div class="text-xs font-semibold text-slate-500">2024</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900"></div>
+                            <p class="mt-2 text-sm text-slate-600"></p>
+                        </div>
+                        
+                        <div class="rounded-[24px] border border-slate-200 bg-white px-5 py-4">
+                            <div class="text-xs font-semibold text-slate-500">2025</div>
+                            <div class="mt-1 text-lg font-semibold text-slate-900"></div>
+                            <p class="mt-2 text-sm text-slate-600"></p>
+                        </div>
+                        
+                    </div>
+                </div>
+            </section>
+            
+            
+        
+        
+    </main>
+</body>
+</html>

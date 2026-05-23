@@ -1,0 +1,27 @@
+[
+  {
+    "id": "general",
+    "name": "综合讨论",
+    "description": "日常交流、闲聊与版本印象"
+  },
+  {
+    "id": "strategy",
+    "name": "攻略技巧",
+    "description": "阵容、玩法与进阶心得"
+  },
+  {
+    "id": "event",
+    "name": "活动福利",
+    "description": "活动、礼包、兑换码与奖励"
+  },
+  {
+    "id": "feedback",
+    "name": "问题反馈",
+    "description": "Bug、建议与优化意见"
+  },
+  {
+    "id": "fanart",
+    "name": "同人截图",
+    "description": "截图、创作与精彩瞬间"
+  }
+]

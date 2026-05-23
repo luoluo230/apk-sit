@@ -1,0 +1,93 @@
+Started by user [8mha:////4Of88tvTwHkv/h7i4lweLdw47R2j+QwE3BzCDi32boPXAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/workspace/Android
+[Android] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins4621785947713937154.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.15
+  版本代码: 1
+  应用名称: GomeKu
+  Git 分支: main
+=========================================
+  GameKu Android 打包工具 (Jenkins)
+=========================================
+
+配置:
+  项目: /Users/wangling/Desktop/MyGame/GameKu
+  Unity: 6000.3.8f1
+  版本: 1.0.15 (code: 1)
+  应用名称: GomeKu
+  输出基础目录: /Users/wangling/Desktop/Builds
+  构建输出目录: /Users/wangling/Desktop/Builds/GomeKu_1.0.15_20260308_180013
+  Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android
+  Git 分支: main
+
+📝 日志文件: /Users/wangling/Desktop/Builds/GomeKu_1.0.15_20260308_180013/logs/build.log
+=========================================
+  构建开始时间: 2026年 3月 8日 星期日 18时00分13秒 CST
+=========================================
+
+步骤 1: 清理旧的 Unity 构建缓存
+✅ 已清理 Bee/Android 缓存
+
+步骤 2: 查找 Unity 版本
+✅ Unity: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app
+
+步骤 3: Git 更新
+📥 拉取代码...
+Already up to date.
+✅ Git 更新完成
+   分支: codex/add-ui-elements-for-money-and-purchases-4znp17
+   提交: a7bbf3f
+
+步骤 4: 生成 Unity 构建脚本
+✅ Unity 构建脚本已生成
+
+步骤 5: Unity 构建（ARM64 架构）
+开始构建，这可能需要 3-5 分钟...
+
+✅ Unity 构建成功
+
+步骤 6: 处理 APK 文件
+✅ APK 生成成功！
+   原始路径: /Users/wangling/Desktop/MyGame/GameKu/Builds/Android/GameKu.apk
+   最终路径: /Users/wangling/Desktop/Builds/GomeKu_1.0.15_20260308_180013/GomeKu_1.0.15.apk
+   文件大小:  79M
+-rw-r--r--  1 wangling  staff    79M  3  8 18:01 /Users/wangling/Desktop/Builds/GomeKu_1.0.15_20260308_180013/GomeKu_1.0.15.apk
+
+步骤 7: 生成构建信息文件
+✅ 构建信息已生成
+
+步骤 8: 复制 APK 到 Jenkins 工作空间
+✅ APK 已复制到 Jenkins 工作空间
+   Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android/GomeKu_1.0.15.apk
+-rw-r--r--  1 wangling  staff    79M  3  8 18:01 /Users/wangling/.jenkins/workspace/Android/GomeKu_1.0.15.apk
+✅ APK 也已复制到输出根目录
+✅ APK 也已复制到 HTTP 服务器目录 for download (/Users/wangling/Downloads/APK_Builds)
+
+步骤 9: 保存构建参数
+✅ 构建参数已保存到: /Users/wangling/.jenkins/jobs/Android/last_params.txt
+
+
+=========================================
+✅ Android 版本 1.0.15 构建成功！
+=========================================
+
+版本号: 1.0.15
+构建时间: 1分27秒
+构建状态: SUCCESS
+📱 下载链接: http://192.168.0.3:5003/pub/download/GomeKu_1.0.15.apk
+
+[Android] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins346813502054349244.sh
+=== 更新 Jenkins 参数默认值 ===
+=== 更新 Jenkins 参数默认值 ===
+✅ Jenkins 配置已更新
+  VERSION_NAME: 1.0.15
+调用通知脚本...
+/var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins346813502054349244.sh: line 7: /Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/scripts/jenkins_send_notify.sh: Permission denied
+通知发送失败（不影响构建结果）
+Finished: SUCCESS

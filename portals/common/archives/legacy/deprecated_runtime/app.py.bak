@@ -1,0 +1,746 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+APK 下载站 - 专业版 (页签 + 权限管理 + 安全加固)
+功能：项目页签、用户认证、IP 白名单、登录限制、增删改管理
+"""
+
+import os
+import sys
+import json
+import logging
+import zipfile
+import re
+import socket
+import hashlib
+import secrets
+import time
+import io
+import base64
+from datetime import datetime, timedelta
+from pathlib import Path
+from flask import Flask, render_template_string, send_from_directory, abort, request, jsonify, session, redirect, url_for
+from functools import wraps
+from collections import defaultdict
+import qrcode
+from PIL import Image
+
+# ============================================================================
+# 配置管理
+# ============================================================================
+class Config:
+    APK_DIR = os.getenv('APK_DIR', '/Users/wangling/Desktop/Builds')
+    PORT = int(os.getenv('APK_PORT', '5002'))
+    HOST = os.getenv('APK_HOST', '0.0.0.0')
+    LOG_DIR = os.getenv('APK_LOG_DIR', os.path.join(os.path.dirname(__file__), 'logs'))
+    DEBUG = os.getenv('APK_DEBUG', 'false').lower() == 'true'
+    SECRET_KEY = os.getenv('APK_SECRET', secrets.token_hex(32))
+    
+    # 强制所有访问都需要登录
+    FORCE_LOGIN = os.getenv('FORCE_LOGIN', 'true').lower() == 'true'
+    
+    # 内网 IP 段（可配置）
+    INNER_NET = os.getenv('INNER_NET', '192.168.,10.,127.,26.26.').split(',')
+    
+    # IP 白名单（逗号分隔，留空则使用内网 IP 段）
+    IP_WHITELIST_RAW = os.getenv('IP_WHITELIST', '')
+    IP_WHITELIST = [ip.strip() for ip in IP_WHITELIST_RAW.split(',') if ip.strip()] if IP_WHITELIST_RAW else None
+    
+    # 登录限制
+    LOGIN_ATTEMPTS_LIMIT = 5  # 最大失败次数
+    LOGIN_LOCKOUT_MINUTES = 15  # 锁定时间（分钟）
+
+# ============================================================================
+# 日志配置
+# ============================================================================
+def setup_logging():
+    os.makedirs(Config.LOG_DIR, exist_ok=True)
+    log_file = os.path.join(Config.LOG_DIR, f'app_{datetime.now().strftime("%Y%m%d")}.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(asctime)s] %(levelname)s: %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    return logging.getLogger(__name__)
+
+logger = setup_logging()
+
+# ============================================================================
+# Flask 应用
+# ============================================================================
+app = Flask(__name__)
+app.secret_key = Config.SECRET_KEY
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
+
+# 数据文件
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+USERS_FILE = os.path.join(DATA_DIR, 'users.json')
+PROJECTS_FILE = os.path.join(DATA_DIR, 'projects.json')
+STATS_FILE = os.path.join(DATA_DIR, 'download_stats.json')
+LOGIN_ATTEMPTS_FILE = os.path.join(DATA_DIR, 'login_attempts.json')
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# ============================================================================
+# 数据管理
+# ============================================================================
+def load_json(filepath, default={}):
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return default
+    return default
+
+def save_json(filepath, data):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+# 初始化数据
+users_db = load_json(USERS_FILE, {
+    'admin': {
+        'password': hashlib.sha256('admin123'.encode()).hexdigest(),
+        'role': 'super_admin',
+        'created_at': datetime.now().isoformat()
+    }
+})
+
+projects_db = load_json(PROJECTS_FILE, {
+    'RecycleTycoon': {
+        'name': '垃圾回收站',
+        'description': '垃圾回收站游戏',
+        'created_at': datetime.now().isoformat(),
+        'order': 1
+    }
+})
+
+download_stats = load_json(STATS_FILE, {})
+login_attempts = load_json(LOGIN_ATTEMPTS_FILE, {})
+
+def save_users():
+    save_json(USERS_FILE, users_db)
+
+def save_projects():
+    save_json(PROJECTS_FILE, projects_db)
+
+def save_stats():
+    save_json(STATS_FILE, download_stats)
+
+def save_login_attempts():
+    save_json(LOGIN_ATTEMPTS_FILE, login_attempts)
+
+# ============================================================================
+# 安全工具函数
+# ============================================================================
+def is_whitelisted_ip(ip):
+    """检查 IP 是否在白名单中"""
+    if Config.IP_WHITELIST:
+        return ip in Config.IP_WHITELIST
+    return is_inner_network(ip)
+
+def is_inner_network(ip):
+    """判断是否为内网 IP"""
+    if not ip:
+        return False
+    for prefix in Config.INNER_NET:
+        prefix = prefix.strip()
+        if prefix and ip.startswith(prefix):
+            return True
+    return False
+
+def check_login_attempts(ip):
+    """检查 IP 的登录尝试次数，返回 (是否允许尝试，失败次数)"""
+    now = datetime.now().timestamp()
+    
+    if ip not in login_attempts:
+        return True, 0
+    
+    attempts = login_attempts[ip]
+    locked_until = attempts.get('locked_until', 0)
+    
+    if locked_until > now:
+        # 仍在锁定期
+        return False, attempts.get('attempts', 0)
+    elif locked_until > 0 and locked_until <= now:
+        # 锁定期已过，重置
+        login_attempts[ip] = {'attempts': 0, 'locked_until': 0}
+        save_login_attempts()
+    
+    return True, attempts.get('attempts', 0)
+
+def record_login_attempt(ip, success):
+    """记录登录尝试"""
+    now = datetime.now().timestamp()
+    
+    if ip not in login_attempts:
+        login_attempts[ip] = {'attempts': 0, 'locked_until': 0}
+    
+    if success:
+        # 登录成功，清空记录
+        login_attempts[ip] = {'attempts': 0, 'locked_until': 0}
+    else:
+        # 登录失败，增加计数
+        login_attempts[ip]['attempts'] += 1
+        
+        if login_attempts[ip]['attempts'] >= Config.LOGIN_ATTEMPTS_LIMIT:
+            # 超过限制，锁定
+            login_attempts[ip]['locked_until'] = now + (Config.LOGIN_LOCKOUT_MINUTES * 60)
+            logger.warning(f"IP {ip} 登录失败次数过多，已锁定 {Config.LOGIN_LOCKOUT_MINUTES} 分钟")
+    
+    save_login_attempts()
+
+# ============================================================================
+# 工具函数
+# ============================================================================
+def extract_project_name(filename):
+    """从文件名提取项目名"""
+    base = filename.replace('.apk', '')
+    if '_' in base:
+        return base.split('_')[0]
+    return base
+
+def parse_apk_metadata(apk_path):
+    """解析 APK 元数据"""
+    try:
+        filename = os.path.basename(apk_path)
+        base_name = filename.replace('.apk', '').replace('_', ' ')
+        version_match = re.search(r'(\d+\.\d+\.\d+)', filename)
+        version = version_match.group(1) if version_match else '1.0'
+        app_name = base_name.title()
+        return {
+            'package': f'com.example.{base_name.replace(" ", "").lower()}',
+            'version': version,
+            'app_name': app_name
+        }
+    except Exception as e:
+        logger.warning(f"解析 APK 失败 {apk_path}: {e}")
+        return None
+
+def extract_apk_info(filename, filepath):
+    """提取 APK 文件信息"""
+    stat = os.stat(filepath)
+    project_name = extract_project_name(filename)
+    
+    file_info = {
+        'name': filename,
+        'size': stat.st_size,
+        'size_mb': f"{stat.st_size/1024/1024:.1f}MB",
+        'date': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M'),
+        'timestamp': stat.st_mtime,
+        'download_count': download_stats.get(filename, 0),
+        'project': project_name
+    }
+    
+    metadata = parse_apk_metadata(filepath)
+    if metadata:
+        file_info.update(metadata)
+    else:
+        file_info['app_name'] = filename.replace('.apk', '').replace('_', ' ').title()
+        file_info['package'] = 'unknown'
+        file_info['version'] = '1.0'
+    
+    return file_info
+
+# ============================================================================
+# 认证装饰器
+# ============================================================================
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return redirect(url_for('login'))
+        user_info = users_db.get(session['user'])
+        if not user_info or user_info.get('role') != 'super_admin':
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============================================================================
+# HTML 模板
+# ============================================================================
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APK 下载中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/qrcode.min.js?v=1"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto p-4 md:p-8 max-w-6xl">
+        <!-- 顶部导航 -->
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">📦 APK 下载中心</h1>
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-gray-600">
+                    {% if is_admin %}
+                        👤 管理员：{{ current_user }}
+                        <a href="/admin/users" class="text-blue-600 hover:underline ml-2">用户管理</a>
+                        <a href="/admin/projects" class="text-blue-600 hover:underline ml-2">项目管理</a>
+                    {% else %}
+                        👤 用户：{{ current_user }}
+                    {% endif %}
+                </span>
+                <a href="/logout" class="text-sm text-red-600 hover:underline">退出</a>
+            </div>
+        </div>
+
+        <!-- 项目页签 -->
+        <div class="mb-6">
+            <div class="flex flex-wrap gap-2 border-b border-gray-300">
+                <button onclick="switchTab('all')" id="tab-all" class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg bg-blue-600 text-white">
+                    全部项目
+                </button>
+                {% for project_id, project in projects.items() %}
+                <button onclick="switchTab('{{ project_id }}')" id="tab-{{ project_id }}" class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg bg-gray-200 text-gray-700 hover:bg-gray-300">
+                    {{ project.name }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 搜索框 -->
+        <div class="mb-6">
+            <input type="text" id="searchInput" 
+                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition"
+                placeholder="搜索 APK 文件名..." onkeyup="filterFiles()">
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="flex justify-between items-center text-sm text-gray-600">
+                <span>共 <strong id="totalCount">0</strong> 个文件</span>
+                <span>总大小：<strong id="totalSize">{{ total_size_mb }}</strong> MB</span>
+            </div>
+        </div>
+
+        <!-- 文件列表 -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            {% if files %}
+                {% for project_id, project_files in grouped_files.items() %}
+                <div class="project-group mb-6" data-project="{{ project_id }}">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200">
+                        <span class="text-lg font-bold text-gray-800">📁 {{ projects[project_id].name if projects[project_id] else project_id }}</span>
+                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{{ project_files|length }} 个版本</span>
+                    </div>
+                    
+                    {% for f in project_files %}
+                    <div class="file-item border-b last:border-b-0 py-4 hover:bg-gray-50 transition" 
+                         data-name="{{ f.name|lower }}" data-name-full="{{ f.name }}" data-project="{{ project_id }}">
+                        <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-2xl">📱</span>
+                                    <div>
+                                        <div class="font-bold text-gray-800 break-all">{{ f.name }}</div>
+                                        <div class="text-xs text-gray-500 mt-1">
+                                            <span>{{ f.app_name }}</span>
+                                            <span class="mx-2">•</span>
+                                            <span>v{{ f.version }}</span>
+                                            <span class="mx-2">•</span>
+                                            <span>{{ f.size_mb }}</span>
+                                            <span class="mx-2">•</span>
+                                            <span>{{ f.date }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="showQR('{{ f.name }}')" 
+                                    class="px-3 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600 transition">
+                                    二维码
+                                </button>
+                                <a href="/download/{{ f.name|urlencode }}" 
+                                    class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                                    下载
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center py-12">
+                    <div class="text-6xl mb-4">📭</div>
+                    <p class="text-gray-500 text-lg">暂无 APK 文件</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- 二维码弹窗 -->
+        <div id="qrModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" onclick="closeQR(event)">
+            <div class="bg-white rounded-lg p-6 max-w-sm mx-4" onclick="event.stopPropagation()">
+                <h3 class="text-lg font-bold mb-4 text-center">扫码下载</h3>
+                <div id="qrCode" class="flex justify-center mb-4"></div>
+                <p id="qrUrl" class="text-xs text-gray-500 text-center break-all"></p>
+                <button onclick="closeQR()" class="mt-4 w-full py-2 bg-gray-200 rounded hover:bg-gray-300">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'all';
+        
+        function switchTab(projectId) {
+            currentTab = projectId;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = 'tab-btn px-4 py-2 text-sm font-medium rounded-t-lg bg-gray-200 text-gray-700 hover:bg-gray-300';
+            });
+            const activeTab = document.getElementById('tab-' + projectId);
+            if (activeTab) {
+                activeTab.className = 'tab-btn px-4 py-2 text-sm font-medium rounded-t-lg bg-blue-600 text-white';
+            }
+            filterFiles();
+        }
+
+        function filterFiles() {
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+            const groups = document.querySelectorAll('.project-group');
+            
+            groups.forEach(group => {
+                const projectName = group.getAttribute('data-project');
+                const items = group.querySelectorAll('.file-item');
+                let hasVisible = false;
+                
+                if (currentTab !== 'all' && projectName !== currentTab) {
+                    group.style.display = 'none';
+                    return;
+                }
+                
+                items.forEach(item => {
+                    const name = item.getAttribute('data-name');
+                    const itemProject = item.getAttribute('data-project');
+                    const matchesSearch = name.includes(searchInput);
+                    const matchesTab = currentTab === 'all' || itemProject === currentTab;
+                    
+                    if (matchesSearch && matchesTab) {
+                        item.style.display = '';
+                        hasVisible = true;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                
+                group.style.display = hasVisible ? '' : 'none';
+            });
+            
+            const visibleCount = document.querySelectorAll('.file-item[style=""]').length;
+            document.getElementById('totalCount').textContent = visibleCount;
+        }
+
+        function showQR(filename) {
+            const url = window.location.origin + '/download/' + encodeURIComponent(filename);
+            document.getElementById('qrUrl').textContent = url;
+            document.getElementById('qrCode').innerHTML = '';
+            
+            QRCode.toCanvas(document.getElementById('qrCode'), url, {
+                width: 200,
+                margin: 2,
+                color: { dark: '#000000', light: '#ffffff' }
+            }, function (error) {
+                if (error) console.error(error);
+            });
+            
+            const modal = document.getElementById('qrModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeQR(event) {
+            if (!event || event.target === event.currentTarget) {
+                const modal = document.getElementById('qrModal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        document.getElementById('totalCount').textContent = '{{ total_count }}';
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const initialTab = urlParams.get('project') || 'all';
+        switchTab(initialTab);
+    </script>
+</body>
+</html>
+"""
+
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APK 下载中心 - 登录</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">📦 APK 下载中心</h1>
+        <p class="text-center text-gray-600 mb-8">安全访问需要登录</p>
+        
+        {% if error %}
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        {% if locked %}
+        <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
+            登录尝试次数过多，请 {{ lockout_time }} 分钟后再试
+        </div>
+        {% endif %}
+        
+        <form method="POST" action="/login">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">用户名</label>
+                <input type="text" name="username" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500" required>
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2">密码</label>
+                <input type="password" name="password" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500" required>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">登录</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+# ============================================================================
+# 路由
+# ============================================================================
+@app.route('/')
+@login_required
+def index():
+    files = []
+    total_size = 0
+    
+    try:
+        if os.path.exists(Config.APK_DIR):
+            for filename in os.listdir(Config.APK_DIR):
+                if filename.endswith('.apk'):
+                    filepath = os.path.join(Config.APK_DIR, filename)
+                    if os.path.isfile(filepath):
+                        file_info = extract_apk_info(filename, filepath)
+                        files.append(file_info)
+                        total_size += file_info['size']
+        
+        # 按项目分组
+        grouped_files = defaultdict(list)
+        for f in files:
+            grouped_files[f['project']].append(f)
+        
+        # 排序
+        for project in grouped_files:
+            grouped_files[project].sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        total_size_mb = total_size / 1024 / 1024 if total_size > 0 else 0
+        
+        # 检查用户权限
+        current_user = session.get('user', 'admin')
+        user_info = users_db.get(current_user, {})
+        is_admin = user_info.get('role') == 'super_admin'
+        
+        return render_template_string(
+            HTML_TEMPLATE,
+            files=files,
+            grouped_files=grouped_files,
+            projects=projects_db,
+            total_count=len(files),
+            total_size_mb=f"{total_size_mb:.1f}",
+            current_user=current_user,
+            is_admin=is_admin
+        )
+        
+    except Exception as e:
+        logger.error(f"首页加载失败：{e}", exc_info=True)
+        abort(500)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    client_ip = request.remote_addr or '127.0.0.1'
+    
+    if request.method == 'POST':
+        # 检查登录限制
+        allowed, attempts = check_login_attempts(client_ip)
+        if not allowed:
+            remaining_time = int((login_attempts[client_ip]['locked_until'] - datetime.now().timestamp()) / 60) + 1
+            return render_template_string(LOGIN_TEMPLATE, error=f"登录尝试次数过多", locked=True, lockout_time=remaining_time)
+        
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username in users_db:
+            password_hash = hashlib.sha256(password.encode()).hexdigest()
+            if users_db[username]['password'] == password_hash:
+                # 登录成功
+                session['user'] = username
+                record_login_attempt(client_ip, True)
+                logger.info(f"用户 {username} 登录成功 (IP: {client_ip})")
+                return redirect(url_for('index'))
+        
+        # 登录失败
+        record_login_attempt(client_ip, False)
+        logger.warning(f"登录失败：{username} (IP: {client_ip})")
+        return render_template_string(LOGIN_TEMPLATE, error="用户名或密码错误")
+    
+    # GET 请求，检查是否被锁定
+    allowed, attempts = check_login_attempts(client_ip)
+    locked = not allowed
+    lockout_time = 0
+    if locked:
+        lockout_time = int((login_attempts[client_ip]['locked_until'] - datetime.now().timestamp()) / 60) + 1
+    
+    return render_template_string(LOGIN_TEMPLATE, locked=locked, lockout_time=lockout_time)
+
+@app.route('/logout')
+def logout():
+    session.pop('user', None)
+    return redirect(url_for('index'))
+
+@app.route('/download/<path:filename>')
+@login_required
+def download(filename):
+    client_ip = request.remote_addr or '127.0.0.1'
+    logger.info(f"下载请求：{filename}, IP: {client_ip}")
+    
+    if '..' in filename or filename.startswith('/'):
+        abort(403)
+    
+    if not filename.lower().endswith('.apk'):
+        abort(403)
+    
+    safe_filename = os.path.basename(filename)
+    filepath = os.path.join(Config.APK_DIR, safe_filename)
+    
+    if not os.path.exists(filepath):
+        abort(404)
+    
+    download_stats[safe_filename] = download_stats.get(safe_filename, 0) + 1
+    save_stats()
+    
+    return send_from_directory(Config.APK_DIR, safe_filename, as_attachment=True)
+
+@app.route('/qr/<path:filename>')
+@login_required
+def generate_qr(filename):
+    """生成二维码图片"""
+    # 生成下载链接
+    download_url = f"http://{request.host}/download/{filename}"
+    
+    # 生成二维码
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(download_url)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # 转换为 PNG 格式
+    img_io = io.BytesIO()
+    img.save(img_io, 'PNG')
+    img_io.seek(0)
+    
+    # 转换为 base64
+    img_base64 = base64.b64encode(img_io.getvalue()).decode()
+    
+    return jsonify({'qr_code': f'data:image/png;base64,{img_base64}', 'url': download_url})
+
+@app.route('/health')
+def health():
+    apk_count = len([f for f in os.listdir(Config.APK_DIR) if f.endswith('.apk')]) if os.path.exists(Config.APK_DIR) else 0
+    return jsonify({
+        'status': 'ok',
+        'apk_count': apk_count,
+        'timestamp': datetime.now().isoformat()
+    })
+
+# ============================================================================
+# 管理员接口
+# ============================================================================
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    return jsonify(users_db)
+
+@app.route('/admin/projects')
+@admin_required
+def admin_projects():
+    return jsonify(projects_db)
+
+@app.route('/admin/add_project', methods=['POST'])
+@admin_required
+def add_project():
+    data = request.json
+    project_id = data.get('id')
+    project_name = data.get('name')
+    description = data.get('description', '')
+    
+    if not project_id or not project_name:
+        return jsonify({'error': '缺少必要参数'}), 400
+    
+    projects_db[project_id] = {
+        'name': project_name,
+        'description': description,
+        'created_at': datetime.now().isoformat(),
+        'order': len(projects_db) + 1
+    }
+    save_projects()
+    
+    return jsonify({'success': True})
+
+@app.route('/admin/delete_project/<project_id>', methods=['DELETE'])
+@admin_required
+def delete_project(project_id):
+    if project_id in projects_db:
+        del projects_db[project_id]
+        save_projects()
+        return jsonify({'success': True})
+    return jsonify({'error': '项目不存在'}), 404
+
+if __name__ == '__main__':
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except:
+        local_ip = 'localhost'
+    
+    print(f"""
+╔══════════════════════════════════════════════════════════╗
+║        📦 APK 下载中心 - 专业安全版 启动                 ║
+╠══════════════════════════════════════════════════════════╣
+║  本地访问：http://localhost:{Config.PORT}                ║
+║  局域网访问：http://{local_ip}:{Config.PORT}             ║
+║  扫描目录：{Config.APK_DIR}                              ║
+║  默认管理员：admin / admin123                            ║
+╠══════════════════════════════════════════════════════════╣
+║  安全特性：                                              ║
+║  ✅ 强制登录访问                                         ║
+║  ✅ IP 白名单/内网判断                                    ║
+║  ✅ 登录失败次数限制 ({Config.LOGIN_ATTEMPTS_LIMIT}次锁定{Config.LOGIN_LOCKOUT_MINUTES}分钟)      ║
+║  ✅ 会话管理                                             ║
+╚══════════════════════════════════════════════════════════╝
+    """)
+    
+    logger.info("APK 下载中心 - 专业安全版 启动")
+    app.run(host=Config.HOST, port=Config.PORT, debug=Config.DEBUG)

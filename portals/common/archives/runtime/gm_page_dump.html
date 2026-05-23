@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="ImRhZGE0MGU1N2MzZGYwOGQ5YzljYjI5Mjc4YWY5NGM0ZTY2Njg0NDgi.agbOBA.Fd4D_9bL0Jqy0wOSSQj4cfPzhXk">
+    <title>GM运营中心 - APK 下载中心</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .admin-nav { background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #4f46e5 100%); }
+        .admin-card { transition: box-shadow 0.18s ease, transform 0.18s ease, background-color 0.18s ease; }
+        .admin-card:hover { box-shadow: 0 18px 45px -20px rgba(15,23,42,0.35); transform: translateY(-2px); }
+        .stat-card { background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 antialiased">
+    <div class="min-h-screen flex flex-col">
+        <header class="admin-nav shadow-lg">
+            <div class="max-w-6xl mx-auto px-4">
+                <div class="flex items-center justify-between h-14 md:h-16 gap-3">
+                    <div class="flex items-center gap-3">
+                        <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-white/10 text-white">
+                            <i class="fas fa-sliders-h text-lg"></i>
+                        </span>
+                        <div>
+                            <h1 class="text-lg md:text-xl font-semibold text-white tracking-tight">GM运营中心</h1>
+                            <p class="hidden md:block text-[11px] text-slate-200/80">管理 APK 项目、版本、构建与权限</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a href="/download-center" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
+                            <i class="fas fa-box-open"></i><span>下载中心</span>
+                        </a>
+                        <div class="hidden md:flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-slate-100">
+                            <i class="fas fa-user-circle text-slate-200"></i>
+                            <span class="font-semibold">admin</span>
+                        </div>
+                        <a href="/profile" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
+                            <i class="fas fa-id-badge"></i><span>个人中心</span>
+                        </a>
+                        <a href="/logout" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
+                            <i class="fas fa-right-from-bracket"></i><span>退出</span>
+                        </a>
+                        <form method="get" action="/admin/search" class="hidden sm:flex items-center bg-slate-900/20 rounded-lg px-2 py-1.5">
+                            <i class="fas fa-search text-slate-300 text-xs mr-1.5"></i>
+                            <input type="text" name="q" placeholder="全局搜索…" class="bg-transparent outline-none border-0 text-xs text-slate-50 placeholder:text-slate-400 w-40 focus:ring-0">
+                        </form>
+                        <a href="/admin" class="inline-flex items-center gap-1.5 text-xs md:text-sm font-medium text-slate-100 hover:text-white hover:underline">
+                            <i class="fas fa-arrow-left text-slate-200"></i><span>返回</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <main class="flex-1">
+            <div class="max-w-6xl mx-auto px-4 py-6 md:py-8">
+                
+<div class="space-y-5">
+  <section class="rounded-2xl border border-indigo-200 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-700 p-6 shadow-md">
+    <h2 class="text-2xl font-semibold text-white">GM运营中心（项目优先）</h2>
+    <p class="mt-2 text-sm text-indigo-100/90">单项目工作台：项目身份、构建、发布、运维、快照、执行日志统一在同一上下文闭环。</p>
+  </section>
+
+  <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div class="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+      <div class="md:col-span-2"><label class="text-xs text-slate-500">项目</label><select id="projectSelect" class="w-full border rounded px-2 py-2 text-sm"></select></div>
+      <div><label class="text-xs text-slate-500">环境</label><select id="env" class="w-full border rounded px-2 py-2 text-sm"></select></div>
+      <div><label class="text-xs text-slate-500">渠道</label><select id="channel" class="w-full border rounded px-2 py-2 text-sm"></select></div>
+      <div><label class="text-xs text-slate-500">平台</label><select id="platform" class="w-full border rounded px-2 py-2 text-sm"><option value="android">android</option><option value="ios">ios</option></select></div>
+      <div><button onclick="loadWorkspace()" class="w-full rounded bg-indigo-600 text-white px-3 py-2 text-sm">加载项目工作台</button></div>
+    </div>
+    <input id="projectId" type="hidden">
+  </section>
+
+  <section class="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">
+      <button id="tabBtn-identity" onclick="switchSection('identity')" class="rounded-xl bg-indigo-600 text-white px-3 py-2.5 font-medium">项目身份</button>
+      <button id="tabBtn-build" onclick="switchSection('build')" class="rounded-xl bg-slate-100 text-slate-700 px-3 py-2.5 font-medium">构建</button>
+      <button id="tabBtn-release" onclick="switchSection('release')" class="rounded-xl bg-slate-100 text-slate-700 px-3 py-2.5 font-medium">发布</button>
+      <button id="tabBtn-ops" onclick="switchSection('ops')" class="rounded-xl bg-slate-100 text-slate-700 px-3 py-2.5 font-medium">运维</button>
+      <button id="tabBtn-snapshot" onclick="switchSection('snapshot')" class="rounded-xl bg-slate-100 text-slate-700 px-3 py-2.5 font-medium">快照</button>
+      <button id="tabBtn-logs" onclick="switchSection('logs')" class="rounded-xl bg-slate-100 text-slate-700 px-3 py-2.5 font-medium">执行日志</button>
+    </div>
+  </section>
+
+  <section id="sec-identity" class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-sm">
+    <div class="flex items-center justify-between">
+      <h3 class="text-base font-semibold text-slate-900">项目身份与接入（只读）</h3>
+      <span class="text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">创建后不可修改</span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+      <div><label class="block text-xs text-slate-500 mb-1">gameId（唯一）</label><input id="gameId" readonly class="w-full border rounded-lg px-3 py-2 bg-slate-50"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">gameKey（掩码）</label><input id="gameKeyMasked" readonly class="w-full border rounded-lg px-3 py-2 bg-slate-50"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">服务端配置档</label><input id="serverProfile" class="w-full border rounded-lg px-3 py-2" placeholder="default"></div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+      <button onclick="loadParameterClosure()" class="rounded-lg bg-violet-700 text-white px-3 py-2 text-sm font-medium">查看参数字典</button>
+      <button onclick="compareBeforeAfter()" class="rounded-lg bg-emerald-700 text-white px-3 py-2 text-sm font-medium">执行前后对比</button>
+      <button onclick="loadWorkspace()" class="rounded-lg bg-cyan-700 text-white px-3 py-2 text-sm font-medium">刷新项目身份</button>
+    </div>
+    <div id="credentialSummary" class="text-xs text-slate-600"></div>
+  </section>
+
+  <section id="sec-build" class="bg-white rounded-2xl border border-indigo-200 p-5 space-y-4 shadow-sm" style="display:none;">
+    <h3 class="font-semibold">构建域参数</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+      <input id="buildOutput" class="w-full border rounded px-2 py-1" placeholder="build_output">
+      <input id="projectCode" class="w-full border rounded px-2 py-1" placeholder="project_code">
+      <input id="resourceBuilder" class="w-full border rounded px-2 py-1" placeholder="resource_builder">
+      <input id="baselineVersionDir" class="w-full border rounded px-2 py-1" placeholder="baseline_version_dir">
+      <input id="diffKeyword" class="w-full border rounded px-2 py-1" placeholder="diff_keyword">
+      <input id="hotUpdateBaseUrl" class="w-full border rounded px-2 py-1" placeholder="hot_update_base_url">
+      <input id="automationPlanPath" class="w-full border rounded px-2 py-1" placeholder="automation_plan_path">
+      <input id="cliResultPath" class="w-full border rounded px-2 py-1" placeholder="cli_result_path">
+      <input id="entryPoint" class="w-full border rounded px-2 py-1" placeholder="entry_point">
+    </div>
+  </section>
+
+  <section id="sec-release" class="bg-white rounded-2xl border border-emerald-200 p-5 space-y-4 shadow-sm" style="display:none;">
+    <h3 class="font-semibold text-slate-900">发布域参数（五段式）</h3>
+    <p class="text-xs text-slate-500">红色星号为必填。用于驱动客户端 APK/资源/配置发版与运行时拉取。</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+      <div><label class="block text-xs text-slate-500 mb-1">版本名称 <span class="text-rose-500">*</span></label><input id="versionName" class="w-full border rounded-lg px-3 py-2" placeholder="如 1.2.0-hotfix1"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">APK 版本 <span class="text-rose-500">*</span></label><input id="apkVersion" class="w-full border rounded-lg px-3 py-2" placeholder="如 1.2.0"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">资源版本 <span class="text-rose-500">*</span></label><input id="resourceVersion" class="w-full border rounded-lg px-3 py-2" placeholder="如 res_20260515_01"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">配置版本 <span class="text-rose-500">*</span></label><input id="configVersion" class="w-full border rounded-lg px-3 py-2" placeholder="如 cfg_20260515_01"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">APK 地址 <span class="text-rose-500">*</span></label><input id="apkUrl" class="w-full border rounded-lg px-3 py-2" placeholder="https://cdn.xx/game.apk"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">资源地址 <span class="text-rose-500">*</span></label><input id="resourceUrl" class="w-full border rounded-lg px-3 py-2" placeholder="https://cdn.xx/res/"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">配置地址 <span class="text-rose-500">*</span></label><input id="configUrl" class="w-full border rounded-lg px-3 py-2" placeholder="https://cdn.xx/cfg/"></div>
+      <div><label class="block text-xs text-slate-500 mb-1">分发方式</label><select id="distributionMethod" class="w-full border rounded-lg px-3 py-2"><option value="direct">direct（直链）</option><option value="enterprise">enterprise（企业分发）</option><option value="store">store（应用商店）</option><option value="testflight">testflight（iOS测试）</option><option value="internal">internal（内部分发）</option></select></div>
+      <div><label class="block text-xs text-slate-500 mb-1">更新说明</label><input id="changelog" class="w-full border rounded-lg px-3 py-2" placeholder="本次更新说明"></div>
+      <input id="packageName" class="w-full border rounded px-2 py-1" placeholder="package_name">
+      <input id="bundleId" class="w-full border rounded px-2 py-1" placeholder="bundle_id">
+      <input id="clientVersion" class="w-full border rounded px-2 py-1" placeholder="client_version">
+      <select id="uploadProvider" class="w-full border rounded-lg px-3 py-2"><option value="aliyun_oss">aliyun_oss</option><option value="s3">s3</option><option value="local_fs">local_fs</option></select>
+      <input id="bucket" class="w-full border rounded px-2 py-1" placeholder="bucket">
+      <input id="region" class="w-full border rounded px-2 py-1" placeholder="region">
+      <input id="cdnPrefix" class="w-full border rounded px-2 py-1" placeholder="cdn_prefix">
+      <input id="pathTemplate" class="w-full border rounded px-2 py-1" placeholder="path_template">
+      <select id="releaseMode" class="w-full border rounded-lg px-3 py-2"><option value="build-upload">build-upload</option><option value="upload-only">upload-only</option><option value="verify-only">verify-only</option></select>
+      <input id="targets" class="w-full border rounded px-2 py-1" placeholder="targets">
+      <input id="codeUnits" class="w-full border rounded px-2 py-1" placeholder="code_units">
+      <input id="configUnits" class="w-full border rounded px-2 py-1" placeholder="config_units">
+      <input id="assetUnits" class="w-full border rounded px-2 py-1" placeholder="asset_units">
+      <input id="gatewayWs" class="w-full border rounded px-2 py-1" placeholder="gateway_ws">
+      <input id="loginHttp" class="w-full border rounded px-2 py-1" placeholder="login_http">
+      <input id="gameWs" class="w-full border rounded px-2 py-1" placeholder="game_ws">
+      <input id="battleUdp" class="w-full border rounded px-2 py-1" placeholder="battle_udp">
+      <input id="opsHttp" class="w-full border rounded px-2 py-1" placeholder="ops_http">
+      <input id="noticeUrl" class="w-full border rounded px-2 py-1" placeholder="notice_url">
+      <input id="reason" class="w-full border rounded px-2 py-1" placeholder="approval_reason">
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <button onclick="releasePrecheck()" class="rounded bg-indigo-600 text-white px-3 py-2 text-sm">1.预检</button>
+      <button onclick="releaseApply()" class="rounded bg-amber-600 text-white px-3 py-2 text-sm">2.审批</button>
+      <button onclick="releaseExecute()" class="rounded bg-emerald-600 text-white px-3 py-2 text-sm">3.执行</button>
+      <button onclick="releaseRollback()" class="rounded bg-rose-600 text-white px-3 py-2 text-sm">4.回滚</button>
+      <button onclick="releaseReconcile()" class="rounded bg-slate-700 text-white px-3 py-2 text-sm">5.对账</button>
+    </div>
+  </section>
+
+  <section id="sec-ops" class="bg-white rounded-xl border p-4 space-y-3" style="display:none;">
+    <h3 class="font-semibold">运维与观测</h3>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-sm">
+      <button onclick="loadClosureEvidence()" class="w-full rounded bg-blue-700 text-white px-3 py-2">闭环证据</button>
+      <button onclick="runQualityGate()" class="w-full rounded bg-slate-900 text-white px-3 py-2">质量门禁</button>
+      <button onclick="loadRuntimeSnapshot()" class="w-full rounded bg-slate-700 text-white px-3 py-2">运行时快照</button>
+      <button onclick="loadInfraMetrics()" class="w-full rounded bg-teal-700 text-white px-3 py-2">Mongo/Redis指标</button>
+      <button onclick="saveReleaseProfile()" class="w-full rounded bg-sky-700 text-white px-3 py-2">保存服务路由</button>
+    </div>
+    <div id="infraSummary" class="text-xs text-slate-600"></div>
+    <div id="workspaceSummary" class="text-xs text-slate-500"></div>
+  </section>
+
+  <section id="sec-snapshot" class="bg-white rounded-xl border p-4" style="display:none;">
+    <h3 class="font-semibold mb-2">参数合成快照（执行前）</h3>
+    <pre id="preview" class="w-full h-48 rounded border p-3 text-xs bg-slate-50 overflow-auto"></pre>
+  </section>
+
+  <section id="sec-logs" class="bg-white rounded-xl border p-4" style="display:none;">
+    <h3 class="font-semibold mb-2">执行结果 / 回读</h3>
+    <textarea id="result" class="w-full h-72 rounded border p-3 text-xs font-mono"></textarea>
+  </section>
+
+  <section class="bg-white rounded-xl border p-4">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <h3 class="font-semibold">完整参数字典矩阵</h3>
+      <div class="flex items-center gap-2 text-xs">
+        <select id="dictCategory" class="border rounded px-2 py-1">
+          <option value="all">全部分类</option><option value="project">项目</option><option value="version">版本</option><option value="strategy">策略</option><option value="diff">差分</option><option value="runtime">运行时</option><option value="upload">上传</option><option value="automation">自动化</option>
+        </select>
+        <input id="dictKeyword" class="border rounded px-2 py-1" placeholder="筛选参数">
+      </div>
+    </div>
+    <div id="dictCompareHint" class="text-xs text-slate-600 mb-2 px-2 py-1 rounded bg-slate-50 border border-slate-200"></div>
+    <div class="overflow-auto">
+      <table class="min-w-full text-xs border border-slate-200">
+        <thead class="bg-slate-100"><tr><th class="px-2 py-2 text-left border-b">参数</th><th class="px-2 py-2 text-left border-b">字段说明</th><th class="px-2 py-2 text-left border-b">来源层级</th><th class="px-2 py-2 text-left border-b">值</th><th class="px-2 py-2 text-left border-b">生效阶段</th><th class="px-2 py-2 text-left border-b">日志键/回读键</th></tr></thead>
+        <tbody id="closureTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+<script>
+let __dictRows=[]; let __afterValues={};
+function selectedProjectId(){ return (document.getElementById('projectId').value || '').trim(); }
+function selectedEnv(){ return (document.getElementById('env').value || '').trim(); }
+function selectedChannel(){ return (document.getElementById('channel').value || '').trim(); }
+function selectedPlatform(){ return (document.getElementById('platform').value || 'android').trim(); }
+function updateResult(d){ document.getElementById('result').value = JSON.stringify(d, null, 2); }
+function switchSection(group){ const all=['identity','build','release','ops','snapshot','logs']; all.forEach(k=>{ const el=document.getElementById('sec-'+k); if(el){ el.style.display=(k===group?'block':'none'); } const btn=document.getElementById('tabBtn-'+k); if(btn){ if(k===group){ btn.classList.remove('bg-slate-100','text-slate-700'); btn.classList.add('bg-indigo-600','text-white'); } else { btn.classList.remove('bg-indigo-600','text-white'); btn.classList.add('bg-slate-100','text-slate-700'); } } }); }
+function upsertOptions(el, values, pick){ if(!el) return; el.innerHTML = (values||[]).map(v=>`<option value="${v}">${v}</option>`).join(''); if(pick && values && values.includes(pick)) el.value = pick; }
+function upsertChannelOptions(el, options, pick){
+  if(!el) return;
+  const rows=(options||[]).filter(x=>x&&x.id).map(x=>({id:String(x.id),name:String(x.name||x.id)}));
+  el.innerHTML = rows.map(x=>`<option value="${x.id}">${x.id} · ${x.name}</option>`).join('');
+  if(pick && rows.some(x=>x.id===pick)) el.value=pick;
+}
+function currentReleasePayload(){ return { project_id: selectedProjectId(), env: selectedEnv(), channel: selectedChannel(), platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
+function currentProfilePayload(){ return { id: (document.getElementById('serverProfile').value || '').trim() || 'default', name: (document.getElementById('serverProfile').value || '').trim() || 'default', env: selectedEnv(), channel: selectedChannel(), gateway_ws: (document.getElementById('gatewayWs').value||'').trim(), login_http: (document.getElementById('loginHttp').value||'').trim(), game_ws: (document.getElementById('gameWs').value||'').trim(), battle_udp: (document.getElementById('battleUdp').value||'').trim(), ops_http: (document.getElementById('opsHttp').value||'').trim(), notice_url: (document.getElementById('noticeUrl').value||'').trim() }; }
+function refreshPreview(){ const p=currentReleasePayload(); document.getElementById('preview').textContent = JSON.stringify({project_id:p.project_id, env:p.env, channel:p.channel, version_name:p.version_name, apk_version:p.apk_version, resource_version:p.resource_version, config_version:p.config_version},null,2); }
+function renderDictRows(rows){ const cat=(document.getElementById('dictCategory')?.value||'all'); const kw=(document.getElementById('dictKeyword')?.value||'').trim().toLowerCase(); const body=document.getElementById('closureTableBody'); if(!body) return; const filtered=(rows||[]).filter(x=>{ const okCat=(cat==='all'||String(x.sourceLayer||'')===cat); const okKw=(!kw||String(x.key||'').toLowerCase().includes(kw)||String(x.description||'').toLowerCase().includes(kw)); return okCat&&okKw;}); body.innerHTML = filtered.map(x=>`<tr class="border-b"><td class="px-2 py-1">${x.key||'-'}</td><td class="px-2 py-1">${x.description||'-'}</td><td class="px-2 py-1">${x.sourceLayer||x.source||'-'}</td><td class="px-2 py-1">${x.value===undefined||x.value===null||x.value===''?'-':String(x.value)}</td><td class="px-2 py-1">${x.effectiveStage||'-'}</td><td class="px-2 py-1">${(x.logKey||'-')+' / '+(x.readbackField||'-')}</td></tr>`).join('') || '<tr><td class="px-2 py-2" colspan="6">暂无参数映射</td></tr>'; }
+async function loadCatalog(){ const r=await fetch('/api/gm-ops/projects/catalog'); const d=await r.json(); if(!d.ok){ updateResult(d); return; } const rows=d.data||[]; const sel=document.getElementById('projectSelect'); sel.innerHTML=rows.map(p=>`<option value="${p.project_id}">${p.project_id} / ${p.project_name}</option>`).join(''); const q=new URLSearchParams(window.location.search); const qpid=(q.get('project_id')||'').trim(); if(qpid && rows.some(x=>String(x.project_id)===qpid)){ sel.value=qpid; } if(rows.length){ document.getElementById('projectId').value=(sel.value||rows[0].project_id); await loadWorkspace(); } }
+async function loadWorkspace(){ const pid=(document.getElementById('projectSelect').value||'').trim(); if(!pid){ return; } document.getElementById('projectId').value=pid; const rs=await fetch('/api/gm-ops/projects/catalog?project_id='+encodeURIComponent(pid)); const d=await rs.json(); if(!d.ok){ updateResult(d); return; } const item=(d.data||[])[0]||{}; upsertOptions(document.getElementById('env'), item.envs || ['dev','test','staging','prod'], item.default_env || 'dev'); upsertChannelOptions(document.getElementById('channel'), item.channel_options || [], item.default_channel || 'default'); document.getElementById('gameId').value=item.game_id||''; document.getElementById('gameKeyMasked').value=item.game_key_masked||'***'; document.getElementById('serverProfile').value=item.default_server_profile||'default'; document.getElementById('credentialSummary').innerText=`gameId: ${item.game_id||'-'} | gameKey: ${item.game_key_masked||'***'} | 更新时间: ${item.updated_at||'-'}`; document.getElementById('workspaceSummary').innerText=`项目 ${item.project_id||pid}，可用环境 ${(item.envs||[]).join('/')||'-'}，可用渠道 ${(item.channel_options||[]).map(x=>x.id+'·'+x.name).join('/')||'-'}`; refreshPreview(); updateResult({ok:true, workspace:item}); }
+async function saveReleaseProfile(){ const r=await fetch('/api/gm-ops/release/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentProfilePayload())}); updateResult(await r.json()); }
+async function pullCredentials(){ const pid=selectedProjectId(); const r=await fetch('/api/gm-ops/projects/credentials/sync?project_id='+encodeURIComponent(pid)); const d=await r.json(); if(d.ok && d.remote){ document.getElementById('gameId').value=d.remote.game_id||''; document.getElementById('gameKey').value=''; document.getElementById('credentialSummary').innerText=`gameId: ${d.remote.game_id||'-'} | gameKey: ${d.remote.game_key_masked||'***'} | 更新时间: ${d.remote.updated_at||'-'}`; } refreshPreview(); updateResult(d); }
+async function pushCredentials(){ const pid=selectedProjectId(); let gid=(document.getElementById('gameId').value||'').trim(); let gkey=(document.getElementById('gameKey').value||'').trim(); if(!gid || !gkey){ const rg=await fetch('/api/gm-ops/projects/credentials/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:pid})}); const gd=await rg.json(); if(gd.ok){ gid=gd.game_id; gkey=gd.game_key; document.getElementById('gameId').value=gid; document.getElementById('gameKey').value=''; } } const r=await fetch('/api/gm-ops/projects/credentials/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ project_id: pid, game_id: gid, game_key: gkey })}); updateResult(await r.json()); }
+async function ensureReleaseEntry(){ const r=await fetch('/api/gm-ops/release/versions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentReleasePayload())}); return await r.json(); }
+async function releasePrecheck(){ await ensureReleaseEntry(); const r=await fetch('/api/gm-ops/release/precheck',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentReleasePayload())}); updateResult(await r.json()); }
+async function releaseApply(){ await ensureReleaseEntry(); const base=currentReleasePayload(); const target=`${base.project_id}:${base.version_name}`; const p={actionType:'release_publish',domain:'release',target:target,payload:base,operatorContext:{reason:(document.getElementById('reason').value||'发布审批').trim()||'发布审批'}}; const r=await fetch('/api/gm-ops/action/approval',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}); updateResult(await r.json()); }
+async function releaseExecute(){ const base=currentReleasePayload(); const target=`${base.project_id}:${base.version_name}`; const p={actionType:'release_publish',domain:'release',target:target,payload:base,approvalContext:{approved:true},operatorContext:{reason:'发布执行'}}; const r=await fetch('/api/gm-ops/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}); updateResult(await r.json()); }
+async function releaseRollback(){ const r=await fetch('/api/gm-ops/release/rollback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentReleasePayload())}); updateResult(await r.json()); }
+async function releaseReconcile(){ const r=await fetch('/api/gm-ops/release/reconcile?'+new URLSearchParams(currentReleasePayload())); updateResult(await r.json()); }
+async function loadClosureEvidence(){ const r=await fetch('/api/gm-ops/closure-evidence?'+new URLSearchParams(currentReleasePayload())); updateResult(await r.json()); }
+async function loadParameterClosure(){ const payload=currentReleasePayload(); const q=new URLSearchParams(payload); const r=await fetch(`/api/projects/${encodeURIComponent(selectedProjectId())}/release/parameter-dictionary?`+q.toString()); const d=await r.json(); __dictRows=(d.fields||[]); renderDictRows(__dictRows); updateResult(d); }
+async function compareBeforeAfter(){ const q=new URLSearchParams(currentReleasePayload()); const r=await fetch('/api/gm-ops/release/reconcile?'+q.toString()); const d=await r.json(); const rel=(d.release_record||{}), cfg=(d.configured_release||{}); const keys=Object.keys(cfg), changes=[]; keys.forEach(k=>{ if(String(cfg[k]||'')!==String(rel[k]||'')){ changes.push(`${k}: 期望=${cfg[k]||'-'} | 实际=${rel[k]||'-'}`); }}); document.getElementById('dictCompareHint').innerText = changes.length ? `发现 ${changes.length} 项差异（执行前后）` : '执行前后一致'; updateResult({ok:d.ok,diff_count:changes.length,diffs:changes,raw:d}); }
+async function runQualityGate(){ const r=await fetch('/api/gm-ops/quality-gate?'+new URLSearchParams(currentReleasePayload())); updateResult(await r.json()); }
+async function loadRuntimeSnapshot(){ const r=await fetch('/api/gm-ops/runtime-snapshot'); updateResult(await r.json()); }
+async function loadInfraMetrics(){ const r=await fetch('/api/gm-ops/infra/metrics'); const d=await r.json(); updateResult(d); document.getElementById('infraSummary').innerText=`Mongo: ${d.mongo?.ok?'OK':'FAIL'} | Redis: ${d.redis?.ok?'OK':'FAIL'} | QPS: ${d.observability?.qps||'-'} | P99: ${d.observability?.p99Ms||'-'}ms`; }
+['versionName','apkVersion','resourceVersion','configVersion','apkUrl','resourceUrl','configUrl','distributionMethod','packageName','bundleId','changelog','reason','gameId','gameKey','serverProfile','env','channel','platform','buildOutput','projectCode','resourceBuilder','baselineVersionDir','diffKeyword','hotUpdateBaseUrl','clientVersion','uploadProvider','bucket','region','cdnPrefix','pathTemplate','automationPlanPath','cliResultPath','entryPoint','releaseMode','targets','codeUnits','configUnits','assetUnits'].forEach(function(id){ const el=document.getElementById(id); if(el){ el.addEventListener('input', refreshPreview); el.addEventListener('change', refreshPreview); } });
+const dc=document.getElementById('dictCategory'); if(dc){ dc.addEventListener('change', ()=>renderDictRows(__dictRows)); }
+const dk=document.getElementById('dictKeyword'); if(dk){ dk.addEventListener('input', ()=>renderDictRows(__dictRows)); }
+document.getElementById('projectSelect').addEventListener('change', loadWorkspace);
+switchSection('identity'); loadCatalog();
+</script>
+
+            </div>
+        </main>
+    </div>
+    <script>
+        (function() {
+            var tokenEl = document.querySelector('meta[name="csrf-token"]');
+            var csrfToken = tokenEl && tokenEl.content ? tokenEl.content : '';
+            if (!csrfToken || !window.fetch || window.__adminFetchCsrfPatched) return;
+            var originalFetch = window.fetch.bind(window);
+            window.fetch = function(resource, init) {
+                init = init || {};
+                var method = String(init.method || 'GET').toUpperCase();
+                var target = typeof resource === 'string' ? resource : ((resource && resource.url) || '');
+                var isRelative = target && !/^https?:\/\//i.test(target);
+                if (isRelative && ['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(method) >= 0) {
+                    var headers = new Headers(init.headers || (resource && resource.headers) || undefined);
+                    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
+                    init.headers = headers;
+                }
+                return originalFetch(resource, init);
+            };
+            window.__adminFetchCsrfPatched = true;
+        })();
+    </script>
+</body>
+</html>

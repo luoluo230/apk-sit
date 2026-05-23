@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>玩家生态管理</title>
+    <meta name="csrf-token" content="{{ csrf_token_value }}">
+    <link rel="stylesheet" href="/static/tailwind.css">
+</head>
+<body class="min-h-screen bg-slate-50">
+    <div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-8">
+        <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-violet-600">Player Community</p>
+                <h1 class="mt-2 text-3xl font-bold text-slate-950">玩家生态管理</h1>
+                <p class="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
+                    新闻、福利与官方帖子统一先走审批，再进入玩家官网。内容按项目隔离，交互操作通过二级弹窗执行，避免误发布和误删除。
+                </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <form method="get" class="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+                    {% if player_query %}
+                    <input type="hidden" name="player_query" value="{{ player_query }}">
+                    {% endif %}
+                    {% if player_status and player_status != 'all' %}
+                    <input type="hidden" name="player_status" value="{{ player_status }}">
+                    {% endif %}
+                    <select name="project_id" data-project-filter-select class="min-w-[220px] rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none">
+                        <option value="">全部项目</option>
+                        {% for project in project_list %}
+                        <option value="{{ project.id }}" {% if project.id == current_project_id %}selected{% endif %}>{{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="product_id" data-product-filter-select class="min-w-[240px] rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none">
+                        <option value="">全部产品</option>
+                        {% for product in product_options %}
+                        <option value="{{ product.id }}" data-project-id="{{ product.project_id }}" {% if product.id == current_product_id %}selected{% endif %}>{{ product.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">筛选</button>
+                </form>
+                <a href="/admin/site-config" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">官网配置中心</a>
+                <a href="/admin" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">返回管理中心</a>
+            </div>
+        </header>
+
+        <section class="grid gap-4 xl:grid-cols-3">
+            <article class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-violet-600">Newsroom</p>
+                        <h2 class="mt-2 text-xl font-bold text-slate-950">新闻公告</h2>
+                    </div>
+                    <span class="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{{ news_rows|length }} 条</span>
+                </div>
+                <p class="mt-3 text-sm leading-7 text-slate-500">版本公告、活动预告、视频图文统一从这里发起。</p>
+                <button type="button" data-open-editor="news" class="mt-4 inline-flex items-center justify-center rounded-full bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700">
+                    新建新闻
+                </button>
+            </article>
+            <article class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Benefits</p>
+                        <h2 class="mt-2 text-xl font-bold text-slate-950">福利内容</h2>
+                    </div>
+                    <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{{ welfare_rows|length }} 条</span>
+                </div>
+                <p class="mt-3 text-sm leading-7 text-slate-500">礼包码、活动权益和有效期统一管理，不再占满整屏空间。</p>
+                <button type="button" data-open-editor="welfare" class="mt-4 inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
+                    新建福利
+                </button>
+            </article>
+            <article class="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-600">Forum</p>
+                        <h2 class="mt-2 text-xl font-bold text-slate-950">官方帖子</h2>
+                    </div>
+                    <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{{ forum_rows|length }} 条</span>
+                </div>
+                <p class="mt-3 text-sm leading-7 text-slate-500">公告贴、置顶帖和隐藏治理统一放进一个帖子工作流里。</p>
+                <button type="button" data-open-editor="forum" class="mt-4 inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">
+                    新建官方帖
+                </button>
+            </article>
+        </section>
+
+        <section class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-200 px-6 py-5">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Content Board</p>
+                        <h2 class="mt-2 text-2xl font-bold text-slate-950">内容列表工作台</h2>
+                        <p class="mt-2 text-sm leading-7 text-slate-500">切换查看新闻、福利和官方帖子，不再把三块长列表同时摊开。</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" data-list-tab-trigger="news" class="rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">新闻公告 <span class="ml-1 text-xs text-violet-500">{{ news_rows|length }}</span></button>
+                        <button type="button" data-list-tab-trigger="welfare" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">福利内容 <span class="ml-1 text-xs text-slate-400">{{ welfare_rows|length }}</span></button>
+                        <button type="button" data-list-tab-trigger="forum" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">官方帖子 <span class="ml-1 text-xs text-slate-400">{{ forum_rows|length }}</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-6">
+                <div class="mb-5 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                    <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div class="flex-1">
+                            <label for="contentListSearchInput" class="block text-sm font-semibold text-slate-700">列表搜索</label>
+                            <div class="mt-2 flex flex-col gap-3 md:flex-row">
+                                <input
+                                    id="contentListSearchInput"
+                                    type="text"
+                                    placeholder="按标题、项目、状态、摘要或正文关键词筛选当前标签内容"
+                                    class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                                >
+                                <button
+                                    type="button"
+                                    id="contentListSearchClear"
+                                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                                >清空搜索</button>
+                            </div>
+                        </div>
+                        <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+                            <span class="font-semibold text-slate-700">当前显示</span>
+                            <span id="contentListVisibleSummary" class="ml-2">0 / 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div data-list-tab-panel="news" class="space-y-4">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-950">新闻公告列表</h3>
+                            <p class="mt-1 text-sm text-slate-500">按项目和时间快速查看，适合高频编辑和归档。</p>
+                        </div>
+                        <button type="button" data-open-editor="news" class="inline-flex items-center justify-center rounded-full bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700">新建新闻</button>
+                    </div>
+                    <div class="overflow-hidden rounded-[24px] border border-slate-200">
+                        <div data-list-scroll-container="news" class="divide-y divide-slate-100 overflow-y-auto" style="max-height: 520px; scrollbar-gutter: stable;">
+                            {% for item in news_rows %}
+                            <div
+                                data-list-item="news"
+                                data-search="{{ (item.title ~ ' ' ~ item.project_name ~ ' ' ~ item.time_label ~ ' ' ~ item.summary ~ ' ' ~ item.status_label)|lower|e }}"
+                                class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"
+                            >
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        <h4 class="truncate text-base font-semibold text-slate-950">{{ item.title }}</h4>
+                                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ item.status_class }}">{{ item.status_label }}</span>
+                                    </div>
+                                    <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-500">
+                                        <span>{{ item.project_name }}</span>
+                                        <span>·</span>
+                                        <span>{{ item.time_label }}</span>
+                                    </div>
+                                    <p class="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{{ item.summary }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center justify-start gap-2 lg:w-[160px] lg:justify-end">
+                                    <button type="button" data-action="edit" data-kind="news" data-payload="{{ item.edit_payload|tojson|forceescape }}" class="rounded-full bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-700 hover:bg-violet-100">编辑</button>
+                                    <button type="button" data-action="delete" data-kind="news" data-id="{{ item.id }}" data-message="确认归档这条新闻吗？" class="rounded-full bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-100">归档</button>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="px-5 py-8 text-sm text-slate-500">暂无新闻内容。</div>
+                            {% endfor %}
+                            <div data-list-empty="news" class="hidden px-5 py-8 text-sm text-slate-500">当前搜索条件下没有匹配的新闻内容。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div data-list-tab-panel="welfare" class="hidden space-y-4">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-950">福利内容列表</h3>
+                            <p class="mt-1 text-sm text-slate-500">礼包码、有效期与活动说明采用更紧凑的运营视图展示。</p>
+                        </div>
+                        <button type="button" data-open-editor="welfare" class="inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">新建福利</button>
+                    </div>
+                    <div class="overflow-hidden rounded-[24px] border border-slate-200">
+                        <div data-list-scroll-container="welfare" class="divide-y divide-slate-100 overflow-y-auto" style="max-height: 520px; scrollbar-gutter: stable;">
+                            {% for item in welfare_rows %}
+                            <div
+                                data-list-item="welfare"
+                                data-search="{{ (item.title ~ ' ' ~ item.project_name ~ ' ' ~ item.time_label ~ ' ' ~ item.description ~ ' ' ~ item.status_label)|lower|e }}"
+                                class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"
+                            >
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        <h4 class="truncate text-base font-semibold text-slate-950">{{ item.title }}</h4>
+                                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ item.status_class }}">{{ item.status_label }}</span>
+                                    </div>
+                                    <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-500">
+                                        <span>{{ item.project_name }}</span>
+                                        <span>·</span>
+                                        <span>{{ item.time_label }}</span>
+                                    </div>
+                                    <p class="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{{ item.description }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center justify-start gap-2 lg:w-[160px] lg:justify-end">
+                                    <button type="button" data-action="edit" data-kind="welfare" data-payload="{{ item.edit_payload|tojson|forceescape }}" class="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">编辑</button>
+                                    <button type="button" data-action="delete" data-kind="welfare" data-id="{{ item.id }}" data-message="确认归档这条福利吗？" class="rounded-full bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-100">归档</button>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="px-5 py-8 text-sm text-slate-500">暂无福利内容。</div>
+                            {% endfor %}
+                            <div data-list-empty="welfare" class="hidden px-5 py-8 text-sm text-slate-500">当前搜索条件下没有匹配的福利内容。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div data-list-tab-panel="forum" class="hidden space-y-4">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-950">官方帖子列表</h3>
+                            <p class="mt-1 text-sm text-slate-500">高频操作集中在右侧，避免一条帖子占掉过多垂直空间。</p>
+                        </div>
+                        <button type="button" data-open-editor="forum" class="inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">新建官方帖</button>
+                    </div>
+                    <div class="overflow-hidden rounded-[24px] border border-slate-200">
+                        <div data-list-scroll-container="forum" class="divide-y divide-slate-100 overflow-y-auto" style="max-height: 520px; scrollbar-gutter: stable;">
+                            {% for item in forum_rows %}
+                            <div
+                                data-list-item="forum"
+                                data-search="{{ (item.title ~ ' ' ~ item.project_name ~ ' ' ~ item.time_label ~ ' ' ~ item.content ~ ' ' ~ item.status_label)|lower|e }}"
+                                class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"
+                            >
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-3">
+                                        <h4 class="truncate text-base font-semibold text-slate-950">{{ item.title }}</h4>
+                                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold {{ item.status_class }}">{{ item.status_label }}</span>
+                                    </div>
+                                    <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-500">
+                                        <span>{{ item.project_name }}</span>
+                                        <span>·</span>
+                                        <span>{{ item.time_label }}</span>
+                                    </div>
+                                    <p class="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{{ item.content }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center justify-start gap-2 lg:w-[220px] lg:justify-end">
+                                    <button type="button" data-action="edit" data-kind="forum" data-payload="{{ item.edit_payload|tojson|forceescape }}" class="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-200">编辑</button>
+                                    <button type="button" data-action="moderate-post" data-id="{{ item.id }}" data-op="{{ 'unpin' if item.pinned else 'pin' }}" data-message="{{ '确认取消置顶这条帖子吗？' if item.pinned else '确认置顶这条帖子吗？' }}" class="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700 hover:bg-amber-100">{{ '取消置顶' if item.pinned else '置顶' }}</button>
+                                    <button type="button" data-action="moderate-post" data-id="{{ item.id }}" data-op="{{ 'restore' if not item.visible else 'hide' }}" data-message="{{ '确认恢复显示这条帖子吗？' if not item.visible else '确认隐藏这条帖子吗？' }}" class="rounded-full bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-100">{{ '恢复显示' if not item.visible else '隐藏' }}</button>
+                                    <button type="button" data-action="delete" data-kind="forum" data-id="{{ item.id }}" data-message="确认归档这条官方帖子吗？" class="rounded-full bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-100">归档</button>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="px-5 py-8 text-sm text-slate-500">暂无官方帖子。</div>
+                            {% endfor %}
+                            <div data-list-empty="forum" class="hidden px-5 py-8 text-sm text-slate-500">当前搜索条件下没有匹配的官方帖子。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="player-governance-section" class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm scroll-mt-6">
+            <div class="border-b border-slate-200 px-6 py-5">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-950">玩家发言治理</h2>
+                        <p class="mt-1 text-sm text-slate-500">这里改成单玩家治理台。先查到人，再进入弹窗操作，不再把命中结果铺成长列表。</p>
+                    </div>
+                    <form method="get" action="{{ url_for('player_community.community_admin') }}#player-governance-section" class="grid gap-3 md:grid-cols-[1.2fr_0.8fr_auto_auto]">
+                        {% if current_project_id %}
+                        <input type="hidden" name="project_id" value="{{ current_project_id }}">
+                        {% endif %}
+                        {% if current_product_id %}
+                        <input type="hidden" name="product_id" value="{{ current_product_id }}">
+                        {% endif %}
+                        <input type="hidden" name="player_target" id="playerTargetInput" value="{{ player_target or (selected_player.author_key_raw if selected_player else '') }}">
+                        <input
+                            type="text"
+                            name="player_query"
+                            value="{{ player_query }}"
+                            placeholder="按玩家昵称、标识或备注查询"
+                            class="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-sm outline-none"
+                        >
+                        <select name="player_status" class="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm outline-none">
+                            <option value="all" {% if player_status == 'all' %}selected{% endif %}>全部状态</option>
+                            <option value="active" {% if player_status == 'active' %}selected{% endif %}>正常</option>
+                            <option value="muted" {% if player_status == 'muted' %}selected{% endif %}>已禁言</option>
+                            <option value="banned" {% if player_status == 'banned' %}selected{% endif %}>已封禁</option>
+                        </select>
+                        <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">查询玩家</button>
+                        <a href="{{ url_for('player_community.community_admin') }}{% if current_project_id or current_product_id %}?{% if current_project_id %}project_id={{ current_project_id }}{% endif %}{% if current_project_id and current_product_id %}&{% endif %}{% if current_product_id %}product_id={{ current_product_id }}{% endif %}{% endif %}#player-governance-section" class="rounded-2xl border border-slate-200 px-4 py-2.5 text-center text-sm font-medium text-slate-600 hover:bg-slate-50">重置</a>
+                    </form>
+                </div>
+
+                <div class="mt-5 grid gap-3 md:grid-cols-4">
+                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                        <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">总玩家</div>
+                        <div class="mt-2 text-2xl font-bold text-slate-950">{{ player_overview.total }}</div>
+                    </div>
+                    <div class="rounded-2xl bg-emerald-50 px-4 py-4">
+                        <div class="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-500">正常</div>
+                        <div class="mt-2 text-2xl font-bold text-emerald-700">{{ player_overview.active }}</div>
+                    </div>
+                    <div class="rounded-2xl bg-amber-50 px-4 py-4">
+                        <div class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-500">已禁言</div>
+                        <div class="mt-2 text-2xl font-bold text-amber-700">{{ player_overview.muted }}</div>
+                    </div>
+                    <div class="rounded-2xl bg-rose-50 px-4 py-4">
+                        <div class="text-xs font-semibold uppercase tracking-[0.2em] text-rose-600">已封禁</div>
+                        <div class="mt-2 text-2xl font-bold text-rose-700">{{ player_overview.banned }}</div>
+                    </div>
+                </div>
+            </div>
+
+            {% if not player_has_filter %}
+            <div class="px-6 py-8">
+                <div class="rounded-[28px] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Query First</p>
+                    <h3 class="mt-3 text-2xl font-bold text-slate-950">先定位玩家，再治理</h3>
+                    <p class="mx-auto mt-3 max-w-2xl text-sm leading-7 text-slate-500">
+                        输入玩家昵称、访客标识或备注关键词后再查。状态筛选只作为缩小范围的辅助手段，
+                        不再单独拉出大批量玩家，避免玩家增多后页面过长、治理操作失焦。
+                    </p>
+                    <div class="mt-5 flex flex-wrap justify-center gap-3 text-sm">
+                        <span class="rounded-full bg-white px-4 py-2 text-slate-500 shadow-sm">示例：`SmokeUser`</span>
+                        <span class="rounded-full bg-white px-4 py-2 text-slate-500 shadow-sm">示例：`guest:127.0.0.1`</span>
+                        <span class="rounded-full bg-white px-4 py-2 text-slate-500 shadow-sm">状态筛选：已封禁</span>
+                    </div>
+                </div>
+            </div>
+            {% elif not player_candidates %}
+            <div class="px-6 py-8">
+                <div class="rounded-[28px] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">No Match</p>
+                    <h3 class="mt-3 text-2xl font-bold text-slate-950">没有找到匹配玩家</h3>
+                    <p class="mx-auto mt-3 max-w-2xl text-sm leading-7 text-slate-500">
+                        当前关键词与状态组合下没有命中玩家。你可以换更精确的昵称、访客标识，
+                        或先去掉状态限制再查询。
+                    </p>
+                </div>
+            </div>
+            {% else %}
+            <div class="border-t border-slate-200 px-6 py-6">
+                <div class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <aside class="rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Target Finder</p>
+                        <h3 class="mt-3 text-xl font-bold text-slate-950">已命中 {{ player_overview.filtered }} 名玩家</h3>
+                        <p class="mt-2 text-sm leading-7 text-slate-500">
+                            默认只聚焦一个玩家进行治理。若关键词命中多人，请先在这里切换目标，再进入二级弹窗执行操作。
+                        </p>
+
+                        {% if player_candidates|length > 1 %}
+                        <div class="mt-5 space-y-3">
+                            <label for="playerCandidateSelect" class="block text-sm font-semibold text-slate-700">选择治理对象</label>
+                            <select id="playerCandidateSelect" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
+                                {% for player in player_candidates %}
+                                <option
+                                    value="{{ player.author_key_raw }}"
+                                    data-player="{{ player|tojson|forceescape }}"
+                                    {% if selected_player and player.author_key_raw == selected_player.author_key_raw %}selected{% endif %}
+                                >
+                                    {{ player.display_name }} · {{ player.status_label }}{% if player.updated_label %} · {{ player.updated_label }}{% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if player_candidates_truncated %}
+                            <p class="text-xs leading-6 text-amber-600">
+                                当前仅展示前 {{ player_candidate_limit }} 个候选玩家。若结果仍过多，请继续缩小关键词范围。
+                            </p>
+                            {% else %}
+                            <p class="text-xs leading-6 text-slate-400">切换候选玩家后，右侧治理面板会立即更新。</p>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
+                            当前查询已经锁定到单一玩家，可直接在右侧查看状态并进入治理弹窗。
+                        </div>
+                        {% endif %}
+
+                        <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                            <div class="rounded-2xl bg-white px-4 py-4 shadow-sm">
+                                <div class="text-xs uppercase tracking-[0.2em] text-slate-400">查询关键词</div>
+                                <div class="mt-2 text-sm font-medium text-slate-700">{{ player_query }}</div>
+                            </div>
+                            <div class="rounded-2xl bg-white px-4 py-4 shadow-sm">
+                                <div class="text-xs uppercase tracking-[0.2em] text-slate-400">状态筛选</div>
+                                <div class="mt-2 text-sm font-medium text-slate-700">
+                                    {% if player_status == 'active' %}正常
+                                    {% elif player_status == 'muted' %}已禁言
+                                    {% elif player_status == 'banned' %}已封禁
+                                    {% else %}全部状态{% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <div
+                        id="playerFocusPanel"
+                        class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm"
+                        {% if selected_player %}data-player="{{ selected_player|tojson|forceescape }}"{% endif %}
+                    >
+                        {% if selected_player %}
+                        <div class="flex flex-col gap-6">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-600">Focused Player</p>
+                                    <div class="mt-3 flex flex-wrap items-center gap-3">
+                                        <h3 id="playerFocusName" class="text-3xl font-bold text-slate-950">{{ selected_player.display_name }}</h3>
+                                        <span id="playerFocusStatusBadge" class="rounded-full px-2.5 py-1 text-xs font-semibold {{ selected_player.status_badge_class }}">{{ selected_player.status_label }}</span>
+                                    </div>
+                                    <p id="playerFocusSubtitle" class="mt-3 text-sm leading-7 text-slate-500">{{ selected_player.status_detail }}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    id="playerFocusManageButton"
+                                    data-open-player-modal="true"
+                                    data-player="{{ selected_player|tojson|forceescape }}"
+                                    class="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+                                >进入治理弹窗</button>
+                            </div>
+
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-slate-400">玩家标识</div>
+                                    <div id="playerFocusKey" class="mt-2 break-all text-sm font-medium text-slate-700">{{ selected_player.author_key_display }}</div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-slate-400">最近更新</div>
+                                    <div id="playerFocusUpdated" class="mt-2 text-sm font-medium text-slate-700">{{ selected_player.updated_label or '暂无' }}</div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-slate-400">禁言到期</div>
+                                    <div id="playerFocusMutedUntil" class="mt-2 text-sm font-medium text-slate-700">{{ selected_player.muted_until_label }}</div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                                    <div class="text-xs uppercase tracking-[0.18em] text-slate-400">封禁到期</div>
+                                    <div id="playerFocusBannedUntil" class="mt-2 text-sm font-medium text-slate-700">{{ selected_player.banned_until_label }}</div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
+                                <div class="text-sm font-semibold text-slate-700">当前治理备注</div>
+                                <p id="playerFocusNotes" class="mt-3 text-sm leading-7 text-slate-500">{{ selected_player.notes or '暂无备注。进入治理弹窗后可以补充本次处理原因。' }}</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+    </div>
+
+    <div id="pageToast" class="pointer-events-none fixed right-6 top-6 z-[70] hidden rounded-2xl px-4 py-3 text-sm font-medium shadow-lg"></div>
+
+    <div id="playerModal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/50 px-4 py-6">
+        <div class="w-full max-w-3xl overflow-hidden rounded-[32px] bg-white shadow-2xl">
+            <div class="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-600">Player Profile</p>
+                    <h2 id="playerModalName" class="mt-2 text-2xl font-bold text-slate-950">玩家信息</h2>
+                    <p id="playerModalSubtitle" class="mt-1 text-sm text-slate-500">查看玩家状态并执行治理动作。</p>
+                </div>
+                <button type="button" data-close-player-modal class="rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700">关闭</button>
+            </div>
+
+            <div class="max-h-[80vh] overflow-y-auto px-6 py-6">
+                <div class="grid gap-4 md:grid-cols-2">
+                    <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                        <div class="text-xs uppercase tracking-[0.18em] text-slate-400">玩家标识</div>
+                        <div id="playerModalKey" class="mt-2 break-all text-sm font-medium text-slate-700">-</div>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                        <div class="text-xs uppercase tracking-[0.18em] text-slate-400">当前状态</div>
+                        <div class="mt-2 flex items-center gap-3">
+                            <span id="playerModalStatusBadge" class="rounded-full px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-600">未载入</span>
+                            <span id="playerModalStatusText" class="text-sm text-slate-500">-</span>
+                        </div>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                        <div class="text-xs uppercase tracking-[0.18em] text-slate-400">禁言到期</div>
+                        <div id="playerModalMutedUntil" class="mt-2 text-sm font-medium text-slate-700">未设置</div>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 px-5 py-4">
+                        <div class="text-xs uppercase tracking-[0.18em] text-slate-400">封禁到期</div>
+                        <div id="playerModalBannedUntil" class="mt-2 text-sm font-medium text-slate-700">未设置</div>
+                    </div>
+                </div>
+
+                <div class="mt-5 rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
+                    <div class="grid gap-4 md:grid-cols-[1fr_180px]">
+                        <div>
+                            <label class="text-sm font-semibold text-slate-700">管理员备注</label>
+                            <textarea id="playerActionNote" class="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" placeholder="记录本次治理原因，便于追溯。"></textarea>
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-slate-700">时长设置</label>
+                            <select id="playerActionDurationPreset" class="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
+                                <option value="1">1 小时</option>
+                                <option value="12">12 小时</option>
+                                <option value="24" selected>24 小时</option>
+                                <option value="72">3 天</option>
+                                <option value="168">7 天</option>
+                                <option value="720">30 天</option>
+                                <option value="0">永久</option>
+                                <option value="custom">自定义</option>
+                            </select>
+                            <input id="playerActionCustomHours" type="number" min="1" step="1" class="mt-3 hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" placeholder="输入小时数">
+                            <p class="mt-2 text-xs leading-6 text-slate-400">禁言默认使用这个时长；封禁可选择永久或自定义时长。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 rounded-[28px] border border-slate-200 bg-white p-5">
+                    <div class="text-sm font-semibold text-slate-700">可执行动作</div>
+                    <div id="playerActionButtons" class="mt-4 flex flex-wrap gap-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="editorModal" class="fixed inset-0 z-40 hidden items-center justify-center bg-black/50 px-4 py-6">
+        <div class="w-full max-w-4xl overflow-hidden rounded-[32px] bg-white shadow-2xl">
+            <div class="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                <div>
+                    <p id="editorEyebrow" class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">内容编辑</p>
+                    <h2 id="editorTitle" class="mt-2 text-2xl font-bold text-slate-950">新建内容</h2>
+                    <p id="editorHint" class="mt-1 text-sm text-slate-500">所有内容先保存并提交审批，再进入前台展示。</p>
+                </div>
+                <button type="button" data-close-editor class="rounded-full border border-slate-200 px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700">关闭</button>
+            </div>
+
+            <div class="max-h-[80vh] overflow-y-auto px-6 py-6">
+                <form id="newsForm" data-form-type="news" class="hidden space-y-5">
+                    <input type="hidden" name="edit_id" value="">
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <input name="title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="新闻标题" required>
+                        <input name="kind" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="类型，如版本公告 / 活动预告">
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <select name="project_id" data-project-select class="w-full rounded-2xl border border-slate-200 px-4 py-3" required>
+                            <option value="">选择所属项目</option>
+                            {% for project in project_list %}
+                            <option value="{{ project.id }}" {% if project.id == current_project_id %}selected{% endif %}>{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select name="product_id" data-product-select class="w-full rounded-2xl border border-slate-200 px-4 py-3" required>
+                            <option value="">选择所属产品</option>
+                            {% for product in product_options %}
+                            <option value="{{ product.id }}" data-project-id="{{ product.project_id }}" {% if product.id == current_product_id %}selected{% endif %}>{{ product.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <textarea name="summary" class="min-h-[96px] w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="摘要"></textarea>
+                    <textarea name="content" class="min-h-[180px] w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="正文内容"></textarea>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                            <input type="hidden" name="video_url" value="">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="text-sm font-semibold text-slate-900">视频素材</div>
+                                    <div class="mt-1 text-xs text-slate-500">选择本地视频后将上传到当前项目媒体库。</div>
+                                </div>
+                                <button type="button" data-clear-video class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空视频</button>
+                            </div>
+                            <input type="file" data-video-input accept="video/*" class="mt-3 block w-full text-sm text-slate-600">
+                            <div data-video-preview class="mt-3 hidden"></div>
+                        </div>
+                        <label class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
+                            <input type="checkbox" name="pinned">
+                            首页推荐
+                        </label>
+                    </div>
+                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <input type="hidden" name="media_urls" value="[]">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">图片素材</div>
+                                <div class="mt-1 text-xs text-slate-500">支持多图上传，上传后前台直接显示图片，不再显示链接。</div>
+                            </div>
+                            <button type="button" data-clear-images class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空图片</button>
+                        </div>
+                        <input type="file" data-image-input accept="image/*" multiple class="mt-3 block w-full text-sm text-slate-600">
+                        <div data-image-preview class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button class="rounded-full bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700">提交审批</button>
+                        <button type="button" data-close-editor class="rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">取消</button>
+                        <span id="newsResult" class="text-sm text-slate-500"></span>
+                    </div>
+                </form>
+
+                <form id="welfareForm" data-form-type="welfare" class="hidden space-y-5">
+                    <input type="hidden" name="edit_id" value="">
+                    <input name="title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="福利标题" required>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <select name="project_id" data-project-select class="w-full rounded-2xl border border-slate-200 px-4 py-3" required>
+                            <option value="">选择所属项目</option>
+                            {% for project in project_list %}
+                            <option value="{{ project.id }}" {% if project.id == current_project_id %}selected{% endif %}>{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select name="product_id" data-product-select class="w-full rounded-2xl border border-slate-200 px-4 py-3" required>
+                            <option value="">选择所属产品</option>
+                            {% for product in product_options %}
+                            <option value="{{ product.id }}" data-project-id="{{ product.project_id }}" {% if product.id == current_product_id %}selected{% endif %}>{{ product.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <input name="redeem_code" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="兑换码">
+                        <input name="valid_until" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="有效期，如 2026-12-31">
+                        <input name="status" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="状态，如进行中">
+                    </div>
+                    <textarea name="description" class="min-h-[180px] w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="福利说明"></textarea>
+                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <input type="hidden" name="video_url" value="">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">视频素材</div>
+                                <div class="mt-1 text-xs text-slate-500">礼包讲解、活动宣传等视频直接上传到项目媒体库。</div>
+                            </div>
+                            <button type="button" data-clear-video class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空视频</button>
+                        </div>
+                        <input type="file" data-video-input accept="video/*" class="mt-3 block w-full text-sm text-slate-600">
+                        <div data-video-preview class="mt-3 hidden"></div>
+                    </div>
+                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <input type="hidden" name="media_urls" value="[]">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">图片素材</div>
+                                <div class="mt-1 text-xs text-slate-500">礼包卡片和福利宣传图统一本地上传，随项目保存。</div>
+                            </div>
+                            <button type="button" data-clear-images class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空图片</button>
+                        </div>
+                        <input type="file" data-image-input accept="image/*" multiple class="mt-3 block w-full text-sm text-slate-600">
+                        <div data-image-preview class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button class="rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700">提交审批</button>
+                        <button type="button" data-close-editor class="rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">取消</button>
+                        <span id="welfareResult" class="text-sm text-slate-500"></span>
+                    </div>
+                </form>
+
+                <form id="forumForm" data-form-type="forum" class="hidden space-y-5">
+                    <input type="hidden" name="edit_id" value="">
+                    <input name="title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="帖子标题" required>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <select name="project_id" data-project-select class="w-full rounded-2xl border border-slate-200 px-4 py-3" required>
+                            <option value="">选择所属项目</option>
+                            {% for project in project_list %}
+                            <option value="{{ project.id }}" {% if project.id == current_project_id %}selected{% endif %}>{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select name="product_id" data-product-select class="w-full rounded-2xl border border-slate-200 px-4 py-3" required>
+                            <option value="">选择所属产品</option>
+                            {% for product in product_options %}
+                            <option value="{{ product.id }}" data-project-id="{{ product.project_id }}" {% if product.id == current_product_id %}selected{% endif %}>{{ product.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <select name="category_id" class="w-full rounded-2xl border border-slate-200 px-4 py-3">
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <label class="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
+                            <input type="checkbox" name="pinned">
+                            置顶发布
+                        </label>
+                    </div>
+                    <textarea name="content" class="min-h-[180px] w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="帖子正文"></textarea>
+                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <input type="hidden" name="video_url" value="">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">视频素材</div>
+                                <div class="mt-1 text-xs text-slate-500">帖子里引用的视频统一走本地上传，前台直接播放。</div>
+                            </div>
+                            <button type="button" data-clear-video class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空视频</button>
+                        </div>
+                        <input type="file" data-video-input accept="video/*" class="mt-3 block w-full text-sm text-slate-600">
+                        <div data-video-preview class="mt-3 hidden"></div>
+                    </div>
+                    <div class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                        <input type="hidden" name="media_urls" value="[]">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-900">图片素材</div>
+                                <div class="mt-1 text-xs text-slate-500">帖子截图和官方宣传图统一上传，避免链接失效。</div>
+                            </div>
+                            <button type="button" data-clear-images class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空图片</button>
+                        </div>
+                        <input type="file" data-image-input accept="image/*" multiple class="mt-3 block w-full text-sm text-slate-600">
+                        <div data-image-preview class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"></div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button class="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">提交审批</button>
+                        <button type="button" data-close-editor class="rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">取消</button>
+                        <span id="forumResult" class="text-sm text-slate-500"></span>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirmModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 px-4 py-6">
+        <div class="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-rose-600">Sensitive Action</p>
+            <h3 class="mt-2 text-2xl font-bold text-slate-950">请确认本次操作</h3>
+            <p id="confirmMessage" class="mt-3 text-sm leading-7 text-slate-500">确认执行该操作吗？</p>
+            <div class="mt-6 flex items-center justify-end gap-3">
+                <button type="button" data-close-confirm class="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">取消</button>
+                <button type="button" id="confirmProceedBtn" data-confirm-proceed class="rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 shadow-sm">确认执行</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+        var playerModal = document.getElementById('playerModal');
+        var editorModal = document.getElementById('editorModal');
+        var confirmModal = document.getElementById('confirmModal');
+        var toast = document.getElementById('pageToast');
+        var playerModalName = document.getElementById('playerModalName');
+        var playerModalSubtitle = document.getElementById('playerModalSubtitle');
+        var playerModalKey = document.getElementById('playerModalKey');
+        var playerModalStatusBadge = document.getElementById('playerModalStatusBadge');
+        var playerModalStatusText = document.getElementById('playerModalStatusText');
+        var playerModalMutedUntil = document.getElementById('playerModalMutedUntil');
+        var playerModalBannedUntil = document.getElementById('playerModalBannedUntil');
+        var playerActionNote = document.getElementById('playerActionNote');
+        var playerActionButtons = document.getElementById('playerActionButtons');
+        var playerActionDurationPreset = document.getElementById('playerActionDurationPreset');
+        var playerActionCustomHours = document.getElementById('playerActionCustomHours');
+        var playerCandidateSelect = document.getElementById('playerCandidateSelect');
+        var playerTargetInput = document.getElementById('playerTargetInput');
+        var playerFocusPanel = document.getElementById('playerFocusPanel');
+        var playerFocusName = document.getElementById('playerFocusName');
+        var playerFocusStatusBadge = document.getElementById('playerFocusStatusBadge');
+        var playerFocusSubtitle = document.getElementById('playerFocusSubtitle');
+        var playerFocusKey = document.getElementById('playerFocusKey');
+        var playerFocusUpdated = document.getElementById('playerFocusUpdated');
+        var playerFocusMutedUntil = document.getElementById('playerFocusMutedUntil');
+        var playerFocusBannedUntil = document.getElementById('playerFocusBannedUntil');
+        var playerFocusNotes = document.getElementById('playerFocusNotes');
+        var playerFocusManageButton = document.getElementById('playerFocusManageButton');
+        var editorEyebrow = document.getElementById('editorEyebrow');
+        var editorTitle = document.getElementById('editorTitle');
+        var editorHint = document.getElementById('editorHint');
+        var confirmMessage = document.getElementById('confirmMessage');
+        var contentListSearchInput = document.getElementById('contentListSearchInput');
+        var contentListSearchClear = document.getElementById('contentListSearchClear');
+        var contentListVisibleSummary = document.getElementById('contentListVisibleSummary');
+        var listTabTriggers = Array.prototype.slice.call(document.querySelectorAll('[data-list-tab-trigger]'));
+        var listTabPanels = Array.prototype.slice.call(document.querySelectorAll('[data-list-tab-panel]'));
+        var activeConfirmAction = null;
+        var activePlayerPayload = null;
+        var activeListTab = 'news';
+
+        var forms = {
+            news: document.getElementById('newsForm'),
+            welfare: document.getElementById('welfareForm'),
+            forum: document.getElementById('forumForm')
+        };
+
+        var formMeta = {
+            news: {
+                eyebrow: '新闻公告',
+                titleCreate: '新建新闻',
+                titleEdit: '编辑新闻',
+                hint: '新闻支持摘要、正文、图片、视频和首页推荐位。',
+                endpoint: '/admin/community/news',
+                resultId: 'newsResult',
+                successText: '新闻已提交审批'
+            },
+            welfare: {
+                eyebrow: '福利内容',
+                titleCreate: '新建福利',
+                titleEdit: '编辑福利',
+                hint: '福利支持兑换码、有效期、状态和多媒体说明。',
+                endpoint: '/admin/community/welfare',
+                resultId: 'welfareResult',
+                successText: '福利已提交审批'
+            },
+            forum: {
+                eyebrow: '官方帖子',
+                titleCreate: '新建官方帖',
+                titleEdit: '编辑官方帖',
+                hint: '官方帖子支持分类、置顶和显示状态治理。',
+                endpoint: '/admin/community/forum-post',
+                resultId: 'forumResult',
+                successText: '官方帖子已提交审批'
+            }
+        };
+        var productOptions = {{ product_options|tojson }};
+        var currentProjectId = {{ current_project_id|tojson }};
+        var currentProductId = {{ current_product_id|tojson }};
+
+        function getField(form, name) {
+            return form ? form.elements.namedItem(name) : null;
+        }
+
+        function projectIdForProduct(productId) {
+            productId = String(productId || '');
+            var matched = productOptions.find(function (item) {
+                return String(item.id || '') === productId;
+            });
+            return matched ? String(matched.project_id || '') : '';
+        }
+
+        function setSelectValue(select, value) {
+            if (!select) return;
+            select.value = value == null ? '' : String(value);
+        }
+
+        function syncProductSelectOptions(select, projectId, selectedValue, emptyLabel) {
+            if (!select) return;
+            var allowed = String(projectId || '');
+            var selected = String(selectedValue || '');
+            var firstOption = select.querySelector('option[value=""]');
+            Array.prototype.slice.call(select.querySelectorAll('option')).forEach(function (option) {
+                if (!option.value) return;
+                var optionProjectId = option.getAttribute('data-project-id') || '';
+                var visible = !allowed || optionProjectId === allowed;
+                option.hidden = !visible;
+                option.disabled = !visible;
+            });
+            if (firstOption && emptyLabel) {
+                firstOption.textContent = emptyLabel;
+            }
+            if (selected) {
+                var selectedOption = select.querySelector('option[value="' + CSS.escape(selected) + '"]');
+                if (!selectedOption || selectedOption.hidden || selectedOption.disabled) {
+                    select.value = '';
+                } else {
+                    select.value = selected;
+                }
+            }
+        }
+
+        function syncScopedProductFilters() {
+            document.querySelectorAll('form [data-project-select]').forEach(function (projectSelect) {
+                var form = projectSelect.closest('form');
+                var productSelect = form ? form.querySelector('[data-product-select]') : null;
+                syncProductSelectOptions(productSelect, projectSelect.value, productSelect ? productSelect.value : '', '选择所属产品');
+            });
+            var filterProjectSelect = document.querySelector('[data-project-filter-select]');
+            var filterProductSelect = document.querySelector('[data-product-filter-select]');
+            syncProductSelectOptions(filterProductSelect, filterProjectSelect ? filterProjectSelect.value : '', filterProductSelect ? filterProductSelect.value : '', '全部产品');
+        }
+
+        function getVideoHidden(form) {
+            return form ? form.querySelector('input[name="video_url"]') : null;
+        }
+
+        function getMediaHidden(form) {
+            return form ? form.querySelector('input[name="media_urls"]') : null;
+        }
+
+        function parseMediaUrls(rawValue) {
+            if (Array.isArray(rawValue)) {
+                return rawValue.map(function (item) { return String(item || '').trim(); }).filter(Boolean);
+            }
+            var raw = String(rawValue || '').trim();
+            if (!raw) return [];
+            try {
+                var parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    return parsed.map(function (item) { return String(item || '').trim(); }).filter(Boolean);
+                }
+            } catch (error) {
+                // fall back to newline/comma parsing
+            }
+            return raw.replace(/\r/g, '').split(/\n|,/).map(function (item) { return item.trim(); }).filter(Boolean);
+        }
+
+        function updateMediaHidden(form, urls) {
+            var hidden = getMediaHidden(form);
+            if (!hidden) return;
+            hidden.value = JSON.stringify((urls || []).filter(Boolean));
+        }
+
+        function createMediaCard(url) {
+            var wrapper = document.createElement('div');
+            wrapper.className = 'overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm';
+            var image = document.createElement('img');
+            image.src = url;
+            image.alt = 'media';
+            image.className = 'h-28 w-full object-cover';
+            wrapper.appendChild(image);
+            var caption = document.createElement('div');
+            caption.className = 'px-3 py-2 text-xs text-slate-500 break-all';
+            caption.textContent = url.split('/').slice(-1)[0] || url;
+            wrapper.appendChild(caption);
+            return wrapper;
+        }
+
+        function renderImagePreviews(form, urls) {
+            var box = form ? form.querySelector('[data-image-preview]') : null;
+            if (!box) return;
+            box.innerHTML = '';
+            (urls || []).forEach(function (url) {
+                box.appendChild(createMediaCard(url));
+            });
+        }
+
+        function setImageValues(form, urls) {
+            var normalized = parseMediaUrls(urls);
+            updateMediaHidden(form, normalized);
+            renderImagePreviews(form, normalized);
+        }
+
+        function renderVideoPreview(form, url) {
+            var box = form ? form.querySelector('[data-video-preview]') : null;
+            if (!box) return;
+            var videoUrl = String(url || '').trim();
+            box.innerHTML = '';
+            box.classList.toggle('hidden', !videoUrl);
+            if (!videoUrl) return;
+            var video = document.createElement('video');
+            video.src = videoUrl;
+            video.controls = true;
+            video.className = 'w-full rounded-2xl border border-slate-200 bg-black';
+            box.appendChild(video);
+            var caption = document.createElement('div');
+            caption.className = 'mt-2 text-xs text-slate-500 break-all';
+            caption.textContent = videoUrl.split('/').slice(-1)[0] || videoUrl;
+            box.appendChild(caption);
+        }
+
+        function setVideoValue(form, url) {
+            var hidden = getVideoHidden(form);
+            if (hidden) hidden.value = String(url || '').trim();
+            renderVideoPreview(form, hidden ? hidden.value : url);
+        }
+
+        async function uploadCommunityFiles(form, files, acceptKind) {
+            var projectField = getField(form, 'project_id');
+            var projectId = String(projectField ? projectField.value : '');
+            if (!projectId) {
+                throw new Error('请先选择所属项目，再上传媒体素材。');
+            }
+            var fd = new FormData();
+            Array.prototype.slice.call(files || []).forEach(function (file) {
+                fd.append('files', file);
+            });
+            fd.append('scope', 'community');
+            fd.append('project_id', projectId);
+            var response = await fetch('/admin/media/upload', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                credentials: 'same-origin',
+                body: fd
+            });
+            var result = {};
+            try {
+                result = await response.json();
+            } catch (error) {
+                result = {};
+            }
+            if (!response.ok || result.error) {
+                throw new Error(result.error || '媒体上传失败，请稍后重试。');
+            }
+            var uploadedFiles = Array.isArray(result.files) && result.files.length ? result.files : (result.file ? [result.file] : []);
+            if (acceptKind === 'video') {
+                var videoFile = uploadedFiles.find(function (item) {
+                    return String(item.mime || '').indexOf('video/') === 0;
+                }) || uploadedFiles[0];
+                return videoFile ? String(videoFile.url || '').trim() : '';
+            }
+            return uploadedFiles
+                .map(function (item) { return String(item.url || '').trim(); })
+                .filter(Boolean);
+        }
+
+        function applyListSearch() {
+            var query = ((contentListSearchInput && contentListSearchInput.value) || '').trim().toLowerCase();
+            var activePanel = document.querySelector('[data-list-tab-panel="' + activeListTab + '"]');
+            var visibleCount = 0;
+            var totalCount = 0;
+
+            listTabPanels.forEach(function (panel) {
+                var panelKey = panel.getAttribute('data-list-tab-panel');
+                var rows = Array.prototype.slice.call(panel.querySelectorAll('[data-list-item="' + panelKey + '"]'));
+                var emptyNode = panel.querySelector('[data-list-empty="' + panelKey + '"]');
+                var localVisible = 0;
+                rows.forEach(function (row) {
+                    var haystack = (row.getAttribute('data-search') || '').toLowerCase();
+                    var matched = !query || haystack.indexOf(query) !== -1;
+                    row.classList.toggle('hidden', !matched);
+                    if (matched) {
+                        localVisible += 1;
+                    }
+                });
+                if (emptyNode) {
+                    emptyNode.classList.toggle('hidden', localVisible > 0 || !query);
+                }
+                if (panel === activePanel) {
+                    visibleCount = localVisible;
+                    totalCount = rows.length;
+                }
+            });
+
+            if (contentListVisibleSummary) {
+                contentListVisibleSummary.textContent = visibleCount + ' / ' + totalCount;
+            }
+        }
+
+        function switchListTab(nextTab) {
+            var tabClassMap = {
+                news: {
+                    active: 'rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700',
+                    inactive: 'rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'
+                },
+                welfare: {
+                    active: 'rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700',
+                    inactive: 'rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'
+                },
+                forum: {
+                    active: 'rounded-full border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800',
+                    inactive: 'rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'
+                }
+            };
+            listTabTriggers.forEach(function (trigger) {
+                var key = trigger.getAttribute('data-list-tab-trigger');
+                var theme = tabClassMap[key] || tabClassMap.news;
+                var active = key === nextTab;
+                trigger.className = active ? theme.active : theme.inactive;
+            });
+            listTabPanels.forEach(function (panel) {
+                panel.classList.toggle('hidden', panel.getAttribute('data-list-tab-panel') !== nextTab);
+            });
+            activeListTab = nextTab;
+            applyListSearch();
+        }
+
+        function toggleModal(modal, visible) {
+            if (!modal) return;
+            modal.classList.toggle('hidden', !visible);
+            modal.classList.toggle('flex', visible);
+        }
+
+        function showToast(message, tone) {
+            if (!toast || !message) return;
+            toast.textContent = message;
+            toast.className = 'pointer-events-none fixed right-6 top-6 z-[70] rounded-2xl px-4 py-3 text-sm font-medium shadow-lg';
+            if (tone === 'error') {
+                toast.classList.add('bg-red-600', 'text-white');
+            } else {
+                toast.classList.add('bg-slate-950', 'text-white');
+            }
+            toast.classList.remove('hidden');
+            window.clearTimeout(showToast._timer);
+            showToast._timer = window.setTimeout(function () {
+                toast.classList.add('hidden');
+            }, 2600);
+        }
+
+        function resetForm(form, resultId) {
+            if (!form) return;
+            form.reset();
+            var editField = getField(form, 'edit_id');
+            if (editField) editField.value = '';
+            setVideoValue(form, '');
+            setImageValues(form, []);
+            var projectField = getField(form, 'project_id');
+            var productField = getField(form, 'product_id');
+            if (projectField) {
+                setSelectValue(projectField, currentProjectId || projectField.value || '');
+            }
+            if (productField) {
+                var fallbackProject = projectField ? projectField.value : projectIdForProduct(currentProductId);
+                syncProductSelectOptions(productField, fallbackProject, currentProductId || '', '选择所属产品');
+            }
+            var resultNode = document.getElementById(resultId);
+            if (resultNode) resultNode.textContent = '';
+        }
+
+        function resetAllForms() {
+            Object.keys(forms).forEach(function (type) {
+                var form = forms[type];
+                if (!form) return;
+                resetForm(form, formMeta[type].resultId);
+                form.classList.add('hidden');
+            });
+        }
+
+        function fillForm(form, payload) {
+            if (!form || !payload) return;
+            Object.keys(payload).forEach(function (key) {
+                var field = getField(form, key);
+                if (key === 'media_urls' || key === 'video_url') return;
+                if (!field) return;
+                if (field.type === 'checkbox') {
+                    field.checked = !!payload[key];
+                } else {
+                    field.value = payload[key] == null ? '' : String(payload[key]);
+                }
+            });
+            if (payload.project_id && !payload.product_id) {
+                var currentProductField = getField(form, 'product_id');
+                if (currentProductField && currentProductField.value) {
+                    payload.product_id = currentProductField.value;
+                }
+            }
+            if (payload.product_id && !payload.project_id) {
+                payload.project_id = projectIdForProduct(payload.product_id);
+            }
+            var projectField = getField(form, 'project_id');
+            var productField = getField(form, 'product_id');
+            if (projectField) {
+                setSelectValue(projectField, payload.project_id || currentProjectId || '');
+            }
+            if (productField) {
+                syncProductSelectOptions(productField, projectField ? projectField.value : '', payload.product_id || currentProductId || '', '选择所属产品');
+            }
+            setVideoValue(form, payload.video_url || '');
+            setImageValues(form, payload.media_urls || []);
+        }
+
+        function openEditor(type, payload) {
+            var meta = formMeta[type];
+            var form = forms[type];
+            if (!meta || !form) return;
+            resetAllForms();
+            editorEyebrow.textContent = meta.eyebrow;
+            editorTitle.textContent = payload && payload.id ? meta.titleEdit : meta.titleCreate;
+            editorHint.textContent = meta.hint;
+            form.classList.remove('hidden');
+            fillForm(form, payload || {});
+            toggleModal(editorModal, true);
+        }
+
+        function closeEditor() {
+            toggleModal(editorModal, false);
+        }
+
+        function resolveDurationHours() {
+            if (playerActionDurationPreset.value === 'custom') {
+                return Math.max(1, parseInt(playerActionCustomHours.value || '0', 10) || 0);
+            }
+            return parseInt(playerActionDurationPreset.value || '0', 10) || 0;
+        }
+
+        function durationLabel(hours) {
+            if (!hours) return '永久';
+            if (hours % 24 === 0) {
+                return (hours / 24) + ' 天';
+            }
+            return hours + ' 小时';
+        }
+
+        function closePlayerModal() {
+            activePlayerPayload = null;
+            toggleModal(playerModal, false);
+        }
+
+        function playerStatusBadgeClass(status) {
+            if (status === 'banned') return 'bg-rose-100 text-rose-700';
+            if (status === 'muted') return 'bg-amber-100 text-amber-700';
+            return 'bg-emerald-100 text-emerald-700';
+        }
+
+        function syncFocusedPlayer(player) {
+            if (!playerFocusPanel || !player) return;
+            playerFocusPanel.setAttribute('data-player', JSON.stringify(player));
+            if (playerFocusName) playerFocusName.textContent = player.display_name || '未命名玩家';
+            if (playerFocusStatusBadge) {
+                playerFocusStatusBadge.textContent = player.status_label || '正常';
+                playerFocusStatusBadge.className = 'rounded-full px-2.5 py-1 text-xs font-semibold ' + playerStatusBadgeClass(player.effective_status);
+            }
+            if (playerFocusSubtitle) playerFocusSubtitle.textContent = player.status_detail || '当前无生效中的治理状态。';
+            if (playerFocusKey) playerFocusKey.textContent = player.author_key_display || player.author_key_raw || '-';
+            if (playerFocusUpdated) playerFocusUpdated.textContent = player.updated_label || '暂无';
+            if (playerFocusMutedUntil) playerFocusMutedUntil.textContent = player.muted_until_label || '未设置';
+            if (playerFocusBannedUntil) playerFocusBannedUntil.textContent = player.banned_until_label || '未设置';
+            if (playerFocusNotes) {
+                playerFocusNotes.textContent = player.notes || '暂无备注。进入治理弹窗后可以补充本次处理原因。';
+            }
+            if (playerFocusManageButton) {
+                playerFocusManageButton.setAttribute('data-player', JSON.stringify(player));
+            }
+        }
+
+        function renderPlayerActions(player) {
+            var actions = [];
+            if (player.can_mute) {
+                actions.push({
+                    op: 'mute',
+                    label: player.effective_status === 'muted' ? '延长禁言' : '禁言玩家',
+                    className: 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                });
+            }
+            if (player.can_unmute) {
+                actions.push({
+                    op: 'unmute',
+                    label: '解除禁言',
+                    className: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                });
+            }
+            if (player.can_ban) {
+                actions.push({
+                    op: 'ban',
+                    label: '封禁玩家',
+                    className: 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                });
+            }
+            if (player.can_unban) {
+                actions.push({
+                    op: 'unban',
+                    label: '解除封禁',
+                    className: 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                });
+            }
+
+            playerActionButtons.innerHTML = '';
+            actions.forEach(function (item) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'rounded-2xl px-4 py-2.5 text-sm font-semibold transition ' + item.className;
+                button.textContent = item.label;
+                button.setAttribute('data-player-op', item.op);
+                playerActionButtons.appendChild(button);
+            });
+        }
+
+        function openPlayerModal(payload) {
+            activePlayerPayload = payload || {};
+            playerModalName.textContent = payload.display_name || '玩家信息';
+            playerModalSubtitle.textContent = '最近更新：' + (payload.updated_label || '暂无') + ' · ' + (payload.status_detail || '暂无状态说明');
+            playerModalKey.textContent = payload.author_key_raw || payload.author_key_display || '-';
+            playerModalStatusBadge.textContent = payload.status_label || '正常';
+            playerModalStatusBadge.className = 'rounded-full px-2.5 py-1 text-xs font-semibold ' + playerStatusBadgeClass(payload.effective_status);
+            playerModalStatusText.textContent = payload.status_detail || '当前无生效中的治理动作。';
+            playerModalMutedUntil.textContent = payload.muted_until_label || '未设置';
+            playerModalBannedUntil.textContent = payload.banned_until_label || '未设置';
+            playerActionNote.value = payload.notes || '';
+            playerActionDurationPreset.value = payload.effective_status === 'banned' ? '0' : '24';
+            playerActionCustomHours.value = '';
+            playerActionCustomHours.classList.add('hidden');
+            renderPlayerActions(payload);
+            toggleModal(playerModal, true);
+        }
+
+        function openConfirm(message, callback) {
+            activeConfirmAction = callback || null;
+            confirmMessage.textContent = message || '确认执行该操作吗？';
+            toggleModal(confirmModal, true);
+        }
+
+        function closeConfirm() {
+            activeConfirmAction = null;
+            toggleModal(confirmModal, false);
+        }
+
+        function parsePayload(raw) {
+            if (!raw) return {};
+            try {
+                return JSON.parse(raw);
+            } catch (error) {
+                showToast('编辑数据解析失败，请刷新页面后重试。', 'error');
+                return {};
+            }
+        }
+
+        function collectMediaUrls(fd) {
+            return parseMediaUrls(fd.get('media_urls'));
+        }
+
+        async function postJson(url, data) {
+            var response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(data || {})
+            });
+            var result = {};
+            try {
+                result = await response.json();
+            } catch (error) {
+                result = {};
+            }
+            if (!response.ok || result.error) {
+                throw new Error(result.error || '请求失败，请稍后重试。');
+            }
+            return result;
+        }
+
+        async function submitForm(type, form) {
+            var meta = formMeta[type];
+            if (!meta || !form) return;
+            var fd = new FormData(form);
+            var payload = {};
+            fd.forEach(function (value, key) {
+                payload[key] = value;
+            });
+            payload.project_id = payload.project_id || projectIdForProduct(payload.product_id || '');
+            payload.media_urls = collectMediaUrls(fd);
+            payload.video_url = String(fd.get('video_url') || '').trim();
+            if (type === 'news' || type === 'forum') {
+                payload.pinned = fd.get('pinned') !== null;
+            }
+            var resultNode = document.getElementById(meta.resultId);
+            if (resultNode) resultNode.textContent = '提交中...';
+            try {
+                await postJson(meta.endpoint, payload);
+                if (resultNode) resultNode.textContent = meta.successText;
+                showToast(meta.successText);
+                window.setTimeout(function () { window.location.reload(); }, 500);
+            } catch (error) {
+                if (resultNode) resultNode.textContent = error.message;
+                showToast(error.message, 'error');
+            }
+        }
+
+        var deleteEndpoints = {
+            news: function (id) { return '/admin/community/news/' + encodeURIComponent(id) + '/delete'; },
+            welfare: function (id) { return '/admin/community/welfare/' + encodeURIComponent(id) + '/delete'; },
+            forum: function (id) { return '/admin/community/forum-post/' + encodeURIComponent(id) + '/delete'; }
+        };
+
+        document.addEventListener('click', function (event) {
+            var trigger = event.target.closest('[data-open-editor],[data-open-player-modal],[data-player-op],[data-action],[data-close-player-modal],[data-close-editor],[data-close-confirm],[data-confirm-proceed]');
+            if (!trigger) return;
+
+            if (trigger.hasAttribute('data-open-editor')) {
+                openEditor(trigger.getAttribute('data-open-editor'), {});
+                return;
+            }
+
+            if (trigger.hasAttribute('data-open-player-modal')) {
+                openPlayerModal(parsePayload(trigger.getAttribute('data-player')));
+                return;
+            }
+
+            if (trigger.hasAttribute('data-close-player-modal')) {
+                closePlayerModal();
+                return;
+            }
+
+            if (trigger.hasAttribute('data-close-editor')) {
+                closeEditor();
+                return;
+            }
+
+            if (trigger.hasAttribute('data-close-confirm')) {
+                closeConfirm();
+                return;
+            }
+
+            if (trigger.hasAttribute('data-confirm-proceed')) {
+                if (typeof activeConfirmAction === 'function') activeConfirmAction();
+                closeConfirm();
+                return;
+            }
+
+            if (trigger.hasAttribute('data-player-op')) {
+                if (!activePlayerPayload || !activePlayerPayload.author_key_raw) {
+                    showToast('玩家信息未正确加载，请重新打开弹窗。', 'error');
+                    return;
+                }
+                var playerOp = trigger.getAttribute('data-player-op');
+                var hours = (playerOp === 'mute' || playerOp === 'ban') ? resolveDurationHours() : 0;
+                if ((playerOp === 'mute' || playerOp === 'ban') && playerActionDurationPreset.value === 'custom' && hours <= 0) {
+                    showToast('请先填写有效的时长。', 'error');
+                    return;
+                }
+                var opLabelMap = {
+                    mute: '禁言',
+                    unmute: '解除禁言',
+                    ban: '封禁',
+                    unban: '解除封禁'
+                };
+                var detail = (playerOp === 'mute' || playerOp === 'ban') ? '，时长：' + durationLabel(hours) : '';
+                openConfirm('确认对该玩家执行“' + opLabelMap[playerOp] + '”操作吗？' + detail, async function () {
+                    try {
+                        await postJson('/admin/community/player/' + encodeURIComponent(activePlayerPayload.author_key_raw) + '/moderate', {
+                            action: playerOp,
+                            duration_hours: hours,
+                            note: playerActionNote.value || ''
+                        });
+                        showToast('玩家状态已更新');
+                        window.setTimeout(function () { window.location.reload(); }, 350);
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    }
+                });
+                return;
+            }
+
+            var action = trigger.getAttribute('data-action');
+            if (!action) return;
+
+            if (action === 'edit') {
+                openEditor(trigger.getAttribute('data-kind'), parsePayload(trigger.getAttribute('data-payload')));
+                return;
+            }
+
+            if (action === 'delete') {
+                var deleteKind = trigger.getAttribute('data-kind');
+                var deleteId = trigger.getAttribute('data-id');
+                openConfirm(trigger.getAttribute('data-message'), async function () {
+                    try {
+                        await postJson(deleteEndpoints[deleteKind](deleteId), {});
+                        showToast('内容已归档');
+                        window.setTimeout(function () { window.location.reload(); }, 350);
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    }
+                });
+                return;
+            }
+
+            if (action === 'moderate-post') {
+                var postId = trigger.getAttribute('data-id');
+                var postOp = trigger.getAttribute('data-op');
+                openConfirm(trigger.getAttribute('data-message'), async function () {
+                    try {
+                        await postJson('/admin/community/forum-post/' + encodeURIComponent(postId) + '/moderate', { action: postOp });
+                        showToast('帖子状态已更新');
+                        window.setTimeout(function () { window.location.reload(); }, 350);
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    }
+                });
+                return;
+            }
+
+            if (action === 'moderate-player') {
+                var author = trigger.getAttribute('data-author');
+                var op = trigger.getAttribute('data-op');
+                openConfirm(trigger.getAttribute('data-message'), async function () {
+                    try {
+                        await postJson('/admin/community/player/' + encodeURIComponent(author) + '/moderate', {
+                            action: op,
+                            duration_hours: op === 'mute' ? 24 : 0
+                        });
+                        showToast('玩家治理已生效');
+                        window.setTimeout(function () { window.location.reload(); }, 350);
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    }
+                });
+            }
+        });
+
+        Object.keys(forms).forEach(function (type) {
+            var form = forms[type];
+            if (!form) return;
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                submitForm(type, form);
+            });
+            var projectField = getField(form, 'project_id');
+            var productField = getField(form, 'product_id');
+            if (projectField && productField) {
+                projectField.addEventListener('change', function () {
+                    syncProductSelectOptions(productField, projectField.value, '', '选择所属产品');
+                });
+                productField.addEventListener('change', function () {
+                    if (!projectField.value && productField.value) {
+                        setSelectValue(projectField, projectIdForProduct(productField.value));
+                        syncProductSelectOptions(productField, projectField.value, productField.value, '选择所属产品');
+                    }
+                });
+                syncProductSelectOptions(productField, projectField.value || currentProjectId || '', productField.value || currentProductId || '', '选择所属产品');
+            }
+            var videoInput = form.querySelector('[data-video-input]');
+            if (videoInput) {
+                videoInput.addEventListener('change', async function () {
+                    if (!videoInput.files || !videoInput.files.length) return;
+                    try {
+                        var uploadedVideoUrl = await uploadCommunityFiles(form, [videoInput.files[0]], 'video');
+                        setVideoValue(form, uploadedVideoUrl);
+                        showToast('视频素材已上传');
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    } finally {
+                        videoInput.value = '';
+                    }
+                });
+            }
+            var imageInput = form.querySelector('[data-image-input]');
+            if (imageInput) {
+                imageInput.addEventListener('change', async function () {
+                    if (!imageInput.files || !imageInput.files.length) return;
+                    try {
+                        var uploadedImageUrls = await uploadCommunityFiles(form, imageInput.files, 'image');
+                        var merged = collectMediaUrls(new FormData(form)).concat(uploadedImageUrls);
+                        setImageValues(form, merged);
+                        showToast('图片素材已上传');
+                    } catch (error) {
+                        showToast(error.message, 'error');
+                    } finally {
+                        imageInput.value = '';
+                    }
+                });
+            }
+            var clearVideoButton = form.querySelector('[data-clear-video]');
+            if (clearVideoButton) {
+                clearVideoButton.addEventListener('click', function () {
+                    setVideoValue(form, '');
+                });
+            }
+            var clearImagesButton = form.querySelector('[data-clear-images]');
+            if (clearImagesButton) {
+                clearImagesButton.addEventListener('click', function () {
+                    setImageValues(form, []);
+                });
+            }
+        });
+
+        listTabTriggers.forEach(function (trigger) {
+            trigger.addEventListener('click', function () {
+                switchListTab(trigger.getAttribute('data-list-tab-trigger'));
+            });
+        });
+
+        if (contentListSearchInput) {
+            contentListSearchInput.addEventListener('input', applyListSearch);
+        }
+
+        if (contentListSearchClear) {
+            contentListSearchClear.addEventListener('click', function () {
+                if (!contentListSearchInput) return;
+                contentListSearchInput.value = '';
+                applyListSearch();
+                contentListSearchInput.focus();
+            });
+        }
+
+        switchListTab('news');
+        syncScopedProductFilters();
+
+        var filterProjectSelect = document.querySelector('[data-project-filter-select]');
+        var filterProductSelect = document.querySelector('[data-product-filter-select]');
+        if (filterProjectSelect && filterProductSelect) {
+            filterProjectSelect.addEventListener('change', function () {
+                syncProductSelectOptions(filterProductSelect, filterProjectSelect.value, '', '全部产品');
+            });
+        }
+
+        playerActionDurationPreset.addEventListener('change', function () {
+            playerActionCustomHours.classList.toggle('hidden', playerActionDurationPreset.value !== 'custom');
+            if (playerActionDurationPreset.value !== 'custom') {
+                playerActionCustomHours.value = '';
+            }
+        });
+
+        if (playerCandidateSelect) {
+            playerCandidateSelect.addEventListener('change', function () {
+                var option = playerCandidateSelect.options[playerCandidateSelect.selectedIndex];
+                if (!option) return;
+                var selectedValue = option.value || '';
+                if (playerTargetInput) {
+                    playerTargetInput.value = selectedValue;
+                }
+                if (window.history && window.history.replaceState) {
+                    var nextUrl = new URL(window.location.href);
+                    if (selectedValue) {
+                        nextUrl.searchParams.set('player_target', selectedValue);
+                    } else {
+                        nextUrl.searchParams.delete('player_target');
+                    }
+                    nextUrl.hash = 'player-governance-section';
+                    window.history.replaceState(null, '', nextUrl.toString());
+                }
+                syncFocusedPlayer(parsePayload(option.getAttribute('data-player')));
+            });
+        }
+
+        if (playerFocusPanel && playerFocusPanel.getAttribute('data-player')) {
+            syncFocusedPlayer(parsePayload(playerFocusPanel.getAttribute('data-player')));
+        }
+
+        [playerModal, editorModal, confirmModal].forEach(function (modal) {
+            if (!modal) return;
+            modal.addEventListener('click', function (event) {
+                if (event.target !== modal) return;
+                if (modal === playerModal) closePlayerModal();
+                if (modal === editorModal) closeEditor();
+                if (modal === confirmModal) closeConfirm();
+            });
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape') return;
+            closePlayerModal();
+            closeEditor();
+            closeConfirm();
+        });
+    });
+    </script>
+</body>
+</html>

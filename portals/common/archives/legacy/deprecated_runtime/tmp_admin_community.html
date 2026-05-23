@@ -1,0 +1,426 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>玩家生态管理</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold tracking-[0.2em] uppercase text-violet-600">Player Community</p>
+                <h1 class="text-3xl font-bold text-slate-900 mt-2">玩家生态管理</h1>
+                <p class="text-slate-500 mt-2">新闻、福利、官方帖子先提交审批，再进入玩家站。内容按游戏项目隔离，互不污染。</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <form method="get" class="flex items-center gap-3">
+                    <select name="product_id" class="px-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-sm min-w-[240px]">
+                        <option value="">全部项目</option>
+                        
+                        <option value="54ad770a6585" >五子棋</option>
+                        
+                    </select>
+                    <button class="px-4 py-2.5 rounded-2xl bg-slate-900 text-white text-sm font-medium">筛选</button>
+                </form>
+                <a href="/admin/site-config" class="px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-slate-700 text-sm font-medium">官网配置中心</a>
+                <a href="/admin" class="px-4 py-2.5 rounded-2xl bg-white border border-slate-200 text-slate-700 text-sm font-medium">返回管理中心</a>
+            </div>
+        </div>
+
+        <section class="grid xl:grid-cols-3 gap-6">
+            <form id="newsForm" class="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-semibold text-slate-900">发布新闻</h2>
+                        <p class="text-sm text-slate-500 mt-1">新建或编辑新闻，保存后进入审批流。</p>
+                    </div>
+                    <button type="button" onclick="resetNewsForm()" class="text-sm text-violet-700">新建</button>
+                </div>
+                <input type="hidden" name="edit_id" value="">
+                <input name="title" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="标题" required>
+                <input name="kind" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="类型，如版本公告 / 活动预告">
+                <select name="product_id" class="w-full px-4 py-3 rounded-2xl border border-slate-200" required>
+                    <option value="">选择所属项目</option>
+                    
+                    <option value="54ad770a6585" >五子棋</option>
+                    
+                </select>
+                <textarea name="summary" class="w-full px-4 py-3 rounded-2xl border border-slate-200" rows="3" placeholder="摘要"></textarea>
+                <textarea name="content" class="w-full px-4 py-3 rounded-2xl border border-slate-200" rows="5" placeholder="正文"></textarea>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" name="pinned"> 首页推荐</label>
+                <button class="px-5 py-3 rounded-full bg-violet-600 text-white font-bold">提交审批</button>
+                <div id="newsResult" class="text-sm text-slate-500"></div>
+            </form>
+
+            <form id="welfareForm" class="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-semibold text-slate-900">发布福利</h2>
+                        <p class="text-sm text-slate-500 mt-1">礼包、兑换码和活动权益统一从这里走审批。</p>
+                    </div>
+                    <button type="button" onclick="resetWelfareForm()" class="text-sm text-emerald-700">新建</button>
+                </div>
+                <input type="hidden" name="edit_id" value="">
+                <input name="title" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="福利标题" required>
+                <select name="product_id" class="w-full px-4 py-3 rounded-2xl border border-slate-200" required>
+                    <option value="">选择所属项目</option>
+                    
+                    <option value="54ad770a6585" >五子棋</option>
+                    
+                </select>
+                <input name="redeem_code" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="兑换码">
+                <input name="valid_until" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="有效期，如 2026-12-31">
+                <input name="status" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="状态，如进行中">
+                <textarea name="description" class="w-full px-4 py-3 rounded-2xl border border-slate-200" rows="5" placeholder="福利说明"></textarea>
+                <button class="px-5 py-3 rounded-full bg-emerald-600 text-white font-bold">提交审批</button>
+                <div id="welfareResult" class="text-sm text-slate-500"></div>
+            </form>
+
+            <form id="forumForm" class="bg-white rounded-3xl border border-slate-200 p-6 space-y-4 shadow-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-semibold text-slate-900">发布官方帖子</h2>
+                        <p class="text-sm text-slate-500 mt-1">官方帖子会在玩家论坛带官方标识展示。</p>
+                    </div>
+                    <button type="button" onclick="resetForumForm()" class="text-sm text-slate-700">新建</button>
+                </div>
+                <input type="hidden" name="edit_id" value="">
+                <input name="title" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="帖子标题" required>
+                <select name="product_id" class="w-full px-4 py-3 rounded-2xl border border-slate-200" required>
+                    <option value="">选择所属项目</option>
+                    
+                    <option value="54ad770a6585" >五子棋</option>
+                    
+                </select>
+                <select name="category_id" class="w-full px-4 py-3 rounded-2xl border border-slate-200">
+                    
+                    <option value="general">综合讨论</option>
+                    
+                    <option value="strategy">攻略技巧</option>
+                    
+                    <option value="event">活动福利</option>
+                    
+                    <option value="feedback">问题反馈</option>
+                    
+                    <option value="fanart">同人截图</option>
+                    
+                </select>
+                <input name="video_url" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="视频链接（可选）">
+                <input name="media_urls" class="w-full px-4 py-3 rounded-2xl border border-slate-200" placeholder="截图链接，多个用英文逗号分隔">
+                <textarea name="content" class="w-full px-4 py-3 rounded-2xl border border-slate-200" rows="5" placeholder="帖子正文"></textarea>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" name="pinned"> 置顶</label>
+                <button class="px-5 py-3 rounded-full bg-slate-900 text-white font-bold">提交审批</button>
+                <div id="forumResult" class="text-sm text-slate-500"></div>
+            </form>
+        </section>
+        <section class="grid xl:grid-cols-3 gap-6">
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-200">
+                    <h2 class="text-xl font-semibold text-slate-900">新闻列表</h2>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">???????</div>
+                                <div class="text-sm text-slate-500 mt-1">五子棋 · 2026-03-14 10:21</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600">已归档</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">???????????????</div>
+                        <div class="flex gap-3 text-sm">
+                            <button type="button" class="text-violet-700" onclick='editNews({"approval_id": "37146a0a6c3c4e1f", "content": "?????????????????", "created_at": "2026-03-14T10:21:54.069545", "created_by": "admin", "id": "8c51bdfc236f", "kind": "????", "pinned": false, "product_id": "54ad770a6585", "project_name": "\u4e94\u5b50\u68cb", "publish_status": "archived", "published_at": "2026-03-14T10:21:54.166568", "status_class": "bg-slate-200 text-slate-600", "status_label": "\u5df2\u5f52\u6863", "summary": "???????????????", "time_label": "2026-03-14 10:21", "title": "???????", "updated_at": "2026-03-14T10:21:54.248840"})'>编辑</button>
+                            <button type="button" class="text-rose-600" onclick="deleteNews('8c51bdfc236f')">删除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">????</div>
+                                <div class="text-sm text-slate-500 mt-1">五子棋 · 2026-03-14 10:20</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600">已归档</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">???????????</div>
+                        <div class="flex gap-3 text-sm">
+                            <button type="button" class="text-violet-700" onclick='editNews({"approval_id": "4114cf036bc9470e", "content": "????????????????", "created_at": "2026-03-14T10:20:04.763347", "created_by": "admin", "id": "b4f77371e453", "kind": "????", "pinned": false, "product_id": "54ad770a6585", "project_name": "\u4e94\u5b50\u68cb", "publish_status": "archived", "published_at": "", "status_class": "bg-slate-200 text-slate-600", "status_label": "\u5df2\u5f52\u6863", "summary": "???????????", "time_label": "2026-03-14 10:20", "title": "????", "updated_at": "2026-03-14T10:20:42.380376"})'>编辑</button>
+                            <button type="button" class="text-rose-600" onclick="deleteNews('b4f77371e453')">删除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">星云游戏站玩家社区已上线</div>
+                                <div class="text-sm text-slate-500 mt-1">未绑定项目 · 2026-03-13 18:10</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">草稿</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">现在玩家可以查看游戏资讯、活动福利与论坛讨论，开发团队也可以在同一套公开站里发布官方动态。</div>
+                        <div class="flex gap-3 text-sm">
+                            <button type="button" class="text-violet-700" onclick='editNews({"content": "\u6b22\u8fce\u6765\u5230\u5168\u65b0\u7684\u73a9\u5bb6\u7aef\u95e8\u6237\u3002\u8fd9\u91cc\u4f1a\u627f\u8f7d\u6e38\u620f\u65b0\u95fb\u3001\u6d3b\u52a8\u516c\u544a\u3001\u5151\u6362\u798f\u5229\u4e0e\u793e\u533a\u8ba8\u8bba\u3002\u540e\u7eed\u4f60\u53ef\u4ee5\u7ee7\u7eed\u6309\u4e0d\u540c\u6e38\u620f\u3001\u4e0d\u540c\u4e3b\u9898\u8fdb\u884c\u7ec6\u5206\u8fd0\u8425\u3002", "created_at": "2026-03-13T18:10:00", "id": "launch-note-001", "kind": "\u5b98\u65b9\u516c\u544a", "pinned": true, "product_id": "", "project_name": "\u672a\u7ed1\u5b9a\u9879\u76ee", "published_at": "2026-03-13T18:10:00", "status_class": "bg-slate-100 text-slate-700", "status_label": "\u8349\u7a3f", "summary": "\u73b0\u5728\u73a9\u5bb6\u53ef\u4ee5\u67e5\u770b\u6e38\u620f\u8d44\u8baf\u3001\u6d3b\u52a8\u798f\u5229\u4e0e\u8bba\u575b\u8ba8\u8bba\uff0c\u5f00\u53d1\u56e2\u961f\u4e5f\u53ef\u4ee5\u5728\u540c\u4e00\u5957\u516c\u5f00\u7ad9\u91cc\u53d1\u5e03\u5b98\u65b9\u52a8\u6001\u3002", "time_label": "2026-03-13 18:10", "title": "\u661f\u4e91\u6e38\u620f\u7ad9\u73a9\u5bb6\u793e\u533a\u5df2\u4e0a\u7ebf"})'>编辑</button>
+                            <button type="button" class="text-rose-600" onclick="deleteNews('launch-note-001')">删除</button>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-200">
+                    <h2 class="text-xl font-semibold text-slate-900">福利列表</h2>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">????</div>
+                                <div class="text-sm text-slate-500 mt-1">五子棋 · 2026-12-31</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600">已归档</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">??????????????</div>
+                        <div class="flex gap-3 text-sm">
+                            <button type="button" class="text-emerald-700" onclick='editWelfare({"approval_id": "906ca421bab94915", "created_at": "2026-03-14T10:20:04.957755", "created_by": "admin", "description": "??????????????", "id": "b957cde8690f", "product_id": "54ad770a6585", "project_name": "\u4e94\u5b50\u68cb", "publish_status": "archived", "published_at": "", "redeem_code": "CHECK-001", "status": "???", "status_class": "bg-slate-200 text-slate-600", "status_label": "\u5df2\u5f52\u6863", "time_label": "2026-12-31", "title": "????", "updated_at": "2026-03-14T10:20:42.406045", "valid_until": "2026-12-31"})'>编辑</button>
+                            <button type="button" class="text-rose-600" onclick="deleteWelfare('b957cde8690f')">删除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">新玩家启程礼包</div>
+                                <div class="text-sm text-slate-500 mt-1">未绑定项目 · 2026-12-31</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">草稿</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">进入游戏后可兑换基础资源礼包，用于快速开启首日体验。</div>
+                        <div class="flex gap-3 text-sm">
+                            <button type="button" class="text-emerald-700" onclick='editWelfare({"created_at": "2026-03-13T18:12:00", "description": "\u8fdb\u5165\u6e38\u620f\u540e\u53ef\u5151\u6362\u57fa\u7840\u8d44\u6e90\u793c\u5305\uff0c\u7528\u4e8e\u5feb\u901f\u5f00\u542f\u9996\u65e5\u4f53\u9a8c\u3002", "id": "starter-pack-001", "product_id": "", "project_name": "\u672a\u7ed1\u5b9a\u9879\u76ee", "redeem_code": "WELCOME-2026", "status": "\u8fdb\u884c\u4e2d", "status_class": "bg-slate-100 text-slate-700", "status_label": "\u8349\u7a3f", "time_label": "2026-12-31", "title": "\u65b0\u73a9\u5bb6\u542f\u7a0b\u793c\u5305", "valid_until": "2026-12-31"})'>编辑</button>
+                            <button type="button" class="text-rose-600" onclick="deleteWelfare('starter-pack-001')">删除</button>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-200">
+                    <h2 class="text-xl font-semibold text-slate-900">官方帖子列表</h2>
+                </div>
+                <div class="divide-y divide-slate-100">
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">??????</div>
+                                <div class="text-sm text-slate-500 mt-1">五子棋 · 2026-03-14 10:23</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600">已归档</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">??????????????????</div>
+                        <div class="flex gap-3 text-sm flex-wrap">
+                            <button type="button" class="text-slate-900" onclick='editForum({"approval_id": "", "author_key": "guest:127.0.0.1:????", "author_type": "guest", "category_id": "general", "comments": [{"author_key": "guest:127.0.0.1:?????", "author_type": "guest", "content": "????????????????", "created_at": "2026-03-14T10:23:01.086963", "display_name": "?????", "id": "d226df1f7107", "is_official": false, "parent_id": "", "role": "guest"}], "content": "??????????????????", "created_at": "2026-03-14T10:23:01.032212", "deleted": false, "display_name": "????", "id": "8263ad71ed5b", "is_official": false, "media_urls": [], "media_urls_text": "", "pinned": false, "product_id": "54ad770a6585", "project_name": "\u4e94\u5b50\u68cb", "publish_status": "archived", "published_at": "2026-03-14T10:23:01.032212", "role": "guest", "status_class": "bg-slate-200 text-slate-600", "status_label": "\u5df2\u5f52\u6863", "time_label": "2026-03-14 10:23", "title": "??????", "updated_at": "2026-03-14T10:23:01.188436", "video_url": "", "visible": true})'>编辑</button>
+                            <button type="button" class="text-amber-600" onclick="moderatePost('8263ad71ed5b', 'pin')">置顶</button>
+                            <button type="button" class="text-sky-700" onclick="moderatePost('8263ad71ed5b', 'hide')">隐藏</button>
+                            <button type="button" class="text-rose-600" onclick="deleteForum('8263ad71ed5b')">删除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">??????</div>
+                                <div class="text-sm text-slate-500 mt-1">五子棋 · 2026-03-14 10:20</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-600">已归档</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">????????????????</div>
+                        <div class="flex gap-3 text-sm flex-wrap">
+                            <button type="button" class="text-slate-900" onclick='editForum({"approval_id": "c84fff7d342e4eff", "author_key": "dev:admin", "author_type": "developer", "category_id": "general", "comments": [], "content": "????????????????", "created_at": "2026-03-14T10:20:05.011364", "deleted": false, "display_name": "admin", "id": "76e326c7cc22", "is_official": true, "media_urls": [], "media_urls_text": "", "pinned": false, "product_id": "54ad770a6585", "project_name": "\u4e94\u5b50\u68cb", "publish_status": "archived", "published_at": "", "role": "super_admin", "status_class": "bg-slate-200 text-slate-600", "status_label": "\u5df2\u5f52\u6863", "time_label": "2026-03-14 10:20", "title": "??????", "updated_at": "2026-03-14T10:20:42.431074", "video_url": "", "visible": true})'>编辑</button>
+                            <button type="button" class="text-amber-600" onclick="moderatePost('76e326c7cc22', 'pin')">置顶</button>
+                            <button type="button" class="text-sky-700" onclick="moderatePost('76e326c7cc22', 'hide')">隐藏</button>
+                            <button type="button" class="text-rose-600" onclick="deleteForum('76e326c7cc22')">删除</button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <div class="font-semibold text-slate-900">欢迎来到玩家论坛</div>
+                                <div class="text-sm text-slate-500 mt-1">未绑定项目 · 2026-03-13 18:15</div>
+                            </div>
+                            <span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">草稿</span>
+                        </div>
+                        <div class="text-sm text-slate-500 line-clamp-2">这里可以聊攻略、反馈问题、晒截图，也可以等待官方发布更新与活动动态。</div>
+                        <div class="flex gap-3 text-sm flex-wrap">
+                            <button type="button" class="text-slate-900" onclick='editForum({"author_type": "developer", "category_id": "general", "comments": [{"author_type": "guest", "content": "\u540e\u7eed\u53ef\u4ee5\u6309\u4e0d\u540c\u6e38\u620f\u5355\u72ec\u5f00\u7248\u533a\u5417\uff1f", "created_at": "2026-03-13T18:16:00", "display_name": "\u6e38\u5ba2\u73a9\u5bb6", "id": "welcome-comment-1", "is_official": false, "parent_id": "", "role": "guest"}], "content": "\u8fd9\u91cc\u53ef\u4ee5\u804a\u653b\u7565\u3001\u53cd\u9988\u95ee\u9898\u3001\u6652\u622a\u56fe\uff0c\u4e5f\u53ef\u4ee5\u7b49\u5f85\u5b98\u65b9\u53d1\u5e03\u66f4\u65b0\u4e0e\u6d3b\u52a8\u52a8\u6001\u3002", "created_at": "2026-03-13T18:15:00", "display_name": "\u5b98\u65b9\u8fd0\u8425", "id": "welcome-thread", "is_official": true, "media_urls": [], "media_urls_text": "", "pinned": true, "product_id": "", "project_name": "\u672a\u7ed1\u5b9a\u9879\u76ee", "role": "admin", "status_class": "bg-slate-100 text-slate-700", "status_label": "\u8349\u7a3f", "time_label": "2026-03-13 18:15", "title": "\u6b22\u8fce\u6765\u5230\u73a9\u5bb6\u8bba\u575b", "updated_at": "2026-03-13T18:15:00", "video_url": ""})'>编辑</button>
+                            <button type="button" class="text-amber-600" onclick="moderatePost('welcome-thread', 'unpin')">取消置顶</button>
+                            <button type="button" class="text-sky-700" onclick="moderatePost('welcome-thread', 'restore')">恢复显示</button>
+                            <button type="button" class="text-rose-600" onclick="deleteForum('welcome-thread')">删除</button>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-900">玩家发言治理</h2>
+                    <p class="text-sm text-slate-500 mt-1">支持封禁、禁言和解除限制。</p>
+                </div>
+            </div>
+            <div class="divide-y divide-slate-100">
+                
+                <div class="px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                        <div class="font-semibold text-slate-900">?????</div>
+                        <div class="text-sm text-slate-500 mt-1">guest:127.0.0.1:????? · 状态：active</div>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-amber-100 text-amber-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:?????', 'mute')">禁言 24h</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-rose-100 text-rose-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:?????', 'ban')">封禁</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-emerald-100 text-emerald-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:?????', 'unmute')">解除禁言</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-sky-100 text-sky-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:?????', 'unban')">解除封禁</button>
+                    </div>
+                </div>
+                
+                <div class="px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                        <div class="font-semibold text-slate-900">????</div>
+                        <div class="text-sm text-slate-500 mt-1">guest:127.0.0.1:???? · 状态：active</div>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-amber-100 text-amber-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:????', 'mute')">禁言 24h</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-rose-100 text-rose-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:????', 'ban')">封禁</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-emerald-100 text-emerald-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:????', 'unmute')">解除禁言</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-sky-100 text-sky-700 text-sm" onclick="moderatePlayer('guest:127.0.0.1:????', 'unban')">解除封禁</button>
+                    </div>
+                </div>
+                
+                <div class="px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                        <div class="font-semibold text-slate-900">admin</div>
+                        <div class="text-sm text-slate-500 mt-1">dev:admin · 状态：active</div>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-amber-100 text-amber-700 text-sm" onclick="moderatePlayer('dev:admin', 'mute')">禁言 24h</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-rose-100 text-rose-700 text-sm" onclick="moderatePlayer('dev:admin', 'ban')">封禁</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-emerald-100 text-emerald-700 text-sm" onclick="moderatePlayer('dev:admin', 'unmute')">解除禁言</button>
+                        <button type="button" class="px-3 py-2 rounded-2xl bg-sky-100 text-sky-700 text-sm" onclick="moderatePlayer('dev:admin', 'unban')">解除封禁</button>
+                    </div>
+                </div>
+                
+            </div>
+        </section>
+
+        <script>
+        function formDataToJson(form, extraBuilder) {
+            var fd = new FormData(form);
+            var data = {};
+            fd.forEach(function(value, key) {
+                data[key] = value;
+            });
+            if (extraBuilder) extraBuilder(fd, data);
+            return data;
+        }
+        function postJson(url, data) {
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(data || {})
+            }).then(function(r) { return r.json(); });
+        }
+        function resetNewsForm() { document.getElementById('newsForm').reset(); document.querySelector('#newsForm [name="edit_id"]').value = ''; }
+        function resetWelfareForm() { document.getElementById('welfareForm').reset(); document.querySelector('#welfareForm [name="edit_id"]').value = ''; }
+        function resetForumForm() { document.getElementById('forumForm').reset(); document.querySelector('#forumForm [name="edit_id"]').value = ''; }
+        function editNews(item) {
+            var form = document.getElementById('newsForm');
+            form.edit_id.value = item.id || '';
+            form.title.value = item.title || '';
+            form.kind.value = item.kind || '';
+            form.product_id.value = item.product_id || '';
+            form.summary.value = item.summary || '';
+            form.content.value = item.content || '';
+            form.pinned.checked = !!item.pinned;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function editWelfare(item) {
+            var form = document.getElementById('welfareForm');
+            form.edit_id.value = item.id || '';
+            form.title.value = item.title || '';
+            form.product_id.value = item.product_id || '';
+            form.redeem_code.value = item.redeem_code || '';
+            form.valid_until.value = item.valid_until || '';
+            form.status.value = item.status || '';
+            form.description.value = item.description || '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function editForum(item) {
+            var form = document.getElementById('forumForm');
+            form.edit_id.value = item.id || '';
+            form.title.value = item.title || '';
+            form.product_id.value = item.product_id || '';
+            form.category_id.value = item.category_id || 'general';
+            form.video_url.value = item.video_url || '';
+            form.media_urls.value = item.media_urls_text || '';
+            form.content.value = item.content || '';
+            form.pinned.checked = !!item.pinned;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        document.getElementById('newsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            postJson('/admin/community/news', formDataToJson(this, function(fd, data) {
+                data.pinned = !!fd.get('pinned');
+            })).then(function(result) {
+                document.getElementById('newsResult').textContent = result.error || '已提交审批';
+                if (!result.error) setTimeout(function() { location.reload(); }, 500);
+            });
+        });
+        document.getElementById('welfareForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            postJson('/admin/community/welfare', formDataToJson(this)).then(function(result) {
+                document.getElementById('welfareResult').textContent = result.error || '已提交审批';
+                if (!result.error) setTimeout(function() { location.reload(); }, 500);
+            });
+        });
+        document.getElementById('forumForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            postJson('/admin/community/forum-post', formDataToJson(this, function(fd, data) {
+                data.pinned = !!fd.get('pinned');
+                data.media_urls = String(fd.get('media_urls') || '').split(',').map(function(item) { return item.trim(); }).filter(Boolean);
+            })).then(function(result) {
+                document.getElementById('forumResult').textContent = result.error || '已提交审批';
+                if (!result.error) setTimeout(function() { location.reload(); }, 500);
+            });
+        });
+        function deleteNews(id) {
+            if (!confirm('确认归档这条新闻吗？')) return;
+            postJson('/admin/community/news/' + id + '/delete', {}).then(function() { location.reload(); });
+        }
+        function deleteWelfare(id) {
+            if (!confirm('确认归档这条福利吗？')) return;
+            postJson('/admin/community/welfare/' + id + '/delete', {}).then(function() { location.reload(); });
+        }
+        function deleteForum(id) {
+            if (!confirm('确认归档这条官方帖子吗？')) return;
+            postJson('/admin/community/forum-post/' + id + '/delete', {}).then(function() { location.reload(); });
+        }
+        function moderatePost(id, action) {
+            postJson('/admin/community/forum-post/' + id + '/moderate', { action: action }).then(function() { location.reload(); });
+        }
+        function moderatePlayer(authorKey, action) {
+            postJson('/admin/community/player/' + encodeURIComponent(authorKey) + '/moderate', { action: action, duration_hours: action === 'mute' ? 24 : 0 }).then(function() { location.reload(); });
+        }
+        </script>
+    </div>
+</body>
+</html>
+    

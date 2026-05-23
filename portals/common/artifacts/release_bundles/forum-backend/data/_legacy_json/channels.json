@@ -1,0 +1,18 @@
+[
+  {
+    "id": "1001",
+    "name": "微信",
+    "description": "",
+    "order": 0,
+    "apk_subdir": "wechat",
+    "build_param": "wechat"
+  },
+  {
+    "id": "1002",
+    "name": "抖音",
+    "description": "",
+    "order": 1,
+    "apk_subdir": "douyin",
+    "build_param": "douyin"
+  }
+]

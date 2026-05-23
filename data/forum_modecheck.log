@@ -1,0 +1,2 @@
+[2026-05-23 18:31:15] INFO [utils]: ENTRYPOINT_SIGNATURE portal=forum port=5005 entry=portals/forum/wsgi.py version=2026-05-23-3folder-contract-v1 ts=2026-05-23T10:31:15.307252
+[2026-05-23 18:31:15] INFO [waitress]: Serving on http://127.0.0.1:5005

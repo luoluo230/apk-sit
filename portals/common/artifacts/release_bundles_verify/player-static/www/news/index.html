@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="IjFlNTFkOGQ3OTMyM2Y1NjRhMTA4ZTI2YzU2MjU0YzMwM2ZlNDM4OWMi.acAKCg.ONpA_VmllisdEhk9hwXFZntzFzg">
+    <title>新闻公告 - 星云游戏站</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans SC', sans-serif; background: radial-gradient(circle at top left, #b7edff 0%, #f6f1e3 55%, #ffffff 100%); color: #111827; }
+        .font-display { font-family: 'ZCOOL XiaoWei', serif; }
+        .glass { background: rgba(255, 255, 255, 0.82); border: 1px solid rgba(255,255,255,0.75); box-shadow: 0 24px 60px rgba(15,23,42,0.08); backdrop-filter: blur(14px); }
+    </style>
+</head>
+<body class="min-h-screen">
+    <header class="sticky top-0 z-30 bg-white/75 backdrop-blur border-b border-slate-200/80">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+            <a href="/" class="font-display text-2xl text-slate-900">星云游戏站</a>
+            <nav class="hidden md:flex items-center gap-5"><a href="/" class="text-sm font-semibold text-slate-700 hover:text-violet-700 transition">首页</a><a href="/about/company" class="text-sm font-semibold text-slate-700 hover:text-violet-700 transition">公司简介</a><a href="/news" class="text-sm font-semibold text-violet-700 hover:text-violet-700 transition">新闻公告</a><a href="/welfare" class="text-sm font-semibold text-slate-700 hover:text-violet-700 transition">福利中心</a><a href="http://127.0.0.1:5005/forum" class="text-sm font-semibold text-slate-700 hover:text-violet-700 transition">玩家论坛</a><a href="http://127.0.0.1:5003/download-center" class="text-sm font-semibold text-slate-700 hover:text-violet-700 transition">下载中心</a></nav>
+            <div><a href="http://127.0.0.1:5003/login" class="inline-flex items-center justify-center px-4 py-2 rounded-full bg-slate-900 text-white text-sm font-semibold">登录工作台</a></div>
+        </div>
+    </header>
+    <main class="max-w-6xl mx-auto px-4 py-8">
+    <section class="mb-8">
+        <div class="text-xs font-extrabold tracking-[0.22em] uppercase text-violet-600">Newsroom</div>
+        <h1 class="font-display text-5xl text-slate-900 mt-3">新闻公告中心</h1>
+        <p class="mt-3 text-slate-600 text-lg leading-8">集中展示最近发布的公告、版本动态、活动消息和维护通知。</p>
+    </section>
+    <section class="grid gap-6 md:grid-cols-2">
+        <a href="/news/launch-note-001" class="glass block rounded-[28px] p-6 hover:-translate-y-1 transition">
+            <div class="text-xs font-extrabold tracking-[0.2em] uppercase text-violet-600">官方公告</div>
+            <h2 class="font-display text-3xl text-slate-900 mt-3">星云游戏站玩家社区已上线</h2>
+            <p class="mt-3 text-slate-600 leading-7">现在玩家可以查看游戏资讯、活动福利与论坛讨论，开发团队也可以在同一套公开站里发布官方动态。</p>
+            <div class="mt-4 text-sm text-slate-500">2026-03-13 18:10</div>
+        </a>
+        </section>
+    </main>
+    <script>
+    window.portalCsrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    </script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+[2026-05-23 18:31:13] INFO [utils]: ENTRYPOINT_SIGNATURE portal=player port=5004 entry=portals/extranet/wsgi.py version=2026-05-23-3folder-contract-v1 ts=2026-05-23T10:31:13.268534
+[2026-05-23 18:31:13] INFO [waitress]: Serving on http://127.0.0.1:5004
