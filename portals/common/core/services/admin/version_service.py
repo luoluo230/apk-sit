@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import re
 import uuid
 from datetime import date, datetime, timedelta
@@ -55,6 +56,33 @@ def _normalize_distribution_method(platform, distribution_method):
     if method in allowed:
         return method
     return "testflight" if platform == "ios" else "direct"
+
+
+def _version_group_key(row: dict) -> tuple:
+    if not isinstance(row, dict):
+        return ("", "", "dev")
+    return (
+        str(row.get("version_name") or "").strip(),
+        str(row.get("channel") or "").strip(),
+        str(row.get("stage") or "dev").strip(),
+    )
+
+
+def _propagate_pipeline_to_version_group(versions: list, anchor: dict, pipeline: dict, updated_at: str) -> None:
+    """版本组编辑时，将 pipeline 同步到同 version_name + channel + stage 的所有 version_code。"""
+    if not isinstance(pipeline, dict) or not isinstance(anchor, dict):
+        return
+    synced = _sync_pipeline_release_fields(pipeline)
+    key = _version_group_key(anchor)
+    if not key[0]:
+        return
+    for row in versions:
+        if not isinstance(row, dict) or _version_group_key(row) != key:
+            continue
+        row["pipeline"] = copy.deepcopy(synced)
+        row["updated_at"] = updated_at
+        for legacy_field in ("deprecated", "status", "commercial_release", "jenkins_params"):
+            row.pop(legacy_field, None)
 
 
 def _sync_pipeline_release_fields(pipeline: dict | None) -> dict:
@@ -338,6 +366,13 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     versions[idx].update(update_payload)
     for legacy_field in ("deprecated", "status", "commercial_release", "jenkins_params"):
         versions[idx].pop(legacy_field, None)
+    if edit_scope == "version_group" and isinstance(update_payload.get("pipeline"), dict):
+        _propagate_pipeline_to_version_group(
+            versions,
+            versions[idx],
+            update_payload["pipeline"],
+            update_payload["updated_at"],
+        )
     versions_repo.save_versions(project_id, versions)
 
     ch_text = (data.get("changelog") or "").strip()

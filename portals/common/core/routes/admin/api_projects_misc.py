@@ -6,6 +6,20 @@ from flask import jsonify, request, send_from_directory
 
 from services.authz import admin_required
 from services.admin import project_misc_service
+from services.admin.fs_browse_service import browse_path, native_pick_path
+
+
+def fs_browse_response():
+    path = (request.args.get("path") or "").strip()
+    mode = (request.args.get("mode") or "dir").strip()
+    return jsonify(browse_path(path, mode=mode))
+
+
+def fs_native_pick_response():
+    data = request.get_json(silent=True) or {}
+    path = (data.get("initial_path") or data.get("path") or "").strip()
+    mode = (data.get("mode") or "dir").strip()
+    return jsonify(native_pick_path(path, mode=mode))
 
 
 def projects_upload_icon_response():
@@ -86,6 +100,14 @@ def register_routes(bp, current_username_getter, can_edit_lookup):
         status_filter = (request.args.get("status") or "active").strip()
         return projects_list_response(current_username_getter(), status_filter, can_edit_lookup=can_edit_lookup)
 
+    @admin_required("projects")
+    def _fs_browse():
+        return fs_browse_response()
+
+    @admin_required("projects")
+    def _fs_native_pick():
+        return fs_native_pick_response()
+
     bp.add_url_rule("/admin/projects/upload-icon", endpoint="admin_projects_upload_icon", view_func=_upload_icon, methods=["POST"])
     bp.add_url_rule("/admin/projects/icon/<filename>", endpoint="admin_projects_serve_icon", view_func=_serve_icon)
     bp.add_url_rule(
@@ -102,3 +124,5 @@ def register_routes(bp, current_username_getter, can_edit_lookup):
     bp.add_url_rule("/admin/projects/user-options", endpoint="admin_projects_user_options", view_func=_user_options)
     bp.add_url_rule("/admin/projects/validate-username", endpoint="admin_projects_validate_username", view_func=_validate_username)
     bp.add_url_rule("/admin/projects/list", endpoint="admin_projects_list", view_func=_projects_list)
+    bp.add_url_rule("/admin/fs/browse", endpoint="admin_fs_browse", view_func=_fs_browse)
+    bp.add_url_rule("/admin/fs/native-pick", endpoint="admin_fs_native_pick", view_func=_fs_native_pick, methods=["POST"])

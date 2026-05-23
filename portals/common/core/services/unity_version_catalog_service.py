@@ -145,9 +145,18 @@ def list_active_as_build_versions():
 
 def resolve_unity_versions_for_build(build_defaults=None):
     """Active catalog first; else instance unity_versions; else Hub detect."""
+    from services.unity_version_service import resolve_unity_app_path
+
     active = list_active_as_build_versions()
     if active:
-        return active
+        out = []
+        for item in active:
+            ver = str(item.get('version') or '').strip()
+            if not ver:
+                continue
+            path = resolve_unity_app_path(ver, str(item.get('path') or '').strip())
+            out.append({'version': ver, 'path': path})
+        return out
     bd = build_defaults or {}
     uv = bd.get('unity_versions') or []
     if isinstance(uv, list) and uv:
@@ -165,7 +174,12 @@ def resolve_unity_versions_for_build(build_defaults=None):
                     'path': parts[1].strip() if len(parts) > 1 else '',
                 })
         if out:
-            return out
+            resolved = []
+            for item in out:
+                ver = str(item.get('version') or '').strip()
+                path = resolve_unity_app_path(ver, str(item.get('path') or '').strip())
+                resolved.append({'version': ver, 'path': path})
+            return resolved
     detected = detect_local_unity_installations()
     if detected:
         return [{'version': d.get('version', ''), 'path': d.get('path') or ''} for d in detected if d.get('version')]

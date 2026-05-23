@@ -66,6 +66,60 @@ def detect_local_unity_installations():
     return uniq
 
 
+def _path_looks_like_other_platform(path: str) -> bool:
+    text = str(path or '').strip()
+    if not text:
+        return False
+    winish = ('\\' in text) or (len(text) > 1 and text[1] == ':')
+    if os.name == 'nt':
+        return text.startswith('/Applications/') or text.startswith('/Users/')
+    return winish
+
+
+def resolve_unity_app_path(version: str, path_hint: str = '') -> str:
+    """解析 Unity 编辑器 .app / 安装目录路径（供 unity_paths.json 使用）。"""
+    ver = str(version or '').strip()
+    hint = str(path_hint or '').strip()
+    if hint and not _path_looks_like_other_platform(hint):
+        if hint.lower().endswith('.app') and os.path.isdir(hint):
+            return hint
+        if os.path.isdir(hint) and os.path.isdir(os.path.join(hint, 'Unity.app')):
+            return os.path.join(hint, 'Unity.app')
+        if os.name == 'nt' and os.path.isfile(hint) and hint.lower().endswith('.exe'):
+            return hint
+
+    for item in detect_local_unity_installations():
+        if str(item.get('version') or '').strip() != ver:
+            continue
+        p = str(item.get('path') or '').strip()
+        if p and not _path_looks_like_other_platform(p):
+            if p.lower().endswith('.app') or (os.name == 'nt' and p.lower().endswith('.exe')):
+                return p
+            app = os.path.join(p, 'Unity.app')
+            if os.path.isdir(app):
+                return app
+    return ''
+
+
+def resolve_unity_executable_path(version: str, path_hint: str = '') -> str:
+    """解析 Unity 可执行文件路径（Unity.exe / Unity.app/Contents/MacOS/Unity）。"""
+    app_path = resolve_unity_app_path(version, path_hint)
+    if not app_path:
+        return ''
+    if os.name == 'nt':
+        if app_path.lower().endswith('.exe') and os.path.isfile(app_path):
+            return app_path
+        for rel in (os.path.join('Editor', 'Unity.exe'), 'Unity.exe'):
+            p = os.path.join(app_path, rel) if not app_path.lower().endswith('.exe') else app_path
+            if os.path.isfile(p):
+                return p
+        return ''
+    if app_path.endswith('.app') and os.path.isdir(app_path):
+        exe = os.path.join(app_path, 'Contents', 'MacOS', 'Unity')
+        return exe if os.path.isfile(exe) else ''
+    return app_path if os.path.isfile(app_path) else ''
+
+
 def unity_version_strings(installations=None):
     """Return sorted version id list from installation dicts."""
     items = installations if installations is not None else detect_local_unity_installations()

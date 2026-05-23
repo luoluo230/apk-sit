@@ -1802,11 +1802,21 @@ PROJECTS_PAGE = '''
             </div>
             <div><label class="block text-xs font-medium text-slate-500 mb-1">简介</label><input type="text" id="newProjectIntro" placeholder="简短介绍" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></div>
             <div><label class="block text-xs font-medium text-slate-500 mb-1">详情</label><textarea id="newProjectDetail" rows="2" placeholder="详细描述" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></textarea></div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label class="block text-xs font-medium text-slate-500 mb-1">网络连接说明</label><input type="text" id="newProjectNetwork" placeholder="如：需内网/外网" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></div>
-                <div><label class="block text-xs font-medium text-slate-500 mb-1">Git 地址</label><input type="text" id="newProjectGitUrl" placeholder="https://或 git@" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></div>
-                <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">GitHub/SSH Key 路径</label><input type="text" id="newProjectGitSshKey" placeholder="如 /Users/xxx/.ssh/id_rsa" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></div>
-            </div>
+            <div><label class="block text-xs font-medium text-slate-500 mb-1">网络连接说明</label><input type="text" id="newProjectNetwork" placeholder="如：需内网/外网" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></div>
+            <details class="mt-2 rounded-lg border border-slate-200 p-3" open>
+                <summary class="cursor-pointer text-sm font-medium text-slate-700">构建配置（Git / APP / Unity）</summary>
+                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-xs font-medium text-slate-500 mb-1">默认 APP_NAME</label><input type="text" id="newProjectAppName" placeholder="如 GameKu" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm"></div>
+                    <div><label class="block text-xs font-medium text-slate-500 mb-1">OUTPUT_BASE_DIR（可选）</label><div class="flex gap-2"><input type="text" id="newProjectOutputBaseDir" placeholder="/path/to/output" class="flex-1 min-w-0 px-3 py-1.5 border border-slate-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('newProjectOutputBaseDir','dir',this)" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-700 bg-white hover:bg-slate-50 shrink-0">浏览</button></div></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">Git 仓库 URL</label><input type="text" id="newProjectGitUrl" placeholder="https://或 git@" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm"></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">Git 工作目录</label><div class="flex gap-2"><input type="text" id="newProjectGitWorkspace" placeholder="/path/to/clone" class="flex-1 min-w-0 px-3 py-1.5 border border-slate-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('newProjectGitWorkspace','dir',this)" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-700 bg-white hover:bg-slate-50 shrink-0">浏览</button></div><p class="text-xs text-slate-400 mt-1">仓库根即 Unity 工程根时，可与下方 Unity 项目路径填相同目录</p></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">Git SSH 密钥路径（可选）</label><p class="text-xs text-slate-400 mt-0.5 mb-1">本机 Git/SSH 已配置时可留空；Jenkins 构建将使用系统默认 SSH 认证</p><div class="flex gap-2"><input type="text" id="newProjectGitSshKey" placeholder="如 ~/.ssh/id_ed25519" class="flex-1 min-w-0 px-3 py-1.5 border border-slate-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('newProjectGitSshKey','file',this)" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-700 bg-white hover:bg-slate-50 shrink-0">浏览</button></div></div>
+                    <div><label class="block text-xs font-medium text-slate-500 mb-1">默认 Git 分支</label><input type="text" id="newProjectDefaultGitBranch" placeholder="main" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm"></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">Git 分支列表（每行一个）</label><textarea id="newProjectGitBranches" rows="2" placeholder="main&#10;develop" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs"></textarea></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">Unity 项目路径（可选）</label><div class="flex gap-2"><input type="text" id="newProjectUnityProjectPath" placeholder="/path/to/unity/project" class="flex-1 min-w-0 px-3 py-1.5 border border-slate-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('newProjectUnityProjectPath','dir',this)" class="px-3 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-700 bg-white hover:bg-slate-50 shrink-0">浏览</button></div></div>
+                    <div class="md:col-span-2 flex items-center gap-2"><button type="button" id="newProjectValidateGitBtn" class="px-3 py-1.5 bg-slate-200 rounded text-xs hover:bg-slate-300">验证 Git 配置</button><span id="newProjectGitValidateResult" class="text-xs"></span></div>
+                </div>
+            </details>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label class="block text-xs font-medium text-slate-500 mb-1">可查看用户</label><input type="text" id="newProjectViewers" placeholder="多个用户名用逗号分隔" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"></div>
                 <div><label class="block text-xs font-medium text-slate-500 mb-1">项目参与人员（可编辑）</label><div class="flex gap-2"><input type="text" id="newParticipantUser" placeholder="输入用户名" class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm"><button type="button" onclick="addNewParticipant()" class="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm">验证并添加</button></div><ul id="newParticipantsList" class="mt-2 space-y-1 text-sm"></ul></div>
@@ -1918,11 +1928,21 @@ PROJECTS_PAGE = '''
             <div><label class="block text-xs font-medium text-gray-500 mb-1">项目图标</label><div class="flex items-center gap-2 flex-wrap"><input type="file" id="editProjectIconFile" accept="image/*" class="text-sm"><span id="editProjectIconPreview" class="text-gray-500 text-xs"></span></div><input type="hidden" id="editProjectIcon" value=""></div>
             <div><label class="block text-xs font-medium text-gray-500 mb-1">简介</label><input type="text" id="editProjectIntro" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></div>
             <div><label class="block text-xs font-medium text-gray-500 mb-1">详情</label><textarea id="editProjectDetail" rows="2" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></textarea></div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label class="block text-xs font-medium text-gray-500 mb-1">网络连接说明</label><input type="text" id="editProjectNetwork" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></div>
-                <div><label class="block text-xs font-medium text-gray-500 mb-1">Git 地址</label><input type="text" id="editProjectGitUrl" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></div>
-                <div class="md:col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">GitHub/SSH Key 路径</label><input type="text" id="editProjectGitSshKey" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></div>
-            </div>
+            <div><label class="block text-xs font-medium text-gray-500 mb-1">网络连接说明</label><input type="text" id="editProjectNetwork" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></div>
+            <details class="rounded-lg border border-gray-200 p-3" open>
+                <summary class="cursor-pointer text-sm font-medium text-gray-700">构建配置（Git / APP / Unity）</summary>
+                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-xs font-medium text-gray-500 mb-1">默认 APP_NAME</label><input type="text" id="editProjectAppName" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"></div>
+                    <div><label class="block text-xs font-medium text-gray-500 mb-1">OUTPUT_BASE_DIR（可选）</label><div class="flex gap-2"><input type="text" id="editProjectOutputBaseDir" class="flex-1 min-w-0 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('editProjectOutputBaseDir','dir',this)" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 bg-white hover:bg-gray-50 shrink-0">浏览</button></div></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Git 仓库 URL</label><input type="text" id="editProjectGitUrl" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Git 工作目录</label><div class="flex gap-2"><input type="text" id="editProjectGitWorkspace" class="flex-1 min-w-0 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('editProjectGitWorkspace','dir',this)" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 bg-white hover:bg-gray-50 shrink-0">浏览</button></div><p class="text-xs text-gray-400 mt-1">仓库根即 Unity 工程根时，可与 Unity 项目路径填相同目录</p></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Git SSH 密钥路径（可选）</label><p class="text-xs text-gray-400 mt-0.5 mb-1">本机 Git/SSH 已配置时可留空；Jenkins 构建将使用系统默认 SSH 认证</p><div class="flex gap-2"><input type="text" id="editProjectGitSshKey" class="flex-1 min-w-0 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('editProjectGitSshKey','file',this)" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 bg-white hover:bg-gray-50 shrink-0">浏览</button></div></div>
+                    <div><label class="block text-xs font-medium text-gray-500 mb-1">默认 Git 分支</label><input type="text" id="editProjectDefaultGitBranch" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Git 分支列表（每行一个）</label><textarea id="editProjectGitBranches" rows="2" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs"></textarea></div>
+                    <div class="md:col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Unity 项目路径（可选）</label><div class="flex gap-2"><input type="text" id="editProjectUnityProjectPath" class="flex-1 min-w-0 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"><button type="button" onclick="openPathPicker('editProjectUnityProjectPath','dir',this)" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-700 bg-white hover:bg-gray-50 shrink-0">浏览</button></div></div>
+                    <div class="md:col-span-2 flex items-center gap-2"><button type="button" id="editProjectValidateGitBtn" class="px-3 py-1.5 bg-gray-200 rounded text-xs hover:bg-gray-300">验证 Git 配置</button><span id="editProjectGitValidateResult" class="text-xs"></span></div>
+                </div>
+            </details>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label class="block text-xs font-medium text-gray-500 mb-1">可查看用户</label><input type="text" id="editProjectViewers" placeholder="多个用户名用逗号分隔" class="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"></div>
                 <div><label class="block text-xs font-medium text-gray-500 mb-1">项目参与人员（可编辑）</label><div class="flex gap-2"><input type="text" id="editParticipantUser" placeholder="输入用户名" class="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"><button type="button" onclick="addEditParticipant()" class="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm">验证并添加</button></div><ul id="editParticipantsList" class="mt-2 space-y-1 text-sm"></ul></div>
@@ -1949,6 +1969,66 @@ var ALL_CHANNELS = ''' + _safe_json_for_script(json.dumps([
     if (c.get('id') or '').strip()
 ])) + ''';
 function parseUserList(str){ return (str||'').split(/[,，\\s]+/).map(function(s){ return s.trim(); }).filter(Boolean); }
+function openPathPicker(inputId, mode, btnEl){
+    var el=document.getElementById(inputId);
+    var start=(el&&el.value)?String(el.value).trim():'';
+    var btn=btnEl||null;
+    var oldText=btn?btn.textContent:'';
+    if(btn){ btn.disabled=true; btn.textContent='选择中…'; }
+    fetch('/admin/fs/native-pick', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify({ mode:(mode==='file')?'file':'dir', initial_path:start })
+    }).then(function(r){ return r.json(); }).then(function(d){
+        if(d.ok&&d.path&&el){ el.value=d.path; return; }
+        if(d.cancelled) return;
+        alert(d.error||'未能选择路径');
+    }).catch(function(){ alert('调用系统选择框失败'); }).finally(function(){
+        if(btn){ btn.disabled=false; btn.textContent=oldText||'浏览'; }
+    });
+}
+function _projectBuildPayload(prefix){
+    var branchesText = (document.getElementById(prefix+'GitBranches')||{}).value || '';
+    var gitBranches = branchesText ? branchesText.split(/\\n/).map(function(s){ return s.trim(); }).filter(Boolean) : [];
+    var o = {
+        app_name: ((document.getElementById(prefix+'AppName')||{}).value||'').trim(),
+        git_url: ((document.getElementById(prefix+'GitUrl')||{}).value||'').trim(),
+        git_ssh_key_path: ((document.getElementById(prefix+'GitSshKey')||{}).value||'').trim(),
+        git_workspace: ((document.getElementById(prefix+'GitWorkspace')||{}).value||'').trim(),
+        default_git_branch: ((document.getElementById(prefix+'DefaultGitBranch')||{}).value||'').trim(),
+        unity_project_path: ((document.getElementById(prefix+'UnityProjectPath')||{}).value||'').trim(),
+        output_base_dir: ((document.getElementById(prefix+'OutputBaseDir')||{}).value||'').trim()
+    };
+    if(gitBranches.length) o.git_branches = gitBranches;
+    return o;
+}
+function validateProjectGit(prefix, resultId){
+    var bp = _projectBuildPayload(prefix);
+    var el = document.getElementById(resultId);
+    if(el){ el.textContent='验证中…'; el.className='text-xs text-gray-500'; }
+    fetch('/api/jenkins-manage/validate-git', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body: JSON.stringify({ git_url: bp.git_url, git_workspace: bp.git_workspace, git_ssh_key_path: bp.git_ssh_key_path }) })
+    .then(function(r){ return r.json(); }).then(function(d){
+        if(!el) return;
+        if(d.ok){ el.textContent='Git 配置有效'; el.className='text-xs text-green-600'; }
+        else{ el.textContent=(d.errors&&d.errors.length)?d.errors.join('；'):'配置有误'; el.className='text-xs text-red-600'; }
+    }).catch(function(){ if(el){ el.textContent='验证请求失败'; el.className='text-xs text-red-600'; } });
+}
+function _fillProjectBuildFields(prefix, p){
+    var bc = p.build_config || p || {};
+    var setVal = function(id, v){ var el=document.getElementById(id); if(el) el.value = v || ''; };
+    setVal(prefix+'AppName', bc.app_name || p.app_name);
+    setVal(prefix+'OutputBaseDir', bc.output_base_dir || p.output_base_dir);
+    setVal(prefix+'GitUrl', bc.git_url || p.git_url);
+    setVal(prefix+'GitWorkspace', bc.git_workspace || p.git_workspace);
+    setVal(prefix+'GitSshKey', bc.git_ssh_key_path || p.git_ssh_key_path);
+    setVal(prefix+'DefaultGitBranch', bc.default_git_branch || p.default_git_branch);
+    setVal(prefix+'UnityProjectPath', bc.unity_project_path || p.unity_project_path);
+    var branches = bc.git_branches || p.git_branches || [];
+    setVal(prefix+'GitBranches', Array.isArray(branches) ? branches.join('\\n') : String(branches||''));
+}
+var _newGitBtn = document.getElementById('newProjectValidateGitBtn'); if(_newGitBtn) _newGitBtn.onclick=function(){ validateProjectGit('newProject', 'newProjectGitValidateResult'); };
+var _editGitBtn = document.getElementById('editProjectValidateGitBtn'); if(_editGitBtn) _editGitBtn.onclick=function(){ validateProjectGit('editProject', 'editProjectGitValidateResult'); };
 function renderNewParticipants(){ var ul=document.getElementById('newParticipantsList'); if(!ul) return; ul.innerHTML=newParticipants.map(function(p){ return '<li class="flex justify-between items-center py-1"><span>'+p.user+' <span class="text-gray-500">('+p.role+')</span></span><span><button type="button" onclick="editParticipantRole(\\'new\\','+JSON.stringify(p.user).replace(/</g,'\\u003c')+')" class="text-blue-600 text-xs mr-1">编辑</button><button type="button" onclick="removeParticipant(\\'new\\','+JSON.stringify(p.user).replace(/</g,'\\u003c')+')" class="text-red-600 text-xs">删除</button></span></li>'; }).join('') || '<li class="text-gray-400 text-xs">暂无参与人员</li>'; }
 function renderEditParticipants(){ var ul=document.getElementById('editParticipantsList'); if(!ul) return; ul.innerHTML=editParticipants.map(function(p){ return '<li class="flex justify-between items-center py-1"><span>'+p.user+' <span class="text-gray-500">('+p.role+')</span></span><span><button type="button" onclick="editParticipantRole(\\'edit\\','+JSON.stringify(p.user).replace(/</g,'\\u003c')+')" class="text-blue-600 text-xs mr-1">编辑</button><button type="button" onclick="removeParticipant(\\'edit\\','+JSON.stringify(p.user).replace(/</g,'\\u003c')+')" class="text-red-600 text-xs">删除</button></span></li>'; }).join('') || '<li class="text-gray-400 text-xs">暂无参与人员</li>'; }
 function addNewParticipant(){ var u=(document.getElementById('newParticipantUser')||{}).value.trim(); if(!u){ alert('请输入用户名'); return; } fetch('/admin/projects/validate-username?username='+encodeURIComponent(u)).then(r=>r.json()).then(function(d){ if(!d.exists){ alert('用户不存在或已禁用'); return; } if(newParticipants.some(function(p){ return p.user===u; })){ alert('已添加过'); return; } _participantCtx='new'; _pendingParticipantUser=u; document.getElementById('roleModalUsername').textContent=u; document.getElementById('roleModalRole').value='其他'; document.getElementById('participantRoleModal').classList.remove('hidden'); }); }
@@ -1972,7 +2052,8 @@ function addProject(){
         var phaseEl = document.getElementById('newProjectPhase'); var phase = phaseEl ? phaseEl.value : 'kickoff';
         var editors = newParticipants.map(function(p){ return p.user; });
         var member_roles = {}; newParticipants.forEach(function(p){ member_roles[p.user]=p.role||'其他'; });
-        var payload = { id: (document.getElementById('newProjectId')||{}).value.trim(), name: (document.getElementById('newProjectName')||{}).value.trim(), name_en: (document.getElementById('newProjectNameEn')||{}).value.trim(), phase: phase, icon: (document.getElementById('newProjectIcon')||{}).value.trim(), intro: (document.getElementById('newProjectIntro')||{}).value.trim(), detail: (document.getElementById('newProjectDetail')||{}).value.trim(), network_connection: (document.getElementById('newProjectNetwork')||{}).value.trim(), git_url: (document.getElementById('newProjectGitUrl')||{}).value.trim(), git_ssh_key_path: (document.getElementById('newProjectGitSshKey')||{}).value.trim(), player_public_url: (document.getElementById('newProjectPlayerPublicUrl')||{}).value.trim(), forum_public_url: (document.getElementById('newProjectForumPublicUrl')||{}).value.trim(), admin_public_url: (document.getElementById('newProjectAdminPublicUrl')||{}).value.trim(), viewers: viewers, editors: editors, member_roles: member_roles, game_id: (document.getElementById('newProjectGameId')||{}).value.trim(), game_key: (document.getElementById('newProjectGameKey')||{}).value.trim() };
+        var payload = { id: (document.getElementById('newProjectId')||{}).value.trim(), name: (document.getElementById('newProjectName')||{}).value.trim(), name_en: (document.getElementById('newProjectNameEn')||{}).value.trim(), phase: phase, icon: (document.getElementById('newProjectIcon')||{}).value.trim(), intro: (document.getElementById('newProjectIntro')||{}).value.trim(), detail: (document.getElementById('newProjectDetail')||{}).value.trim(), network_connection: (document.getElementById('newProjectNetwork')||{}).value.trim(), player_public_url: (document.getElementById('newProjectPlayerPublicUrl')||{}).value.trim(), forum_public_url: (document.getElementById('newProjectForumPublicUrl')||{}).value.trim(), admin_public_url: (document.getElementById('newProjectAdminPublicUrl')||{}).value.trim(), viewers: viewers, editors: editors, member_roles: member_roles, game_id: (document.getElementById('newProjectGameId')||{}).value.trim(), game_key: (document.getElementById('newProjectGameKey')||{}).value.trim() };
+        Object.assign(payload, _projectBuildPayload('newProject'));
         if(!payload.id||!payload.name){ setAddFeedback('请填写项目ID和名称', true); if(btn){ btn.disabled=false; btn.textContent='添加项目'; } return; }
         if(!payload.game_id || !payload.game_key){ setAddFeedback('请先点击“系统生成凭据”', true); if(btn){ btn.disabled=false; btn.textContent='添加项目'; } return; }
         fetch('/admin/projects/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), credentials:'same-origin' })
@@ -2168,8 +2249,7 @@ function editProject(id){
         document.getElementById('editProjectIntro').value=p.intro||'';
         document.getElementById('editProjectDetail').value=p.detail||'';
         document.getElementById('editProjectNetwork').value=p.network_connection||'';
-        document.getElementById('editProjectGitUrl').value=p.git_url||'';
-        document.getElementById('editProjectGitSshKey').value=p.git_ssh_key_path||'';
+        _fillProjectBuildFields('editProject', p);
         var playerUrlEl = document.getElementById('editProjectPlayerPublicUrl'); if(playerUrlEl) playerUrlEl.value=p.player_public_url||'';
         var forumUrlEl = document.getElementById('editProjectForumPublicUrl'); if(forumUrlEl) forumUrlEl.value=p.forum_public_url||'';
         var adminUrlEl = document.getElementById('editProjectAdminPublicUrl'); if(adminUrlEl) adminUrlEl.value=p.admin_public_url||'';
@@ -2185,7 +2265,8 @@ function saveEditProject(){
     var member_roles = {}; editParticipants.forEach(function(p){ member_roles[p.user]=p.role||'其他'; });
     var phaseEl = document.getElementById('editProjectPhase'); var phase = phaseEl ? phaseEl.value : 'kickoff';
     var channels = []; document.querySelectorAll('.edit-channel-cb:checked').forEach(function(cb){ channels.push(cb.value); });
-    var payload = { id: id, name: document.getElementById('editProjectName').value.trim(), name_en: document.getElementById('editProjectNameEn').value.trim(), phase: phase, icon: document.getElementById('editProjectIcon').value.trim(), intro: document.getElementById('editProjectIntro').value.trim(), detail: document.getElementById('editProjectDetail').value.trim(), network_connection: document.getElementById('editProjectNetwork').value.trim(), git_url: document.getElementById('editProjectGitUrl').value.trim(), git_ssh_key_path: document.getElementById('editProjectGitSshKey').value.trim(), player_public_url: (document.getElementById('editProjectPlayerPublicUrl')||{}).value.trim(), forum_public_url: (document.getElementById('editProjectForumPublicUrl')||{}).value.trim(), admin_public_url: (document.getElementById('editProjectAdminPublicUrl')||{}).value.trim(), viewers: viewers, editors: editors, member_roles: member_roles, channels: channels };
+    var payload = { id: id, name: document.getElementById('editProjectName').value.trim(), name_en: document.getElementById('editProjectNameEn').value.trim(), phase: phase, icon: document.getElementById('editProjectIcon').value.trim(), intro: document.getElementById('editProjectIntro').value.trim(), detail: document.getElementById('editProjectDetail').value.trim(), network_connection: document.getElementById('editProjectNetwork').value.trim(), player_public_url: (document.getElementById('editProjectPlayerPublicUrl')||{}).value.trim(), forum_public_url: (document.getElementById('editProjectForumPublicUrl')||{}).value.trim(), admin_public_url: (document.getElementById('editProjectAdminPublicUrl')||{}).value.trim(), viewers: viewers, editors: editors, member_roles: member_roles, channels: channels };
+    Object.assign(payload, _projectBuildPayload('editProject'));
     fetch('/admin/projects/update', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r=>r.json()).then(d=>{ alert(d.error||'已保存'); if(!d.error) { document.getElementById('editProjectModal').classList.add('hidden'); loadProjects(); } });
 }
 function archiveProject(id, archive){ fetch('/admin/projects/'+encodeURIComponent(id)+'/archive', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({archive: archive}), credentials:'same-origin' }).then(r=>r.json()).then(d=>{ alert(d.error||(archive?'已归档':'已取消归档')); if(!d.error) loadProjects(); }); }
@@ -2878,10 +2959,17 @@ function mapVersionChannelToReleaseChannel(channelId) {
     var key = String(channelId || '').trim();
     if (!key) return 'common';
     var info = CHANNELS_FULL && CHANNELS_FULL[key];
-    if (info && info.build_param) {
-        var mapped = String(info.build_param).trim();
-        if (mapped) return mapped;
+    if (info) {
+        var bp = String(info.build_param || '').trim();
+        if (bp) {
+            var m = bp.match(/CHANNEL\\s*=\\s*([A-Za-z0-9_.-]+)/i);
+            if (m && m[1]) return m[1];
+            if (!/^\\d+$/.test(bp)) return bp;
+        }
+        var sub = String(info.apk_subdir || '').trim();
+        if (sub && !/^\\d+$/.test(sub)) return sub;
     }
+    if (!/^\\d+$/.test(key)) return key;
     return key || 'common';
 }
 function switchPipelineTab(tab) {
@@ -3638,13 +3726,7 @@ function buildDerivedVersionBasePath(versionCode){
     var vn=((document.getElementById('versionName')||{}).value||'1.0.0').trim()||'1.0.0';
     var stageMap={dev:'Development',test:'Testing',production:'Production'};
     var env=stageMap[st]||'Development';
-    var channelSeg=(function(){
-        var info=CHANNELS_FULL&&CHANNELS_FULL[ch];
-        var bp=(info&&info.build_param)||'';
-        var m=String(bp).match(/CHANNEL\\s*=\\s*([A-Za-z0-9_.-]+)/i);
-        if(m&&m[1]) return m[1];
-        return ch||'common';
-    })();
+    var channelSeg=mapVersionChannelToReleaseChannel(ch);
     var verFolder='Version_'+vn;
     var vc=String(versionCode||'').trim();
     var codeSeg=vc?('/'+vc):'';

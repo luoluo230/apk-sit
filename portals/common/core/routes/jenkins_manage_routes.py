@@ -152,54 +152,7 @@ def _jenkins_manage_html(env, script_mac, script_win):
             <span id="portCheckResult" class="text-sm"></span>
             <button type="button" id="btnStartJenkins" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm">启动 Jenkins</button>
         </div>
-        <details class="mt-4" id="detailsBuildDefaults">
-            <summary class="cursor-pointer text-sm font-medium text-gray-700">默认构建参数（可选，用于适配不同项目/设备）</summary>
-            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                    <label class="block text-gray-600 mb-1">默认 APP_NAME</label>
-                    <input type="text" id="newAppName" placeholder="GameKu" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div>
-                    <label class="block text-gray-600 mb-1">默认 VERSION_NAME</label>
-                    <input type="text" id="newVersionName" placeholder="1.0.0" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div>
-                    <label class="block text-gray-600 mb-1">默认 VERSION_CODE</label>
-                    <input type="text" id="newVersionCode" placeholder="1" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div>
-                    <label class="block text-gray-600 mb-1">OUTPUT_BASE_DIR（不填则用 扫描目录/任务名）</label>
-                    <input type="text" id="newOutputBaseDir" placeholder="/path/to/output" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div class="md:col-span-2 rounded border border-dashed border-indigo-200 bg-indigo-50/30 px-3 py-2 text-xs text-indigo-900">
-                    Unity 构建版本请在上方 <a href="#unity-catalog" class="underline font-medium">Unity 版本库</a> 中维护；仅「有效」版本会出现在 Jenkins 参数与版本编辑下拉中。
-                </div>
-                <div class="md:col-span-2">
-                    <label class="block text-gray-600 mb-1">Git 仓库 URL</label>
-                    <input type="text" id="newGitUrl" placeholder="git@github.com:user/repo.git 或 https://..." class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div class="md:col-span-2">
-                    <label class="block text-gray-600 mb-1">Git 工作目录（clone/pull 的目标路径，与 URL 同时配置时构建前会自动拉取）</label>
-                    <input type="text" id="newGitWorkspace" placeholder="/path/to/your/project" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div>
-                    <label class="block text-gray-600 mb-1">Git SSH 密钥路径（可选，SSH 拉取时必填）</label>
-                    <input type="text" id="newGitSshKeyPath" placeholder="~/.ssh/id_rsa" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div class="md:col-span-2 flex items-end gap-2">
-                    <button type="button" id="btnValidateGit" class="px-3 py-1.5 bg-gray-200 rounded hover:bg-gray-300 text-sm">验证 Git 配置</button>
-                    <span id="gitValidateResult" class="text-sm"></span>
-                </div>
-                <div>
-                    <label class="block text-gray-600 mb-1">默认 Git 分支（下拉默认选中）</label>
-                    <input type="text" id="newDefaultGitBranch" placeholder="main" class="border rounded px-2 py-1.5 w-full">
-                </div>
-                <div class="md:col-span-2">
-                    <label class="block text-gray-600 mb-1">Git 分支列表（每行一个，用于构建参数下拉）</label>
-                    <textarea id="newGitBranches" rows="2" placeholder="main&#10;develop&#10;release/1.0" class="border rounded px-2 py-1.5 w-full text-xs"></textarea>
-                </div>
-            </div>
-        </details>
+        <p class="text-xs text-gray-500 mt-1">Git、APP_NAME 等构建参数请在「项目管理」中配置，构建时按所选项目自动注入。</p>
         <p class="text-xs text-gray-500 mt-1">任务名用于构建页区分不同 Jenkins，且该实例的构建输出目录为：扫描目录/任务名（未填则用 jenkins_端口）</p>
         <p id="startResult" class="mt-2 text-sm"></p>
     </div>
@@ -336,8 +289,6 @@ document.getElementById('btnStartJenkins').onclick=function(){
     body.instance_type = instanceType;
     if(taskName) body.task_name=taskName;
     if(feishuWebhook) body.feishu_webhook=feishuWebhook;
-    var bd=collectBuildDefaults();
-    if(bd) body.build_defaults=bd;
     fetch('/api/jenkins-manage/start', {method:'POST', headers:_jmHeaders(true), credentials:'same-origin', body: JSON.stringify(body)})
     .then(r=>r.json()).then(d=>{
         if(d.success){ el.textContent='已启动，实例 ID: '+d.instance_id; el.className='mt-2 text-sm text-green-600'; loadList(); }
@@ -423,7 +374,7 @@ def _validate_build_defaults_git(bd):
 
 
 @bp.route('/api/jenkins-manage/validate-git', methods=['GET', 'POST'])
-@admin_required('jenkins')
+@admin_required_any('jenkins', 'projects')
 def api_validate_git():
     """校验 Git 工作目录、仓库 URL、SSH 密钥路径，用于保存前检测。"""
     if request.method == 'POST':
@@ -527,13 +478,9 @@ def api_start_jenkins():
     started_by = session.get('user') or request.remote_addr or ''
     task_name = (data.get('task_name') or '').strip()
     feishu_webhook = (data.get('feishu_webhook') or '').strip()
-    build_defaults = _normalize_build_defaults(data)
     instance_type = (data.get('instance_type') or 'general').strip()
-    err = _validate_build_defaults_git(build_defaults)
-    if err:
-        return jsonify({'success': False, 'error': 'Git 配置有误：' + err})
     success, instance_id, err = jm.start_jenkins(
-        int(port), started_by, task_name=task_name, feishu_webhook=feishu_webhook, build_defaults=build_defaults, instance_type=instance_type
+        int(port), started_by, task_name=task_name, feishu_webhook=feishu_webhook, instance_type=instance_type
     )
     if success:
         log_audit('jenkins_start', '启动 Jenkins 实例 %s 端口 %s' % (instance_id, port))
@@ -596,7 +543,7 @@ def api_delete_jenkins():
 @bp.route('/api/jenkins-manage/instance')
 @admin_required_any('jenkins', 'build')
 def api_get_instance():
-    """获取单个实例详情（含 build_defaults），供编辑页与构建页选择实例后加载参数使用；仅开构建管理也可调用。"""
+    """获取单个实例详情，供编辑页与构建页选择实例后使用；仅开构建管理也可调用。"""
     instance_id = request.args.get('instance_id', '').strip()
     if not instance_id:
         return jsonify({'success': False, 'error': '缺少 instance_id'}), 400
@@ -613,24 +560,14 @@ def api_get_instance():
 @bp.route('/api/jenkins-manage/update', methods=['POST'])
 @admin_required('jenkins')
 def api_update_instance():
-    """更新实例的 task_name、feishu_webhook、build_defaults。"""
+    """更新实例的 task_name、feishu_webhook。"""
     data = request.get_json() or {}
     instance_id = (data.get('instance_id') or '').strip()
     if not instance_id:
         return jsonify({'success': False, 'error': '缺少 instance_id'})
     task_name = data.get('task_name')
     feishu_webhook = data.get('feishu_webhook')
-    build_defaults = None
-    if 'build_defaults' in data:
-        build_defaults = _normalize_build_defaults(data)
-        if build_defaults is None:
-            build_defaults = {}
-        err = _validate_build_defaults_git(build_defaults)
-        if err:
-            return jsonify({'success': False, 'error': 'Git 配置有误：' + err})
-    else:
-        build_defaults = None
-    success, err = jm.update_instance(instance_id, task_name=task_name, feishu_webhook=feishu_webhook, build_defaults=build_defaults)
+    success, err = jm.update_instance(instance_id, task_name=task_name, feishu_webhook=feishu_webhook)
     if success:
         log_audit('jenkins_update', '更新 Jenkins 实例 %s' % instance_id)
         return jsonify({'success': True})
@@ -640,12 +577,13 @@ def api_update_instance():
 @bp.route('/api/jenkins-manage/sync-job', methods=['POST'])
 @admin_required('jenkins')
 def api_sync_job():
-    """将实例的 build_defaults 同步到 Jenkins 任务 config.xml。"""
+    """按项目 build_config（可选 project_id）同步 Jenkins 任务 config.xml。"""
     data = request.get_json() or {}
     instance_id = (data.get('instance_id') or '').strip()
+    project_id = (data.get('project_id') or '').strip()
     if not instance_id:
         return jsonify({'success': False, 'error': '缺少 instance_id'})
-    if jm.sync_instance_job_config(instance_id):
+    if jm.sync_instance_job_config(instance_id, project_id=project_id):
         jm.refresh_instance_env_and_scripts(instance_id)
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': '同步失败（实例不存在或目录不可写）'})
@@ -654,25 +592,22 @@ def api_sync_job():
 @bp.route('/admin/jenkins/edit')
 @admin_required('jenkins')
 def jenkins_edit_page():
-    """编辑实例：任务名、飞书 Webhook、默认构建参数；可同步到 Jenkins 任务。"""
+    """编辑实例：任务名、飞书 Webhook（构建参数已归属项目）。"""
     instance_id = request.args.get('instance_id', '').strip()
     if not instance_id:
         return _admin_layout('<p class="text-red-600">缺少 instance_id</p>', '编辑实例', back_href='/admin/jenkins')
     inst = jm.get_instance_by_id(instance_id)
     if not inst:
         return _admin_layout('<p class="text-red-600">未找到该实例</p>', '编辑实例', back_href='/admin/jenkins')
-    jm.enrich_build_defaults_from_disk(inst)
     content = _jenkins_edit_html(instance_id, inst)
     return _admin_layout(content, '编辑 Jenkins 实例', back_href='/admin/jenkins')
 
 
 def _jenkins_edit_html(instance_id, inst):
-    bd = inst.get('build_defaults') or {}
-    branch_lines = '\n'.join(bd.get('git_branches') or [])
     return '''<div class="space-y-6">
     <p class="text-sm text-gray-600">实例 ID: ''' + instance_id + ''' · 端口: ''' + str(inst.get('port', '')) + '''</p>
     <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">基本与通知</h2>
+        <h2 class="text-lg font-semibold mb-4">实例属性</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
                 <label class="block text-gray-600 mb-1">任务名</label>
@@ -683,28 +618,11 @@ def _jenkins_edit_html(instance_id, inst):
                 <input type="text" id="editFeishuWebhook" value="''' + (inst.get('feishu_webhook') or '').replace('"', '&quot;') + '''" placeholder="https://open.feishu.cn/..." class="border rounded px-2 py-1.5 w-full">
             </div>
         </div>
-        <h2 class="text-lg font-semibold mt-6 mb-4">默认构建参数</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div><label class="block text-gray-600 mb-1">APP_NAME</label><input type="text" id="editAppName" value="''' + (bd.get('app_name') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div><label class="block text-gray-600 mb-1">VERSION_NAME</label><input type="text" id="editVersionName" value="''' + (bd.get('version_name') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div><label class="block text-gray-600 mb-1">VERSION_CODE</label><input type="text" id="editVersionCode" value="''' + (bd.get('version_code') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div><label class="block text-gray-600 mb-1">OUTPUT_BASE_DIR</label><input type="text" id="editOutputBaseDir" value="''' + (bd.get('output_base_dir') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div class="md:col-span-2 rounded border border-dashed border-indigo-200 bg-indigo-50/30 px-3 py-2 text-xs text-indigo-900">Unity 版本请在 <a href="/admin/jenkins#unity-catalog" class="underline font-medium">Jenkins 管理 → Unity 版本库</a> 统一维护（仅有效版本用于构建）。保存实例后请点「同步到 Jenkins 任务」更新参数。</div>
-            <div class="md:col-span-2"><label class="block text-gray-600 mb-1">Git 仓库 URL</label><input type="text" id="editGitUrl" value="''' + (bd.get('git_url') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div class="md:col-span-2"><label class="block text-gray-600 mb-1">Git 工作目录（clone/pull 目标路径）</label><input type="text" id="editGitWorkspace" value="''' + (bd.get('git_workspace') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div><label class="block text-gray-600 mb-1">Git SSH 密钥路径</label><input type="text" id="editGitSshKeyPath" value="''' + (bd.get('git_ssh_key_path') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div class="md:col-span-2 flex items-center gap-2">
-                <button type="button" id="btnValidateGitEdit" class="px-3 py-1.5 bg-gray-200 rounded hover:bg-gray-300 text-sm">验证 Git 配置</button>
-                <span id="editGitValidateResult" class="text-sm"></span>
-            </div>
-            <div><label class="block text-gray-600 mb-1">默认 Git 分支</label><input type="text" id="editDefaultGitBranch" value="''' + (bd.get('default_git_branch') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full"></div>
-            <div class="md:col-span-2"><label class="block text-gray-600 mb-1">Git 分支列表（每行一个）</label><textarea id="editGitBranches" rows="2" class="border rounded px-2 py-1.5 w-full text-xs">''' + branch_lines.replace('<', '&lt;').replace('>', '&gt;') + '''</textarea></div>
-        </div>
+        <p class="text-xs text-gray-500 mt-4">Git、APP_NAME、Unity 路径等构建参数请在「项目管理」中配置，构建时按所选项目自动注入。</p>
         <div class="mt-4 flex gap-2">
             <button type="button" id="btnSaveEdit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">保存</button>
-            <button type="button" id="btnSyncJob" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm">同步到 Jenkins 任务</button>
         </div>
-        <div id="editResult" class="mt-3 px-4 py-3 rounded text-sm font-medium min-h-[3rem] border-2 border-gray-200 bg-gray-50 text-gray-600" role="status" aria-live="polite">点击「保存」或「同步到 Jenkins 任务」后，结果将显示在此处。</div>
+        <div id="editResult" class="mt-3 px-4 py-3 rounded text-sm font-medium min-h-[3rem] border-2 border-gray-200 bg-gray-50 text-gray-600" role="status" aria-live="polite">点击「保存」后，结果将显示在此处。</div>
     </div>
 </div>
 <script>
@@ -717,32 +635,6 @@ function _jmHeaders(isJson){
     if(t&&t.content) h['X-CSRFToken']=t.content;
     return h;
 }
-function collectEdit(){
-    var branchText = document.getElementById('editGitBranches').value.trim();
-    var gitBranches = branchText ? branchText.split(/\\n/).map(function(s){ return s.trim(); }).filter(Boolean) : [];
-    var o = {};
-    var appName = document.getElementById('editAppName').value.trim();
-    if(appName) o.app_name = appName;
-    var vn = document.getElementById('editVersionName').value.trim(); if(vn) o.version_name = vn;
-    var vc = document.getElementById('editVersionCode').value.trim(); if(vc) o.version_code = vc;
-    var out = document.getElementById('editOutputBaseDir').value.trim(); if(out) o.output_base_dir = out;
-    var gu = document.getElementById('editGitUrl').value.trim(); if(gu) o.git_url = gu;
-    var gw = document.getElementById('editGitWorkspace').value.trim(); if(gw) o.git_workspace = gw;
-    var gk = document.getElementById('editGitSshKeyPath').value.trim(); if(gk) o.git_ssh_key_path = gk;
-    var dgb = document.getElementById('editDefaultGitBranch').value.trim(); if(dgb) o.default_git_branch = dgb;
-    if(gitBranches.length) o.git_branches = gitBranches;
-    return o;
-}
-document.getElementById('btnValidateGitEdit').onclick = function(){
-    var payload = { git_url: document.getElementById('editGitUrl').value.trim(), git_workspace: document.getElementById('editGitWorkspace').value.trim(), git_ssh_key_path: document.getElementById('editGitSshKeyPath').value.trim() };
-    var el = document.getElementById('editGitValidateResult');
-    el.textContent = '验证中…'; el.className = 'text-sm text-gray-500';
-    fetch('/api/jenkins-manage/validate-git', { method: 'POST', headers: _jmHeaders(true), credentials: 'same-origin', body: JSON.stringify(payload) })
-    .then(function(r){ return r.json(); }).then(function(d){
-        if(d.ok){ el.textContent = 'Git 配置有效'; el.className = 'text-sm text-green-600'; }
-        else{ el.textContent = (d.errors && d.errors.length) ? d.errors.join('；') : '配置有误'; el.className = 'text-sm text-red-600'; }
-    }).catch(function(){ el.textContent = '验证请求失败'; el.className = 'text-sm text-red-600'; });
-};
 function setEditResult(msg, isError){
     var el = document.getElementById('editResult');
     if(el){ el.textContent = msg; el.className = 'mt-3 px-3 py-2 rounded text-sm font-medium min-h-[2.5rem] border ' + (isError ? 'bg-red-100 text-red-700 border-red-300' : 'bg-green-100 text-green-700 border-green-300'); el.setAttribute('role', 'status'); try{ el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }catch(e){} }
@@ -751,26 +643,15 @@ function setEditResult(msg, isError){
 function doSave(){
     try{
         setEditResult('保存中…', false);
-        var payload = { instance_id: instanceId, task_name: document.getElementById('editTaskName').value.trim(), feishu_webhook: document.getElementById('editFeishuWebhook').value.trim(), build_defaults: collectEdit() };
+        var payload = { instance_id: instanceId, task_name: document.getElementById('editTaskName').value.trim(), feishu_webhook: document.getElementById('editFeishuWebhook').value.trim() };
         fetch('/api/jenkins-manage/update', { method: 'POST', headers: _jmHeaders(true), credentials: 'same-origin', body: JSON.stringify(payload) })
         .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }).catch(function(){ return { ok: false, data: { error: '响应格式错误' } }; }); })
         .then(function(x){ if(x.data && x.data.success) setEditResult('已保存', false); else setEditResult(x.data && x.data.error ? x.data.error : '保存失败', true); })
         .catch(function(e){ setEditResult('请求失败: ' + (e && e.message ? e.message : '请检查网络'), true); });
     }catch(e){ setEditResult('操作异常: ' + (e.message || ''), true); }
 }
-function doSync(){
-    try{
-        setEditResult('同步中…', false);
-        fetch('/api/jenkins-manage/sync-job', { method: 'POST', headers: _jmHeaders(true), credentials: 'same-origin', body: JSON.stringify({ instance_id: instanceId }) })
-        .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }).catch(function(){ return { ok: false, data: { error: '响应格式错误' } }; }); })
-        .then(function(x){ if(x.data && x.data.success) setEditResult('已同步到 Jenkins 任务', false); else setEditResult(x.data && x.data.error ? x.data.error : '同步失败', true); })
-        .catch(function(e){ setEditResult('请求失败: ' + (e && e.message ? e.message : '请检查网络'), true); });
-    }catch(e){ setEditResult('操作异常: ' + (e.message || ''), true); }
-}
 var btnSave = document.getElementById('btnSaveEdit');
-var btnSync = document.getElementById('btnSyncJob');
 if(btnSave) btnSave.onclick = doSave;
-if(btnSync) btnSync.onclick = doSync;
 })();
 </script>
 '''

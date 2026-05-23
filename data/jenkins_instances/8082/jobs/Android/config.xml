@@ -8,10 +8,10 @@
       <parameterDefinitions>
 <hudson.model.StringParameterDefinition>
   <name>UNITY_VERSION</name><description>Unity 版本（由版本配置传入，见 unity_paths.json）</description>
-  <defaultValue>6000.3.15f1</defaultValue><trim>true</trim>
+  <defaultValue>6000.3.8f1</defaultValue><trim>true</trim>
 </hudson.model.StringParameterDefinition>
 <hudson.model.StringParameterDefinition>
-  <name>VERSION_NAME</name><description>版本号</description><defaultValue>1.0.7</defaultValue><trim>true</trim>
+  <name>VERSION_NAME</name><description>版本号</description><defaultValue>1.0.0</defaultValue><trim>true</trim>
 </hudson.model.StringParameterDefinition>
 <hudson.model.StringParameterDefinition>
   <name>VERSION_CODE</name><description>版本代码</description><defaultValue>1</defaultValue><trim>true</trim>
@@ -267,27 +267,19 @@
   <triggers/>
   <concurrentBuild>false</concurrentBuild>
     <builders>
-    <hudson.tasks.BatchFile>
-      <command>@echo off
-chcp 65001 >nul
-set PYTHONIOENCODING=utf-8
-set "BASH=E:\Git\bin\bash.exe"
-if not exist "%BASH%" (
-  echo ERROR: Git bash not found: %BASH%
-  exit /b 1
-)
-if exist "%JENKINS_HOME%\.apk-site-env" (
-  "%BASH%" -lc "set -a; source \"%JENKINS_HOME%/.apk-site-env\"; set +a"
-)
-if not exist "%JENKINS_HOME%\scripts\commercial_android_pipeline.sh" (
-  echo ERROR: missing pipeline script
-  exit /b 1
-)
-"%BASH%" "%JENKINS_HOME%\scripts\commercial_android_pipeline.sh"
-exit /b %ERRORLEVEL%
+    <hudson.tasks.Shell>
+      <command>#!/bin/bash
+set -e
+[ -n "$JENKINS_HOME" ] &amp;&amp; [ -f "${JENKINS_HOME}/.apk-site-env" ] &amp;&amp; . "${JENKINS_HOME}/.apk-site-env"
+PIPELINE="${JENKINS_HOME}/scripts/commercial_android_pipeline.sh"
+if [ ! -f "$PIPELINE" ]; then
+  echo "ERROR: missing $PIPELINE"
+  exit 1
+fi
+exec bash "$PIPELINE"
 </command>
       <configuredLocalRules/>
-    </hudson.tasks.BatchFile>
+    </hudson.tasks.Shell>
   </builders>
   <publishers/>
   <buildWrappers/>

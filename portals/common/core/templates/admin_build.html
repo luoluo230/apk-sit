@@ -244,17 +244,28 @@
             c.innerHTML='<input type="text" name="GIT_BRANCH" id="GIT_BRANCH" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="main" placeholder="分支名">';
         }
     }
-    function applyInstanceDefaults(inst){
-        var bd=inst&&inst.build_defaults;
-        if(!bd) return;
-        var uv=bd.unity_versions;
-        if(Array.isArray(uv)&&uv.length){ var vs=uv.map(function(u){ return (u&&u.version)!==undefined ? u.version : String(u); }); setUnityVersionControl(vs); }
-        else setUnityVersionControl(null);
-        var gb=bd.git_branches;
+    function applyProjectBuildDefaults(bc){
+        if(!bc) return;
+        fetch('/api/jenkins-manage/unity-catalog?active_only=1', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+            var entries=(d&&d.entries)||[];
+            if(entries.length){
+                var vs=entries.map(function(e){ return e.version; }).filter(Boolean);
+                setUnityVersionControl(vs);
+            }
+        }).catch(function(){});
+        var gb=bc.git_branches;
         if(Array.isArray(gb)&&gb.length) setGitBranchControl(gb);
         else setGitBranchControl(null);
-        if(bd.app_name){ var e=document.getElementById('APP_NAME'); if(e) e.value=bd.app_name; }
-        if(bd.output_base_dir){ var e=document.getElementById('OUTPUT_BASE_DIR'); if(e) e.value=bd.output_base_dir; }
+        if(bc.app_name){ var e=document.getElementById('APP_NAME'); if(e) e.value=bc.app_name; }
+        if(bc.output_base_dir){ var e=document.getElementById('OUTPUT_BASE_DIR'); if(e) e.value=bc.output_base_dir; }
+    }
+    function loadProjectBuildDefaults(){
+        if(!PROJECT_ID) return Promise.resolve();
+        return fetch('/admin/projects/list', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
+            var projects=(d&&d.projects)||[];
+            var p=projects.find(function(x){ return (x.id||'')===PROJECT_ID; });
+            if(p) applyProjectBuildDefaults(p.build_config||{});
+        }).catch(function(){});
     }
     function refreshForInstance(){
         var sel=document.getElementById('jenkinsInstance');
@@ -269,12 +280,7 @@
             return;
         }
         loadHistory();
-        var id=selectedInstanceId();
-        fetch('/api/jenkins-manage/instance?instance_id='+encodeURIComponent(id), {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
-            if(d.success&&d.instance){
-                loadLastParams().then(function(){ applyInstanceDefaults(d.instance); });
-            } else { loadLastParams(); }
-        }).catch(function(){ loadLastParams(); });
+        Promise.all([loadLastParams(), loadProjectBuildDefaults()]);
         fetch('/api/jenkins/status'+apiQuery(), {credentials:'same-origin'}).then(r=>r.json()).then(function(d){
             if(!d.ok){ setBuilding(false); logEl.textContent='无法获取该实例状态，请检查实例是否运行'; return; }
             setBuilding(d.building);

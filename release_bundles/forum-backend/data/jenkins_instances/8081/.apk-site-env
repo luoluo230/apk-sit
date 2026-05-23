@@ -1,9 +1,0 @@
-# 本实例环境，构建步骤会 source 此文件
-export JENKINS_CLONE="/Users/wangling/Desktop/apk-site/data/jenkins_instances/8081"
-export APK_DIR="/Users/wangling/Desktop/Builds/GomeKu"
-export APK_SCAN_DIR="/Users/wangling/Desktop/Builds"
-export JENKINS_JOB_DIR="/Users/wangling/Desktop/apk-site/data/jenkins_instances/8081/jobs/Android/builds"
-export APKSITE_BASE_URL="http://192.168.0.3:5003"
-export GIT_URL="git@github.com:luoluo230/WuziQi.git"
-export GIT_SSH_KEY_PATH="/Users/wangling/Desktop/apk-site/jenkins-clone/github-ssh-key"
-export GIT_WORKSPACE="/Users/wangling/Desktop/MyGame/GameKu"

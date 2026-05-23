@@ -42,6 +42,16 @@ def _canonical_version_name_code(version_obj: dict | None) -> tuple[str, str]:
     return name, code
 
 
+def _version_group_key(version_obj: dict) -> tuple:
+    if not isinstance(version_obj, dict):
+        return ("", "", "dev")
+    return (
+        str(version_obj.get("version_name") or "").strip(),
+        str(version_obj.get("channel") or "").strip(),
+        str(version_obj.get("stage") or "dev").strip(),
+    )
+
+
 def _resolve_version_git_branch(version_obj: dict) -> str:
     """从版本记录解析 Git 分支：发布配置 ppApkBranch → pipeline.apk_build.git_branch。"""
     if not isinstance(version_obj, dict):
@@ -62,6 +72,38 @@ def _resolve_version_git_branch(version_obj: dict) -> str:
         if branch:
             return branch
     return "main"
+
+
+def _resolve_version_unity_version(version_obj: dict, all_versions=None, fallback: str = "6000.3.8f1") -> str:
+    """从版本发布配置解析 Unity 版本；同版本组内取最近更新的 pipeline.apk_build.unity_version。"""
+    if not isinstance(version_obj, dict):
+        return fallback
+    group_key = _version_group_key(version_obj)
+    candidates = [version_obj]
+    if all_versions and group_key[0]:
+        candidates = [
+            row for row in all_versions
+            if isinstance(row, dict) and _version_group_key(row) == group_key
+        ] or candidates
+    best = ""
+    best_ts = ""
+    for row in candidates:
+        pipeline = row.get("pipeline") if isinstance(row.get("pipeline"), dict) else {}
+        apk_build = pipeline.get("apk_build") if isinstance(pipeline.get("apk_build"), dict) else {}
+        unity = str(apk_build.get("unity_version") or "").strip()
+        if not unity:
+            continue
+        ts = str(row.get("updated_at") or row.get("created_at") or "")
+        if ts >= best_ts:
+            best_ts = ts
+            best = unity
+    if best:
+        return best
+    saved = version_obj.get("jenkins_params") if isinstance(version_obj.get("jenkins_params"), dict) else {}
+    legacy = str((saved or {}).get("UNITY_VERSION") or "").strip()
+    if legacy:
+        return legacy
+    return fallback
 
 
 bp = Blueprint('build_routes', __name__, url_prefix='')
@@ -139,7 +181,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
                         <div><label class="block text-sm font-medium text-gray-700 mb-1">APP_NAME</label><input type="text" name="APP_NAME" id="APP_NAME" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="{{ default_app_name|default('RecycleTycoon') }}" placeholder="应用名"></div>
                         <div><label class="block text-sm font-medium text-gray-700 mb-1">VERSION_NAME{% if version_lock_params %} <span class="text-xs text-gray-400 font-normal">（与版本记录 version_name 一致）</span>{% endif %}</label><input type="text" name="VERSION_NAME" id="VERSION_NAME" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="{{ default_version_name|default('1.0.15') }}" placeholder="如 1.0.15"></div>
                         <div><label class="block text-sm font-medium text-gray-700 mb-1">VERSION_CODE</label><input type="text" name="VERSION_CODE" id="VERSION_CODE" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="{{ default_version_code|default('1015') }}" placeholder="整数"></div>
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">UNITY_VERSION</label><div id="UNITY_VERSION_container"><input type="text" name="UNITY_VERSION" id="UNITY_VERSION" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="{{ default_unity_version|default('6000.3.8f1') }}"></div></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">UNITY_VERSION{% if version_lock_params %} <span class="text-xs text-gray-400 font-normal">（来自版本发布配置，不可修改）</span>{% endif %}</label><div id="UNITY_VERSION_container"><input type="text" name="UNITY_VERSION" id="UNITY_VERSION" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500{% if version_lock_params %} bg-slate-100{% endif %}" value="{{ default_unity_version|default('6000.3.8f1') }}"{% if version_lock_params %} readonly{% endif %}></div></div>
                     </div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">OUTPUT_BASE_DIR</label><input type="text" name="OUTPUT_BASE_DIR" id="OUTPUT_BASE_DIR" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm" value="{{ apk_dir }}" placeholder="APK 输出目录"><p class="text-xs text-amber-600 mt-1">建议与 APK 目录一致或为其子目录，构建产物将自动出现在版本列表与下载中心</p></div>
                     <div><label class="block text-sm font-medium text-gray-700 mb-1">GIT_BRANCH{% if version_lock_params %} <span class="text-xs text-gray-400 font-normal">（来自版本发布配置，不可修改）</span>{% endif %}</label><div id="GIT_BRANCH_container"><input type="text" name="GIT_BRANCH" id="GIT_BRANCH" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500{% if version_lock_params %} bg-slate-100{% endif %}" value="{{ default_git_branch|default('main') }}" placeholder="分支名"{% if version_lock_params %} readonly{% endif %}></div></div>
@@ -238,6 +280,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
     var CANONICAL_VERSION_NAME = {{ (canonical_version_name|default('')|tojson) }};
     var CANONICAL_VERSION_CODE = {{ (canonical_version_code|default('')|tojson) }};
     var CANONICAL_GIT_BRANCH = {{ (default_git_branch|default('')|tojson) }};
+    var CANONICAL_UNITY_VERSION = {{ (canonical_unity_version|default('')|tojson) }};
     var VERSION_PIPELINE = {{ (version_pipeline or {})|tojson }};
     var VERSION_INFO = {{ (version_info or {})|tojson }};
     var INSTANCE_META = {};
@@ -398,6 +441,10 @@ def _build_page_html(project_context=False, version_lock_params=False):
         if(CANONICAL_GIT_BRANCH){
             var gb=document.getElementById('GIT_BRANCH');
             if(gb) gb.value=CANONICAL_GIT_BRANCH;
+        }
+        if(CANONICAL_UNITY_VERSION){
+            var uv=document.getElementById('UNITY_VERSION');
+            if(uv) uv.value=CANONICAL_UNITY_VERSION;
         }
     }
     function buildCommercialPlanFromVersion(){
@@ -626,6 +673,10 @@ def _build_page_html(project_context=False, version_lock_params=False):
         el.textContent='加载中...';
         fetch('/api/build/log/'+num+'?instance_id='+encodeURIComponent(instId), {credentials:'same-origin'}).then(r=>r.text()).then(t=>{ el.textContent=t||'（无日志）'; el.scrollTop=el.scrollHeight; });
     }
+    function isTerminalBuildStatus(status){
+        var s=String(status||'').toUpperCase();
+        return s==='SUCCESS'||s==='FAILURE'||s==='ABORTED'||s==='UNSTABLE';
+    }
     function pollLogAndStatus(buildNum, optInstanceId){
         var el=document.getElementById('buildLog');
         var instId=optInstanceId||selectedInstanceId();
@@ -639,29 +690,32 @@ def _build_page_html(project_context=False, version_lock_params=False):
                 if(cb) cb();
             }).catch(function(){ if(cb) cb(); });
         }
+        function finishBuild(status){
+            stopPoll();
+            fetchLogOnce(function(){
+                setBuilding(false);
+                clearActiveBuild();
+                var stEl=document.getElementById('buildStatus');
+                if(stEl){
+                    stEl.textContent='构建 #'+buildNum+' 已结束: '+status;
+                    stEl.className='mt-3 text-sm min-h-[1.5rem] '+(status==='SUCCESS'?'text-green-600':'text-red-600');
+                }
+                loadHistory();
+            });
+        }
         function tick(){
             fetch(statusUrl(), {credentials:'same-origin'}).then(r=>r.json()).then(function(st){
                 var status=(st&&st.status)||'';
-                var done=st&&!st.building&&status!=='BUILDING'&&status!=='QUEUED';
+                var done=isTerminalBuildStatus(status) || (st && !st.building && status!=='BUILDING' && status!=='QUEUED' && status!=='UNKNOWN');
                 if(done){
-                    stopPoll();
-                    fetchLogOnce(function(){
-                        setBuilding(false);
-                        clearActiveBuild();
-                        var stEl=document.getElementById('buildStatus');
-                        if(stEl){
-                            stEl.textContent='构建 #'+buildNum+' 已结束: '+status;
-                            stEl.className='mt-3 text-sm min-h-[1.5rem] '+(status==='SUCCESS'?'text-green-600':'text-red-600');
-                        }
-                        loadHistory();
-                    });
+                    finishBuild(status||'UNKNOWN');
                     return;
                 }
                 fetchLogOnce();
             }).catch(function(){ fetchLogOnce(); });
         }
         tick();
-        window._logTimer=setInterval(tick, 2500);
+        window._logTimer=setInterval(tick, 1000);
     }
     function stopPoll(){ if(window._logTimer){ clearInterval(window._logTimer); window._logTimer=null; } }
     function resumeVersionBuild(){
@@ -721,7 +775,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
             return;
         }
         fetch('/api/jenkins-manage/instance?instance_id='+encodeURIComponent(selectedInstanceId()), {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
-            INSTANCE_COMMERCIAL_DEFAULTS = (((d||{}).instance||{}).build_defaults||{}).commercial_release || {};
+            INSTANCE_COMMERCIAL_DEFAULTS = {};
             renderCommercialSummary();
         });
         resumeVersionBuild();
@@ -1019,11 +1073,21 @@ def project_version_workflow(project_id, version_id):
         default_ver_name = '1.0.0'
     if not default_ver_code:
         default_ver_code = '100'
-    default_unity = params_saved.get('UNITY_VERSION') or '6000.3.8f1'
+    default_unity = _resolve_version_unity_version(v, versions)
     default_git_branch = _resolve_version_git_branch(v)
+    try:
+        from services.admin.project_build_config_service import get_project_build_config
+
+        pbc = get_project_build_config(project_id)
+        default_app = params_saved.get('APP_NAME') or (pbc.get('app_name') or '').strip() or project_id
+        if not params_saved.get('OUTPUT_BASE_DIR') and (pbc.get('output_base_dir') or '').strip():
+            default_output = (pbc.get('output_base_dir') or '').strip()
+        else:
+            default_output = params_saved.get('OUTPUT_BASE_DIR') or output_base
+    except Exception:
+        default_output = params_saved.get('OUTPUT_BASE_DIR') or output_base
     if version_mode == 'commercial' and isinstance(apk_build_cfg, dict):
         default_app = (apk_build_cfg.get('app_name') or '').strip() or default_app
-        default_unity = (apk_build_cfg.get('unity_version') or '').strip() or default_unity
         default_output = (apk_build_cfg.get('output_base_dir') or '').strip() or default_output
     channel_opts = get_channels_for_project(project_id)
     channel_options = [(c.get('id', '').strip(), (c.get('name') or c.get('id', '')).strip()) for c in channel_opts if (c.get('id') or '').strip()]
@@ -1050,6 +1114,7 @@ def project_version_workflow(project_id, version_id):
         version_lock_params=True,
         canonical_version_name=default_ver_name,
         canonical_version_code=default_ver_code,
+        canonical_unity_version=default_unity,
         csrf_token_value=_get_csrf_token(),
     )
 
@@ -1134,6 +1199,21 @@ def trigger_build():
     version_id = (data.get('_version_id') or '').strip()
     ctx_channel_id = (data.get('_channel_id') or '').strip()
     ctx_stage_id = (data.get('_stage_id') or '').strip()
+    if project_id:
+        try:
+            from services.admin.project_build_config_service import get_project_build_config
+
+            pbc = get_project_build_config(project_id)
+            if not app_name or app_name == 'RecycleTycoon':
+                app_name = (pbc.get('app_name') or app_name or project_id).strip()
+            if not unity_project_path:
+                unity_project_path = (pbc.get('unity_project_path') or '').strip()
+            if not output_base_dir or output_base_dir == Config.APK_DIR:
+                pbc_out = (pbc.get('output_base_dir') or '').strip()
+                if pbc_out:
+                    output_base_dir = pbc_out
+        except Exception:
+            pass
     try:
         version_code = str(int(version_code_raw))
     except (ValueError, TypeError):
@@ -1148,12 +1228,12 @@ def trigger_build():
         'APP_NAME': app_name,
         'OUTPUT_BASE_DIR': output_base_dir,
     }
+    if unity_project_path:
+        params['UNITY_PROJECT_PATH'] = unity_project_path
     if git_branch:
         params['GIT_BRANCH'] = git_branch
     if channel:
         params['CHANNEL'] = channel
-    if unity_project_path:
-        params['UNITY_PROJECT_PATH'] = unity_project_path
     # 版本构建上下文：强约束版本模式与 Jenkins 实例类型一致（商业/通用不能混用）
     if project_id and version_id:
         if not instance_id:
@@ -1174,6 +1254,8 @@ def trigger_build():
                 version_code = str(int(version_code))
             except (ValueError, TypeError):
                 return jsonify({'success': False, 'error': '版本记录 version_code 须为整数'})
+        unity_version = _resolve_version_unity_version(version_obj, versions)
+        git_branch = _resolve_version_git_branch(version_obj) or git_branch
         version_mode = (version_obj.get('version_mode') or 'general').strip().lower()
         if version_mode not in ('general', 'commercial'):
             version_mode = 'general'
@@ -1187,6 +1269,15 @@ def trigger_build():
             if version_mode == 'commercial':
                 return jsonify({'success': False, 'error': '商业级版本仅可使用商业级 Jenkins 实例'})
             return jsonify({'success': False, 'error': '通用级版本仅可使用通用级 Jenkins 实例'})
+        params['UNITY_VERSION'] = unity_version
+        params['VERSION_NAME'] = version_name
+        params['VERSION_CODE'] = version_code
+        if git_branch:
+            params['GIT_BRANCH'] = git_branch
+    if project_id and instance_id:
+        ok_prep, prep_err = jm.prepare_instance_for_project_build(instance_id, project_id, git_branch=git_branch)
+        if not ok_prep:
+            return jsonify({'success': False, 'error': prep_err or '同步项目构建配置到 Jenkins 失败'})
     success, build_number, err = jenkins_svc.trigger_build(params, base_url=base_url, builds_dir=builds_dir, instance_id=instance_id)
     if success:
         log_audit('trigger_build', f'Jenkins 构建 #{build_number} - {app_name} {version_name}')

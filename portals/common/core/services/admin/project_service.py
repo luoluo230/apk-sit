@@ -11,6 +11,10 @@ from typing import Any, Dict, Tuple
 from models.data import get_approved_approval
 from repositories.admin import projects_repo
 from services.admin.envelope import ok, fail, attach_legacy_error
+from services.admin.project_build_config_service import (
+    apply_build_config_to_project_payload,
+    build_config_for_api,
+)
 
 PROJECT_PHASES = [
     ("kickoff", "立项/预研"),
@@ -122,8 +126,6 @@ def create_project(data: Dict[str, Any], created_by: str, tenant_id: str = "defa
         "icon": str(data.get("icon") or "").strip(),
         "phase": phase,
         "network_connection": str(data.get("network_connection") or "").strip(),
-        "git_url": str(data.get("git_url") or "").strip(),
-        "git_ssh_key_path": str(data.get("git_ssh_key_path") or "").strip(),
         "player_public_url": _normalize_public_url(data.get("player_public_url")),
         "forum_public_url": _normalize_public_url(data.get("forum_public_url")),
         "admin_public_url": _normalize_public_url(data.get("admin_public_url")),
@@ -144,6 +146,7 @@ def create_project(data: Dict[str, Any], created_by: str, tenant_id: str = "defa
         "default_env": str((data.get("default_env") or "dev")).strip() or "dev",
         "default_channel": str((data.get("default_channel") or "")).strip(),
     }
+    apply_build_config_to_project_payload(payload, data)
     projects_repo.upsert_project(project_id, payload)
     projects_repo.audit("create_project", project_id)
     return ok({"project_id": project_id}, legacy={"success": True}), 200
@@ -162,8 +165,6 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
         "intro": v.get("intro", "") or v.get("description", ""),
         "detail": v.get("detail", ""),
         "network_connection": v.get("network_connection", ""),
-        "git_url": v.get("git_url", ""),
-        "git_ssh_key_path": v.get("git_ssh_key_path", ""),
         "player_public_url": _normalize_public_url(v.get("player_public_url")),
         "forum_public_url": _normalize_public_url(v.get("forum_public_url")),
         "admin_public_url": _normalize_public_url(v.get("admin_public_url")),
@@ -174,6 +175,11 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
         "is_template": bool(v.get("is_template")),
         "channels": v.get("channels") or [],
     }
+    bc = build_config_for_api({**v, "id": project_id})
+    project.update(bc)
+    project["build_config"] = bc
+    project["git_url"] = bc.get("git_url", "")
+    project["git_ssh_key_path"] = bc.get("git_ssh_key_path", "")
     return ok({"project": project}, legacy={"project": project}), 200
 
 
@@ -195,8 +201,7 @@ def update_project(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
     allowed_phases = {p[0] for p in PROJECT_PHASES}
     v["phase"] = ph if ph in allowed_phases else v.get("phase", "kickoff")
     v["network_connection"] = str(data.get("network_connection") or "").strip()
-    v["git_url"] = str(data.get("git_url") or "").strip()
-    v["git_ssh_key_path"] = str(data.get("git_ssh_key_path") or "").strip()
+    apply_build_config_to_project_payload(v, data)
     if "player_public_url" in data:
         v["player_public_url"] = _normalize_public_url(data.get("player_public_url"))
     if "forum_public_url" in data:

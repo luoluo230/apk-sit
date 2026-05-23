@@ -897,12 +897,18 @@ def _generate_job_config_xml(output_base, build_defaults, instance_type='general
     return content
 
 
-def get_instance_output_base(inst):
+def get_instance_output_base(inst, project_id=''):
     """返回该实例的默认构建输出根目录（与 job 内 OUTPUT_BASE_DIR 一致）。"""
     if not inst:
         return Config.APK_DIR
-    bd = inst.get('build_defaults') or {}
-    out_dir = (bd.get('output_base_dir') or '').strip()
+    out_dir = ''
+    if project_id:
+        try:
+            from services.admin.project_build_config_service import get_project_build_config
+
+            out_dir = (get_project_build_config(project_id).get('output_base_dir') or '').strip()
+        except Exception:
+            out_dir = ''
     if out_dir:
         return out_dir
     task_name = (inst.get('task_name') or '').strip()
@@ -1009,7 +1015,7 @@ def refresh_instance_env_and_scripts(instance_id):
         output_base,
         inst.get('feishu_webhook') or '',
         inst.get('dingtalk_webhook') or '',
-        inst.get('build_defaults')
+        None,
     )
     return True
 
@@ -1032,9 +1038,12 @@ def _write_unity_paths_json(jenkins_home, build_defaults):
     """写入 JENKINS_HOME/unity_paths.json，供构建脚本解析 Unity 安装路径。"""
     if not jenkins_home:
         return
+    from services.unity_version_service import resolve_unity_app_path
+
     bd = build_defaults or {}
     try:
         from services.unity_version_catalog_service import resolve_unity_versions_for_build
+
         unity_versions = resolve_unity_versions_for_build(bd)
     except Exception:
         unity_versions = bd.get('unity_versions') or []
@@ -1044,12 +1053,12 @@ def _write_unity_paths_json(jenkins_home, build_defaults):
             if not isinstance(u, dict) or not (u.get('version') or '').strip():
                 continue
             ver = str(u.get('version', '')).strip()
-            p = (u.get('path') or '').strip() or _discover_unity_app_path(ver)
+            p = resolve_unity_app_path(ver, str(u.get('path') or '').strip())
             if p:
                 paths[ver] = p
     if not paths:
         default_ver = '6000.3.8f1'
-        discovered = _discover_unity_app_path(default_ver)
+        discovered = resolve_unity_app_path(default_ver) or _discover_unity_app_path(default_ver)
         if discovered:
             paths[default_ver] = discovered
     if not paths:
@@ -1107,9 +1116,48 @@ def _merge_build_defaults_for_plan(build_defaults: dict, plan: dict) -> dict:
                             break
                 except Exception:
                     pass
+            try:
+                from services.unity_version_service import resolve_unity_app_path
+
+                path = resolve_unity_app_path(uv, path) or path
+            except Exception:
+                pass
             merged_uv.insert(0, {'version': uv, 'path': path})
+        else:
+            for item in merged_uv:
+                if isinstance(item, dict) and str(item.get('version') or '').strip() == uv:
+                    try:
+                        from services.unity_version_service import resolve_unity_app_path
+
+                        resolved = resolve_unity_app_path(uv, str(item.get('path') or '').strip())
+                        if resolved:
+                            item['path'] = resolved
+                    except Exception:
+                        pass
+                    break
     bd['unity_versions'] = merged_uv
     return bd
+
+
+def _validate_plan_unity_installation(plan: dict) -> tuple[bool, str]:
+    """构建前校验本机是否有所需 Unity 版本。"""
+    plan = plan or {}
+    uv = str(plan.get('unityVersion') or '').strip()
+    if not uv:
+        return True, ''
+    try:
+        from services.unity_version_service import detect_local_unity_installations, resolve_unity_app_path
+
+        path = resolve_unity_app_path(uv, str(plan.get('unityPath') or '').strip())
+        if path:
+            return True, ''
+        detected = [str(d.get('version') or '').strip() for d in detect_local_unity_installations() if d.get('version')]
+        msg = '本机未安装 Unity %s' % uv
+        if detected:
+            msg += '，已检测到: %s' % '、'.join(detected)
+        return False, msg
+    except Exception as exc:
+        return False, str(exc) or 'Unity 版本校验失败'
 
 
 def reload_jenkins_job(instance_id, job_name='Android'):
@@ -1157,8 +1205,8 @@ def reload_jenkins_job(instance_id, job_name='Android'):
         return False
 
 
-def sync_instance_job_config(instance_id, build_defaults_override=None):
-    """根据实例的 build_defaults 重新生成并写入 Android job config.xml 与 unity_paths.json。用于编辑实例参数后同步到 Jenkins。"""
+def sync_instance_job_config(instance_id, build_defaults_override=None, project_id=''):
+    """按项目 build_config（及可选 override）重新生成 Android job config.xml 与 unity_paths.json。"""
     inst = get_instance_by_id(instance_id)
     if not inst:
         return False
@@ -1166,10 +1214,10 @@ def sync_instance_job_config(instance_id, build_defaults_override=None):
     if not jenkins_home or not os.path.isdir(jenkins_home):
         return False
     job_dir = os.path.join(jenkins_home, 'jobs', 'Android')
-    build_defaults = dict(inst.get('build_defaults') or {})
+    build_defaults = dict(_resolve_build_defaults_for_project(project_id, inst))
     if isinstance(build_defaults_override, dict):
         build_defaults.update(build_defaults_override)
-    output_base = get_instance_output_base(inst)
+    output_base = get_instance_output_base(inst, project_id=project_id)
     try:
         content = _generate_job_config_xml(output_base, build_defaults, inst.get('instance_type', 'general'))
         config_path = os.path.join(job_dir, 'config.xml')
@@ -1184,14 +1232,21 @@ def sync_instance_job_config(instance_id, build_defaults_override=None):
         return False
 
 
-def prepare_instance_job_for_plan(instance_id, plan: dict) -> tuple[bool, str]:
+def prepare_instance_job_for_plan(instance_id, plan: dict, project_id: str = '') -> tuple[bool, str]:
     """触发商业构建前：把 plan 中的 GIT_BRANCH / UNITY_VERSION 写入 Job 参数定义并 reload。"""
     inst = get_instance_by_id(instance_id)
     if not inst:
         return False, 'Jenkins 实例不存在'
-    bd = _merge_build_defaults_for_plan(inst.get('build_defaults') or {}, plan or {})
-    if not sync_instance_job_config(instance_id, build_defaults_override=bd):
+    ok_uv, uv_err = _validate_plan_unity_installation(plan or {})
+    if not ok_uv:
+        return False, uv_err
+    base_bd = _resolve_build_defaults_for_project(project_id, inst)
+    bd = _merge_build_defaults_for_plan(base_bd, plan or {})
+    if not sync_instance_job_config(instance_id, build_defaults_override=bd, project_id=project_id):
         return False, '同步 Jenkins Job 参数失败'
+    ok_env, env_err = apply_project_build_env(instance_id, project_id, bd)
+    if not ok_env:
+        return False, env_err or '写入项目构建环境失败'
     if not reload_jenkins_job(instance_id):
         logger.warning(
             'Jenkins reload 未成功（常见 403）；若触发仍报 HTTP 500/Illegal choice，'
@@ -1200,7 +1255,70 @@ def prepare_instance_job_for_plan(instance_id, plan: dict) -> tuple[bool, str]:
     return True, ''
 
 
-def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk_webhook='', build_defaults=None, instance_type='general'):
+def _resolve_build_defaults_for_project(project_id: str, inst: dict | None) -> dict:
+    """从项目 build_config 读取构建默认值。"""
+    _ = inst
+    try:
+        from services.admin.project_build_config_service import get_project_build_config
+
+        return get_project_build_config(project_id) if project_id else {}
+    except Exception:
+        return {}
+
+
+def apply_project_build_env(instance_id, project_id='', build_defaults_override=None):
+    """按项目构建配置刷新实例 .apk-site-env（Git / Unity 路径等）。"""
+    inst = get_instance_by_id(instance_id)
+    if not inst:
+        return False, 'Jenkins 实例不存在'
+    jenkins_home = resolve_jenkins_home(inst)
+    if not jenkins_home or not os.path.isdir(jenkins_home):
+        return False, 'Jenkins 实例目录不可用'
+    bd = dict(_resolve_build_defaults_for_project(project_id, inst))
+    if isinstance(build_defaults_override, dict):
+        bd.update(build_defaults_override)
+    output_base = get_instance_output_base(inst, project_id=project_id)
+    out_dir = (bd.get('output_base_dir') or '').strip()
+    if out_dir:
+        output_base = out_dir
+    _write_instance_env_and_scripts(
+        jenkins_home,
+        inst.get('port'),
+        inst.get('task_name') or '',
+        output_base,
+        inst.get('feishu_webhook') or '',
+        inst.get('dingtalk_webhook') or '',
+        bd,
+    )
+    return True, ''
+
+
+def prepare_instance_for_project_build(instance_id, project_id='', git_branch='', plan=None):
+    """通用/商业构建触发前：同步 Job 参数并从项目注入 Git 环境。"""
+    inst = get_instance_by_id(instance_id)
+    if not inst:
+        return False, 'Jenkins 实例不存在'
+    try:
+        from services.admin.project_build_config_service import merge_git_branch_into_defaults
+
+        bd = _resolve_build_defaults_for_project(project_id, inst)
+        if git_branch:
+            bd = merge_git_branch_into_defaults(bd, git_branch)
+        if isinstance(plan, dict) and plan:
+            bd = _merge_build_defaults_for_plan(bd, plan)
+        if not sync_instance_job_config(instance_id, build_defaults_override=bd, project_id=project_id):
+            return False, '同步 Jenkins Job 参数失败'
+        ok_env, env_err = apply_project_build_env(instance_id, project_id, bd)
+        if not ok_env:
+            return False, env_err or '写入项目构建环境失败'
+        reload_jenkins_job(instance_id)
+        return True, ''
+    except Exception as exc:
+        logger.warning('prepare_instance_for_project_build 失败: %s', exc)
+        return False, str(exc) or '准备 Jenkins 构建环境失败'
+
+
+def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk_webhook='', instance_type='general'):
     """启动一个 Jenkins 实例。支持飞书和钉钉多渠道通知。"""
     ok, msg = check_port(port)
     if not ok:
@@ -1213,13 +1331,13 @@ def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk
         return (False, None, "未找到 jenkins.war。请在 .env 中设置 JENKINS_WAR_PATH 或将 war 放到 data/jenkins_instances/jenkins.war")
     jenkins_home = os.path.join(INSTANCES_DIR, str(port))
     os.makedirs(jenkins_home, exist_ok=True)
-    output_base = get_instance_output_base({'task_name': task_name, 'port': port, 'build_defaults': build_defaults or {}})
+    output_base = get_instance_output_base({'task_name': task_name, 'port': port})
     # 注入固定管理员脚本并跳过安装向导
     _write_jenkins_init_admin_script(jenkins_home, Config.JENKINS_DEFAULT_USER, Config.JENKINS_DEFAULT_PASSWORD)
-    # 复制 Android 任务（含 build_defaults 时生成下拉与默认值）
-    _copy_android_job_to_jenkins_home(jenkins_home, port=port, task_name=task_name, build_defaults=build_defaults, instance_type=instance_type)
+    # 复制 Android 任务（Unity 版本下拉来自全局版本库）
+    _copy_android_job_to_jenkins_home(jenkins_home, port=port, task_name=task_name, build_defaults=None, instance_type=instance_type)
     # 写入 .apk-site-env 与（可选）.apk-site-feishu，并复制通知脚本，修复通知脚本路径
-    _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, feishu_webhook, dingtalk_webhook, build_defaults)
+    _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, feishu_webhook, dingtalk_webhook, None)
     instances = load_jenkins_instances()
     for inst in instances:
         if inst.get('port') == port and inst.get('status') == 'running':
@@ -1258,7 +1376,6 @@ def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk
         'feishu_webhook': feishu_webhook,
         'dingtalk_webhook': dingtalk_webhook,
         'instance_type': instance_type,
-        'build_defaults': build_defaults or {},
         'status': 'running',
         'pid': proc.pid,
         'jenkins_home': jenkins_home,
@@ -1380,8 +1497,8 @@ def delete_jenkins_instance(instance_id=None, port=None):
     return (True, None)
 
 
-def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_webhook=None, build_defaults=None, instance_type=None):
-    """更新实例的 task_name、webhooks、build_defaults、instance_type。"""
+def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_webhook=None, instance_type=None):
+    """更新实例的 task_name、webhooks、instance_type。"""
     instances = load_jenkins_instances()
     for i, inst in enumerate(instances):
         if inst.get('id') == instance_id:
@@ -1391,10 +1508,9 @@ def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_w
                 inst['feishu_webhook'] = str(feishu_webhook).strip()
             if dingtalk_webhook is not None:
                 inst['dingtalk_webhook'] = str(dingtalk_webhook).strip()
-            if build_defaults is not None:
-                inst['build_defaults'] = build_defaults if isinstance(build_defaults, dict) else {}
             if instance_type is not None:
                 inst['instance_type'] = str(instance_type).strip() or 'general'
+            inst.pop('build_defaults', None)
             save_jenkins_instances(instances)
             return (True, None)
     return (False, "未找到该实例")
@@ -1446,118 +1562,9 @@ def resolve_jenkins_home(inst):
 
 
 def enrich_build_defaults_from_disk(inst):
-    """从实例的 .apk-site-env 与 jobs/Android/config.xml 读取实际配置，回填到 inst['build_defaults'] 中缺失的项，便于编辑页显示完整。"""
-    if not inst:
-        return
-    jenkins_home = resolve_jenkins_home(inst)
-    if not jenkins_home or not os.path.isdir(jenkins_home):
-        return
-    bd = inst.get('build_defaults')
-    if not isinstance(bd, dict):
-        bd = {}
-        inst['build_defaults'] = bd
-
-    env_path = os.path.join(jenkins_home, '.apk-site-env')
-    if os.path.isfile(env_path):
-        try:
-            with open(env_path, 'r', encoding='utf-8', errors='replace') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    if line.startswith('export '):
-                        rest = line[7:].strip()
-                        if '=' in rest:
-                            key, _, val = rest.partition('=')
-                            key = key.strip()
-                            val = val.strip().strip('"').strip("'").strip()
-                            if key == 'GIT_URL' and not bd.get('git_url'):
-                                bd['git_url'] = val
-                            elif key == 'GIT_SSH_KEY_PATH' and not bd.get('git_ssh_key_path'):
-                                bd['git_ssh_key_path'] = val
-                            elif key == 'GIT_WORKSPACE' and not bd.get('git_workspace'):
-                                bd['git_workspace'] = val
-                            elif key == 'UNITY_PROJECT_PATH' and not bd.get('unity_project_path'):
-                                bd['unity_project_path'] = val
-                            elif key == 'APK_DIR' and not bd.get('output_base_dir'):
-                                bd['output_base_dir'] = val
-        except Exception as e:
-            logger.debug("读取 .apk-site-env 失败: %s", e)
-
-    config_path = os.path.join(jenkins_home, 'jobs', 'Android', 'config.xml')
-    if os.path.isfile(config_path):
-        try:
-            import re
-            with open(config_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
-            def get_param_default(name):
-                m = re.search(r'<name>%s</name>.*?<defaultValue>([^<]*)</defaultValue>' % re.escape(name), content, re.DOTALL)
-                return m.group(1).strip() if m else None
-            def get_choice_options(name):
-                m = re.search(r'<name>%s</name>.*?<a class="string-array">(.*?)</a></choices>' % re.escape(name), content, re.DOTALL)
-                if not m:
-                    return []
-                return re.findall(r'<string>([^<]*)</string>', m.group(1))
-            if not bd.get('app_name'):
-                v = get_param_default('APP_NAME')
-                if v:
-                    bd['app_name'] = v
-            if not bd.get('version_name'):
-                v = get_param_default('VERSION_NAME')
-                if v:
-                    bd['version_name'] = v
-            if not bd.get('version_code'):
-                v = get_param_default('VERSION_CODE')
-                if v:
-                    bd['version_code'] = v
-            if not bd.get('output_base_dir'):
-                v = get_param_default('OUTPUT_BASE_DIR')
-                if v:
-                    bd['output_base_dir'] = v
-            unity_choices = get_choice_options('UNITY_VERSION')
-            if unity_choices and not bd.get('unity_versions'):
-                bd['unity_versions'] = [{'version': c, 'path': ''} for c in unity_choices]
-            branch_choices = get_choice_options('GIT_BRANCH')
-            if branch_choices and not bd.get('git_branches'):
-                bd['git_branches'] = branch_choices
-            if branch_choices and not bd.get('default_git_branch'):
-                bd['default_git_branch'] = branch_choices[0]
-        except Exception as e:
-            logger.debug("解析 config.xml 失败: %s", e)
-
-    # 从 unity_paths.json 补全 Unity 版本对应的安装路径
-    paths_file = os.path.join(jenkins_home, 'unity_paths.json')
-    if os.path.isfile(paths_file) and bd.get('unity_versions'):
-        try:
-            with open(paths_file, 'r', encoding='utf-8') as f:
-                import json
-                paths_map = json.load(f)
-            if isinstance(paths_map, dict):
-                for u in bd['unity_versions']:
-                    if isinstance(u, dict) and not (u.get('path') or '').strip():
-                        p = paths_map.get((u.get('version') or '').strip())
-                        if p:
-                            u['path'] = p
-        except Exception as e:
-            logger.debug("读取 unity_paths.json 失败: %s", e)
-
-    # 仍无 path 时，尝试本机常见 Unity 安装路径（Mac: Hub）
-    if bd.get('unity_versions'):
-        for u in bd['unity_versions']:
-            if not isinstance(u, dict) or (u.get('path') or '').strip():  # 已有 path 则跳过
-                continue
-            ver = (u.get('version') or '').strip()
-            if not ver:
-                continue
-            candidates = [
-                os.path.join('/Applications/Unity/Hub/Editor', ver, 'Unity.app'),
-                os.path.expanduser(os.path.join('~/Applications/Unity/Hub/Editor', ver, 'Unity.app')),
-            ]
-            for p in candidates:
-                if os.path.isdir(p) or os.path.isfile(p):
-                    u['path'] = p
-                    break
-
+    """已废弃：构建参数归属项目，保留空函数避免旧调用报错。"""
+    _ = inst
+    return
 
 def get_instance_by_port(port):
     for inst in load_jenkins_instances():

@@ -129,6 +129,32 @@ def get_last_successful_params(base_url=None, builds_dir=None):
         return {}
 
 
+def _fetch_build_status_from_api(build_number, base_url=None, instance_id=None):
+    """从 Jenkins API 读取构建状态。"""
+    url = (base_url or Config.JENKINS_URL).rstrip('/')
+    try:
+        req = urllib.request.Request(
+            url + "/job/" + JOB_NAME + "/" + str(int(build_number)) + "/api/json?tree=building,result",
+            headers={"Accept": "application/json"},
+        )
+        auth = auth_header(instance_id)
+        if auth:
+            req.add_header('Authorization', auth)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            if r.getcode() != 200:
+                return None
+            data = json.loads(r.read().decode('utf-8', errors='replace')) or {}
+            api_building = bool(data.get('building'))
+            api_result = (data.get('result') or '').strip()
+            if api_building:
+                return {'building': True, 'status': 'BUILDING'}
+            if api_result:
+                return {'building': False, 'status': api_result}
+            return {'building': False, 'status': 'UNKNOWN'}
+    except Exception:
+        return None
+
+
 def get_build_status(build_number, base_url=None, builds_dir=None, instance_id=None):
     """获取单次构建状态。"""
     url, bdir = _base_url_and_builds(base_url, builds_dir)
@@ -147,27 +173,9 @@ def get_build_status(build_number, base_url=None, builds_dir=None, instance_id=N
             except Exception:
                 pass
 
-        # 本地未拿到终态时，回退查询 Jenkins API（避免页面一直“构建中”）
-        try:
-            req = urllib.request.Request(
-                url + "/job/" + JOB_NAME + "/" + str(int(build_number)) + "/api/json?tree=building,result",
-                headers={"Accept": "application/json"}
-            )
-            auth = auth_header(instance_id)
-            if auth:
-                req.add_header('Authorization', auth)
-            with urllib.request.urlopen(req, timeout=8) as r:
-                if r.getcode() == 200:
-                    data = json.loads(r.read().decode('utf-8', errors='replace')) or {}
-                    api_building = bool(data.get('building'))
-                    api_result = (data.get('result') or '').strip()
-                    if api_building:
-                        return {'building': True, 'status': 'BUILDING'}
-                    if api_result:
-                        return {'building': False, 'status': api_result}
-                    return {'building': False, 'status': 'UNKNOWN'}
-        except Exception:
-            pass
+        api_status = _fetch_build_status_from_api(build_number, base_url=url, instance_id=instance_id)
+        if api_status is not None:
+            return api_status
 
         if not os.path.isdir(build_path):
             return {'building': True, 'status': 'QUEUED'}

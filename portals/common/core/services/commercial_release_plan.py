@@ -57,11 +57,10 @@ def normalize_step3_targets(raw: str) -> str:
 
 
 def normalize_release_channel(value: str) -> str:
-    """Normalize releaseChannel to semantic channel key (not numeric version channel id)."""
+    """Normalize releaseChannel to semantic channel key (e.g. wechat), not numeric channel id."""
     ch = (value or "").strip()
     if not ch:
         return "common"
-    # If value is channel id, prefer configured build_param mapping (e.g. CHANNEL=wechat)
     cfg = get_channel_by_id(ch)
     if isinstance(cfg, dict):
         bp = str(cfg.get("build_param") or "").strip()
@@ -69,11 +68,14 @@ def normalize_release_channel(value: str) -> str:
             m = re.search(r"CHANNEL\s*=\s*([A-Za-z0-9_.-]+)", bp, flags=re.IGNORECASE)
             if m and m.group(1):
                 return m.group(1)
-        # fallback: channel id itself
-        cid = str(cfg.get("id") or "").strip()
-        if cid:
-            return cid
-    return ch
+            if not re.fullmatch(r"\d+", bp):
+                return bp
+        subdir = str(cfg.get("apk_subdir") or "").strip()
+        if subdir and not re.fullmatch(r"\d+", subdir):
+            return subdir
+    if ch and not re.fullmatch(r"\d+", ch):
+        return ch
+    return ch or "common"
 
 
 def normalize_release_platform(value: str) -> str:

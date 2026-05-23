@@ -555,13 +555,11 @@ function updateInstanceInfo() {
         .then(d => {
             if (!d.success || !d.instance) return;
             var inst = d.instance;
-            var bd = inst.build_defaults || {};
             var html = '';
             html += '<div class="space-y-2 text-[13px]">';
             html += '<div class="flex justify-between"><span class="text-slate-400">端口</span><span class="font-medium">' + inst.port + '</span></div>';
             html += '<div class="flex justify-between"><span class="text-slate-400">任务名</span><span class="font-medium">' + (inst.task_name || '-') + '</span></div>';
             html += '<div class="flex justify-between"><span class="text-slate-400">状态</span><span class="flex items-center gap-1.5">' + (inst.status === 'running' ? '<span class="pulse-dot"></span>运行中' : '已停止') + '</span></div>';
-            if (bd.app_name) html += '<div class="flex justify-between"><span class="text-slate-400">应用</span><span class="font-medium">' + bd.app_name + '</span></div>';
             html += '</div>';
             document.getElementById('instanceInfo').innerHTML = html;
         });
@@ -1008,6 +1006,21 @@ def trigger_commercial_release():
     for k, v in plan_defaults.items():
         if k not in plan and v is not None and str(v).strip() != '':
             plan[k] = v
+    if project_id:
+        try:
+            from services.admin.project_build_config_service import get_project_build_config
+
+            pbc = get_project_build_config(project_id)
+            if not str(plan.get('appName') or '').strip():
+                plan['appName'] = (pbc.get('app_name') or project_id).strip()
+            if not str(plan.get('unityProjectPath') or '').strip():
+                plan['unityProjectPath'] = (pbc.get('unity_project_path') or '').strip()
+            if not str(plan.get('outputBaseDir') or '').strip():
+                plan['outputBaseDir'] = (pbc.get('output_base_dir') or '').strip()
+            if not str(plan.get('gitBranch') or '').strip() and (pbc.get('default_git_branch') or '').strip():
+                plan['gitBranch'] = (pbc.get('default_git_branch') or '').strip()
+        except Exception:
+            pass
 
     # 生成 RELEASE_PLAN_FILE JSON
     plan_id = str(uuid.uuid4())[:8]
@@ -1091,7 +1104,7 @@ def trigger_commercial_release():
     with open(plan_filepath, 'w', encoding='utf-8') as f:
         json_module.dump(automation_plan, f, ensure_ascii=False, indent=2)
 
-    ok_prep, prep_err = jm.prepare_instance_job_for_plan(instance_id, plan)
+    ok_prep, prep_err = jm.prepare_instance_job_for_plan(instance_id, plan, project_id=project_id)
     if not ok_prep:
         return jsonify({'success': False, 'error': prep_err or '同步 Jenkins Job 参数失败'}), 400
 

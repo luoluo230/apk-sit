@@ -1,4 +1,4 @@
 # apk-site 启动时写入，供 jenkins-clone 内脚本 source 使用
-export APK_DIR="/Users/wangling/Desktop/MyGame/apk-site_backup_20260323_070015/E:\apk-site\jenkins-clone\workspace\Android"
-export JENKINS_CLONE="/Users/wangling/Desktop/MyGame/apk-site_backup_20260323_070015/jenkins-clone"
-export JENKINS_JOB_DIR="/Users/wangling/Desktop/MyGame/apk-site_backup_20260323_070015/jenkins-clone/jobs/Android/builds"
+export APK_DIR="/Users/wangling/Desktop/apk-site/data/apk"
+export JENKINS_CLONE="/Users/wangling/Desktop/apk-site/portals/common/core/jenkins-clone"
+export JENKINS_JOB_DIR="/Users/wangling/Desktop/apk-site/portals/common/core/jenkins-clone/jobs/Android/builds"

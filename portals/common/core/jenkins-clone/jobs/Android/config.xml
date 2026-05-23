@@ -33,7 +33,7 @@
         <hudson.model.StringParameterDefinition>
           <name>OUTPUT_BASE_DIR</name>
           <description>杈撳嚭鍩虹鐩綍锛堢敱 apk-site 鍐欏叆锛屼笌 APK_DIR 涓€鑷达級</description>
-          <defaultValue>/Users/wangling/Desktop/MyGame/apk-site_backup_20260323_070015/E:\apk-site\jenkins-clone\workspace\Android</defaultValue>
+          <defaultValue>/Users/wangling/Desktop/apk-site/data/apk</defaultValue>
           <trim>true</trim>
         </hudson.model.StringParameterDefinition>
         <hudson.model.StringParameterDefinition>
