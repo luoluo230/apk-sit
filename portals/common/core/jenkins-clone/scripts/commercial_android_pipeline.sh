@@ -416,6 +416,7 @@ if [ "${RESOURCE_BUILD_ENABLED:-false}" = "true" ]; then
   if [ -n "${RESOURCE_SCENARIO}" ] && [[ "${RESOURCE_SCENARIO}" == *"/"* || "${RESOURCE_SCENARIO}" == *.json ]]; then
     RP_ARGS="$RP_ARGS -m09bScenario \"${RESOURCE_SCENARIO}\""
   fi
+  RP_ARGS="$RP_ARGS -m09bVersionCode \"${VERSION_CODE}\""
   RP_ARGS="$RP_ARGS -m09bCleanVersion \"${RESOURCE_CLEAN_VERSION:-true}\""
   RP_ARGS="$RP_ARGS -m09bBridgeStrict \"${RESOURCE_BRIDGE_STRICT:-false}\" -m09bAcceptanceStrict \"${RESOURCE_ACCEPTANCE_STRICT:-false}\""
   echo "Unity Editor 程序集预热（Step2）..."
@@ -453,8 +454,18 @@ if [ "${HOT_RELEASE_ENABLED:-false}" = "true" ]; then
   HR_ARGS="$HR_ARGS -releasePlatform \"${RELEASE_PLATFORM:-Android}\""
   HR_ARGS="$HR_ARGS -releaseTargets \"${RELEASE_TARGETS:-code,resource}\""
   HR_ARGS="$HR_ARGS -releaseHotLabels \"${RELEASE_HOT_LABELS:-hotupdate,aotmeta}\""
-  HR_ARGS="$HR_ARGS -releaseUploadMode \"${RELEASE_UPLOAD_MODE:-incremental}\""
   HR_ARGS="$HR_ARGS -releaseUpload \"${RELEASE_UPLOAD:-true}\""
+  HR_ARGS="$HR_ARGS -versionCode \"${VERSION_CODE}\""
+  _step3_upload_mode="${RELEASE_UPLOAD_MODE:-incremental}"
+  _vc_parent="${UNITY_PROJECT_PATH:-${GIT_WORKSPACE:-}}/Builds/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-common}/${RELEASE_PLATFORM:-Android}/Version_${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}"
+  if [ "${_step3_upload_mode}" = "incremental" ] && [ -d "${_vc_parent}" ]; then
+    _prev_vc_count=$(find "${_vc_parent}" -maxdepth 1 -mindepth 1 -type d -name '[0-9]*' ! -name "${VERSION_CODE}" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${_prev_vc_count:-0}" = "0" ]; then
+      _step3_upload_mode="full"
+      echo "无上一 VersionCode 目录，Step3 切换为 full 上传（含 addressable bundle）"
+    fi
+  fi
+  HR_ARGS="$HR_ARGS -releaseUploadMode \"${_step3_upload_mode}\""
   _step3_cli_mode="$(echo "${RELEASE_MODE:-build-upload}" | tr '[:upper:]' '[:lower:]')"
   case "$_step3_cli_mode" in
     build|build-upload) _step3_cli_mode="upload" ;;
@@ -488,9 +499,11 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export UNITY_VERSION="${UNITY_VERSION:-6000.3.8f1}"
   export VERSION_NAME="${VERSION_NAME:-${RELEASE_VERSION:-1.0.0}}"
   export VERSION_CODE="${VERSION_CODE:-1}"
-  export APP_NAME="${APP_NAME:-GameKu}"
+  export APP_NAME="${APP_NAME:-GomeKu}"
   export OUTPUT_BASE_DIR="${OUTPUT_BASE_DIR:-${APK_DIR:-}}"
   export GIT_BRANCH="${GIT_BRANCH:-main}"
+  export PROJECT_ID="${PROJECT_ID:-GomeKu}"
+  export VERSION_STAGE="${VERSION_STAGE:-dev}"
   APK_SCRIPT="$(_resolve_apk_build_script || true)"
   if [ -z "$APK_SCRIPT" ]; then
     echo "ERROR: APK 步骤已启用但未找到 build_gameku_android.sh"
@@ -515,9 +528,26 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   APK_UP_ARGS="$APK_UP_ARGS -releaseChannel \"${RELEASE_CHANNEL:-common}\""
   APK_UP_ARGS="$APK_UP_ARGS -releasePlatform \"${RELEASE_PLATFORM:-Android}\""
   APK_UP_ARGS="$APK_UP_ARGS -projectRoot \"${RELEASE_PROJECT_ROOT:-MyGame1}\""
-  APK_UP_ARGS="$APK_UP_ARGS -appName \"${APP_NAME:-GameKu}\""
+  APK_UP_ARGS="$APK_UP_ARGS -appName \"${APP_NAME:-GomeKu}\""
+  APK_UP_ARGS="$APK_UP_ARGS -versionCode \"${VERSION_CODE}\""
+  export VERSION_CODE APP_NAME VERSION_NAME PROJECT_ID
+  UNITY_LOG="${UNITY_LOG:-${JENKINS_HOME:-}/workspace/Android/unity_apk_upload.log}"
+  export UNITY_LOG
   _run_unity ApkReleaseUploadCli.ExecuteFromCommandLine $APK_UP_ARGS || exit $?
-  echo "Step 4 完成（含 APK 上传）"
+  echo "=== Step 4c: APK 本地落盘 + 版本下载信息 ==="
+  ARCHIVE_SCRIPT="${JENKINS_HOME:-}/scripts/archive_apk_after_build.py"
+  [ -f "$ARCHIVE_SCRIPT" ] || ARCHIVE_SCRIPT="$(dirname "$0")/archive_apk_after_build.py"
+  if [ -f "$ARCHIVE_SCRIPT" ]; then
+  export APK_FILE
+  export VERSION_CHANNEL_ID="${VERSION_CHANNEL_ID:-${CHANNEL:-}}"
+  export OSS_APK_REMOTE_KEY="${RELEASE_PROJECT_ROOT:-MyGame1}/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-wechat}/${RELEASE_PLATFORM:-android}/apk/${APP_NAME}_${VERSION_NAME:-1.0.0}_vc${VERSION_CODE}.apk"
+  export BUILD_NUMBER="${BUILD_NUMBER:-}"
+  python3 "$ARCHIVE_SCRIPT" || { echo "ERROR: APK 本地归档失败"; exit 1; }
+  else
+    echo "ERROR: 未找到 archive_apk_after_build.py，无法写入版本落盘"
+    exit 1
+  fi
+  echo "Step 4 完成（含 APK 上传与落盘）"
 else
   echo "Step 4 (APK打包) 已跳过"
 fi

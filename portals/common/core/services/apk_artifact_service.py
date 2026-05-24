@@ -73,6 +73,56 @@ def _channel_apk_subdir(channel_id: str) -> str:
     return ((ch or {}).get("apk_subdir") or "").strip()
 
 
+def default_version_apk_rel_path(project_id: str, version: dict[str, Any]) -> str:
+    """新建/未填 apk_path 时，按渠道子目录 + stage + 约定文件名生成相对路径。"""
+    if not isinstance(version, dict):
+        return ""
+    stage = (version.get("stage") or "dev").strip() or "dev"
+    subdir = _channel_apk_subdir((version.get("channel") or "").strip())
+    fname = _expected_archive_filename(version, project_id)
+    if subdir:
+        return f"{subdir}/{stage}/{fname}"
+    return f"{stage}/{fname}"
+
+
+def resolve_version_id(
+    project_id: str,
+    *,
+    version_id: str = "",
+    version_code: str = "",
+    version_name: str = "",
+    channel: str = "",
+    stage: str = "",
+) -> str:
+    """按 version_id 或 project + version_code 等字段解析版本 id。"""
+    vid = (version_id or "").strip()
+    if vid:
+        return vid
+    pid = (project_id or "").strip()
+    vc = str(version_code or "").strip()
+    if not pid or not vc:
+        return ""
+    vn = str(version_name or "").strip()
+    ch = str(channel or "").strip()
+    st = str(stage or "").strip()
+    versions = project_versions_db.get(pid) or []
+    if not isinstance(versions, list):
+        return ""
+    for row in versions:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("version_code") or "").strip() != vc:
+            continue
+        if vn and (row.get("version_name") or "").strip() != vn:
+            continue
+        if ch and (row.get("channel") or "").strip() != ch:
+            continue
+        if st and (row.get("stage") or "dev").strip() != st:
+            continue
+        return (row.get("id") or "").strip()
+    return ""
+
+
 def _expected_archive_filename(version: dict[str, Any], project_id: str = "") -> str:
     vn = (version.get("version_name") or "1.0.0").strip()
     vc = str(version.get("version_code") or "").strip()
@@ -401,3 +451,106 @@ def archive_apk(
         )
 
     return result
+
+
+def finalize_apk_from_jenkins_build(instance_id: str, build_number: int) -> dict[str, Any]:
+    """Jenkins 构建 SUCCESS 后：从日志/产物定位 APK，写入本地落盘与版本下载信息。"""
+    from models.data import BUILD_VERSION_RECORDS_FILE, load_json, project_versions_db
+    from services import jenkins as jenkins_svc
+    from services import jenkins_manager as jm
+    from services.commercial_release_plan import normalize_release_channel, normalize_release_environment
+
+    iid = (instance_id or "").strip()
+    bn = int(build_number or 0)
+    if not iid or bn <= 0:
+        return {"ok": False, "error": "缺少 instance_id 或 build_number"}
+
+    records = load_json(BUILD_VERSION_RECORDS_FILE, [])
+    rec = None
+    if isinstance(records, list):
+        for row in reversed(records):
+            if not isinstance(row, dict):
+                continue
+            if (row.get("instance_id") or "").strip() == iid and int(row.get("build_number") or 0) == bn:
+                rec = row
+                break
+    if not rec:
+        return {"ok": False, "error": "未找到构建与版本的关联记录（build_version_records）"}
+
+    project_id = (rec.get("project_id") or "").strip()
+    version_id = (rec.get("version_id") or "").strip()
+    versions = project_versions_db.get(project_id) or []
+    version = next((v for v in versions if isinstance(v, dict) and (v.get("id") or "") == version_id), None)
+    if not version:
+        return {"ok": False, "error": f"版本不存在: {version_id}"}
+
+    inst = jm.get_instance_by_id(iid) or {}
+    jenkins_home = jm.resolve_jenkins_home(inst) or ""
+    log_text = ""
+    if jenkins_home:
+        log_file = os.path.join(jenkins_home, "jobs", "Android", "builds", str(bn), "log")
+        if os.path.isfile(log_file):
+            try:
+                log_text = Path(log_file).read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                log_text = ""
+    if not log_text.strip():
+        builds_dir = os.path.join(jenkins_home, "jobs", "Android", "builds") if jenkins_home else None
+        log_text = jenkins_svc.get_build_log_content(bn, instance_id=iid, builds_dir=builds_dir) or ""
+    apk_file = ""
+    m_apk = re.findall(r"APK 文件:\s*(\S+\.apk)", log_text)
+    if m_apk:
+        apk_file = m_apk[-1].strip()
+    if not apk_file or not os.path.isfile(apk_file):
+        jp = (version.get("jenkins_params") or {}) if isinstance(version.get("jenkins_params"), dict) else {}
+        unity_root = (jp.get("UNITY_PROJECT_PATH") or os.environ.get("UNITY_PROJECT_PATH") or "").strip()
+        if not unity_root and project_id:
+            try:
+                from services.admin.project_build_config_service import get_project_build_config
+
+                unity_root = (get_project_build_config(project_id).get("unity_project_path") or "").strip()
+            except Exception:
+                unity_root = unity_root or ""
+        if unity_root:
+            cand = os.path.join(unity_root, "BuildOutput", "GomeKu_1.0.0.apk")
+            if os.path.isfile(cand):
+                apk_file = cand
+    if not apk_file or not os.path.isfile(apk_file):
+        return {"ok": False, "error": "未在构建日志或 BuildOutput 中找到 APK 文件"}
+
+    oss_matches = re.findall(r"remote=([^\s]+/apk/[^\s]+\.apk)", log_text)
+    oss_remote = oss_matches[-1].strip() if oss_matches else ""
+
+    jp = version.get("jenkins_params") if isinstance(version.get("jenkins_params"), dict) else {}
+    version_code = str(version.get("version_code") or jp.get("VERSION_CODE") or "").strip()
+    version_name = str(version.get("version_name") or jp.get("VERSION_NAME") or "1.0.0").strip()
+    app_name = str(jp.get("APP_NAME") or "GomeKu").strip() or "GomeKu"
+    stage = str(version.get("stage") or "dev").strip() or "dev"
+    channel_id = str(version.get("channel") or "").strip()
+    release_channel = normalize_release_channel(channel_id or jp.get("CHANNEL") or "wechat")
+    release_env = normalize_release_environment(
+        jp.get("RELEASE_ENVIRONMENT") or "",
+        stage,
+    )
+
+    if not oss_remote and version_code:
+        oss_remote = (
+            f"MyGame1/{release_env}/{release_channel}/android/apk/"
+            f"{app_name}_{version_name}_vc{version_code}.apk"
+        )
+
+    result = archive_apk(
+        apk_file=apk_file,
+        app_name=app_name,
+        release_version=version_name,
+        version_code=version_code or "0",
+        release_channel=release_channel,
+        release_environment=release_env,
+        stage=stage,
+        oss_remote_key=oss_remote,
+        unity_project_path=(jp.get("UNITY_PROJECT_PATH") or "").strip(),
+        project_id=project_id,
+        version_id=version_id,
+        build_number=bn,
+    )
+    return {"ok": True, "build_number": bn, "version_id": version_id, **result}

@@ -692,16 +692,28 @@ def _build_page_html(project_context=False, version_lock_params=False):
         }
         function finishBuild(status){
             stopPoll();
-            fetchLogOnce(function(){
-                setBuilding(false);
-                clearActiveBuild();
-                var stEl=document.getElementById('buildStatus');
-                if(stEl){
-                    stEl.textContent='构建 #'+buildNum+' 已结束: '+status;
-                    stEl.className='mt-3 text-sm min-h-[1.5rem] '+(status==='SUCCESS'?'text-green-600':'text-red-600');
-                }
-                loadHistory();
-            });
+            function afterFinalize(){
+                fetchLogOnce(function(){
+                    setBuilding(false);
+                    clearActiveBuild();
+                    var stEl=document.getElementById('buildStatus');
+                    if(stEl){
+                        stEl.textContent='构建 #'+buildNum+' 已结束: '+status;
+                        stEl.className='mt-3 text-sm min-h-[1.5rem] '+(status==='SUCCESS'?'text-green-600':'text-red-600');
+                    }
+                    loadHistory();
+                });
+            }
+            if(String(status||'').toUpperCase()==='SUCCESS'){
+                fetch('/api/build/'+buildNum+'/finalize-apk', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json','X-CSRFToken':(document.querySelector('meta[name=csrf-token]')||{}).content||''},
+                    credentials:'same-origin',
+                    body: JSON.stringify({instance_id: instId})
+                }).then(function(){ afterFinalize(); }).catch(function(){ afterFinalize(); });
+            }else{
+                afterFinalize();
+            }
         }
         function tick(){
             fetch(statusUrl(), {credentials:'same-origin'}).then(r=>r.json()).then(function(st){
@@ -1401,6 +1413,27 @@ def last_successful_params():
         if inst:
             params = {'OUTPUT_BASE_DIR': jm.get_instance_output_base(inst)}
     return jsonify(params or {})
+
+
+@bp.route('/api/build/<int:build_number>/finalize-apk', methods=['POST'])
+@admin_required_any('projects', 'build')
+def finalize_apk_after_build(build_number):
+    """Jenkins SUCCESS 后补做 APK 本地落盘（防止流水线未执行 Step 4c）。"""
+    if not has_scope('build.trigger'):
+        return jsonify({'ok': False, 'error': '无权限'}), 403
+    data = request.get_json(silent=True) or {}
+    _, _, instance_id = _jenkins_context()
+    instance_id = (data.get('instance_id') or instance_id or '').strip()
+    if not instance_id:
+        return jsonify({'ok': False, 'error': '缺少 instance_id'}), 400
+    try:
+        from services.apk_artifact_service import finalize_apk_from_jenkins_build
+
+        result = finalize_apk_from_jenkins_build(instance_id, build_number)
+        status = 200 if result.get('ok') else 400
+        return jsonify(result), status
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 500
 
 
 @bp.route('/api/build/<int:build_number>/status')

@@ -251,6 +251,38 @@ echo ""
 # Unity 构建
 # ========================================
 
+# Step1 导出的 Server Java 仅供服务端，Unity Android 会误编入 Gradle（缺 Gson）
+SERVER_JAVA_DIR="$UNITY_PROJECT_PATH/Assets/Generated/ConfigCode/Server/Java"
+SERVER_JAVA_STAGING=""
+restore_server_java() {
+  if [ -n "$SERVER_JAVA_STAGING" ] && [ -d "$SERVER_JAVA_STAGING" ]; then
+    mkdir -p "$SERVER_JAVA_DIR"
+    for jf in "$SERVER_JAVA_STAGING"/*.java; do
+      [ -f "$jf" ] || continue
+      mv "$jf" "$SERVER_JAVA_DIR/"
+      mf="$SERVER_JAVA_STAGING/$(basename "$jf").meta"
+      [ -f "$mf" ] && mv "$mf" "$SERVER_JAVA_DIR/"
+    done
+    rmdir "$SERVER_JAVA_STAGING" 2>/dev/null || true
+    SERVER_JAVA_STAGING=""
+  fi
+}
+if [ -d "$SERVER_JAVA_DIR" ]; then
+  shopt -s nullglob
+  java_files=("$SERVER_JAVA_DIR"/*.java)
+  shopt -u nullglob
+  if [ "${#java_files[@]}" -gt 0 ]; then
+    SERVER_JAVA_STAGING=$(mktemp -d)
+    trap restore_server_java EXIT
+    for jf in "${java_files[@]}"; do
+      mf="$jf.meta"
+      mv "$jf" "$SERVER_JAVA_STAGING/"
+      [ -f "$mf" ] && mv "$mf" "$SERVER_JAVA_STAGING/"
+    done
+    echo "已临时移出 ${#java_files[@]} 个 Server Java（APK 不需要 Gson 服务端仓库）"
+  fi
+fi
+
 echo "步骤 5: Unity 构建（ARM64 架构）"
 echo "开始构建，这可能需要 3-5 分钟..."
 echo ""
@@ -288,13 +320,22 @@ else
     echo "构建时间: ${BUILD_MINUTES}分${BUILD_SECONDS}秒"
     echo "错误原因: Unity 构建失败（退出码: $BUILD_EXIT_CODE）"
     echo ""
-    echo "构建日志（最后部分）:"
-    tail -30 "$UNITY_LOG_FILE"
+    if [ -f "$UNITY_LOG_FILE" ]; then
+      echo "Gradle / Java 编译错误摘要:"
+      grep -E "error:|FAILURE:|compileReleaseJavaWithJavac|BUILD FAILED|package com\.google\.gson" "$UNITY_LOG_FILE" 2>/dev/null | tail -40 || true
+      echo ""
+      echo "构建日志（最后部分）:"
+      tail -30 "$UNITY_LOG_FILE"
+    fi
     echo ""
+    echo "完整日志: $UNITY_LOG_FILE"
     echo "请检查构建日志并重试"
 
     exit 1
 fi
+
+restore_server_java
+trap - EXIT
 
 echo ""
 

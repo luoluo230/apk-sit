@@ -185,6 +185,7 @@ def plan_to_jenkins_params(
     plan: dict[str, Any],
     plan_filepath: str,
     version_obj: dict[str, Any] | None = None,
+    project_id: str = "",
 ) -> tuple[dict[str, str], dict[str, Any]]:
     """Build Jenkins buildWithParameters dict + normalized automation_plan patch."""
     version_obj = version_obj or {}
@@ -245,6 +246,14 @@ def plan_to_jenkins_params(
     if version_code:
         params["VERSION_CODE"] = version_code
 
+    pid = str(project_id or plan.get("projectId") or "").strip()
+    if pid:
+        params["PROJECT_ID"] = pid
+    vid = str((version_obj or {}).get("id") or plan.get("versionId") or "").strip()
+    if vid:
+        params["VERSION_ID"] = vid
+    params["RELEASE_PROJECT_ROOT"] = config_prefix or DEFAULT_PROJECT_ROOT
+
     unity_project_path = str(plan.get("unityProjectPath") or "").strip()
     if unity_project_path:
         params["UNITY_PROJECT_PATH"] = unity_project_path
@@ -258,6 +267,8 @@ def plan_to_jenkins_params(
     version_channel = str(version_obj.get("channel") or "").strip()
     if version_channel and not params.get("CHANNEL"):
         params["CHANNEL"] = version_channel
+    if version_channel:
+        params["VERSION_CHANNEL_ID"] = version_channel
 
     saved = version_obj.get("jenkins_params") if isinstance(version_obj.get("jenkins_params"), dict) else {}
     for key in ("VERSION_CODE", "UNITY_VERSION", "GIT_BRANCH", "UNITY_PROJECT_PATH", "CHANNEL"):

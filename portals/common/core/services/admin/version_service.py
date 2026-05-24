@@ -313,6 +313,13 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     v.update(_clean_version_platform_fields(data, platform))
     v.update(_resolve_runtime_compat_fields(data))
     v.update(_derive_runtime_paths(v))
+    if not v.get("apk_path") and v.get("version_code"):
+        try:
+            from services.apk_artifact_service import default_version_apk_rel_path
+
+            v["apk_path"] = default_version_apk_rel_path(project_id, v)
+        except Exception:
+            pass
     validation_error = _validate_version_payload(platform, v)
     if validation_error:
         return {"error": validation_error}, 400
@@ -396,6 +403,13 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
         update_payload["pipeline"] = _sync_pipeline_release_fields(pipeline)
     update_payload.update(_clean_version_platform_fields(data, platform, current_row))
     update_payload.update(_derive_runtime_paths(update_payload))
+    if not (update_payload.get("apk_path") or "").strip() and (update_payload.get("version_code") or "").strip():
+        try:
+            from services.apk_artifact_service import default_version_apk_rel_path
+
+            update_payload["apk_path"] = default_version_apk_rel_path(project_id, update_payload)
+        except Exception:
+            pass
     validation_error = _validate_version_payload(platform, update_payload)
     if validation_error:
         return {"error": validation_error}, 400

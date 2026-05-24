@@ -727,16 +727,24 @@ def get_changelog_for_file(filename):
 
 
 def version_has_apk(project_id, version):
-    """判断版本是否有对应 APK 已落盘。仅基于 apk_path 检查，避免误匹配其他已存在的同名 APK。"""
+    """判断版本是否有对应 APK 已落盘。优先 apk_path，再按约定文件名（含 _vcN）探测。"""
     if not project_id:
         return False
     apk_path = (version.get('apk_path') or '').strip()
-    if not apk_path:
+    if apk_path:
+        if apk_path.startswith('/'):
+            if os.path.isfile(apk_path):
+                return True
+        else:
+            full = os.path.join(Config.APK_DIR, apk_path.replace('/', os.path.sep))
+            if os.path.isfile(full):
+                return True
+    try:
+        from services.apk_artifact_service import resolve_version_apk_rel_path
+
+        return bool(resolve_version_apk_rel_path(project_id, version))
+    except Exception:
         return False
-    if apk_path.startswith('/'):
-        return os.path.isfile(apk_path)
-    full = os.path.join(Config.APK_DIR, apk_path.replace('/', os.path.sep))
-    return os.path.isfile(full)
 
 
 def get_version_platform(version):

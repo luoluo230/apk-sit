@@ -4113,7 +4113,7 @@ function saveVersionCodeModal(){
             min_sdk:template.min_sdk||'',
             bundle_id:template.bundle_id||'',
             min_ios_version:template.min_ios_version||'',
-            apk_path:template.apk_path||'',
+            apk_path:'',
             resource_path:template.resource_path||'',
             config_path:template.config_path||'',
             jenkins_job_id:template.jenkins_job_id||'',

@@ -1,0 +1,20 @@
+{
+  "project_id": "GomeKu",
+  "version_id": "8573ea36",
+  "version_name": "1.0.0",
+  "version_code": "11",
+  "channel": "1001",
+  "stage": "dev",
+  "build_time": "2026-05-24 19:29:29",
+  "build_number": 112,
+  "archived_at": "2026-05-24 19:29:29",
+  "package_name": "com.wl.demo",
+  "app_name": "GomeKu",
+  "size_bytes": 38780856,
+  "pub_download_path": "wechat/dev/GomeKu_1.0.0_vc11.apk",
+  "local_download_url": "http://192.168.0.5:5003/pub/download/wechat/dev/GomeKu_1.0.0_vc11.apk?source=qr",
+  "local_qr_dataurl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAATgAAAE4AQAAAADnBNLHAAACHUlEQVR4nO1aW27EIAz0WL3/lafyK6hV1NIvmwpHysLij8zI+AWgbInuqcnVe5er9y5X71129T5EBDGkgGBNKeBaGY9DG/kT94HIx2fOHVgr83Foqx5gHDldJJzFmOVK9/cNt78Usz3ASQwKD8KhA/ij71vjkQxX2P99egR/9Dfc7OjWl8NcmY9Dm/SELIr48oSQnI5Dm/Twtf5wm0NFZJ6DQ7vtjzmtMCwx8+fa3896NJ9nPHr+IoRNbWRRxFzhITi69i9qZlmzR+GirULyeBzapIdgaFVuPpZVv/EMHNqavyDzPWPOOcv8mcfg0E7+YK/0evaWlT8XjdNxaKceLWaE5/O9LNlEiGzax0fg6NKDb9pwd9F5kcpdahMfgaNPj7BOi6cxnrnY1Fg0A8RBOJriL6Ln97g8PoH3+r/f4wcrc8ngy/SFYXvB6nQc2qmHFX+/Hcfx+r+N8w9a0IiosTr4YuJ/Xfvby/+4yjlmTeLb2P6cjkM79Vgt+4i5jFbqcxB37e83PVTf2UlD+T0LJLd/sKMHqzzy6IgRfIPIpLT7+4bnL4xJdAARg/jJ48vxOHTG/QPxRBDVzXJbvPF38/4B10mcwGq4yqIPwKG9/T/JtnNVIPI4v5v/bZ+fS4Ra4kn9nvb9eBw6gT/JegPhCaOj1ft9etD9A5Po/5nkNaxDcOiE+weyQghj7Z7//u3+wbE49Oq9ytV7l/+i9wmzmAFkOdMxqgAAAABJRU5ErkJggg==",
+  "oss_download_url": "http://192.168.0.5:5003/pub/oss-download/MyGame1/Development/wechat/android/apk/GomeKu_1.0.0_vc11.apk?source=qr",
+  "oss_qr_dataurl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAXgAAAF4AQAAAAB25t8LAAADFElEQVR4nO1b0Y4bMQgEq///y3OCAe8mrTa6B/ewD65JtvY8IGzDgFmFfEvG9+DS+GcZH+bfpfHPMj7Mv0vjfxb/R0SUj1DzRSrwjw/DhlSQiHr6jwPsLx4DVETh1od9FGZ2Mz9uiHL6jyPwqnoZ2fd/LoCo+BwRVfU/Ba+2CDwDOk2OffTfG68QTGPbM9zluAP6CX1+jf+XtHAGWo8F4qcgJlFU/7E5XmyXx9PDHwVANf3H5ni9OZdw9847nXuqBYL2P/+B/8Oj7o3/WywQE1sA+42soJr+4wg8zLdMkslzoDQ9Y7IvAsrqvy9ePcFNZzNPQIReie8craf/OCP/1Svh8uw3Kg8Iq5MG2VA1/ccBeDj3uZFNE54LYQrsiPY/i/DqNQYLuC9UR3gAbJYeqOs/C/k/rjAcH7zAfKT5/xI86O/ByuesgMpMviw08xCU1H///Y+sMqS9Y1I4kJje/2v4J5hnxU/cxMiMyM6NGByq6T8OwMMejGpahFUmvMzEwLh7fZfUf//6pzC7RRjfFiKOgyT/R039xxn5r0SBISn/zHs17J4LUk3/cQAesdEz2lKMAzn39z+4c6qp/wF4RK51cR9nPGBm7AGh6z8r81/JXpN45s2j+FNy0uY/q/IvIdvkHs8UWKfZfRHa/yzDa7iZ4Dp5CISdV2Z4Lz50/WcZ/5QgoFkHyr0v2Y1iq9P+Z1X+Bd//yXaCgGoeg9ttZEn9D8CDATcYT4xJ+n47AnEhVlT/bfEasfdfg8KixJWXdf61in8K2w39HzsgknbqPSGoqf/ueNDFs+7vee+MuRI3kDFYU//9+3/AbpOrHP3ad6gMDu1/Vvl/Shb58w5ASTt5PdD+Z+H+d4GbO3d/+h7Yb/PPpfkX7MuJvzfBRQAQiwm8drkOQDX9xxH5r87UdzbfRhe6eGJmmPY/y/F69aHMlwA0QkT7n+V4zVcBuA7I2oPX3+I9sMr67//+i0bTAwvO4kPemBsvxNTTf5xgf53/ZaXtXnUwyYjc/H8p/99R/9H4RxnP039J459lfJh/l8bLo3wB1XuUxsLW6iwAAAAASUVORK5CYII=",
+  "oss_remote_key": "MyGame1/Development/wechat/android/apk/GomeKu_1.0.0_vc11.apk"
+}

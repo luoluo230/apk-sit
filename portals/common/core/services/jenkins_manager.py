@@ -985,7 +985,12 @@ def _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, 
     overlay_scripts = os.path.join(_resolve_overlay_root(), 'scripts')
     scripts_dst = os.path.join(jenkins_home, 'scripts')
     os.makedirs(scripts_dst, exist_ok=True)
-    for name in ('jenkins_send_notify.sh', 'feishu_send.py', 'commercial_android_pipeline.sh'):
+    for name in (
+        'jenkins_send_notify.sh',
+        'feishu_send.py',
+        'commercial_android_pipeline.sh',
+        'archive_apk_after_build.py',
+    ):
         src = os.path.join(overlay_scripts, name)
         if os.path.isfile(src):
             import shutil

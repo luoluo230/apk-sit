@@ -766,11 +766,27 @@ function pollLogAndStatus() {
             missCount = matched ? 0 : (missCount + 1);
             if (done) {
                 stopPoll();
-                setBuilding(false);
-                loadReleaseHistory();
-                updateBuildLog();
-                document.getElementById('releaseStatus').textContent = '构建完成';
-                document.getElementById('releaseStatus').className = 'text-sm text-green-600';
+                var result = '';
+                for (var k = 0; k < st.recent.length; k++) {
+                    if (st.recent[k].number === _buildNumber) { result = st.recent[k].result || ''; break; }
+                }
+                function afterFinalize() {
+                    setBuilding(false);
+                    loadReleaseHistory();
+                    updateBuildLog();
+                    document.getElementById('releaseStatus').textContent = '构建完成';
+                    document.getElementById('releaseStatus').className = 'text-sm text-green-600';
+                }
+                if (String(result).toUpperCase() === 'SUCCESS') {
+                    fetch('/api/build/' + _buildNumber + '/finalize-apk', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                        credentials: 'same-origin',
+                        body: JSON.stringify({instance_id: id})
+                    }).then(function() { afterFinalize(); }).catch(function() { afterFinalize(); });
+                } else {
+                    afterFinalize();
+                }
                 return;
             }
             // 连续多次在 Jenkins 最近构建中找不到该构建号，判定为旧状态串号并自动清理。
@@ -1098,7 +1114,7 @@ def trigger_commercial_release():
         release_env, (version_obj or {}).get('stage') if isinstance(version_obj, dict) else ''
     )
 
-    params, plan_patch = plan_to_jenkins_params(plan, plan_filepath, version_obj)
+    params, plan_patch = plan_to_jenkins_params(plan, plan_filepath, version_obj, project_id=project_id)
     automation_plan.update(plan_patch)
 
     with open(plan_filepath, 'w', encoding='utf-8') as f:
