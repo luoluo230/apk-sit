@@ -110,7 +110,7 @@ MODULE_LINKS = {
     'audit_log': ('/admin/audit-log', 'fa-history', 'text-gray-500'),
     'notifications': ('/admin/notifications', 'fa-bell', 'text-amber-500'),
     'approval': ('/admin/approval', 'fa-check-double', 'text-emerald-500'),
-    'gm_ops': ('/admin/gm-ops', 'fa-sitemap', 'text-cyan-500'),
+    'gm_ops': ('/admin/ops-platform', 'fa-sitemap', 'text-cyan-500'),
     'reports': ('/admin/reports', 'fa-file-alt', 'text-cyan-500'),
     'system_settings': ('/admin/settings', 'fa-cog', 'text-slate-500'),
 }
@@ -542,7 +542,7 @@ def _admin_panel_dashboard(visible, desc):
     grouped_cards['system'].append(_render_module_card('/workspace', 'fa-briefcase', 'text-amber-500', '个人工作区', '处理个人文件、截图、书签和协作资料'))
 
     cards = _render_grouped_admin_sections([
-        ('项目工作台', '先选择项目，再进入该项目的构建、发布、GM运营、后端运维。', grouped_cards.get('project')),
+        ('项目工作台', '先选择项目，再进入该项目的构建、发布、GM工作台与运维中心。', grouped_cards.get('project')),
         ('全局审计', '审批、通知、报表、审计回放等跨项目治理能力。', grouped_cards.get('governance')),
         ('系统配置', '系统级配置与账号安全能力，不承载项目执行动作。', grouped_cards.get('system')),
     ])
@@ -2621,7 +2621,8 @@ def _project_detail_html(project_id, proj, can_edit, task_stats, recent_tasks, a
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <a href="/admin/projects/''' + project_id + '''/tasks" class="wb-action-btn wb-indigo"><i class="fas fa-tasks"></i>任务</a>
                     <a href="/admin/projects/''' + project_id + '''/versions" class="wb-action-btn wb-emerald"><i class="fas fa-layer-group"></i>版本</a>
-                    <a href="/admin/gm-ops?project_id=''' + project_id + '''" class="wb-action-btn wb-cyan"><i class="fas fa-sitemap"></i>GM运营</a>
+                    <a href="/admin/gm-classic?project_id=''' + project_id + '''" class="wb-action-btn wb-cyan"><i class="fas fa-gamepad"></i>GM</a>
+                    <a href="/admin/ops-platform?project_id=''' + project_id + '''" class="wb-action-btn wb-indigo"><i class="fas fa-server"></i>运维</a>
                     <a href="/admin/projects/''' + project_id + '''/tasks/stats" class="wb-action-btn wb-violet"><i class="fas fa-chart-bar"></i>统计</a>
                     <a href="/docs?module=projects" class="wb-action-btn wb-slate" title="查看项目中心相关文档"><i class="fas fa-question-circle"></i>文档</a>
                 </div>
@@ -2661,7 +2662,8 @@ def _project_detail_html(project_id, proj, can_edit, task_stats, recent_tasks, a
                         <div class="space-y-2" id="quickActionsContainer">
                             <a href="/admin/projects/''' + project_id + '''/tasks" class="wb-quick-btn wb-quick-indigo"><i class="fas fa-plus text-indigo-500"></i>新建任务</a>
                             <a href="/admin/projects/''' + project_id + '''/versions" class="wb-quick-btn wb-quick-amber"><i class="fas fa-layer-group text-amber-500"></i>渠道与版本</a>
-                            <a href="/admin/gm-ops?project_id=''' + project_id + '''" class="wb-quick-btn wb-quick-cyan"><i class="fas fa-sitemap text-cyan-500"></i>GM运营中心</a>
+                            <a href="/admin/gm-classic?project_id=''' + project_id + '''" class="wb-quick-btn wb-quick-cyan"><i class="fas fa-gamepad text-cyan-500"></i>GM工作台</a>
+                            <a href="/admin/ops-platform?project_id=''' + project_id + '''" class="wb-quick-btn wb-quick-violet"><i class="fas fa-server text-violet-500"></i>运维中心</a>
                         </div>
                         <!-- 模块配置面板（仅管理员可见） -->
                         ''' + ('<div id="moduleConfigPanel" class="hidden mt-3 p-3 rounded-xl bg-white border border-amber-200 text-xs"><p class="text-slate-500 mb-2">管理快捷操作模块：</p><div class="space-y-1.5" id="moduleConfigList"></div></div>' if is_admin_logged_in else '') + '''
@@ -4217,8 +4219,8 @@ def admin_project_workspace(project_id):
     project_name = _clean_display_text(p.get('name'), pid)
     links = [
         ('版本与发布', f'/admin/projects/{pid}/versions', 'fa-code-branch', 'text-teal-500', '项目版本、发布单、回滚与对账。'),
-        ('GM运营中心', f'/admin/gm-ops?project_id={pid}', 'fa-sitemap', 'text-cyan-500', '项目专属 GM、运维、运营与参数闭环。'),
-        ('后端运维', f'/admin/gm-ops?project_id={pid}#ops', 'fa-server', 'text-indigo-500', '开停服、维护、限流、健康与存储指标。'),
+        ('GM工作台', f'/admin/gm-classic?project_id={pid}', 'fa-gamepad', 'text-cyan-500', '经典 GM 玩家运营动作：检索、货币、道具、邮件与运营操作。'),
+        ('运维中心', f'/admin/ops-platform?project_id={pid}', 'fa-server', 'text-indigo-500', '分布式节点运维平台：启停、探活、Agent 状态与巡检闭环。'),
         ('观测与审计', f'/admin/audit-log?project_id={pid}', 'fa-history', 'text-gray-500', '项目级操作审计、风险追踪与回放。'),
         ('项目设置', f'/admin/projects/{pid}', 'fa-sliders-h', 'text-slate-500', '基础信息、渠道、凭据与默认策略。'),
     ]

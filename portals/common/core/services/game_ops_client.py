@@ -89,11 +89,21 @@ class GameOpsClient:
                     "data": body,
                 }
 
+            success = bool(body.get("success", True))
+            data = body.get("data", body)
+            message = body.get("message") or "OK"
+            if path == "/ops/action" and isinstance(data, dict):
+                result_code = str(data.get("ResultCode") or data.get("resultCode") or "").strip()
+                result_message = str(data.get("ResultMessage") or data.get("resultMessage") or "").strip()
+                if result_code:
+                    success = result_code in ("OPS_OK", "OPS_DRY_RUN_OK")
+                    message = result_message or message
+
             return {
-                "success": bool(body.get("success", True)),
+                "success": success,
                 "status": resp.status_code,
-                "message": body.get("message") or "OK",
-                "data": body.get("data", body),
+                "message": message,
+                "data": data,
             }
         except Exception as ex:
             return {

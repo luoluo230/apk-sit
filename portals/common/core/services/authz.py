@@ -19,7 +19,7 @@ ADMIN_MODULES = [
     ('audit_log', '审计与安全日志', False),
     ('notifications', '通知与消息中心', False),
     ('approval', '审批与发布管控', False),
-    ('gm_ops', 'GM运营中心', False),
+    ('gm_ops', 'GM与运维中心', False),
     ('reports', '报表中心', False),
     ('system_settings', '系统与安全设置', True),
 ]

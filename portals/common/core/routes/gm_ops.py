@@ -5,6 +5,7 @@ import secrets
 import time
 import uuid
 from datetime import datetime
+import json
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -385,10 +386,34 @@ def _allow_ci_access() -> bool:
     token = (request.headers.get("X-GM-CI-Token") or request.args.get("ci_token") or "").strip()
     expected = str(get_system_config("GM_CI_TOKEN", "") or "").strip()
     return bool(token and expected and token == expected)
-# 页面主入口：GM 运营工作台。数据来源：项目配置、发布参数字典与 Ops 执行结果。
+# 页面主入口：GM / 运维工作台。数据来源：项目配置、发布参数字典与 Ops 执行结果。
 @bp.route("/admin/gm-ops")
+@bp.route("/admin/gm-center")
+@bp.route("/admin/ops-center")
 @admin_required("gm_ops")
 def gm_ops_page():
+    path = (request.path or "").strip().lower()
+    view_mode = "all"
+    if path.endswith("/gm-center"):
+        view_mode = "gm"
+    elif path.endswith("/ops-center"):
+        view_mode = "ops"
+    req_mode = (request.args.get("view") or "").strip().lower()
+    if req_mode in ("all", "gm", "ops"):
+        view_mode = req_mode
+
+    center_title = "GM运营中心（项目优先）"
+    center_desc = "单项目工作台：项目身份、构建、发布、运维、快照、执行日志统一在同一上下文闭环。"
+    page_title = "GM运营中心"
+    if view_mode == "gm":
+        center_title = "GM工作台（项目优先）"
+        center_desc = "聚焦玩家运营与发布动作：项目身份、构建、发布、参数闭环、执行日志。"
+        page_title = "GM工作台"
+    elif view_mode == "ops":
+        center_title = "运维中心（项目优先）"
+        center_desc = "聚焦服务稳定与运维治理：保留完整能力，同时默认进入运维分区。"
+        page_title = "运维中心"
+
     content = """
 <div class="gm-shell space-y-5">
   <style>
@@ -740,6 +765,7 @@ const SECTION_GUIDE = {
   snapshot: {title:'快照', goal:'查看执行前参数合成结果。', input:'输入变更后自动刷新，便于快速核对关键字段。', next:'核对完成后回到发布或运维分区执行动作。'},
   logs: {title:'执行日志', goal:'阅读结构化执行摘要与原始 JSON。', input:'先看摘要卡，再展开原始响应用于审计排障。', next:'若失败可返回对应分区修正并重试。'}
 };
+let __activeSection = 'identity';
 const RELEASE_CHAIN_ORDER = ['precheck','apply','execute','rollback','reconcile'];
 const RELEASE_CHAIN_LABEL = {precheck:'预检', apply:'审批', execute:'执行', rollback:'回滚', reconcile:'对账'};
 let __releaseStep = 1;
@@ -954,6 +980,7 @@ function initReleaseSection(){
   setReleaseStep(1);
 }
 function switchSection(group){
+  __activeSection = group;
   const all=['identity','build','release','ops','snapshot','logs'];
   all.forEach(k=>{
     const el=document.getElementById('sec-'+k);
@@ -963,6 +990,23 @@ function switchSection(group){
   });
   updateSectionGuide(group);
   if(group==='release'){ initReleaseSection(); renderReleaseStepStatus(); renderReleaseChainStatus(); }
+}
+function applyCenterViewMode(){
+  const mode=(typeof GM_VIEW_MODE==='string' && GM_VIEW_MODE) ? GM_VIEW_MODE : 'all';
+  const all=['identity','build','release','ops','snapshot','logs'];
+  const gmVisible=['identity','build','release','snapshot','logs'];
+  const opsVisible=['identity','build','release','ops','snapshot','logs'];
+  const allowSet = mode==='gm' ? new Set(gmVisible) : (mode==='ops' ? new Set(opsVisible) : new Set(all));
+  all.forEach(function(key){
+    const tabBtn=document.getElementById('tabBtn-'+key);
+    if(tabBtn){ tabBtn.style.display = allowSet.has(key) ? '' : 'none'; }
+    const secEl=document.getElementById('sec-'+key);
+    if(secEl && !allowSet.has(key)){ secEl.style.display='none'; }
+  });
+  if(!allowSet.has(__activeSection)){
+    const fallback = mode==='ops' ? 'ops' : 'identity';
+    switchSection(fallback);
+  }
 }
 function upsertOptions(el, values, pick){ if(!el) return; el.innerHTML = (values||[]).map(v=>`<option value="${v}">${v}</option>`).join(''); if(pick && values && values.includes(pick)) el.value = pick; }
 function upsertChannelOptions(el, options, pick){
@@ -1102,16 +1146,21 @@ const dk=document.getElementById('dictKeyword'); if(dk){ dk.addEventListener('in
 document.getElementById('projectSelect').addEventListener('change', loadWorkspace);
 ['env','channel','platform'].forEach(function(id){ const el=document.getElementById(id); if(el){ el.addEventListener('change', refreshContextHeader); } });
 refreshContextHeader();
-switchSection('identity'); loadCatalog();
+switchSection(GM_VIEW_MODE === 'ops' ? 'ops' : 'identity');
+applyCenterViewMode();
+loadCatalog();
 </script>
 """
+    content = content.replace("GM运营中心（项目优先）", center_title, 1)
+    content = content.replace("单项目工作台：项目身份、构建、发布、运维、快照、执行日志统一在同一上下文闭环。", center_desc, 1)
+    content = content.replace("<script>", "<script>\nconst GM_VIEW_MODE = " + json.dumps(view_mode, ensure_ascii=False) + ";", 1)
     try:
         from routes.admin_routes import _admin_layout
-        return _admin_layout(content, "GM运营中心", back_href="/admin")
+        return _admin_layout(content, page_title, back_href="/admin")
     except Exception:
         html = """
 <!doctype html>
-<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>GM运营中心</title><link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head>
+<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>""" + page_title + """</title><link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head>
 <body class=\"bg-slate-50 min-h-screen\"><div class=\"max-w-7xl mx-auto p-6\">""" + content + """</div></body></html>
 """
         return render_template_string(html)
@@ -1924,6 +1973,7 @@ def gm_ops_execute_action():
     operator_context = payload.get("operatorContext") or {}
     reason = str(operator_context.get("reason") or "").strip() or "GM操作"
     ticket_id = str(operator_context.get("ticketId") or "").strip() or ("GM-" + datetime.now().strftime("%Y%m%d%H%M%S"))
+    approved_ref = {}
 
     if action.get("requireApproval"):
         approval_type = "version_publish" if action_type == "release_publish" else "gm_ops_action"
@@ -1933,6 +1983,50 @@ def gm_ops_execute_action():
             return jsonify({"ok": False, "error": "approval required", "message": "高风险动作未审批，请先发起审批。"}), 412
 
     trace_id = str(uuid.uuid4()).replace("-", "")[:16]
+    # 发布/回滚在内网本地版本库闭环执行，避免依赖 ops/action 对 release_* 的动作支持。
+    if action_type in ("release_publish", "release_rollback"):
+        action_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+        project_id_raw = str(action_payload.get("project_id") or "").strip()
+        version_name = str(action_payload.get("version_name") or "").strip()
+        platform = str(action_payload.get("platform") or "android").strip().lower()
+        env = str(action_payload.get("env") or "").strip()
+        channel = str(action_payload.get("channel") or "").strip()
+        ok, resolved = _ensure_project_exists(project_id_raw)
+        if not ok:
+            return jsonify({"ok": False, "error": resolved}), 404
+        release = _find_best_release(resolved, env, channel, platform, version_name, published_only=False)
+        if not release:
+            return jsonify({"ok": False, "error": "release not found"}), 404
+        if action_type == "release_publish":
+            release["publish_status"] = "published"
+            release["approval_id"] = str(((approved_ref or {}).get("id") or ((payload.get("approvalContext") or {}).get("approvalId") or "")).strip())
+            release["publish_trace_id"] = trace_id
+        else:
+            release["publish_status"] = "rolled_back"
+            release["rollback_trace_id"] = trace_id
+        release["updated_at"] = datetime.now().isoformat()
+        release["updated_by"] = _current_user()
+        versions = project_versions_db.get(resolved) or []
+        for i, item in enumerate(versions):
+            if str(item.get("id") or "") == str(release.get("id") or ""):
+                versions[i] = release
+                break
+        project_versions_db[resolved] = versions
+        save_project_versions()
+        local_result = {
+            "success": True,
+            "status": 200,
+            "message": "release action applied locally",
+            "data": {
+                "project_id": resolved,
+                "release_id": release.get("id"),
+                "version_name": release.get("version_name"),
+                "publish_status": release.get("publish_status"),
+            },
+        }
+        log_audit("gm_ops_action_execute", f"action={action_type}; domain={domain}; target={target}; trace={trace_id}; success=True; local=True")
+        return jsonify({"ok": True, "traceId": trace_id, "result": local_result})
+
     request_model = {
         "actionType": action_type,
         "domain": domain,
@@ -2067,9 +2161,6 @@ def gm_public_runtime_bootstrap():
             },
         }
     )
-
-
-
 
 
 

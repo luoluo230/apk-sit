@@ -180,6 +180,7 @@ def _register_blueprints():
         from routes.versions_routes import bp as versions_routes_bp
         from routes.workspace_routes import bp as workspace_bp
         from routes.gm_ops import bp as gm_ops_bp
+        from routes.gm_legacy import bp as gm_legacy_bp
         from routes.commercial_release_routes import bp as commercial_release_bp
         if mode == "all":
             from routes.player_community import bp as player_community_bp
@@ -204,6 +205,7 @@ def _register_blueprints():
         app.register_blueprint(versions_routes_bp)
         app.register_blueprint(jenkins_manage_bp)
         app.register_blueprint(gm_ops_bp)
+        app.register_blueprint(gm_legacy_bp)
         app.register_blueprint(commercial_release_bp)
 
 
@@ -341,6 +343,10 @@ def runtime_entrypoint():
         "admin": "/admin",
         "project_workspace": "/admin/projects/{id}",
         "gm_ops": "/admin/gm-ops",
+        "gm_center": "/admin/gm-center",
+        "ops_center": "/admin/ops-center",
+        "gm_classic": "/admin/gm-classic",
+        "ops_platform": "/admin/ops-platform",
     }
     return jsonify(payload), 200
 
@@ -348,5 +354,3 @@ def runtime_entrypoint():
 if __name__ == "__main__":
     _on_start()
     app.run(host=Config.HOST, port=Config.PORT, debug=Config.DEBUG)
-
-
