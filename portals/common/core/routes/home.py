@@ -173,18 +173,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         {empty_tip}
     </main>
 
-    <!-- 扫码弹窗 -->
-    <div id="qrModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="closeQR(event)">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-100" onclick="event.stopPropagation()">
-            <h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                <i class="fas fa-qrcode text-indigo-500"></i> 扫码下载
-            </h3>
-            <div id="qrCode" class="flex justify-center mb-4 min-h-[200px] items-center bg-slate-50 rounded-xl"></div>
-            <button type="button" onclick="closeQR()" class="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition">关闭</button>
+        <!-- 安装包下载详情（与项目版本页一致） -->
+    <div id="apkDetailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="closeApkDetail(event)">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <h3 class="text-lg font-semibold text-slate-800 flex items-center gap-2"><i class="fas fa-download text-emerald-500"></i> 安装包下载</h3>
+                <button type="button" onclick="closeApkDetail()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="apkDetailBody" class="p-6 overflow-y-auto flex-1 text-sm">加载中…</div>
         </div>
     </div>
 
-    <!-- 上传弹窗 -->
+<!-- 上传弹窗 -->
     <div id="uploadModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4" onclick="closeUpload(event)">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-auto p-6 border border-slate-100" onclick="event.stopPropagation()">
             <h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
@@ -228,21 +228,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 group.style.display = hasVisible ? "" : "none";
             }});
         }}
-        function showQR(filename) {{
-            document.getElementById("qrCode").innerHTML = "<p class=\\"text-slate-400 text-sm\\">加载中…</p>";
-            document.getElementById("qrModal").classList.remove("hidden");
-            document.getElementById("qrModal").classList.add("flex");
-            fetch("/qr/" + encodeURIComponent(filename), {{ credentials: "same-origin" }})
-                .then(function(r) {{ return r.json(); }})
-                .then(function(data) {{
-                    document.getElementById("qrCode").innerHTML = "<img src=\\"" + (data.qr_code || "") + "\\" alt=\\"QR\\" class=\\"w-48 h-48 object-contain rounded-lg\\" onerror=\\"this.parentElement.innerHTML='<p class=text-red-500>加载失败</p>';\\">";
-                }})
-                .catch(function() {{ document.getElementById("qrCode").innerHTML = "<p class=\\"text-red-500 text-sm\\">加载失败</p>"; }});
+        function escHtml(s) {{
+            if (s == null) return "";
+            return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
         }}
-        function closeQR(e) {{
+        function renderApkDownloadPanel(d) {{
+            if (!d || !d.available) return "<p class=\\"text-slate-500 text-sm py-4\\">暂无可下载的安装包</p>";
+            var row = function(label, val) {{ return "<div class=\\"flex gap-2 py-1\\"><span class=\\"text-slate-400 w-20 shrink-0\\">" + label + "</span><span class=\\"text-slate-800 break-all flex-1\\">" + val + "</span></div>"; }};
+            var qrBlock = function(title, url, qr) {{
+                if (!url) return "";
+                var img = qr ? "<img src=\\"" + qr + "\\" alt=\\"QR\\" class=\\"w-36 h-36 object-contain rounded-lg border border-slate-100 bg-white p-1\\">" : "<p class=\\"text-slate-400 text-xs\\">无二维码</p>";
+                return "<div class=\\"rounded-xl border border-slate-200 p-4 bg-slate-50/50\\"><p class=\\"text-xs font-semibold text-slate-600 mb-2\\">" + title + "</p>" + img + "<p class=\\"text-[11px] text-slate-500 mt-2 break-all\\">" + escHtml(url) + "</p><a href=\\"" + escHtml(url) + "\\" target=\\"_blank\\" rel=\\"noopener\\" class=\\"inline-flex mt-2 text-indigo-600 text-xs hover:underline\\">打开链接</a></div>";
+            }};
+            var html = "<div class=\\"space-y-4\\">";
+            html += row("构建时间", escHtml(d.build_time || "—"));
+            html += row("包名", escHtml(d.package_name || d.app_name || "—"));
+            html += row("文件", escHtml(d.file_name || "—"));
+            html += row("大小", escHtml(d.size_label || "—"));
+            html += row("渠道/阶段", escHtml((d.channel_label || d.channel || "-") + " / " + (d.stage_label || d.stage || "-")));
+            html += "<div class=\\"grid md:grid-cols-2 gap-4 pt-2\\">";
+            html += qrBlock("本地下载", d.local_download_url, d.local_qr_dataurl);
+            html += qrBlock("远端下载", d.oss_download_url, d.oss_qr_dataurl);
+            html += "</div>";
+            if (d.pub_download_path) {{
+                html += "<div class=\\"pt-2\\"><a href=\\"/pub/download/" + escHtml(d.pub_download_path) + "\\" class=\\"inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700\\"><i class=\\"fas fa-download\\"></i>直接下载</a></div>";
+            }}
+            html += "</div>";
+            return html;
+        }}
+        function showApkDetail(relPath) {{
+            var modal = document.getElementById("apkDetailModal");
+            var body = document.getElementById("apkDetailBody");
+            if (!modal || !body) return;
+            body.innerHTML = "<p class=\\"text-slate-400 text-sm\\">加载中…</p>";
+            modal.classList.remove("hidden");
+            modal.classList.add("flex");
+            fetch("/api/download-center/apk-info?path=" + encodeURIComponent(relPath), {{ credentials: "same-origin" }})
+                .then(function(r) {{ return r.json(); }})
+                .then(function(d) {{
+                    if (d.error && !d.available) {{ body.innerHTML = "<p class=\\"text-red-500 text-sm\\">" + escHtml(d.error || "加载失败") + "</p>"; return; }}
+                    body.innerHTML = renderApkDownloadPanel(d);
+                }})
+                .catch(function() {{ body.innerHTML = "<p class=\\"text-red-500 text-sm\\">加载失败</p>"; }});
+        }}
+        function closeApkDetail(e) {{
             if (!e || e.target === e.currentTarget) {{
-                document.getElementById("qrModal").classList.add("hidden");
-                document.getElementById("qrModal").classList.remove("flex");
+                document.getElementById("apkDetailModal").classList.add("hidden");
+                document.getElementById("apkDetailModal").classList.remove("flex");
             }}
         }}
         function showUploadModal() {{
@@ -333,10 +365,10 @@ def _build_files_html(grouped_files, projects_db, changelog_db=None, project_ver
                 '<div class="text-sm text-slate-500 mt-0.5">' + html_module.escape(f.get('app_name') or '-') + ' · v' + html_module.escape(str(f.get('version') or '-')) + ' · ' + str(f.get('size_mb', 0)) + ' MB · ' + html_module.escape(str(f.get('date') or '')) + '</div>'
                 '</div>'
                 '<div class="flex gap-2 flex-shrink-0">'
-                '<button type="button" data-filename="' + name_attr + '" onclick="showQR(this.getAttribute(\'data-filename\'))" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition">'
-                '<i class="fas fa-qrcode text-slate-500"></i> 扫码</button>'
-                '<a href="' + download_href + '" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl btn-download text-white text-sm font-medium shadow-sm hover:shadow transition">'
-                '<i class="fas fa-download"></i> 下载</a>'
+                '<button type="button" data-path="' + name_attr + '" onclick="showApkDetail(this.getAttribute(\'data-path\'))" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:border-slate-300 transition">'
+                '<i class="fas fa-qrcode text-slate-500"></i> 详情</button>'
+                '<button type="button" data-path="' + name_attr + '" onclick="showApkDetail(this.getAttribute(\'data-path\'))" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl btn-download text-white text-sm font-medium shadow-sm hover:shadow transition">'
+                '<i class="fas fa-download"></i> 下载</button>'
                 '</div></div>'
             )
         out.append('</div></div>')
@@ -414,6 +446,52 @@ def download_center():
     except Exception as e:
         logger.error("首页加载失败：%s", e, exc_info=True)
         abort(500)
+
+
+
+
+def _parse_apk_path_hierarchy(rel_path: str) -> dict:
+    parts = (rel_path or "").replace("\\", "/").split("/")
+    if len(parts) >= 2:
+        return {"channel_subdir": parts[0], "stage": parts[1]}
+    return {}
+
+
+@bp.route('/api/download-center/apk-info')
+@login_required
+def download_center_apk_info():
+    from flask import jsonify
+    from services.apk_artifact_service import read_apk_meta, build_download_info
+    from models.data import can_view_project
+
+    rel_path = (request.args.get('path') or '').strip().replace('\\', '/')
+    if not rel_path or '..' in rel_path or rel_path.startswith('/'):
+        return jsonify({'error': 'invalid path'}), 400
+    full = os.path.normpath(os.path.join(Config.APK_DIR, rel_path))
+    base = os.path.normpath(Config.APK_DIR)
+    if not full.startswith(base) or not os.path.isfile(full):
+        return jsonify({'error': '文件不存在'}), 404
+    project_id = extract_project_name(rel_path)
+    username = session.get('user') or ''
+    if project_id and not can_view_project(project_id, username):
+        return jsonify({'error': '无权限'}), 403
+
+    meta = read_apk_meta(full)
+    fake_version = {
+        'id': meta.get('version_id') or '',
+        'version_name': meta.get('version_name') or '',
+        'version_code': meta.get('version_code') or '',
+        'channel': meta.get('channel') or '',
+        'stage': meta.get('stage') or _parse_apk_path_hierarchy(rel_path).get('stage') or 'dev',
+        'platform': 'android',
+        'apk_path': rel_path,
+        'apk_download': meta,
+        'package_name': meta.get('package_name') or '',
+    }
+    info = build_download_info(project_id, fake_version)
+    if not info:
+        return jsonify({'error': '无法读取安装包信息'}), 404
+    return jsonify(info)
 
 
 @bp.route('/health')

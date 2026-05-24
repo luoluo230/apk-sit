@@ -6,7 +6,7 @@ import copy
 import re
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from repositories.admin import versions_repo
 from services.admin.version_domain import normalize_version_status, normalize_edit_scope, build_status_audit_tags
@@ -20,6 +20,38 @@ VERSION_STAGES = [("dev", "开发"), ("test", "测试"), ("production", "线上"
 VERSION_STATUSES = [("draft", "草稿"), ("testing", "测试中"), ("active", "有效"), ("disabled", "失效"), ("archived", "归档")]
 VERSION_STATUS_MAP = dict(VERSION_STATUSES)
 STAGE_LABEL_MAP = dict(VERSION_STAGES)
+
+
+def _normalize_rollout_percentage(raw) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 100
+    return max(0, min(100, value))
+
+
+def _resolve_runtime_compat_fields(data: Dict[str, Any], current_row: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    version_name = (
+        (data.get("version_name") or (current_row or {}).get("version_name") or "").strip() or "1.0.0"
+    )
+    min_raw = data.get("min_client_version")
+    if min_raw is None and current_row is not None:
+        min_raw = current_row.get("min_client_version")
+    min_client = (str(min_raw).strip() if min_raw is not None else "") or version_name
+    # Max 与资源版本线一致；Web 管理端不再暴露 Max，避免与 version_name 重复配置。
+    max_client = version_name
+    rollout_raw = data.get("rollout_percentage")
+    if rollout_raw is None and current_row is not None:
+        rollout_raw = current_row.get("rollout_percentage", 100)
+    is_revoked = data.get("is_revoked")
+    if is_revoked is None and current_row is not None:
+        is_revoked = current_row.get("is_revoked", False)
+    return {
+        "min_client_version": min_client,
+        "max_client_version": max_client,
+        "rollout_percentage": _normalize_rollout_percentage(rollout_raw),
+        "is_revoked": bool(is_revoked),
+    }
 
 
 def _version_row_labels(channel_id: str, stage_id: str) -> dict[str, str]:
@@ -211,6 +243,22 @@ def get_version_downloads(project_id: str, version_id: str, username: str) -> Tu
     return {"files": files}, 200
 
 
+def get_apk_download_info(project_id: str, version_id: str, username: str) -> Tuple[Dict[str, Any], int]:
+    if not versions_repo.has_project(project_id) or not versions_repo.can_view(project_id, username):
+        return {"error": "无权限"}, 403
+    versions = versions_repo.list_versions(project_id)
+    v = next((x for x in versions if (x.get("id") or "") == version_id), None)
+    if not v:
+        return {"error": "版本不存在"}, 404
+    from services.apk_artifact_service import build_download_info, version_apk_build_enabled
+
+    info = build_download_info(project_id, v)
+    if not info:
+        return {"error": "暂无可下载的安装包", "available": False}, 404
+    info["apk_build_enabled"] = version_apk_build_enabled(v)
+    return info, 200
+
+
 def _duplicate_version_code_in_group(
     versions: list,
     version_name: str,
@@ -263,6 +311,7 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     if isinstance(pipeline, dict):
         v["pipeline"] = _sync_pipeline_release_fields(pipeline)
     v.update(_clean_version_platform_fields(data, platform))
+    v.update(_resolve_runtime_compat_fields(data))
     v.update(_derive_runtime_paths(v))
     validation_error = _validate_version_payload(platform, v)
     if validation_error:
@@ -339,6 +388,7 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
         "notes": (data.get("notes") or current_row.get("notes") or "").strip(),
         "updated_at": datetime.now().isoformat(),
     }
+    update_payload.update(_resolve_runtime_compat_fields(data, current_row))
     if edit_scope == "version_group":
         update_payload["version_code"] = (current_row.get("version_code") or "").strip()
     pipeline = data.get("pipeline")

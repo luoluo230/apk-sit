@@ -1,0 +1,196 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/jobs/Android/workspace
+[workspace] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins14133713429240227927.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.0
+  版本代码: 9
+  应用名称: GomeKu
+  Git 分支: codex/replace-logging-with-custom-logger-fvtg9m
+
+==============================
+[阶段 0] 环境准备
+说明: 输出构建参数、加载实例环境变量、准备 Git/Unity 执行上下文。
+时间: 2026-05-24 16:36:29
+==============================
+步骤: Git 拉取/更新 (/Users/wangling/Desktop/MyGame/GameClient)
+Reset branch 'codex/replace-logging-with-custom-logger-fvtg9m'
+M	Assets/Src/Foundation/Bootstrap/RuntimeVersionResolveContracts.cs
+M	Assets/Src/Foundation/Bootstrap/RuntimeVersionResolveService.cs
+M	Assets/Src/HotUpdate/Framework/Code/RemoteUpdate/CodeRemoteUpdateService.cs
+M	Assets/Src/HotUpdate/Framework/Config/RemoteUpdate/ConfigRemoteUpdateService.cs
+M	Assets/Src/HotUpdate/Framework/Config/RemoteUpdate/HotUpdateRuntimeConfigAccessor.cs
+M	Assets/Src/HotUpdate/Framework/HotUpdateRuntime/HotUpdateCoordinator.cs
+M	Assets/Src/HotUpdate/Framework/HotUpdateRuntime/ResourceHotUpdateDomain.cs
+M	Assets/Src/HotUpdate/Framework/Resource/AddressableManager.cs
+M	Assets/Src/HotUpdate/Framework/Resource/RuntimeOuterPackageProcessor.cs
+M	Assets/Src/HotUpdate/Game/StartupFlow/StartupUpdateEventHub.cs
+M	Assets/Src/HotUpdate/Game/StartupFlow/StartupUpdateOrchestrator.cs
+M	Assets/Src/HotUpdateConfig.cs
+M	Assets/Src/HotfixEntry/LoadDll.cs
+M	Assets/Src/Samples/VersionResolve/ClientHotUpdateFlowTester.cs
+branch 'codex/replace-logging-with-custom-logger-fvtg9m' set up to track 'origin/codex/replace-logging-with-custom-logger-fvtg9m'.
+Your branch is up to date with 'origin/codex/replace-logging-with-custom-logger-fvtg9m'.
+Git 拉取完成
+跳过基础 APK 预构建（RUN_BASE_APK_BUILD_FIRST=false）
+
+======= 可插拔版本构建流水线 =======
+Unity 可执行文件: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity
+
+==============================
+[阶段 1] 配置导出发布
+说明: 执行 ConfigRemotePublishCli：导表、生成配置补丁清单、上传 OSS。
+时间: 2026-05-24 16:36:34
+==============================
+=== Step 1: 配置导出发布 (ConfigRemotePublish) ===
+上传: ConfigContent Excel 导表 + CloudUpload/OSS
+Step1 参数: env=Dev channel=wechat platform=android version=1.0.0 versionCode=9 prefix=MyGame1
+Unity Editor 程序集预热编译...
+=== Unity 脚本预热（编译） ===
+预拉取 Unity Services CDN 配置 (最长 90s)...
+CDN 配置已缓存 (1881 bytes) @ /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/unity-services-config-production.json
+Unity offline config: /Users/wangling/Library/Application Support/Unity/config/services-config.json
+Unity Project: /Users/wangling/Desktop/MyGame/GameClient
+→ 执行: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -disableAssemblyUpdater -quitTimeout 7200 -projectPath "/Users/wangling/Desktop/MyGame/GameClient" -executeMethod ReleaseToolsWarmup.EnsureCompiled 
+预拉取 Unity Services CDN 配置 (最长 90s)...
+CDN 配置已缓存 (1881 bytes) @ /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/unity-services-config-production.json
+Unity offline config: /Users/wangling/Library/Application Support/Unity/config/services-config.json
+Unity Editor version:    6000.3.8f1 (1c7db571dde0)
+Branch:                  6000.3/staging
+Build type:              Release
+Batch mode:              YES
+macOS version:           Version 14.1 (Build 23B2073)
+Darwin version:          23.1.0
+Architecture:            arm64
+Running under Rosetta:   NO
+Available memory:        18432 MB
+Date:                    2026-05-24T08:36:34Z
+[Licensing::Module] Trying to connect to existing licensing client channel...
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-wangling" at "2026-05-24T08:36:34.757096Z"
+Launching external process: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/PackageManager/Server/UnityPackageManager
+
+COMMAND LINE ARGUMENTS:
+/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity
+-batchmode
+-nographics
+-disableAssemblyUpdater
+-quitTimeout
+7200
+-projectPath
+/Users/wangling/Desktop/MyGame/GameClient
+-executeMethod
+ReleaseToolsWarmup.EnsureCompiled
+Successfully changed project path to: /Users/wangling/Desktop/MyGame/GameClient
+/Users/wangling/Desktop/MyGame/GameClient
+
+Aborting batchmode due to fatal error:
+It looks like another Unity instance is running with this project open.
+
+Multiple Unity instances cannot open the same project.
+
+Project: /Users/wangling/Desktop/MyGame/GameClient
+
+[Package Manager] Server process was shutdown
+[Licensing::Client] Code 0 while verifying Licensing Client signature (process Id: 94655, path: "/Applications/Unity Hub.app/Contents/Frameworks/UnityLicensingClient_V1.app/Contents/MacOS/Unity.Licensing.Client")
+[Licensing::Module] LicensingClient has failed validation; ignoring
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.17.4+4293ba1
+  Session Id:              354b58097ae5446fa4e1699775397d77
+  Correlation Id:          39ad5c15c546c6b57481fc8b190f9cce
+  External correlation Id: 7253517963914004711
+  Machine Id:              MGa34ASkw/INjcJxG7gv0os18Ag=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-wangling" (connect: 0.00s, validation: 0.00s, handshake: 0.23s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-wangling-notifications" at "2026-05-24T08:36:34.995211Z"
+[Licensing::Module] Error: Access token is unavailable; failed to update
+⚠ Unity 退出码: 1
+⚠ 预热非零退出（可继续）
+⚠ 预热非零退出（可继续 Step1）
+Unity Project: /Users/wangling/Desktop/MyGame/GameClient
+→ 执行: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -disableAssemblyUpdater -quitTimeout 7200 -projectPath "/Users/wangling/Desktop/MyGame/GameClient" -executeMethod MAClient.ConfigContentTool.ConfigRemotePublishCli.ExecuteFromCommandLine -configSchema "Assets/Editor/ConfigContentTool/ConfigContentSchema.asset" -configEnvironment "Dev" -configPlatform "android" -configChannel "wechat" -configClientVersion "1.0.0" -configVersionCode "9" -configRemotePrefix "MyGame1" -configIncludeCode "false" -configTimeoutSeconds "600" -resultOutputPath "Library/ConfigPublish/cli-result.json"
+预拉取 Unity Services CDN 配置 (最长 90s)...
+CDN 配置已缓存 (1881 bytes) @ /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/unity-services-config-production.json
+Unity offline config: /Users/wangling/Library/Application Support/Unity/config/services-config.json
+Unity Editor version:    6000.3.8f1 (1c7db571dde0)
+Branch:                  6000.3/staging
+Build type:              Release
+Batch mode:              YES
+macOS version:           Version 14.1 (Build 23B2073)
+Darwin version:          23.1.0
+Architecture:            arm64
+Running under Rosetta:   NO
+Available memory:        18432 MB
+Date:                    2026-05-24T08:36:38Z
+[Licensing::Module] Trying to connect to existing licensing client channel...
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-wangling" at "2026-05-24T08:36:38.073977Z"
+Launching external process: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/PackageManager/Server/UnityPackageManager
+
+COMMAND LINE ARGUMENTS:
+/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity
+-batchmode
+-nographics
+-disableAssemblyUpdater
+-quitTimeout
+7200
+-projectPath
+/Users/wangling/Desktop/MyGame/GameClient
+-executeMethod
+MAClient.ConfigContentTool.ConfigRemotePublishCli.ExecuteFromCommandLine
+-configSchema
+Assets/Editor/ConfigContentTool/ConfigContentSchema.asset
+-configEnvironment
+Dev
+-configPlatform
+android
+-configChannel
+wechat
+-configClientVersion
+1.0.0
+-configVersionCode
+9
+-configRemotePrefix
+MyGame1
+-configIncludeCode
+false
+-configTimeoutSeconds
+600
+-resultOutputPath
+Library/ConfigPublish/cli-result.json
+Successfully changed project path to: /Users/wangling/Desktop/MyGame/GameClient
+/Users/wangling/Desktop/MyGame/GameClient
+
+Aborting batchmode due to fatal error:
+It looks like another Unity instance is running with this project open.
+
+Multiple Unity instances cannot open the same project.
+
+Project: /Users/wangling/Desktop/MyGame/GameClient
+
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.17.4+4293ba1
+  Session Id:              f702b99de64a4e79a085a24e5b7f5522
+  Correlation Id:          39ad5c15c546c6b57481fc8b190f9cce
+  External correlation Id: 2683672822990516622
+  Machine Id:              MGa34ASkw/INjcJxG7gv0os18Ag=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-wangling" (connect: 0.00s, validation: 0.00s, handshake: 0.17s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-wangling-notifications" at "2026-05-24T08:36:38.24173Z"
+[Licensing::Module] Error: Access token is unavailable; failed to update
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: ewogICJzdWJzR3JvdXAiIDogInVuaXR5IGVkaXRvciIsCiAgIm5hbWVzcGFjZSIgOiAidW5pdHlfZWRpdG9yIiwKICAidHlwZSIgOiAiRURJVE9SIiwKICAidGFnIiA6ICJVbml0eVBlcnNvbmFsXXXX
+  Product: Unity Personal Version
+  Type: Assigned
+  Expiration: Unlimited
+[Licensing::Client] Successfully updated license, isAsync: True, time: 0.00
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] Licensing Background thread has ended after 0.17s
+[Package Manager] Server process was shutdown
+⚠ Unity 退出码: 1
+⚠ Step1 未出现 [ConfigRemotePublishCli] Success
+FAIL: Step1 ConfigRemotePublish 退出
+Build step 'Execute shell' marked build as failure
+Finished: FAILURE

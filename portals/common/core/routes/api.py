@@ -143,6 +143,19 @@ def _parse_version_code_weight(raw_code):
     return (int(digits) if digits else -1), code
 
 
+def _channel_matches(query_channel: str, row_channel: str) -> bool:
+    """Match channel id (1001) with runtime key (wechat) via channels.json build_param."""
+    query = (query_channel or "").strip().lower()
+    row = (row_channel or "").strip().lower()
+    if not query or not row:
+        return True
+    if query == row:
+        return True
+    from services.commercial_release_plan import normalize_release_channel
+
+    return normalize_release_channel(query) == normalize_release_channel(row)
+
+
 @bp.route('/runtime/version-resolve')
 def resolve_runtime_version():
     """按项目版本管理数据解析运行时版本：同 VersionName 下返回最大可用 VersionCode。"""
@@ -153,6 +166,21 @@ def resolve_runtime_version():
     status = _normalize_version_status(request.args.get('status') or request.args.get('state') or 'active')
     include_status_raw = (request.args.get('include_status') or '').strip()
     version_code_exact = (request.args.get('version_code') or '').strip()
+    device_id = (request.args.get('device_id') or '').strip()
+    stage_param = (request.args.get('stage') or '').strip().lower()
+    environment = (request.args.get('environment') or '').strip().lower()
+    effective_stage = ''
+    if device_id:
+        from services.test_device_service import resolve_stage_for_device
+        effective_stage = resolve_stage_for_device(project_id, device_id) or ''
+    elif stage_param in ('dev', 'test', 'production'):
+        effective_stage = stage_param
+    elif environment in ('development', 'dev'):
+        effective_stage = 'dev'
+    elif environment in ('testing', 'test'):
+        effective_stage = 'test'
+    elif environment in ('production', 'prod', 'online'):
+        effective_stage = 'production'
     include_statuses = set()
     if include_status_raw:
         for item in include_status_raw.split(','):
@@ -185,9 +213,11 @@ def resolve_runtime_version():
             continue
         row_channel = str(row.get('channel') or '').strip().lower()
         row_platform = str(row.get('platform') or '').strip().lower()
-        if channel and row_channel and row_channel != channel:
+        if channel and row_channel and not _channel_matches(channel, row_channel):
             continue
         if platform and row_platform and row_platform != platform:
+            continue
+        if effective_stage and str(row.get('stage') or 'dev').strip() != effective_stage:
             continue
         candidates.append(row)
 
@@ -211,9 +241,11 @@ def resolve_runtime_version():
     from services.commercial_release_plan import (
         build_runtime_resolve_paths,
         normalize_release_environment,
+        normalize_release_channel,
+        DEFAULT_RESOURCE_SERVER,
     )
 
-    row_channel = str(selected.get('channel') or channel or 'common')
+    row_channel = normalize_release_channel(str(selected.get('channel') or channel or 'common'))
     row_platform_raw = str(selected.get('platform') or platform or 'android')
     row_platform = 'ios' if row_platform_raw.lower() == 'ios' else 'android'
     platform_title = row_platform
@@ -222,14 +254,36 @@ def resolve_runtime_version():
         str(selected.get('stage') or ''),
     )
     version_code = str(selected.get('version_code') or '').strip()
+    resource_server_url = str(selected.get('resource_server_url') or '').strip()
     runtime_paths = build_runtime_resolve_paths(
-        resource_server_url=str(selected.get('resource_server_url') or ''),
+        resource_server_url=resource_server_url,
         release_environment=release_env,
         release_channel=row_channel,
         release_platform=platform_title,
         release_version=version_name,
         version_code=version_code,
     )
+    resource_relative_path = (
+        str(selected.get('resource_path') or '').strip()
+        or runtime_paths['resource_relative_path']
+    )
+    catalog_file_name = (
+        str(selected.get('catalog_file_name') or '').strip()
+        or runtime_paths['catalog_file_name']
+    )
+    resource_base = (resource_server_url or DEFAULT_RESOURCE_SERVER).rstrip('/')
+    catalog_url = f"{resource_base}/{resource_relative_path.strip('/')}/{catalog_file_name.lstrip('/')}"
+
+    min_client_version = str(
+        selected.get('min_client_version') or selected.get('version_name') or version_name
+    ).strip()
+    max_client_version = str(
+        selected.get('max_client_version') or selected.get('version_name') or version_name
+    ).strip()
+    rollout_percentage = selected.get('rollout_percentage')
+    if rollout_percentage is None:
+        rollout_percentage = 100
+    is_revoked = bool(selected.get('is_revoked') or selected.get('version_status') == 'revoked')
 
     return jsonify({
         'ok': True,
@@ -242,14 +296,20 @@ def resolve_runtime_version():
             'channel': row_channel,
             'platform': row_platform,
             'environment': release_env,
-            'resource_path': selected.get('resource_path') or runtime_paths['resource_relative_path'],
+            'min_client_version': min_client_version,
+            'max_client_version': max_client_version,
+            'rollout_percentage': rollout_percentage,
+            'is_revoked': is_revoked,
+            'resource_path': resource_relative_path,
             'config_path': selected.get('config_path') or runtime_paths['config_relative_path'],
-            'resource_relative_path': runtime_paths['resource_relative_path'],
+            'resource_relative_path': resource_relative_path,
             'config_relative_path': runtime_paths['config_relative_path'],
             'code_relative_path': runtime_paths['code_relative_path'],
             'config_manifest_path': runtime_paths['config_manifest_path'],
             'code_manifest_path': runtime_paths['code_manifest_path'],
-            'catalog_file_name': runtime_paths['catalog_file_name'],
+            'catalog_file_name': catalog_file_name,
+            'catalog_url': catalog_url,
+            'resource_server_url': resource_base,
             'apk_path': selected.get('apk_path') or '',
             'updated_at': selected.get('updated_at') or '',
             'version_record': dict(selected),
@@ -261,6 +321,8 @@ def resolve_runtime_version():
                 'status': status,
                 'include_status': sorted(list(include_statuses)),
                 'version_code': version_code_exact,
+                'device_id': device_id,
+                'effective_stage': effective_stage,
             },
         },
     })

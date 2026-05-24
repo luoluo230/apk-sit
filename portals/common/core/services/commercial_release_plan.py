@@ -122,7 +122,7 @@ def build_runtime_resolve_paths(
         "config_manifest_signature_path": f"{base}/{rel}/config/config_patch_manifest.signature.json",
         "code_manifest_path": f"{base}/{rel}/code/code_patch_manifest.json",
         "code_manifest_signature_path": f"{base}/{rel}/code/code_patch_manifest.signature.json",
-        "catalog_file_name": f"catalog_{release_version}.json",
+        "catalog_file_name": f"catalog_{release_version}.bin",
     }
 
 

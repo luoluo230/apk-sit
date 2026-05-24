@@ -1,0 +1,660 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/jobs/Android/workspace
+[workspace] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins16944513543724177950.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.0
+  版本代码: 7
+  应用名称: GomeKu
+  Git 分支: codex/replace-logging-with-custom-logger-fvtg9m
+
+==============================
+[阶段 0] 环境准备
+说明: 输出构建参数、加载实例环境变量、准备 Git/Unity 执行上下文。
+时间: 2026-05-24 01:33:44
+==============================
+步骤: Git 拉取/更新 (/Users/wangling/Desktop/MyGame/GameClient)
+Reset branch 'codex/replace-logging-with-custom-logger-fvtg9m'
+M	Assets/Editor/AndroidBuildScript.cs
+M	Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs
+M	Assets/Generated/ConfigData/config_manifest.json
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/BaiduAdsBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/ChartboostAdsBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/HuaweiAdsBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/HuaweiIapBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/JPushBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/KuaishouAdsBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/LiftoffAdsBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/MobShareBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/MolocoAdsBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/PayPalPayBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/QqOpenBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/WeChatOpenBridge.java
+M	Assets/Plugins/Android/com/maclient/sdkbridge/vendors/WeChatPayBridge.java
+M	Assets/Resources/resource_bundle_download_catalog.json
+M	Packages/packages-lock.json
+M	ProjectSettings/ProjectSettings.asset
+M	ProjectSettings/ProjectVersion.txt
+branch 'codex/replace-logging-with-custom-logger-fvtg9m' set up to track 'origin/codex/replace-logging-with-custom-logger-fvtg9m'.
+Your branch is up to date with 'origin/codex/replace-logging-with-custom-logger-fvtg9m'.
+Git 拉取完成
+跳过基础 APK 预构建（RUN_BASE_APK_BUILD_FIRST=false）
+
+======= 可插拔版本构建流水线 =======
+Unity 可执行文件: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity
+Step 1 (配置导出) 已跳过
+Step 2 (资源打包) 已跳过
+Step 3 (热更发布) 已跳过
+
+==============================
+[阶段 4] APK 打包与上传
+说明: 执行 ApkReleaseUploadCli：构建 APK 并上传阿里云。
+时间: 2026-05-24 01:33:49
+==============================
+=== Step 4: APK 打包 ===
+=========================================
+  GameKu Android 打包工具 (Jenkins)
+=========================================
+
+配置:
+  项目: /Users/wangling/Desktop/MyGame/GameClient
+  Unity: 6000.3.8f1
+  版本: 1.0.0 (code: 7)
+  应用名称: GomeKu
+  输出基础目录: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput
+  构建输出目录: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0_20260524_013349
+  Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android
+  Git 分支: codex/replace-logging-with-custom-logger-fvtg9m
+
+📝 日志文件: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0_20260524_013349/logs/build.log
+=========================================
+  构建开始时间: Sun May 24 01:33:49 CST 2026
+=========================================
+
+步骤 1: 清理旧的 Unity 构建缓存
+✅ 已清理 Bee/Android 缓存
+
+步骤 2: 查找 Unity 版本
+✅ Unity: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app
+
+步骤 3: Git 更新
+📥 拉取代码...
+Already up to date.
+✅ Git 更新完成
+   分支: codex/replace-logging-with-custom-logger-fvtg9m
+   提交: 71b79e16
+
+步骤 4: 生成 Unity 构建脚本
+✅ Unity 构建脚本已生成
+
+步骤 5: Unity 构建（ARM64 架构）
+开始构建，这可能需要 3-5 分钟...
+
+✅ Unity 构建成功
+
+步骤 6: 处理 APK 文件
+✅ APK 生成成功！
+   原始路径: /Users/wangling/Desktop/MyGame/GameClient/Builds/Android/GameKu.apk
+   最终路径: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0_20260524_013349/GomeKu_1.0.0.apk
+   文件大小:  37M
+-rw-r--r--  1 wangling  staff    37M May 24 01:39 /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0_20260524_013349/GomeKu_1.0.0.apk
+
+步骤 7: 生成构建信息文件
+✅ 构建信息已生成
+
+步骤 8: 复制 APK 到 Jenkins 工作空间
+✅ APK 已复制到 Jenkins 工作空间
+   Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android/GomeKu_1.0.0.apk
+-rw-r--r--  1 wangling  staff    37M May 24 01:39 /Users/wangling/.jenkins/workspace/Android/GomeKu_1.0.0.apk
+✅ APK 也已复制到输出根目录
+✅ APK 也已复制到 HTTP 服务器目录 for download (/Users/wangling/Downloads/APK_Builds)
+
+步骤 9: 保存构建参数
+✅ 构建参数已保存到: /Users/wangling/.jenkins/jobs/Android/last_params.txt
+
+
+=========================================
+✅ Android 版本 1.0.0 构建成功！
+=========================================
+
+版本号: 1.0.0
+构建时间: 5分43秒
+构建状态: SUCCESS
+📱 下载链接: http://192.168.0.106:5003/pub/download/GomeKu_1.0.0.apk
+
+=== Step 4b: APK 上传阿里云 ===
+上传: Unity 项目 Assets/Editor/Configs/OSSConfig.json (aliyun-oss)
+APK 文件: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0.apk
+Unity Project: /Users/wangling/Desktop/MyGame/GameClient
+→ 执行: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -disableAssemblyUpdater -quitTimeout 7200 -projectPath "/Users/wangling/Desktop/MyGame/GameClient" -executeMethod ApkReleaseUploadCli.ExecuteFromCommandLine -apkFile "/Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0.apk" -releaseVersion "1.0.0" -releaseEnvironment "Development" -releaseChannel "wechat" -releasePlatform "android" -versionCode "7" -projectRoot "MyGame1" -appName "GomeKu"
+预拉取 Unity Services CDN 配置 (最长 90s)...
+CDN 配置已缓存 (1881 bytes) @ /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/unity-services-config-production.json
+Unity offline config: /Users/wangling/Library/Application Support/Unity/config/services-config.json
+Unity Editor version:    6000.3.8f1 (1c7db571dde0)
+Branch:                  6000.3/staging
+Build type:              Release
+Batch mode:              YES
+macOS version:           Version 14.1 (Build 23B2073)
+Darwin version:          23.1.0
+Architecture:            arm64
+Running under Rosetta:   NO
+Available memory:        18432 MB
+Date:                    2026-05-23T17:39:33Z
+[Licensing::Module] Trying to connect to existing licensing client channel...
+[Licensing::IpcConnector] Channel LicenseClient-wangling doesn't exist
+Launching external process: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Helpers/UnityLicensingClient.app/Contents/MacOS/Unity.Licensing.Client
+[Licensing::Module] Successfully launched the LicensingClient (PId: 99404)
+Launching external process: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/PackageManager/Server/UnityPackageManager
+
+COMMAND LINE ARGUMENTS:
+/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity
+-batchmode
+-nographics
+-disableAssemblyUpdater
+-quitTimeout
+7200
+-projectPath
+/Users/wangling/Desktop/MyGame/GameClient
+-executeMethod
+ApkReleaseUploadCli.ExecuteFromCommandLine
+-apkFile
+/Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0.apk
+-releaseVersion
+1.0.0
+-releaseEnvironment
+Development
+-releaseChannel
+wechat
+-releasePlatform
+android
+-versionCode
+7
+-projectRoot
+MyGame1
+-appName
+GomeKu
+Successfully changed project path to: /Users/wangling/Desktop/MyGame/GameClient
+/Users/wangling/Desktop/MyGame/GameClient
+[UnityMemory] Configuration Parameters - Can be set up in boot.config
+    "memorysetup-allocator-temp-initial-block-size-main=262144"
+    "memorysetup-allocator-temp-initial-block-size-worker=262144"
+    "memorysetup-temp-allocator-size-background-worker=32768"
+    "memorysetup-temp-allocator-size-job-worker=262144"
+    "memorysetup-temp-allocator-size-preload-manager=33554432"
+    "memorysetup-temp-allocator-size-nav-mesh-worker=65536"
+    "memorysetup-temp-allocator-size-audio-worker=65536"
+    "memorysetup-temp-allocator-size-cloud-worker=32768"
+    "memorysetup-bucket-allocator-granularity=16"
+    "memorysetup-bucket-allocator-bucket-count=8"
+    "memorysetup-bucket-allocator-block-size=33554432"
+    "memorysetup-bucket-allocator-block-count=8"
+    "memorysetup-main-allocator-block-size=16777216"
+    "memorysetup-thread-allocator-block-size=16777216"
+    "memorysetup-gfx-main-allocator-block-size=16777216"
+    "memorysetup-gfx-thread-allocator-block-size=16777216"
+    "memorysetup-cache-allocator-block-size=4194304"
+    "memorysetup-typetree-allocator-block-size=2097152"
+    "memorysetup-profiler-bucket-allocator-granularity=16"
+    "memorysetup-profiler-bucket-allocator-bucket-count=8"
+    "memorysetup-profiler-bucket-allocator-block-size=33554432"
+    "memorysetup-profiler-bucket-allocator-block-count=8"
+    "memorysetup-profiler-allocator-block-size=16777216"
+    "memorysetup-profiler-editor-allocator-block-size=1048576"
+    "memorysetup-temp-allocator-size-main=16777216"
+    "memorysetup-job-temp-allocator-block-size=2097152"
+    "memorysetup-job-temp-allocator-block-size-background=1048576"
+    "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gfx=262144"
+Player connection [8067227328]  Target information:
+
+Player connection [8067227328]  * "[IP] 192.168.0.5 [Port] 55504 [Flags] 2 [Guid] 3477172255 [EditorId] 3477172255 [Version] 1048832 [Id] OSXEditor(0,wanglingdeMacBook-Pro-2.local) [Debug] 1 [PackageName] OSXEditor [ProjectName] Editor" 
+
+Player connection [8067227328] Host joined multi-casting on [225.0.0.222:54997]...
+Player connection [8067227328] Host joined alternative multi-casting on [225.0.0.222:34997]...
+Input System module state changed to: Initialized.
+[Physics::Module] Initialized fallback backend.
+[Physics::Module] Id: 0xdecafbad
+[Package Manager] Connected to IPC stream "Upm-99403" after 0.1 seconds.
+[Licensing::Module] Licensing is not yet initialized.
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-wangling" at "2026-05-23T17:39:33.637946Z"
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.17.4+4293ba1
+  Session Id:              62be1adf97474f3e9de0812342750aa2
+  Correlation Id:          10647e3558c91cac5a08c33aba95b5a6
+  External correlation Id: 545993888538260986
+  Machine Id:              MGa34ASkw/INjcJxG7gv0os18Ag=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-wangling" (connect: 0.58s, validation: 0.03s, handshake: 0.19s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-wangling-notifications" at "2026-05-23T17:39:33.855006Z"
+[Licensing::Module] Connected to LicensingClient (PId: 99404, launch time: 0.00, total connection time: 0.79s)
+[Licensing::Module] Error: Access token is unavailable; failed to update
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] License group:
+  Id: ewogICJzdWJzR3JvdXAiIDogInVuaXR5IGVkaXRvciIsCiAgIm5hbWVzcGFjZSIgOiAidW5pdHlfZWRpdG9yIiwKICAidHlwZSIgOiAiRURJVE9SIiwKICAidGFnIiA6ICJVbml0eVBlcnNvbmFsXXXX
+  Product: Unity Personal Version
+  Type: Assigned
+  Expiration: Unlimited
+[Licensing::Client] Successfully updated license, isAsync: True, time: 0.00
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Module] Licensing Background thread has ended after 0.80s
+[Licensing::Module] Licensing is initialized (took 0.47s).
+[Licensing::Client] Successfully resolved entitlement details
+Library Redirect Path: Library/
+[Physics::Module] Selected backend.
+[Physics::Module] Name: PhysX
+[Physics::Module] Id: 0xf2b8ea05
+[Physics::Module] SDK Version: 4.1.2
+[Physics::Module] Integration Version: 1.0.0
+[Physics::Module] Threading Mode: Multi-Threaded
+Artifact Garbage Collection - Removed 3 unused hashed content files
+[Licensing::Client] Successfully resolved entitlement details
+Refreshing native plugins compatible for Editor in 2.35 ms, found 0 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Initialize engine version: 6000.3.8f1 (1c7db571dde0)
+[Subsystems] Discovering subsystems at path /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/UnitySubsystems
+[Subsystems] Discovering subsystems at path /Users/wangling/Desktop/MyGame/GameClient/Assets
+Forcing GfxDevice: Null
+GfxDevice: creating device client; kGfxThreadingModeNonThreaded
+NullGfxDevice:
+    Version:  NULL 1.0 [1.0]
+    Renderer: Null Device
+    Vendor:   Unity Technologies
+Initialize mono
+Mono path[0] = '/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/Scripting/Managed'
+Mono path[1] = '/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/lib/mono/unityjit-macos'
+Mono config path = '/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/etc'
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,server=y,suspend=n,address=127.0.0.1:56403
+Using cacheserver namespaces - metadata:defaultmetadata, artifacts:defaultartifacts
+Using cacheserver namespaces - metadata:defaultmetadata, artifacts:defaultartifacts
+ImportWorker Server TCP listen port: 0
+AcceleratorClientConnectionCallback - disconnected - :0
+Begin MonoManager ReloadAssembly
+Registering precompiled unity dll's ...
+Register platform support module: /Applications/Unity/Hub/Editor/6000.3.8f1/PlaybackEngines/WebGLSupport/UnityEditor.WebGL.Extensions.dll
+Register platform support module: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.OSXStandalone.Extensions.dll
+Register platform support module: /Applications/Unity/Hub/Editor/6000.3.8f1/PlaybackEngines/AndroidPlayer/UnityEditor.Android.Extensions.dll
+[Licensing::Client] Successfully resolved entitlement details
+Register platform support module: /Applications/Unity/Hub/Editor/6000.3.8f1/PlaybackEngines/iOSSupport/UnityEditor.iOS.Extensions.dll
+Registered in 0.002708 seconds.
+- Loaded All Assemblies, in  0.289 seconds
+[usbmuxd] Start listen thread
+[usbmuxd] Listen thread started
+[usbmuxd] Send listen message
+Native extension for iOS target not found
+Native extension for Android target not found
+Android Extension - Scanning For ADB Devices 3061 ms
+Native extension for OSXStandalone target not found
+Native extension for WebGL target not found
+ScheduleIndexationOnStartup MainProcess:False IndexOnStartup:True
+Mono: successfully reloaded assembly
+- Finished resetting the current domain, in  3.425 seconds
+Domain Reload Profiling: 3714ms
+	BeginReloadAssembly (106ms)
+		ExecutionOrderSort (0ms)
+		DisableScriptedObjects (0ms)
+		BackupInstance (0ms)
+		ReleaseScriptingObjects (0ms)
+		CreateAndSetChildDomain (13ms)
+	RebuildCommonClasses (24ms)
+	RebuildNativeTypeToScriptingClass (9ms)
+	initialDomainReloadingComplete (26ms)
+	LoadAllAssembliesAndSetupDomain (123ms)
+		LoadAssemblies (95ms)
+		RebuildTransferFunctionScriptingTraits (0ms)
+		AnalyzeDomain (120ms)
+			TypeCache.Refresh (119ms)
+				TypeCache.ScanAssembly (110ms)
+			BuildScriptInfoCaches (0ms)
+			ResolveRequiredComponents (0ms)
+	FinalizeReload (3425ms)
+		ReleaseScriptCaches (0ms)
+		RebuildScriptCaches (0ms)
+		SetupLoadedEditorAssemblies (3401ms)
+			LogAssemblyErrors (0ms)
+			InitializePlatformSupportModulesInManaged (3190ms)
+			SetLoadedEditorAssemblies (8ms)
+			BeforeProcessingInitializeOnLoad (76ms)
+			ProcessInitializeOnLoadAttributes (80ms)
+			ProcessInitializeOnLoadMethodAttributes (46ms)
+			AfterProcessingInitializeOnLoad (0ms)
+			EditorAssembliesLoaded (0ms)
+		ExecutionOrderSort2 (0ms)
+		AwakeInstancesAfterBackupRestoration (0ms)
+[Licensing::Client] Successfully resolved entitlement details
+[Licensing::Client] Successfully resolved entitlement details
+Application.AssetDatabase Initial Refresh Start
+Package Manager log level set to [2]
+[Package Manager] Restoring resolved packages state from cache
+[Licensing::Client] Successfully resolved entitlement details
+[Package Manager] Registered 68 packages:
+  Packages from [https://packages.unity.com]:
+    com.unity.addressables@2.9.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.addressables@8460f1c9c927)
+    com.unity.ai.navigation@2.0.12 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.ai.navigation@734c2c4c5591)
+    com.unity.collab-proxy@2.12.4 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.collab-proxy@0b1559bcd34e)
+    com.unity.ide.rider@3.0.39 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.ide.rider@4504839d03f7)
+    com.unity.ide.visualstudio@2.0.26 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.ide.visualstudio@a99d56dec63f)
+    com.unity.ide.vscode@1.2.5 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.ide.vscode@82e68656b7bd)
+    com.unity.nuget.newtonsoft-json@3.2.2 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.nuget.newtonsoft-json@4dfd81071c64)
+    com.unity.services.core@1.16.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.services.core@8ba50f624741)
+    com.unity.timeline@1.8.12 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.timeline@8cd8509afae5)
+    com.unity.visualscripting@1.9.11 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.visualscripting@8bed5ad90189)
+    com.unity.2d.animation@13.0.4 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.animation@7396d8477ca9)
+    com.unity.2d.pixel-perfect@5.1.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.pixel-perfect@09d99455b901)
+    com.unity.2d.psdimporter@12.0.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.psdimporter@9abe0f7cac7e)
+    com.unity.2d.spriteshape@13.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.spriteshape@0738bab11647)
+    com.unity.2d.tilemap.extras@6.0.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.tilemap.extras@3dde84bf3867)
+    com.unity.2d.aseprite@3.0.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.aseprite@809e3a168ff7)
+    com.unity.2d.tooling@1.0.3 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.tooling@127d960d4dc1)
+    com.unity.profiling.core@1.0.3 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.profiling.core@8a49f7027d06)
+    com.unity.scriptablebuildpipeline@2.6.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.scriptablebuildpipeline@36e3b5898ee2)
+    com.unity.2d.common@12.0.3 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.common@2af7c9b44b5c)
+    com.unity.mathematics@1.3.3 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.mathematics@19a9377c4ffa)
+    com.unity.collections@2.6.2 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.collections@aea9d3bd5e19)
+    com.unity.burst@1.8.27 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.burst@973857688024)
+    com.unity.nuget.mono-cecil@1.11.6 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.nuget.mono-cecil@ecb9724e46ff)
+    com.unity.test-framework.performance@3.2.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.test-framework.performance@0840f58e4562)
+  Built-in packages:
+    com.unity.feature.2d@2.0.2 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.feature.2d@0309d34ea7f2)
+    com.unity.multiplayer.center@1.0.1 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.multiplayer.center@f01f4ba8d00a)
+    com.unity.test-framework@1.6.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.test-framework@0b7a23ab2e1d)
+    com.unity.ugui@2.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.ugui@bb329a87fcdc)
+    com.unity.modules.accessibility@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.accessibility)
+    com.unity.modules.adaptiveperformance@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.adaptiveperformance)
+    com.unity.modules.ai@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.ai)
+    com.unity.modules.androidjni@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.androidjni)
+    com.unity.modules.animation@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.animation)
+    com.unity.modules.assetbundle@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.assetbundle)
+    com.unity.modules.audio@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.audio)
+    com.unity.modules.cloth@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.cloth)
+    com.unity.modules.director@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.director)
+    com.unity.modules.imageconversion@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.imageconversion)
+    com.unity.modules.imgui@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.imgui)
+    com.unity.modules.jsonserialize@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.jsonserialize)
+    com.unity.modules.particlesystem@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.particlesystem)
+    com.unity.modules.physics@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.physics)
+    com.unity.modules.physics2d@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.physics2d)
+    com.unity.modules.screencapture@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.screencapture)
+    com.unity.modules.terrain@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.terrain)
+    com.unity.modules.terrainphysics@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.terrainphysics)
+    com.unity.modules.tilemap@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.tilemap)
+    com.unity.modules.ui@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.ui)
+    com.unity.modules.uielements@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.uielements)
+    com.unity.modules.umbra@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.umbra)
+    com.unity.modules.unityanalytics@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.unityanalytics)
+    com.unity.modules.unitywebrequest@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.unitywebrequest)
+    com.unity.modules.unitywebrequestassetbundle@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.unitywebrequestassetbundle)
+    com.unity.modules.unitywebrequestaudio@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.unitywebrequestaudio)
+    com.unity.modules.unitywebrequesttexture@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.unitywebrequesttexture)
+    com.unity.modules.unitywebrequestwww@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.unitywebrequestwww)
+    com.unity.modules.vectorgraphics@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.vectorgraphics)
+    com.unity.modules.vehicles@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.vehicles)
+    com.unity.modules.video@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.video)
+    com.unity.modules.wind@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.wind)
+    com.unity.modules.xr@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.xr)
+    com.unity.modules.subsystems@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.subsystems)
+    com.unity.modules.hierarchycore@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.modules.hierarchycore)
+    com.unity.ext.nunit@2.0.5 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.ext.nunit@d8c07649098d)
+    com.unity.2d.sprite@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.sprite@08e067ec1643)
+    com.unity.2d.tilemap@1.0.0 (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.unity.2d.tilemap@2394479dc113)
+  Git packages:
+    com.code-philosophy.hybridclr@https://gitee.com/focus-creative-games/hybridclr_unity.git (location: /Users/wangling/Desktop/MyGame/GameClient/Library/PackageCache/com.code-philosophy.hybridclr@4feac30cb2e1)
+[Package Manager] com.unity.ide.vscode is deprecated: Visual Studio Code package is not supported anymore. You can continue to use it, but we won't provide any update anymore.
+[Subsystems] No new subsystems found in resolved package list.
+[Package Manager] Done registering packages in 0.01 seconds
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://unix:/tmp/ilpp.sock-28236b0db488d4f44e8915344e34afa3
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[0]
+      Content root path: /Users/wangling/Desktop/MyGame/GameClient/
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/2 POST http://ilpp/UnityILPP.PostProcessing/Ping application/grpc -
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'gRPC - /UnityILPP.PostProcessing/Ping'
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'gRPC - /UnityILPP.PostProcessing/Ping'
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/2 POST http://ilpp/UnityILPP.PostProcessing/Ping application/grpc - - 200 - application/grpc 31.3506ms
+Starting: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/Resources/BuildPipeline/bee_backend --ipc --defer-dag-verification --dagfile="Library/Bee/1300b0aEDbg.dag" --continue-on-failure --profile="Library/Bee/backend1.traceevents" ScriptAssemblies
+WorkingDir: /Users/wangling/Desktop/MyGame/GameClient
+DisplayProgressbar: Compiling Scripts
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/2 POST http://ilpp/UnityILPP.PostProcessing/ConfigurePostProcessors application/grpc -
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'gRPC - /UnityILPP.PostProcessing/ConfigurePostProcessors'
+[40m[1m[33mwarn[39m[22m[49m: Unity.ILPP.Runner.PostProcessingAssemblyLoadContext[0]
+      Assembly unityeditor.ios.extensions.xcode has duplicate hint path. Ignoring "/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/PlaybackEngines/MacStandaloneSupport/UnityEditor.iOS.Extensions.Xcode.dll" in favor of "/Applications/Unity/Hub/Editor/6000.3.8f1/PlaybackEngines/iOSSupport/UnityEditor.iOS.Extensions.Xcode.dll"
+[40m[32minfo[39m[22m[49m: Unity.ILPP.Runner.PostProcessingAssemblyLoadContext[0]
+      Resolved Unity.Burst.Cecil, Version=0.11.4.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e with Library/PackageCache/com.unity.burst@973857688024/Unity.Burst.CodeGen/Unity.Burst.Cecil.dll
+[40m[32minfo[39m[22m[49m: Unity.ILPP.Runner.PostProcessingAssemblyLoadContext[0]
+      Resolved Mono.Cecil, Version=0.11.5.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e with Library/PackageCache/com.unity.nuget.mono-cecil@ecb9724e46ff/Mono.Cecil.dll
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'gRPC - /UnityILPP.PostProcessing/ConfigurePostProcessors'
+[40m[32minfo[39m[22m[49m: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/2 POST http://ilpp/UnityILPP.PostProcessing/ConfigurePostProcessors application/grpc - - 200 - application/grpc 14.9008ms
+ExitCode: 0 Duration: 0s290ms
+[ 912/1219  0s] ILPP-Configuration Library/ilpp-configuration.nevergeneratedoutput
+*** Tundra build success (0.28 seconds), 1 items updated, 1219 evaluated
+AssetDatabase: script compilation time: 0.737680s
+Begin MonoManager ReloadAssembly
+Symbol file LoadedFromMemory is not a mono symbol file
+- Loaded All Assemblies, in  0.667 seconds
+Refreshing native plugins compatible for Editor in 1.92 ms, found 4 plugins.
+Native extension for iOS target not found
+Native extension for Android target not found
+Native extension for OSXStandalone target not found
+Native extension for WebGL target not found
+Refreshing native plugins compatible for Editor in 1.69 ms, found 4 plugins.
+ScheduleIndexationOnStartup MainProcess:True IndexOnStartup:True
+Mono: successfully reloaded assembly
+- Finished resetting the current domain, in  3.515 seconds
+Domain Reload Profiling: 4182ms
+	BeginReloadAssembly (211ms)
+		ExecutionOrderSort (0ms)
+		DisableScriptedObjects (6ms)
+		BackupInstance (0ms)
+		ReleaseScriptingObjects (0ms)
+		CreateAndSetChildDomain (155ms)
+	RebuildCommonClasses (24ms)
+	RebuildNativeTypeToScriptingClass (9ms)
+	initialDomainReloadingComplete (15ms)
+	LoadAllAssembliesAndSetupDomain (408ms)
+		LoadAssemblies (262ms)
+		RebuildTransferFunctionScriptingTraits (0ms)
+		AnalyzeDomain (178ms)
+			TypeCache.Refresh (139ms)
+				TypeCache.ScanAssembly (128ms)
+			BuildScriptInfoCaches (32ms)
+			ResolveRequiredComponents (4ms)
+	FinalizeReload (3516ms)
+		ReleaseScriptCaches (0ms)
+		RebuildScriptCaches (0ms)
+		SetupLoadedEditorAssemblies (3442ms)
+			LogAssemblyErrors (0ms)
+			InitializePlatformSupportModulesInManaged (25ms)
+			SetLoadedEditorAssemblies (4ms)
+			BeforeProcessingInitializeOnLoad (137ms)
+			ProcessInitializeOnLoadAttributes (3173ms)
+			ProcessInitializeOnLoadMethodAttributes (101ms)
+			AfterProcessingInitializeOnLoad (1ms)
+			EditorAssembliesLoaded (0ms)
+		ExecutionOrderSort2 (0ms)
+		AwakeInstancesAfterBackupRestoration (2ms)
+Refreshing native plugins compatible for Editor in 2.57 ms, found 4 plugins.
+Preloading 0 native plugins for Editor in 0.00 ms.
+Asset Pipeline Refresh (id=6085dad4c30aa49f1b0ffdc6ff0dbc12): Total: 5.666 seconds - Initiated by InitialRefreshV2(ForceSynchronousImport)
+	Summary:
+		Imports: total=0 (actual=0, local cache=0, cache server=0)
+		Asset DB Process Time: managed=0 ms, native=4078 ms
+		Asset DB Callback time: managed=108 ms, native=16 ms
+		Scripting: domain reloads=1, domain reload time=667 ms, compile time=738 ms, other=57 ms
+		Project Asset Count: scripts=1724, non-scripts=2365
+		Asset File Changes: new=0, changed=0, moved=0, deleted=1
+		Scan Filter Count: 1
+	InvokeCustomDependenciesCallbacks: 0.001ms
+	InvokePackagesCallback: 11.152ms
+	ApplyChangesToAssetFolders: 0.186ms
+	Scan: 317.632ms
+	OnSourceAssetsModified: 0.407ms
+	CategorizeAssetsWithTransientArtifact: 49.004ms
+	ProcessAssetsWithTransientArtifactChanges: 39.706ms
+	UnregisterDeletedAssets: 0.001ms
+	CategorizeAssets: 22.857ms
+	ImportOutOfDateAssets: 3524.525ms (2785.391ms without children)
+		CompileScripts: 738.237ms
+		ReloadNativeAssets: 0.036ms
+		UnloadImportedAssets: 0.159ms
+		EnsureUptoDateAssetsAreRegisteredWithGuidPM: 0.455ms
+		PostProcessAllAssetNotificationsAddChangedAssets: 0.000ms
+		OnDemandSchedulerStart: 0.247ms
+	PostProcessAllAssets: 109.453ms
+	Hotreload: 3.690ms
+	GatherAllCurrentPrimaryArtifactRevisions: 0.000ms
+	UnloadStreamsBegin: 0.755ms
+	PersistCurrentRevisions: 0.148ms
+	UnloadStreamsEnd: 0.000ms
+	GenerateScriptTypeHashes: 1.104ms
+	Untracked: 1586.662ms
+
+Application.AssetDatabase Initial Refresh End
+Scanning for USB devices : 0.216ms
+Initializing Unity extensions:
+[MODES] ModeService[none].Initialize
+[MODES] ModeService[none].LoadModes
+[MODES] Loading mode Default (0) for mode-current-id-My project (2)
+Unloading 20 Unused Serialized files (Serialized files now loaded: 0)
+Unloading 7429 unused Assets / (6.2 MB). Loaded Objects now: 8029.
+Memory consumption went from 211.2 MB to 205.0 MB.
+Total: 8.260125 ms (FindLiveObjects: 0.299166 ms CreateObjectMapping: 0.161167 ms MarkObjects: 5.715375 ms  DeleteObjects: 2.084000 ms)
+
+[CommercialReleaseCli] Upload prepared. mode=full, targets=Apk, items=1, totalSize=38734392, provider=aliyun-oss
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace () (at /Users/bokken/build/output/unity/unity/Runtime/Export/Scripting/StackTrace.cs:35)
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+ApkReleaseUploadCli:ExecuteFromCommandLine () (at Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs:79)
+
+(Filename: Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs Line: 79)
+
+[ReleaseUpload][AliyunOSS] (1/1) start mode=single size=38734392 local=/Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0.apk remote=MyGame1/Development/wechat/android/Version_1.0.0/7/apk/GomeKu_1.0.0_GomeKu_1.0.0.apk
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace () (at /Users/bokken/build/output/unity/unity/Runtime/Export/Scripting/StackTrace.cs:35)
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+ApkReleaseUploadCli:ExecuteFromCommandLine () (at Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs:80)
+
+(Filename: Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs Line: 80)
+
+[ReleaseUpload][AliyunOSS] (1/1) start mode=single size=36.94MB local=/Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0.apk remote=MyGame1/Development/wechat/android/Version_1.0.0/7/apk/GomeKu_1.0.0_GomeKu_1.0.0.apk
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace () (at /Users/bokken/build/output/unity/unity/Runtime/Export/Scripting/StackTrace.cs:35)
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+AliyunOssReleaseUploadProvider:UploadBlockingCore (System.Collections.Generic.IReadOnlyList`1<ReleaseUploadItem>,ReleaseUploadSettings,ReleaseUploadSessionOptions) (at Assets/Editor/ReleaseTools/Editor/AliyunOssReleaseUploadProvider.cs:111)
+AliyunOssReleaseUploadProvider/<>c__DisplayClass12_0:<UploadAsync>b__0 () (at Assets/Editor/ReleaseTools/Editor/AliyunOssReleaseUploadProvider.cs:74)
+System.Threading.Tasks.Task:InnerInvoke ()
+System.Threading.Tasks.Task:Execute ()
+System.Threading.Tasks.Task:ExecutionContextCallback (object)
+System.Threading.ExecutionContext:RunInternal (System.Threading.ExecutionContext,System.Threading.ContextCallback,object,bool)
+System.Threading.ExecutionContext:Run (System.Threading.ExecutionContext,System.Threading.ContextCallback,object,bool)
+System.Threading.Tasks.Task:ExecuteWithThreadLocal (System.Threading.Tasks.Task&)
+System.Threading.Tasks.Task:ExecuteEntry (bool)
+System.Threading.Tasks.Task:System.Threading.IThreadPoolWorkItem.ExecuteWorkItem ()
+System.Threading.ThreadPoolWorkQueue:Dispatch ()
+System.Threading._ThreadPoolWaitCallback:PerformWaitCallback ()
+
+(Filename: Assets/Editor/ReleaseTools/Editor/AliyunOssReleaseUploadProvider.cs Line: 111)
+
+[ReleaseUpload][AliyunOSS] (1/1) done remote=MyGame1/Development/wechat/android/Version_1.0.0/7/apk/GomeKu_1.0.0_GomeKu_1.0.0.apk
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace () (at /Users/bokken/build/output/unity/unity/Runtime/Export/Scripting/StackTrace.cs:35)
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+AliyunOssReleaseUploadProvider:UploadBlockingCore (System.Collections.Generic.IReadOnlyList`1<ReleaseUploadItem>,ReleaseUploadSettings,ReleaseUploadSessionOptions) (at Assets/Editor/ReleaseTools/Editor/AliyunOssReleaseUploadProvider.cs:128)
+AliyunOssReleaseUploadProvider/<>c__DisplayClass12_0:<UploadAsync>b__0 () (at Assets/Editor/ReleaseTools/Editor/AliyunOssReleaseUploadProvider.cs:74)
+System.Threading.Tasks.Task:InnerInvoke ()
+System.Threading.Tasks.Task:Execute ()
+System.Threading.Tasks.Task:ExecutionContextCallback (object)
+System.Threading.ExecutionContext:RunInternal (System.Threading.ExecutionContext,System.Threading.ContextCallback,object,bool)
+System.Threading.ExecutionContext:Run (System.Threading.ExecutionContext,System.Threading.ContextCallback,object,bool)
+System.Threading.Tasks.Task:ExecuteWithThreadLocal (System.Threading.Tasks.Task&)
+System.Threading.Tasks.Task:ExecuteEntry (bool)
+System.Threading.Tasks.Task:System.Threading.IThreadPoolWorkItem.ExecuteWorkItem ()
+System.Threading.ThreadPoolWorkQueue:Dispatch ()
+System.Threading._ThreadPoolWaitCallback:PerformWaitCallback ()
+
+(Filename: Assets/Editor/ReleaseTools/Editor/AliyunOssReleaseUploadProvider.cs Line: 128)
+
+[ReleaseUpload][AliyunOSS] (1/1) done remote=MyGame1/Development/wechat/android/Version_1.0.0/7/apk/GomeKu_1.0.0_GomeKu_1.0.0.apk
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace () (at /Users/bokken/build/output/unity/unity/Runtime/Export/Scripting/StackTrace.cs:35)
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+ApkReleaseUploadCli:ExecuteFromCommandLine () (at Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs:84)
+
+(Filename: Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs Line: 84)
+
+[ApkReleaseUploadCli] APK upload completed.
+UnityEngine.Debug:ExtractStackTraceNoAlloc (byte*,int,string)
+UnityEngine.StackTraceUtility:ExtractStackTrace () (at /Users/bokken/build/output/unity/unity/Runtime/Export/Scripting/StackTrace.cs:35)
+UnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)
+UnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])
+UnityEngine.Logger:Log (UnityEngine.LogType,object)
+UnityEngine.Debug:Log (object)
+ApkReleaseUploadCli:ExecuteFromCommandLine () (at Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs:85)
+
+(Filename: Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs Line: 85)
+
+Killing ADB server in 0.061212 seconds.
+Thread 0x2cf507000 may have been prematurely finalized
+Input System module state changed to: ShutdownInProgress.
+Input System polling thread exited.
+Input System module state changed to: Shutdown.
+[Physics::Module] Cleanup current backend.
+[Physics::Module] Id: 0xf2b8ea05
+[Licensing::IpcConnector] LicenseClient-wangling-notifications channel disconnected successfully.
+[Licensing::IpcConnector] LicenseClient-wangling channel disconnected successfully.
+Thread 0x17e653000 may have been prematurely finalized
+Thread 0x17e6df000 may have been prematurely finalized
+Thread 0x17e76b000 may have been prematurely finalized
+AcceleratorClientConnectionCallback - disconnected - :0
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...
+Cleanup mono
+[40m[32minfo[39m[22m[49m: Unity.ILPP.Runner.PostProcessingAssemblyLoadContext[0]
+      ALC ILPP context 1 is unloading
+debugger-agent: Unable to listen on 43
+[usbmuxd] Stop listen thread
+[usbmuxd] Error: 
+[usbmuxd] Listen thread exiting
+Step 4 完成（含 APK 上传）
+
+==============================
+[阶段 END] 流水线结束
+说明: 所有启用阶段已执行完成，可根据各阶段日志定位失败点。
+时间: 2026-05-24 01:40:38
+==============================
+======= 流水线执行完毕 =======
+Finished: SUCCESS

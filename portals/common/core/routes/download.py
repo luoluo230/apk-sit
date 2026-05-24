@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """下载、公开下载、二维码、上传、删除"""
 
+from __future__ import annotations
+
 import os
 import io
 import base64
 import logging
-from flask import Blueprint, request, send_from_directory, abort, jsonify
+from flask import Blueprint, request, send_from_directory, abort, jsonify, Response
 
 import qrcode
 
@@ -54,6 +56,95 @@ def download(filename):
         src = 'site'
     record_download_event(stats_key, source=src, ip=client_ip)
     return send_from_directory(directory, safe_filename, as_attachment=True)
+
+
+def _resolve_oss_object_key(object_key: str) -> str | None:
+    """校验 OSS object key，仅允许 MyGame1 前缀下的安装包。"""
+    key = (object_key or "").strip().replace("\\", "/").lstrip("/")
+    if not key or ".." in key or key.startswith("/"):
+        return None
+    if not key.startswith("MyGame1/"):
+        return None
+    if not is_supported_package(os.path.basename(key)):
+        return None
+    return key
+
+
+def _local_apk_for_oss_key(object_key: str) -> tuple[str, str] | None:
+    """OSS 对象不存在时，尝试从 sidecar 元数据回退到本地 APK。"""
+    key = (object_key or "").strip().replace("\\", "/").lstrip("/")
+    if not key:
+        return None
+    apk_dir = Config.APK_DIR
+    if not os.path.isdir(apk_dir):
+        return None
+    for root, _dirs, files in os.walk(apk_dir):
+        for fname in files:
+            if not fname.endswith(".apk.meta.json"):
+                continue
+            meta_path = os.path.join(root, fname)
+            try:
+                import json
+
+                meta = json.loads(open(meta_path, encoding="utf-8").read())
+                if (meta.get("oss_remote_key") or "").lstrip("/") == key:
+                    rel_apk = (meta.get("pub_download_path") or fname[:-10]).replace("\\", "/")
+                    full = os.path.join(apk_dir, rel_apk.replace("/", os.sep))
+                    if os.path.isfile(full):
+                        return os.path.dirname(full), os.path.basename(full)
+            except Exception:
+                continue
+    return None
+
+
+@bp.route('/pub/oss-download/<path:object_key>')
+def pub_oss_download(object_key):
+    """通过 apk-site 代理从 OSS 下载 APK（绕过阿里云默认域名 ApkDownloadForbidden）。"""
+    key = _resolve_oss_object_key(object_key)
+    if not key:
+        abort(403)
+    unity_project = (os.environ.get("UNITY_PROJECT_PATH") or "/Users/wangling/Desktop/MyGame/GameClient").strip()
+    filename = os.path.basename(key)
+    stats_key = f"oss:{key}"
+    src = (request.args.get("source") or "direct").strip().lower()[:20]
+    if src not in ("site", "qr", "direct"):
+        src = "direct"
+
+    try:
+        from services.oss_client_helper import stream_object
+
+        result, content_type, content_length = stream_object(key, unity_project)
+
+        def generate():
+            try:
+                for chunk in result:
+                    if chunk:
+                        yield chunk
+            finally:
+                result.close()
+
+        download_stats[stats_key] = download_stats.get(stats_key, 0) + 1
+        save_stats()
+        record_download_event(stats_key, source=src, ip=request.remote_addr or "")
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        if content_length:
+            headers["Content-Length"] = str(content_length)
+        return Response(
+            generate(),
+            mimetype=content_type or "application/vnd.android.package-archive",
+            headers=headers,
+        )
+    except Exception as e:
+        logger.warning("OSS 代理下载失败 %s: %s，尝试本地回退", key, e)
+        local = _local_apk_for_oss_key(key)
+        if local:
+            directory, safe_filename = local
+            download_stats[stats_key] = download_stats.get(stats_key, 0) + 1
+            save_stats()
+            record_download_event(stats_key, source=src, ip=request.remote_addr or "")
+            return send_from_directory(directory, safe_filename, as_attachment=True)
+        logger.error("OSS 代理下载失败且无本地回退: %s", key)
+        abort(404)
 
 
 @bp.route('/pub/download/<path:filename>')

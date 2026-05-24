@@ -1,0 +1,126 @@
+Started by user [8mha:////4AJBCxg5C+EwA/d2zd/ToKqoexLH125Ku1Qy8NwcwjPzAAAAlx+LCAAAAAAAAP9b85aBtbiIQTGjNKU4P08vOT+vOD8nVc83PyU1x6OyILUoJzMv2y+/JJUBAhiZGBgqihhk0NSjKDWzXb3RdlLBUSYGJk8GtpzUvPSSDB8G5tKinBIGIZ+sxLJE/ZzEvHT94JKizLx0a6BxUmjGOUNodHsLgAzWEgZu/dLi1CL9xJTczDwAj6GcLcAAAAA=[0madmin
+Running as SYSTEM
+Building in workspace /Users/wangling/Desktop/apk-site/data/jenkins_instances/8082/jobs/Android/workspace
+[workspace] $ /bin/bash /var/folders/sk/2t50nhv53nn62wgs3xkmy9nh0000gn/T/jenkins4414978353419653966.sh
+=======================================
+  GameKu Android 构建 (Jenkins)
+=======================================
+
+构建参数:
+  Unity 版本: 6000.3.8f1
+  版本号: 1.0.0
+  版本代码: 7
+  应用名称: GomeKu
+  Git 分支: codex/replace-logging-with-custom-logger-fvtg9m
+
+==============================
+[阶段 0] 环境准备
+说明: 输出构建参数、加载实例环境变量、准备 Git/Unity 执行上下文。
+时间: 2026-05-24 01:19:59
+==============================
+步骤: Git 拉取/更新 (/Users/wangling/Desktop/MyGame/GameClient)
+Reset branch 'codex/replace-logging-with-custom-logger-fvtg9m'
+M	Assets/Editor/ReleaseTools/Editor/ApkReleaseUploadCli.cs
+M	Assets/Generated/ConfigData/config_manifest.json
+M	Assets/Resources/resource_bundle_download_catalog.json
+M	Packages/packages-lock.json
+M	ProjectSettings/ProjectVersion.txt
+branch 'codex/replace-logging-with-custom-logger-fvtg9m' set up to track 'origin/codex/replace-logging-with-custom-logger-fvtg9m'.
+Your branch is up to date with 'origin/codex/replace-logging-with-custom-logger-fvtg9m'.
+Git 拉取完成
+跳过基础 APK 预构建（RUN_BASE_APK_BUILD_FIRST=false）
+
+======= 可插拔版本构建流水线 =======
+Unity 可执行文件: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity
+Step 1 (配置导出) 已跳过
+Step 2 (资源打包) 已跳过
+Step 3 (热更发布) 已跳过
+
+==============================
+[阶段 4] APK 打包与上传
+说明: 执行 ApkReleaseUploadCli：构建 APK 并上传阿里云。
+时间: 2026-05-24 01:20:03
+==============================
+=== Step 4: APK 打包 ===
+=========================================
+  GameKu Android 打包工具 (Jenkins)
+=========================================
+
+配置:
+  项目: /Users/wangling/Desktop/MyGame/GameClient
+  Unity: 6000.3.8f1
+  版本: 1.0.0 (code: 7)
+  应用名称: GomeKu
+  输出基础目录: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput
+  构建输出目录: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0_20260524_012003
+  Jenkins 工作空间: /Users/wangling/.jenkins/workspace/Android
+  Git 分支: codex/replace-logging-with-custom-logger-fvtg9m
+
+📝 日志文件: /Users/wangling/Desktop/MyGame/GameClient/BuildOutput/GomeKu_1.0.0_20260524_012003/logs/build.log
+=========================================
+  构建开始时间: Sun May 24 01:20:03 CST 2026
+=========================================
+
+步骤 1: 清理旧的 Unity 构建缓存
+✅ 已清理 Bee/Android 缓存
+
+步骤 2: 查找 Unity 版本
+✅ Unity: /Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app
+
+步骤 3: Git 更新
+📥 拉取代码...
+Already up to date.
+✅ Git 更新完成
+   分支: codex/replace-logging-with-custom-logger-fvtg9m
+   提交: 71b79e16
+
+步骤 4: 生成 Unity 构建脚本
+✅ Unity 构建脚本已生成
+
+步骤 5: Unity 构建（ARM64 架构）
+开始构建，这可能需要 3-5 分钟...
+
+
+=========================================
+❌ Android 版本 1.0.0 构建失败！
+=========================================
+
+版本号: 1.0.0
+构建时间: 6分0秒
+错误原因: Unity 构建失败（退出码: 1）
+
+构建日志（最后部分）:
+UnityEngine.Debug:LogError (object)
+GameKuAndroidBuildScript:BuildAndroid () (at Assets/Editor/AndroidBuildScript.cs:82)
+
+(Filename: Assets/Editor/AndroidBuildScript.cs Line: 82)
+
+Thread 0x2d63c7000 may have been prematurely finalized
+Starting: /Applications/Unity/Hub/Editor/6000.3.8f1/PlaybackEngines/AndroidPlayer/OpenJDK/bin/java -classpath "/Applications/Unity/Hub/Editor/6000.3.8f1/PlaybackEngines/AndroidPlayer/Tools/gradle/lib/gradle-launcher-8.13.jar" org.gradle.launcher.GradleMain "-Dorg.gradle.jvmargs=-Xmx4096m" "--stop" 
+WorkingDir: 
+Killing ADB server in 0.032454 seconds.
+Thread 0x2d77c7000 may have been prematurely finalized
+Input System module state changed to: ShutdownInProgress.
+Input System polling thread exited.
+Input System module state changed to: Shutdown.
+[Physics::Module] Cleanup current backend.
+[Physics::Module] Id: 0xf2b8ea05
+[Licensing::IpcConnector] LicenseClient-wangling-notifications channel disconnected successfully.
+[Licensing::IpcConnector] LicenseClient-wangling channel disconnected successfully.
+Thread 0x17fc53000 may have been prematurely finalized
+Thread 0x17fcdf000 may have been prematurely finalized
+Thread 0x17fd6b000 may have been prematurely finalized
+AcceleratorClientConnectionCallback - disconnected - :0
+[40m[32minfo[39m[22m[49m: Microsoft.Hosting.Lifetime[0]
+      Application is shutting down...
+Cleanup mono
+[40m[32minfo[39m[22m[49m: Unity.ILPP.Runner.PostProcessingAssemblyLoadContext[0]
+      ALC ILPP context 4 is unloading
+debugger-agent: Unable to listen on 45
+[usbmuxd] Stop listen thread
+[usbmuxd] Error: 
+[usbmuxd] Listen thread exiting
+
+请检查构建日志并重试
+Build step 'Execute shell' marked build as failure
+Finished: FAILURE

@@ -23,6 +23,11 @@ def version_downloads_response(project_id: str, version_id: str, username: str):
     return jsonify(payload), status
 
 
+def version_apk_download_info_response(project_id: str, version_id: str, username: str):
+    payload, status = version_service.get_apk_download_info(project_id, version_id, username)
+    return jsonify(payload), status
+
+
 def versions_create_response(project_id: str, username: str):
     payload, status = version_service.create_version(project_id, username, request.get_json(silent=True) or {})
     return jsonify(payload), status
@@ -51,6 +56,10 @@ def register_routes(bp, current_username_getter):
     def _version_downloads(project_id: str, version_id: str):
         return version_downloads_response(project_id, version_id, current_username_getter())
 
+    @login_required
+    def _version_apk_download_info(project_id: str, version_id: str):
+        return version_apk_download_info_response(project_id, version_id, current_username_getter())
+
     @admin_required("projects")
     def _versions_create(project_id: str):
         return versions_create_response(project_id, current_username_getter())
@@ -69,6 +78,11 @@ def register_routes(bp, current_username_getter):
         "/api/projects/<project_id>/versions/<version_id>/downloads",
         endpoint="api_version_downloads",
         view_func=_version_downloads,
+    )
+    bp.add_url_rule(
+        "/api/projects/<project_id>/versions/<version_id>/apk-download-info",
+        endpoint="api_version_apk_download_info",
+        view_func=_version_apk_download_info,
     )
     bp.add_url_rule(
         "/admin/projects/<project_id>/versions/create",

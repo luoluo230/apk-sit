@@ -1338,74 +1338,27 @@ def trigger_build():
 @bp.route('/api/build/history-by-version')
 @admin_required_any('projects', 'build')
 def build_history_by_version():
-    """按版本获取构建历史，仅返回本系统记录的、与该版本关联的构建。"""
+    """按 version_code 获取构建历史（含 Jenkins 实时状态）。"""
     version_id = (request.args.get('version_id') or '').strip()
     instance_id = (request.args.get('instance_id') or '').strip()
     if not version_id:
-        return jsonify({'builds': []})
-    from models.data import get_build_records_for_version
-    records = get_build_records_for_version(version_id, instance_id=instance_id if instance_id else None)
-    builds = []
-    recent_numbers_cache = {}
+        return jsonify({'ok': True, 'builds': []})
+    from services.build_history_service import builds_for_version_enriched
 
-    def _recent_numbers_for_instance(iid):
-        if not iid:
-            return set()
-        if iid in recent_numbers_cache:
-            return recent_numbers_cache[iid]
-        nums = set()
-        try:
-            iurl = jm.get_jenkins_url_for_instance(instance_id=iid)
-            bdir = jm.get_builds_dir_for_instance(instance_id=iid)
-            st = jenkins_svc.fetch_jenkins_status(base_url=iurl, builds_dir=bdir, instance_id=iid)
-            for b in (st.get('recent') or []):
-                try:
-                    n = int(b.get('number') or 0)
-                except Exception:
-                    n = 0
-                if n > 0:
-                    nums.add(n)
-        except Exception:
-            nums = set()
-        recent_numbers_cache[iid] = nums
-        return nums
-
-    for r in records:
-        bn = r.get('build_number')
-        iid = (r.get('instance_id') or '').strip()
-        item = {
-            'number': bn,
-            'result': '',
-            'building': False,
-            'instance_id': iid,
-        }
-        if iid and bn:
-            iurl = jm.get_jenkins_url_for_instance(instance_id=iid)
-            bdir = jm.get_builds_dir_for_instance(instance_id=iid)
-            if bdir or iurl:
-                st = jenkins_svc.get_build_status(
-                    bn,
-                    base_url=iurl,
-                    builds_dir=bdir,
-                    instance_id=iid
-                )
-                status = (st.get('status') or '').strip()
-                is_building = bool(st.get('building'))
-
-                # 若该构建号既不在本地构建目录，也不在 Jenkins 最近记录里，
-                # 将其视为历史陈旧记录，避免误判为“构建进行中”。
-                local_exists = bool(bdir and os.path.isdir(os.path.join(bdir, str(bn))))
-                recent_nums = _recent_numbers_for_instance(iid)
-                if is_building and status in ('BUILDING', 'QUEUED', 'UNKNOWN'):
-                    if (not local_exists) and (int(bn) not in recent_nums):
-                        is_building = False
-                        status = 'UNKNOWN'
-
-                item['building'] = is_building
-                if not item['building'] and status not in ('BUILDING', 'QUEUED', 'UNKNOWN', ''):
-                    item['result'] = status
-        builds.append(item)
+    builds = builds_for_version_enriched(version_id, instance_id=instance_id)
     return jsonify({'ok': True, 'builds': builds, 'recent': builds})
+
+
+@bp.route('/api/build/history-by-project')
+@admin_required_any('projects', 'build')
+def build_history_by_project():
+    """按项目获取构建历史，按 version_name -> version_code 分组。"""
+    project_id = (request.args.get('project_id') or '').strip()
+    if not project_id:
+        return jsonify({'ok': False, 'error': '缺少 project_id'}), 400
+    from services.build_history_service import builds_grouped_by_project
+
+    return jsonify(builds_grouped_by_project(project_id))
 
 
 @bp.route('/api/build/recent')
@@ -1485,10 +1438,34 @@ def build_detail(build_number):
     base_url, builds_dir, instance_id = _jenkins_context()
     if not (has_scope('build.view') or has_scope('build.trigger')):
         return jsonify({'error': '无权限查看构建详情'}), 403
-    info = jenkins_svc.get_build_detail(build_number, base_url=base_url, builds_dir=builds_dir)
+    if not instance_id:
+        return jsonify({'error': '缺少 instance_id'}), 400
+    version_id = (request.args.get('version_id') or '').strip()
+    project_id = (request.args.get('project_id') or '').strip()
+    from services.build_history_service import build_detail_enriched
+
+    info = build_detail_enriched(instance_id, build_number, version_id=version_id, project_id=project_id)
     if info is None:
         return jsonify({'error': '构建不存在'}), 404
-    return jsonify(info)
+    return jsonify({'ok': True, 'build': info})
+
+
+@bp.route('/api/build/<int:build_number>', methods=['DELETE'])
+@admin_required_any('projects', 'build')
+def delete_build_record_route(build_number):
+    base_url, builds_dir, instance_id = _jenkins_context()
+    if not has_scope('build.trigger'):
+        return jsonify({'success': False, 'error': '无权限删除构建记录'}), 403
+    if not instance_id:
+        return jsonify({'success': False, 'error': '缺少 instance_id'}), 400
+    version_id = (request.args.get('version_id') or '').strip()
+    project_id = (request.args.get('project_id') or '').strip()
+    from services.build_history_service import delete_build
+
+    ok, err = delete_build(instance_id, build_number, version_id=version_id, project_id=project_id)
+    if not ok:
+        return jsonify({'success': False, 'error': err or '删除失败'}), 400
+    return jsonify({'success': True})
 
 
 @bp.route('/api/build/<int:build_number>/stop', methods=['POST'])
@@ -1499,6 +1476,52 @@ def stop_build(build_number):
         return jsonify({'success': False, 'error': '无权限停止构建'}), 403
     success, err = jenkins_svc.stop_build(build_number, base_url=base_url, builds_dir=builds_dir, instance_id=instance_id)
     if success:
+        try:
+            from flask import session
+            from services.build_history_service import mark_build_stopped
+
+            mark_build_stopped(instance_id or '', build_number, session.get('user') or '')
+        except Exception:
+            pass
         log_audit('stop_build', f'已请求停止构建 #{build_number}')
         return jsonify({'success': True, 'message': '已请求停止构建'})
     return jsonify({'success': False, 'error': err or '停止失败'})
+
+
+@bp.route('/api/build/records/batch-delete', methods=['POST'])
+@admin_required_any('projects', 'build')
+def batch_delete_build_records_api():
+    if not has_scope('build.trigger'):
+        return jsonify({'success': False, 'error': '无权限删除构建记录'}), 403
+    data = request.get_json(silent=True) or {}
+    project_id = (data.get('project_id') or '').strip()
+    items = data.get('items') or []
+    if not project_id:
+        return jsonify({'success': False, 'error': '缺少 project_id'}), 400
+    if not isinstance(items, list) or not items:
+        return jsonify({'success': False, 'error': '请选择要删除的构建'}), 400
+    from services.build_history_service import batch_delete_builds
+
+    deleted, err = batch_delete_builds(project_id, items)
+    if err and deleted == 0:
+        return jsonify({'success': False, 'error': err, 'deleted': deleted}), 400
+    return jsonify({'success': True, 'deleted': deleted, 'error': err or ''})
+
+
+@bp.route('/api/build/record/delete', methods=['POST'])
+@admin_required_any('projects', 'build')
+def delete_build_record_api():
+    data = request.get_json(silent=True) or {}
+    project_id = (data.get('project_id') or '').strip()
+    instance_id = (data.get('instance_id') or '').strip()
+    build_number = data.get('build_number')
+    try:
+        build_number = int(build_number)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': '无效的 build_number'}), 400
+    from services.build_history_service import delete_build_record
+
+    err = delete_build_record(project_id, instance_id, build_number)
+    if err:
+        return jsonify({'success': False, 'error': err}), 400
+    return jsonify({'success': True})

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>构建历史 - {{ project_name|default(project_id) }}</title>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        details.bh-fold > summary { list-style: none; cursor: pointer; }
+        details.bh-fold > summary::-webkit-details-marker { display: none; }
+        details.bh-fold > summary .bh-chevron { transition: transform .15s ease; }
+        details.bh-fold[open] > summary .bh-chevron { transform: rotate(180deg); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+<div class="max-w-5xl mx-auto px-4 py-6">
+    <div><div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div>
+            <h1 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-history text-emerald-500"></i> 构建历史</h1>
+            <p class="text-sm text-slate-500 mt-1">项目 <span class="font-medium text-slate-700">{{ project_name|default(project_id) }}</span> · 按版本与 Version Code 分组</p>
+        </div>
+        <a href="/admin/projects/{{ project_id }}/versions?tab=channels" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 hover:bg-slate-50 shadow-sm"><i class="fas fa-arrow-left text-xs"></i> 返回渠道与版本</a>
+    </div>
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-4">
+        <div class="flex flex-wrap gap-3 items-center">
+            <input id="bhFilter" type="search" placeholder="筛选版本号 / Version Code / 构建号…" class="flex-1 min-w-[200px] px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400">
+            {% if can_edit %}<button type="button" id="bhBatchDelete" class="px-4 py-2 rounded-lg border border-rose-200 text-rose-600 text-sm hover:bg-rose-50"><i class="fas fa-trash-alt mr-1"></i>批量删除</button>{% endif %}
+            <button type="button" id="bhRefresh" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700"><i class="fas fa-sync-alt mr-1"></i>刷新</button>
+        </div>
+    </div>
+    <div id="bhRoot" class="space-y-4"><p class="text-slate-400 text-sm py-8 text-center">加载中…</p></div></div></div>
+</div>
+<div id="buildDetailModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center z-50 p-4" onclick="if(event.target===this) closeBuildDetailModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-gradient-to-r from-slate-50 to-emerald-50/40">
+            <div><h3 class="font-semibold text-slate-800 flex items-center gap-2"><i class="fas fa-info-circle text-emerald-500"></i><span id="bhModalTitle">构建详情</span></h3><p id="bhModalSub" class="text-xs text-slate-500 mt-0.5"></p></div>
+            <button type="button" onclick="closeBuildDetailModal()" class="w-8 h-8 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="buildDetailBody" class="p-5 overflow-y-auto flex-1 text-sm text-slate-700">加载中…</div>
+    </div>
+</div>
+<script>
+var PROJECT_ID = {{ project_id|tojson }};
+var CAN_EDIT = {{ 'true' if can_edit else 'false' }};
+var _bhGroups = [];
+function esc(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function statusBadge(result, building, label){
+    var cls='bg-gray-100 text-gray-700';
+    if(building) cls='bg-amber-100 text-amber-800';
+    else { var r=String(result||'').toUpperCase(); if(r==='SUCCESS') cls='bg-green-100 text-green-800'; else if(r==='FAILURE'||r==='ABORTED') cls='bg-red-100 text-red-800'; else if(r==='UNSTABLE') cls='bg-yellow-100 text-yellow-800'; }
+    return '<span class="inline-block px-2 py-0.5 rounded text-xs font-medium '+cls+'">'+esc(label||result||'未知')+'</span>';
+}
+function closeBuildDetailModal(){ var m=document.getElementById('buildDetailModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+function foldBlock(title, bodyHtml, open, maxH){ var mh=maxH||(title.indexOf('日志')>=0?'16rem':'14rem'); return '<details class="bh-fold rounded-xl border border-slate-200 bg-white mb-3"'+(open?' open':'')+'><summary class="flex items-center justify-between px-4 py-3 bg-slate-50/80 hover:bg-slate-50 select-none"><span class="font-medium text-slate-700 text-sm">'+title+'</span><i class="fas fa-chevron-down text-slate-400 text-xs bh-chevron"></i></summary><div class="px-4 py-3 border-t border-slate-100" style="max-height:'+mh+';overflow-y:auto;">'+bodyHtml+'</div></details>'; }
+function renderBuildDetailContent(b){
+    var bn=b.number||b.build_number||'';
+    document.getElementById('bhModalTitle').textContent='构建 #'+bn;
+    document.getElementById('bhModalSub').textContent=(b.version_name||'')+(b.version_code?(' · code '+b.version_code):'');
+    var summary='';
+    if(b.result==='SUCCESS'||b.status_label==='成功') summary='<div class="rounded-lg bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-800"><i class="fas fa-check-circle mr-1"></i>构建成功</div>';
+    else if(b.building) summary='<div class="rounded-lg bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800"><i class="fas fa-spinner fa-spin mr-1"></i>构建进行中…</div>';
+    else if(b.failure_summary) summary='<div class="rounded-lg bg-red-50 border border-red-100 p-3 text-sm text-red-800 whitespace-pre-wrap">'+esc(b.failure_summary)+'</div>';
+    else summary='<div class="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-600">'+esc(b.status_label||b.result||'未知状态')+'</div>';
+    var consoleBtn=b.console_url?'<a href="'+esc(b.console_url)+'" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs hover:bg-indigo-700"><i class="fas fa-external-link-alt"></i>Jenkins 控制台</a>':'';
+    var logUrl='/api/build/log/'+bn+'?instance_id='+encodeURIComponent(b.instance_id||'');
+    var wfUrl='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/'+encodeURIComponent(b.version_id||'')+'/workflow';
+    var actions='<div class="flex flex-wrap gap-2 mb-4">'+consoleBtn+'<a href="'+logUrl+'" download="build-'+bn+'.log" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs hover:bg-slate-50"><i class="fas fa-download"></i>下载日志</a>'+(b.version_id?'<a href="'+wfUrl+'" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-xs hover:bg-emerald-50"><i class="fas fa-cogs"></i>去构建</a>':'')+'</div>';
+    var metaHtml='<div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">'
+        +'<div><span class="text-slate-400">状态</span><div class="mt-0.5">'+statusBadge(b.result,b.building,b.status_label)+'</div></div>'
+        +'<div><span class="text-slate-400">构建人</span><div class="mt-0.5 font-medium">'+esc(b.triggered_by||'-')+'</div></div>'
+        +'<div><span class="text-slate-400">开始时间</span><div class="mt-0.5">'+esc((b.started_at||'').replace('T',' ').slice(0,19)||'-')+'</div></div>'
+        +'<div><span class="text-slate-400">结束时间</span><div class="mt-0.5">'+esc(b.ended_at||'-')+'</div></div>'
+        +'<div><span class="text-slate-400">用时</span><div class="mt-0.5">'+esc(b.duration||'-')+'</div></div>'
+        +'<div><span class="text-slate-400">实例</span><div class="mt-0.5 font-mono text-[11px]">'+esc(b.instance_id||'-')+'</div></div>'
+        +'</div>';
+    var params=b.parameters||{}; var keys=Object.keys(params);
+    var paramRows=keys.map(function(k){ return '<tr class="border-b border-slate-50"><td class="py-1.5 pr-3 text-slate-500 whitespace-nowrap align-top w-40">'+esc(k)+'</td><td class="py-1.5 font-mono text-[11px] break-all">'+esc(String(params[k]))+'</td></tr>'; }).join('');
+    var paramBody=paramRows?'<table class="w-full text-xs">'+paramRows+'</table>':'<p class="text-slate-400 text-xs">无参数</p>';
+    var logBody='<pre class="text-[10px] leading-relaxed bg-slate-900 text-slate-100 rounded-lg p-3 whitespace-pre-wrap" style="max-height:16rem;overflow-y:auto;">'+esc((b.log||'').slice(-12000)||'（无日志）')+'</pre>';
+    return summary+actions+foldBlock('基本信息',metaHtml,true)+foldBlock('构建参数'+(keys.length?' ('+keys.length+')':''),paramBody,false)+foldBlock('构建日志',logBody,false);
+}
+function openBuildDetail(iid,num,vid){ var modal=document.getElementById('buildDetailModal'); var body=document.getElementById('buildDetailBody'); body.innerHTML='<p class="text-slate-400 text-sm">加载中…</p>'; modal.classList.remove('hidden'); modal.classList.add('flex'); var q='instance_id='+encodeURIComponent(iid)+'&version_id='+encodeURIComponent(vid||'')+'&project_id='+encodeURIComponent(PROJECT_ID||''); fetch('/api/build/'+encodeURIComponent(num)+'/detail?'+q,{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){ if(d.error||!d.build){ body.innerHTML='<p class="text-red-500 text-sm">'+esc(d.error||'加载失败')+'</p>'; return; } body.innerHTML=renderBuildDetailContent(d.build); }).catch(function(){ body.innerHTML='<p class="text-red-500 text-sm">加载失败</p>'; }); }
+function deleteBuild(iid,num,vid){ if(!window.confirm('确定删除构建 #'+num+'？将同时删除 Jenkins 构建目录，不可恢复。')) return; var q='instance_id='+encodeURIComponent(iid)+'&version_id='+encodeURIComponent(vid||'')+'&project_id='+encodeURIComponent(PROJECT_ID||''); fetch('/api/build/'+encodeURIComponent(num)+'?'+q,{method:'DELETE',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance_id:iid})}).then(function(r){return r.json();}).then(function(d){ if(!d.success){ alert(d.error||'删除失败'); return; } loadHistory(); }).catch(function(){ alert('删除失败'); }); }
+function batchDeleteBuilds(){ if(!CAN_EDIT) return; var items=[]; document.querySelectorAll('.bh-check:checked').forEach(function(c){ items.push({instance_id:c.getAttribute('data-iid'), build_number:parseInt(c.getAttribute('data-num'),10), version_id:c.getAttribute('data-vid')||''}); }); if(!items.length){ alert('请先勾选要删除的构建'); return; } if(!window.confirm('确定批量删除 '+items.length+' 条构建记录？将同时删除 Jenkins 构建目录，不可恢复。')) return; fetch('/api/build/records/batch-delete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({project_id:PROJECT_ID,items:items})}).then(function(r){return r.json();}).then(function(d){ if(!d.success&&!d.deleted){ alert(d.error||'删除失败'); return; } if(d.error) alert('已删除 '+d.deleted+' 条，部分失败：'+d.error); loadHistory(); }).catch(function(){ alert('删除失败'); }); }
+function renderBuildRow(b,vid){ var num=b.number||b.build_number; var time=(b.started_at||'').replace('T',' ').slice(0,19); var chk=(CAN_EDIT&&!b.building)?'<input type="checkbox" class="bh-check rounded border-slate-300 text-emerald-600 shrink-0" data-iid="'+esc(b.instance_id||'')+'" data-num="'+num+'" data-vid="'+esc(vid||'')+'">':''; var del=(CAN_EDIT&&!b.building)?'<button type="button" class="bh-del ml-2 p-1.5 rounded-lg text-rose-500 hover:bg-rose-50" data-iid="'+esc(b.instance_id||'')+'" data-num="'+num+'" data-vid="'+esc(vid||'')+'" title="删除"><i class="fas fa-trash text-xs"></i></button>':''; return '<div class="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/80 border-b border-slate-100 last:border-0">'+chk+'<button type="button" class="bh-open flex-1 text-left min-w-0" data-iid="'+esc(b.instance_id||'')+'" data-num="'+num+'" data-vid="'+esc(vid||'')+'"><div class="flex flex-wrap items-center gap-2"><span class="font-mono font-semibold text-indigo-600">#'+num+'</span>'+statusBadge(b.result,b.building,b.status_label)+'<span class="text-xs text-slate-400">'+esc(time)+'</span>'+(b.triggered_by?'<span class="text-xs text-slate-500"><i class="fas fa-user text-[10px] mr-0.5"></i>'+esc(b.triggered_by)+'</span>':'')+(b.duration?'<span class="text-xs text-slate-400">'+esc(b.duration)+'</span>':'')+'</div></button>'+del+'</div>'; }
+function renderGroups(groups,filter){ var kw=String(filter||'').toLowerCase().trim(); if(!groups.length) return '<div class="py-16 text-center rounded-2xl border border-dashed border-slate-200 bg-white"><p class="text-slate-500">暂无构建记录</p></div>'; var html=''; groups.forEach(function(g){ var vn=g.version_name||'未命名'; var codes=(g.version_codes||[]).map(function(vc){ var builds=(vc.builds||[]).filter(function(b){ if(!kw) return true; var hay=[vn,vc.version_code,b.number,b.build_number,b.triggered_by,b.result,b.status_label].join(' ').toLowerCase(); return hay.indexOf(kw)>=0; }); return {vc:vc,builds:builds}; }).filter(function(x){ return x.builds.length>0||(!kw); }); if(kw&&!codes.length) return; var total=codes.reduce(function(s,x){return s+x.builds.length;},0); html+='<details class="bh-fold rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden" open><summary class="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100/80 select-none"><div class="flex items-center gap-2"><i class="fas fa-chevron-down text-slate-400 text-xs bh-chevron"></i><span class="font-semibold text-slate-800">'+esc(vn)+'</span><span class="text-xs text-slate-400">'+codes.length+' 个 Version Code · '+total+' 条构建</span></div></summary><div class="border-t border-slate-100 divide-y divide-slate-100">'; codes.forEach(function(item){ var vc=item.vc, builds=item.builds, vid=vc.version_id||'', wf='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/'+encodeURIComponent(vid)+'/workflow'; html+='<details class="bh-fold border-0 rounded-none" open><summary class="flex items-center justify-between px-5 py-3 bg-slate-50/50 hover:bg-slate-50 select-none"><div class="flex items-center gap-2 pl-2"><i class="fas fa-chevron-down text-slate-400 text-[10px] bh-chevron"></i><span class="font-mono text-sm font-medium text-slate-700">VersionCode '+esc(vc.version_code||'-')+'</span><span class="text-xs text-slate-400">'+esc(vc.stage||'')+' / '+esc(vc.platform||'')+' · '+builds.length+' 条</span></div><a href="'+wf+'" class="text-xs text-indigo-600 hover:underline mr-2" onclick="event.stopPropagation()">去构建</a></summary><div><div><div class="bg-white">'; if(!builds.length) html+='<p class="px-5 py-4 text-xs text-slate-400">暂无构建</p>'; else builds.forEach(function(b){ html+=renderBuildRow(b,vid); }); html+='</div></details>'; }); html+='</div></details>'; }); return html||'<div><div class="py-12 text-center text-slate-500 text-sm bg-white rounded-2xl border">没有匹配的构建记录</div>'; }
+function loadHistory(){ var root=document.getElementById('bhRoot'); root.innerHTML='<p class="text-slate-400 text-sm py-8 text-center">加载中…</p>'; fetch('/api/build/history-by-project?project_id='+encodeURIComponent(PROJECT_ID),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){ _bhGroups=(d&&d.groups)||[]; applyFilter(); }).catch(function(){ root.innerHTML='<p class="text-red-500 text-sm py-8 text-center">加载失败</p>'; }); }
+function applyFilter(){ document.getElementById('bhRoot').innerHTML=renderGroups(_bhGroups,(document.getElementById('bhFilter')||{}).value||''); }
+document.getElementById('bhRefresh').addEventListener('click', loadHistory);
+document.getElementById('bhFilter').addEventListener('input', applyFilter);
+var _bhBatchBtn=document.getElementById('bhBatchDelete'); if(_bhBatchBtn) _bhBatchBtn.addEventListener('click', batchDeleteBuilds);
+document.getElementById('bhRoot').addEventListener('click', function(e){ var open=e.target.closest('.bh-open'); if(open){ openBuildDetail(open.getAttribute('data-iid'), open.getAttribute('data-num'), open.getAttribute('data-vid')); return; } var del=e.target.closest('.bh-del'); if(del){ deleteBuild(del.getAttribute('data-iid'), del.getAttribute('data-num'), del.getAttribute('data-vid')); } });
+loadHistory();
+</script>
+</body>
+</html>
