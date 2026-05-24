@@ -2770,6 +2770,7 @@ def _project_detail_html(project_id, proj, can_edit, task_stats, recent_tasks, a
 </div></div>
 </div></div>
 </div>
+</div>
 <div id="vmTabPipeline" class="version-main-panel hidden">
 <div id="versionPipeline" class="hidden rounded-lg border border-violet-200 mb-2 overflow-hidden hover:shadow-sm transition-shadow">
 <div class="px-3 py-1.5 bg-violet-50/80 border-b border-violet-100 flex items-center gap-1.5"><span class="w-5 h-5 rounded bg-violet-500 text-white flex items-center justify-center text-[10px]"><i class="fas fa-diagram-project"></i></span><span class="text-[13px] font-semibold text-violet-700">构建流水线</span><span class="text-[11px] text-violet-400">可插拔构建步骤，每步独立启用</span></div>
@@ -3002,6 +3003,11 @@ function switchVersionModalTab(tab) {
         var panel = document.getElementById(panelMap[k]);
         if (panel) panel.classList.toggle('hidden', k !== tab);
     });
+    if (tab === 'pipeline') {
+        var pp = document.getElementById('versionPipeline');
+        if (pp && _versionMode === 'commercial') pp.classList.remove('hidden');
+        switchPipelineTab('config_export');
+    }
 }
 function stageToReleaseEnvironment(stage) {
     var s = String(stage || 'dev').toLowerCase();
