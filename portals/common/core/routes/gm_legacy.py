@@ -2160,13 +2160,34 @@ def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, 
     state = _get_daemon_state(nid)
     pid = int(state.get("pid") or 0) if str(state.get("pid") or "").strip().isdigit() else 0
 
+    # Prefer native Ops API path in distributed deployment.
+    if server_id and act in ("start", "stop", "restart", "status"):
+        map_action = {"start": "start", "stop": "stop", "restart": "restart", "status": "status"}.get(act, "status")
+        result = _ops_gateway.execute_platform_action(
+            node,
+            action_type=map_action,
+            target=server_id,
+            payload={},
+            actor=operator,
+            reason=reason,
+            ticket_id=ticket_id,
+            dry_run=False,
+        )
+        ok = bool(result.get("success"))
+        if ok:
+            new_status = "RUNNING" if act in ("start", "restart", "status") else "STOPPED"
+            _set_daemon_state(nid, {"status": new_status, "last_error": "", "last_action": act})
+        else:
+            _set_daemon_state(nid, {"status": "ERROR", "last_error": str(result.get("message") or ""), "last_action": act})
+        return result
+
     if act == "status":
         running = _is_process_running(pid) if pid > 0 else False
         now_status = "RUNNING" if running else str(state.get("status") or "ADDED")
         if pid > 0 and not running and now_status == "RUNNING":
             now_status = "CRASHED"
             state = _set_daemon_state(nid, {"status": now_status, "last_error": "process not alive", "pid": 0, "last_action": "status"})
-        return {"success": True, "message": "daemon status", "data": {"node_id": nid, "status": now_status, "pid": pid, "state": state}}
+        return {"success": True, "message": "daemon status (local fallback)", "data": {"node_id": nid, "status": now_status, "pid": pid, "state": state}}
 
     if start_cmd and act in ("start", "restart"):
         if act == "restart":
@@ -2196,22 +2217,6 @@ def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, 
             if act == "restart" and server_id:
                 pass
             return {"success": True, "message": "daemon stopped", "data": {"node_id": nid, "status": "STOPPED", "state": state}}
-
-    if server_id and role in ("gateway", "business", "pressure", "scheduler"):
-        map_action = {"start": "start", "stop": "stop", "restart": "restart"}.get(act, "status")
-        result = _ops_gateway.execute_platform_action(
-            node,
-            action_type=map_action if map_action != "status" else "status",
-            target=server_id,
-            payload={},
-            actor=operator,
-            reason=reason,
-            ticket_id=ticket_id,
-            dry_run=False,
-        )
-        ok = bool(result.get("success"))
-        _set_daemon_state(nid, {"status": ("RUNNING" if (ok and act in ("start", "restart")) else ("STOPPED" if (ok and act == "stop") else ("ERROR" if not ok else "RUNNING"))), "last_error": ("" if ok else str(result.get("message") or "")), "last_action": act})
-        return result
 
     return {"success": False, "message": "no daemon control profile configured for this node", "data": {"node_id": nid, "role": role}}
 
