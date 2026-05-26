@@ -1,0 +1,36 @@
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526n">
+<section class="ops-shell" data-project-id="{{ project_id }}">
+  <div class="top">
+    <div>
+      <div class="title title-row"><span class="ops-ico ico-title ico-overview">O</span>运维平台总览</div>
+      <div class="sub">模块化运维入口：总览 / 拓扑 / 执行 / 诊断 / Agent / 变更治理 / 合规</div>
+    </div>
+    <div class="ops-header-actions">
+      <a class="btn primary" href="/admin/ops-platform/topology?project_id={{ project_id }}">进入拓扑编排</a>
+      <input id="opsProjectFilter" class="inp" style="max-width:200px;background:#020617;color:#cbd5e1;border-color:#334155" value="{{ project_id }}" placeholder="project_id">
+    </div>
+  </div>
+
+  <div class="kpi">
+    <div class="k"><div class="n">SLA%</div><div id="kpiSla" class="v">-</div></div>
+    <div class="k"><div class="n">节点总数</div><div id="kpiNodes" class="v">-</div></div>
+    <div class="k"><div class="n">健康</div><div id="kpiHealthy" class="v">-</div></div>
+    <div class="k"><div class="n">退化</div><div id="kpiDegraded" class="v">-</div></div>
+    <div class="k"><div class="n">离线</div><div id="kpiOffline" class="v">-</div></div>
+    <div class="k"><div class="n">告警</div><div id="kpiAlerts" class="v">-</div></div>
+  </div>
+
+  <div class="modules" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:14px">
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-overview">O</span>全局总览</div><div class="d">KPI、风险分层、关键告警、待办中心</div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-topology">T</span>拓扑与配置编排</div><div class="d">节点库、画布、规则校验、版本快照</div><div style="margin-top:10px"><a class="btn primary" href="/admin/ops-platform/topology?project_id={{ project_id }}">进入拓扑编排</a></div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-action">A</span>动作执行中心</div><div class="d">动作目录、审批、执行回执与重试</div><div style="margin-top:10px"><a class="btn primary" href="/admin/ops-platform/actions?project_id={{ project_id }}">进入动作执行</a></div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-diagnostic">D</span>诊断与体检</div><div class="d">体检筛选、风险分级、导出与修复入口</div><div style="margin-top:10px"><a class="btn primary" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">进入节点诊断</a></div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-event">E</span>事件与追踪</div><div class="d" id="eventSummary">加载中...</div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-agent">G</span>Agent 管控</div><div class="d">注册、心跳、策略、租约、升级灰度</div><div style="margin-top:10px"><a class="btn primary" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">进入控制面</a></div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-change">C</span>发布与变更治理</div><div class="d">变更计划、冻结窗口、灰度与回滚</div><div style="margin-top:10px"><a class="btn primary" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">进入变更治理</a></div></div>
+    <div class="card"><div class="h h-row"><span class="ops-ico ico-govern">R</span>权限与合规</div><div class="d">RBAC、高危审批、审计追溯、双人复核</div><div style="margin-top:10px"><a class="btn" href="/admin/approval">审批中心</a></div></div>
+  </div>
+</section>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script src="/static/ops_platform_overview.js?v=20260526n"></script>
+

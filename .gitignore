@@ -1,16 +1,51 @@
-# 本地环境与密钥（勿提交）
+﻿# Local secrets and environment files
 .env
+.env.*
+!.env.example
 jenkins_credentials.json
 config/settings.json
 data/secret.key
+data/secret.key.not-so-secret
 
-# 用户上传与工作区（可选：备份时排除）
-# data/workspaces/
-# data/doc_attachments/
+# Python cache and virtual env
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
 
-# 日志与缓存
+# Node dependencies and build cache
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Project runtime logs and backups
 logs/
 backups/
-__pycache__/
-*.pyc
-.pytest_cache/
+*.log
+*.out
+*.err
+
+# Runtime pid/lock/temp artifacts
+*.pid
+*.pid.lock
+*.tmp
+*.temp
+
+# Database local runtime artifacts
+*.db-wal
+*.db-shm
+
+# Common local output folders
+portals/common/core/runtime/
+portals/common/core/tmp/
+portals/common/tmp/
+
+# Optional user-generated local work directories
+# data/workspaces/
+# data/doc_attachments/

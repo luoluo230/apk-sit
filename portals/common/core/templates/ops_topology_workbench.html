@@ -1,0 +1,170 @@
+<link rel="stylesheet" href="/static/ops_platform.css?v=20260526p">
+<section class="ops-shell" data-project-id="{{ project_id }}">
+  <div class="top">
+    <div>
+      <div class="title title-row"><span class="ops-ico ico-title ico-topology">T</span>拓扑编排工作区</div>
+      <div class="sub">直接拖拽端口连线，多端口与语义节点已启用</div>
+    </div>
+    <div class="top-right">
+      <div class="top-nav-row">
+        <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">总览</a>
+        <a class="btn active" href="/admin/ops-platform/topology?project_id={{ project_id }}">拓扑编排</a>
+        <a class="btn" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
+        <a class="btn" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a>
+        <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 管控</a>
+        <a class="btn" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
+        <a class="btn" href="/admin/approval">审批中心</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:10px">
+    <div class="bd" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div class="h-row" style="font-size:12px;color:#334155">
+        <span class="state-pill state-info">当前页面：拓扑编排</span>
+        <span>从输出端口拖到输入端口即可连线；双击输入端口/点击输出端口可快捷加点</span>
+      </div>
+      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回运维总览</a>
+    </div>
+  </div>
+
+  <div class="ops-work" style="margin-top:12px">
+    <aside class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-library">L</span>Node Library</b></div>
+      <div class="bd">
+        <div id="presetQuickBar" class="preset-quick">未选择模板</div>
+        <input id="presetSearch" class="inp" placeholder="搜索模板/角色">
+        <div id="presetList" class="preset-list"></div>
+        <div class="hd" style="margin:10px -12px 0;border-top:1px solid #e9f0fb;border-bottom:none;background:transparent;padding:12px 12px 6px"><b class="h-row"><span class="ops-ico ico-inspector">N</span>节点列表</b></div>
+        <div id="runtimeNodeList" class="runtime-node-list"></div>
+      </div>
+    </aside>
+
+    <section class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-canvas">C</span>Topology Canvas</b><span style="font-size:11px;color:#64748b">滚轮缩放 / Space 拖拽 / Shift 框选</span></div>
+      <div class="bd">
+        <div class="top-tool-row canvas-tool-row">
+          <button id="toolSelect" class="btn primary">选择</button>
+          <button id="toolAuto" class="btn">自动布局</button>
+          <button id="toolUndo" class="btn">撤销</button>
+          <button id="toolRedo" class="btn">重做</button>
+          <button id="toolReset" class="btn">重置视图</button>
+          <button id="toolSave" class="btn success">保存拓扑</button>
+          <select id="flowBlueprintSelect" class="sel" style="max-width:180px;height:32px;padding:4px 8px">
+            <option value="">流程模板</option>
+          </select>
+          <button id="btnApplyBlueprint" class="btn">应用模板</button>
+          <button id="btnDeleteEdgeInline" class="btn" title="先点击连线再删除">删除选中连线</button>
+          <span id="zoomLabel" class="zoom-pill">100%</span>
+          <input id="opsProjectFilter" class="inp top-project" value="{{ project_id }}" placeholder="project_id">
+        </div>
+        <div id="modeBar" class="mode-toolbar">
+          <select id="modeSelect" class="sel mode-select">
+            <option value="edit">编辑模式</option>
+            <option value="run">运行模式</option>
+            <option value="test">测试模式</option>
+          </select>
+          <button id="modeLockBtn" class="btn">锁定模式</button>
+          <button id="modeUnlockBtn" class="btn ghost" style="display:none">解锁模式</button>
+          <span id="modeHint" class="state-pill state-info">当前模式：编辑模式</span>
+          <div id="runBar" style="display:none;gap:8px">
+            <button id="btnRunStartAll" class="btn success">一键启动全流程</button>
+            <button id="btnRunStopAll" class="btn" style="background:#7f1d1d;border-color:#b91c1c;color:#fff">一键停止全流程</button>
+          </div>
+          <div id="testBar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="testScope" class="sel" style="width:160px">
+              <option value="full">完整架构</option>
+              <option value="segment">中间链路段</option>
+            </select>
+            <select id="testStartNode" class="sel" style="width:180px"></select>
+            <select id="testEndNode" class="sel" style="width:180px"></select>
+            <button id="btnTestSmoke" class="btn">单元测试</button>
+            <button id="btnTestStress" class="btn">压力测试</button>
+          </div>
+        </div>
+        <div id="canvasShell" class="ops-canvas"><div class="ops-grid-bg"></div><div id="scene" class="scene"><svg id="edgeSvg" class="edges" width="4000" height="2600"></svg><div id="nodeLayer" class="nodes"></div></div><div id="marquee" style="position:absolute;border:1px dashed #22d3ee;background:rgba(34,211,238,.12);display:none"></div></div>
+        <div style="margin-top:10px">
+          <label style="font-size:11px;color:#64748b;display:block;margin-bottom:6px">模式日志</label>
+          <div id="modeLog" class="mode-log"></div>
+          <div id="modeLogDetails" class="mode-log-details"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</section>
+<div id="portQuickAdd" class="port-modal hidden">
+  <div class="port-modal-box">
+    <div class="port-modal-head">
+      <b id="portModalTitle">快捷添加节点</b>
+      <button id="portModalClose" class="btn">关闭</button>
+    </div>
+    <div id="portModalHint" class="port-modal-hint"></div>
+    <div id="portModalList" class="port-modal-list"></div>
+  </div>
+</div>
+<div id="nodeEditModal" class="port-modal hidden">
+  <div class="port-modal-box">
+    <div class="port-modal-head">
+      <b>节点编辑</b>
+      <button id="nodeEditClose" class="btn">关闭</button>
+    </div>
+    <div class="row" style="margin-top:8px"><div><label style="font-size:11px;color:#64748b">节点ID</label><input id="insNodeId" class="inp" readonly></div><div><label style="font-size:11px;color:#64748b">端口摘要</label><input id="insNodePortsSummary" class="inp" readonly></div></div>
+    <div class="row" style="margin-top:8px"><div><label style="font-size:11px;color:#64748b">角色</label><select id="insNodeRole" class="sel"></select></div><div><label style="font-size:11px;color:#64748b">状态</label><select id="insNodeBizStatus" class="sel"></select></div></div>
+    <div class="row" style="margin-top:8px"><div><label style="font-size:11px;color:#64748b">语义类型</label><select id="insNodeKind" class="sel"><option value="standard">standard</option><option value="entry">entry</option><option value="terminal">terminal</option></select></div><div><label style="font-size:11px;color:#64748b">颜色</label><input id="insNodeColor" class="inp"></div></div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">输入端口</label>
+        <div style="display:flex;gap:8px">
+          <button id="btnPortInAdd" class="btn" type="button" style="flex:1">+ 输入端口</button>
+          <button id="btnPortInRemove" class="btn" type="button" style="flex:1">- 输入端口</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">输出端口</label>
+        <div style="display:flex;gap:8px">
+          <button id="btnPortOutAdd" class="btn" type="button" style="flex:1">+ 输出端口</button>
+          <button id="btnPortOutRemove" class="btn" type="button" style="flex:1">- 输出端口</button>
+        </div>
+      </div>
+    </div>
+    <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">Owner</label><input id="insNodeOwner" class="inp">
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">主Agent</label>
+        <select id="insNodePrimaryAgent" class="sel"><option value="">未绑定</option></select>
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">Agent状态</label>
+        <input id="insNodeAgentMeta" class="inp" readonly placeholder="设备/端口/心跳">
+      </div>
+    </div>
+    <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">说明</label><textarea id="insNodeDesc" class="txt" rows="3"></textarea>
+    <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">标签</label><input id="insNodeTags" class="inp">
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">输入针脚列表</label>
+        <div id="inPortList" class="preset-quick" style="min-height:42px;flex-wrap:wrap"></div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">输出针脚列表</label>
+        <div id="outPortList" class="preset-quick" style="min-height:42px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnSaveNode" class="btn primary" style="width:100%">保存节点</button>
+      <button id="btnDeleteEdge" class="btn" style="width:100%">删除当前选中连线</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnDeleteSelectedPort" class="btn" style="width:100%">删除选中针脚</button>
+      <div></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="btnDeleteNode" class="btn" style="width:100%;background:#7f1d1d;border-color:#b91c1c;color:#fff" type="button">删除节点</button>
+      <div></div>
+    </div>
+  </div>
+</div>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script src="/static/ops_platform_workbench.js?v=20260526p"></script>
+
+

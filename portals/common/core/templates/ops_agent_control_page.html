@@ -1,0 +1,42 @@
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526n">
+<section class="ops-page" data-project-id="{{ project_id }}">
+  <div class="top">
+    <div><div class="title title-row"><span class="ops-ico ico-title ico-agent">G</span>Agent 控制面</div><div class="sub">注册、心跳、策略、队列、升级灰度、证书状态集中管理</div></div>
+    <div class="ops-header-actions">
+      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回工作台</a>
+      <a class="btn" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
+      <a class="btn" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
+    </div>
+  </div>
+
+  <section class="panel ops-section">
+    <div class="hd"><b class="h-row"><span class="ops-ico ico-agent">O</span>控制面总览</b><button id="btnRefreshCp" class="btn">刷新</button></div>
+    <div class="bd"><div id="cpMetrics" class="metric"></div></div>
+  </section>
+
+  <div class="panel ops-section">
+    <div class="bd ops-toolbar">
+      <input id="filterStatus" class="inp" style="max-width:180px" placeholder="状态筛选 ONLINE/RUNNING">
+      <input id="filterDevice" class="inp" style="max-width:220px" placeholder="设备ID筛选">
+      <select id="filterBound" class="sel" style="max-width:180px"><option value="">全部绑定状态</option><option value="yes">已绑定</option><option value="no">未绑定</option></select>
+      <button id="btnApplyFilter" class="btn">应用筛选</button>
+    </div>
+  </div>
+
+  <div class="grid ops-section">
+    <section class="panel"><div class="hd"><b class="h-row"><span class="ops-ico ico-agent">R</span>项目 Agent 卡片</b></div><div class="bd"><div id="cpAgents"></div></div></section>
+    <section class="panel"><div class="hd"><b class="h-row"><span class="ops-ico ico-agent">D</span>设备 Agent 组</b></div><div class="bd"><div id="cpDevices"></div></div></section>
+    <section class="panel"><div class="hd"><b class="h-row"><span class="ops-ico ico-agent">L</span>租约与队列状态</b></div><div class="bd"><div id="cpQueue"></div></div></section>
+  </div>
+
+  <section class="panel ops-section">
+    <div class="hd"><b class="h-row"><span class="ops-ico ico-agent">U</span>策略与升级</b></div>
+    <div class="bd"><pre id="cpPolicy" class="ops-code"></pre></div>
+  </section>
+</section>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260526n"></script>
+
+
+
+

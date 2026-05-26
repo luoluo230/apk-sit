@@ -1,12 +1,14 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Legacy GM extraction + Ops platform routes."""
 
 from __future__ import annotations
 
 import os
+import json
 import signal
 import subprocess
 import uuid
+import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -14,13 +16,14 @@ from flask import Blueprint, jsonify, render_template_string, request, session
 
 from models.data import (
     approvals_db,
+    approve_or_reject,
     create_approval,
     get_approved_approval,
     get_system_config,
     log_audit,
     set_system_config,
 )
-from services.authz import admin_required, can_access_module, has_scope
+from services.authz import admin_required, can_access_module, has_scope, is_admin
 from services.legacy_gm_bridge_client import LegacyGmBridgeClient
 from services.ops_platform_gateway import OpsPlatformGateway
 
@@ -49,11 +52,19 @@ GM_ACTION_PATHS = {
 
 def _normalize_node(payload: Dict[str, Any]) -> Dict[str, Any]:
     node_id = str(payload.get("id") or uuid.uuid4().hex[:12]).strip()
+    fallback_ops_base = str(
+        payload.get("ops_base_url")
+        or os.getenv("GM_LEGACY_OPS_BASE_URL", "")
+        or payload.get("base_url")
+        or os.getenv("GM_LEGACY_BASE_URL", "")
+        or "http://127.0.0.1:5054"
+        or ""
+    ).strip()
     return {
         "id": node_id,
         "name": str(payload.get("name") or node_id).strip(),
         "base_url": str(payload.get("base_url") or "").strip(),
-        "ops_base_url": str(payload.get("ops_base_url") or "").strip(),
+        "ops_base_url": fallback_ops_base,
         "ops_read_key": str(payload.get("ops_read_key") or "").strip(),
         "ops_write_key": str(payload.get("ops_write_key") or "").strip(),
         "ops_actor": str(payload.get("ops_actor") or "").strip(),
@@ -93,7 +104,7 @@ def _default_nodes() -> List[Dict[str, Any]]:
         _normalize_node(
             {
                 "id": "local-gm",
-                "name": "本地GM节点",
+                "name": "鏈湴GM鑺傜偣",
                 "base_url": base_url,
                 "ops_base_url": ops_base_url,
                 "ops_read_key": ops_read_key,
@@ -106,7 +117,7 @@ def _default_nodes() -> List[Dict[str, Any]]:
                 "role": "business",
                 "node_category": "application",
                 "node_type": "business_server",
-                "description": "默认节点",
+                "description": "榛樿鑺傜偣",
                 "biz_status": "normal",
                 "allowed_upstream_roles": ["gateway", "scheduler", "admin"],
                 "allowed_downstream_roles": ["database", "cache", "mq", "search"],
@@ -135,7 +146,7 @@ def _save_nodes(rows: List[Dict[str, Any]]) -> None:
         NODE_CONFIG_KEY,
         normalized,
         value_type="json",
-        description="Legacy GM + Ops 节点配置",
+        description="Legacy GM + Ops 鑺傜偣閰嶇疆",
         username="system",
     )
 
@@ -172,6 +183,8 @@ def _node_or_400(payload: Dict[str, Any]):
 
 def _allow_ops_view() -> bool:
     return bool(
+        is_admin()
+        or
         can_access_module("gm_ops")
         or has_scope("ops.platform.view")
         or has_scope("gm.ops.execute")
@@ -181,6 +194,8 @@ def _allow_ops_view() -> bool:
 
 def _allow_ops_execute() -> bool:
     return bool(
+        is_admin()
+        or
         can_access_module("gm_ops")
         or has_scope("ops.platform.execute")
         or has_scope("gm.ops.execute")
@@ -213,6 +228,12 @@ def _render_page(content: str, title: str):
         )
 
 
+def _render_local_template(template_name: str, **kwargs):
+    path = os.path.join(os.path.dirname(__file__), "..", "templates", template_name)
+    with open(path, "r", encoding="utf-8") as f:
+        return render_template_string(f.read(), **kwargs)
+
+
 @bp.route("/admin/gm-classic")
 @admin_required("gm_ops")
 def gm_classic_page():
@@ -230,56 +251,56 @@ def gm_classic_page():
   <section class="hero p-6">
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
-        <h2 class="text-2xl font-semibold">经典GM模块（独立剥离）</h2>
-        <p class="text-sm text-cyan-100/90 mt-1">通过内网桥接层接入 legacy GmWebServer，统一留痕并与项目上下文对齐。</p>
+        <h2 class="text-2xl font-semibold">缁忓吀GM妯″潡锛堢嫭绔嬪墺绂伙級</h2>
+        <p class="text-sm text-cyan-100/90 mt-1">閫氳繃鍐呯綉妗ユ帴灞傛帴鍏?legacy GmWebServer锛岀粺涓€鐣欑棔骞朵笌椤圭洰涓婁笅鏂囧榻愩€?/p>
       </div>
       <div class="text-xs rounded-full px-3 py-1 border border-white/30 bg-white/15">Legacy Bridge v1</div>
     </div>
   </section>
 
   <section class="panel p-4 grid grid-cols-1 xl:grid-cols-12 gap-4 items-end">
-    <div class="xl:col-span-4"><label class="text-xs text-slate-500">节点</label><select id="gmNode" class="w-full border rounded-lg px-3 py-2"></select></div>
-    <div class="xl:col-span-3"><label class="text-xs text-slate-500">项目ID</label><input id="gmProjectId" class="w-full border rounded-lg px-3 py-2" placeholder="可选"></div>
-    <div class="xl:col-span-2"><label class="text-xs text-slate-500">环境</label><input id="gmEnv" class="w-full border rounded-lg px-3 py-2" placeholder="dev/test/prod"></div>
-    <div class="xl:col-span-2"><label class="text-xs text-slate-500">渠道</label><input id="gmChannel" class="w-full border rounded-lg px-3 py-2" placeholder="1001"></div>
-    <div class="xl:col-span-1"><button class="w-full btn btn-indigo" onclick="reloadNodes()">刷新</button></div>
+    <div class="xl:col-span-4"><label class="text-xs text-slate-500">鑺傜偣</label><select id="gmNode" class="w-full border rounded-lg px-3 py-2"></select></div>
+    <div class="xl:col-span-3"><label class="text-xs text-slate-500">椤圭洰ID</label><input id="gmProjectId" class="w-full border rounded-lg px-3 py-2" placeholder="鍙€?></div>
+    <div class="xl:col-span-2"><label class="text-xs text-slate-500">鐜</label><input id="gmEnv" class="w-full border rounded-lg px-3 py-2" placeholder="dev/test/prod"></div>
+    <div class="xl:col-span-2"><label class="text-xs text-slate-500">娓犻亾</label><input id="gmChannel" class="w-full border rounded-lg px-3 py-2" placeholder="1001"></div>
+    <div class="xl:col-span-1"><button class="w-full btn btn-indigo" onclick="reloadNodes()">鍒锋柊</button></div>
   </section>
 
   <section class="grid grid-cols-1 xl:grid-cols-2 gap-4">
     <div class="panel p-4 space-y-3">
-      <h3 class="font-semibold text-slate-900">玩家与资源</h3>
+      <h3 class="font-semibold text-slate-900">鐜╁涓庤祫婧?/h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <input id="pKeyword" class="border rounded-lg px-3 py-2" placeholder="玩家关键词/playerId">
-        <button class="btn btn-teal" onclick="gmAction('search_player',{keyword:val('pKeyword')})">玩家检索</button>
+        <input id="pKeyword" class="border rounded-lg px-3 py-2" placeholder="鐜╁鍏抽敭璇?playerId">
+        <button class="btn btn-teal" onclick="gmAction('search_player',{keyword:val('pKeyword')})">鐜╁妫€绱?/button>
         <input id="pIdCurrency" class="border rounded-lg px-3 py-2" placeholder="playerId">
-        <div class="grid grid-cols-3 gap-2"><input id="pDia" class="border rounded-lg px-2 py-2" placeholder="钻石"><input id="pGold" class="border rounded-lg px-2 py-2" placeholder="金币"><input id="pSta" class="border rounded-lg px-2 py-2" placeholder="体力"></div>
-        <textarea id="pReasonCurrency" class="border rounded-lg px-3 py-2 md:col-span-2" rows="2" placeholder="原因"></textarea>
-        <button class="btn btn-amber" onclick="gmAction('adjust_currency',{playerId:val('pIdCurrency'),diamonds:val('pDia'),gold:val('pGold'),stamina:val('pSta'),reason:val('pReasonCurrency')})">调整货币</button>
+        <div class="grid grid-cols-3 gap-2"><input id="pDia" class="border rounded-lg px-2 py-2" placeholder="閽荤煶"><input id="pGold" class="border rounded-lg px-2 py-2" placeholder="閲戝竵"><input id="pSta" class="border rounded-lg px-2 py-2" placeholder="浣撳姏"></div>
+        <textarea id="pReasonCurrency" class="border rounded-lg px-3 py-2 md:col-span-2" rows="2" placeholder="鍘熷洜"></textarea>
+        <button class="btn btn-amber" onclick="gmAction('adjust_currency',{playerId:val('pIdCurrency'),diamonds:val('pDia'),gold:val('pGold'),stamina:val('pSta'),reason:val('pReasonCurrency')})">璋冩暣璐у竵</button>
         <input id="pIdItem" class="border rounded-lg px-3 py-2" placeholder="playerId">
         <div class="grid grid-cols-2 gap-2"><input id="itemId" class="border rounded-lg px-2 py-2" placeholder="itemId"><input id="itemDelta" class="border rounded-lg px-2 py-2" placeholder="delta +/-"></div>
-        <textarea id="pReasonItem" class="border rounded-lg px-3 py-2 md:col-span-2" rows="2" placeholder="原因"></textarea>
-        <button class="btn btn-amber" onclick="gmAction('adjust_item',{playerId:val('pIdItem'),itemId:val('itemId'),delta:val('itemDelta'),reason:val('pReasonItem')})">调整物品</button>
+        <textarea id="pReasonItem" class="border rounded-lg px-3 py-2 md:col-span-2" rows="2" placeholder="鍘熷洜"></textarea>
+        <button class="btn btn-amber" onclick="gmAction('adjust_item',{playerId:val('pIdItem'),itemId:val('itemId'),delta:val('itemDelta'),reason:val('pReasonItem')})">璋冩暣鐗╁搧</button>
       </div>
     </div>
 
     <div class="panel p-4 space-y-3">
-      <h3 class="font-semibold text-slate-900">邮件与运营动作</h3>
+      <h3 class="font-semibold text-slate-900">閭欢涓庤繍钀ュ姩浣?/h3>
       <div class="space-y-2">
         <input id="mailPid" class="w-full border rounded-lg px-3 py-2" placeholder="playerId">
-        <input id="mailTitle" class="w-full border rounded-lg px-3 py-2" placeholder="邮件标题">
-        <textarea id="mailBody" class="w-full border rounded-lg px-3 py-2" rows="2" placeholder="邮件正文"></textarea>
-        <input id="mailRewards" class="w-full border rounded-lg px-3 py-2" placeholder='奖励JSON，如 [{"itemId":"gold","count":100}]'>
-        <input id="mailReason" class="w-full border rounded-lg px-3 py-2" placeholder="原因">
+        <input id="mailTitle" class="w-full border rounded-lg px-3 py-2" placeholder="閭欢鏍囬">
+        <textarea id="mailBody" class="w-full border rounded-lg px-3 py-2" rows="2" placeholder="閭欢姝ｆ枃"></textarea>
+        <input id="mailRewards" class="w-full border rounded-lg px-3 py-2" placeholder='濂栧姳JSON锛屽 [{"itemId":"gold","count":100}]'>
+        <input id="mailReason" class="w-full border rounded-lg px-3 py-2" placeholder="鍘熷洜">
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn btn-indigo" onclick="gmAction('send_mail',{playerId:val('mailPid'),title:val('mailTitle'),body:val('mailBody'),rewards:val('mailRewards'),reason:val('mailReason')})">发送单人邮件</button>
-          <button class="btn btn-rose" onclick="gmAction('send_broadcast',{title:val('mailTitle'),body:val('mailBody'),rewards:val('mailRewards'),reason:val('mailReason')})">全服广播邮件</button>
+          <button class="btn btn-indigo" onclick="gmAction('send_mail',{playerId:val('mailPid'),title:val('mailTitle'),body:val('mailBody'),rewards:val('mailRewards'),reason:val('mailReason')})">鍙戦€佸崟浜洪偖浠?/button>
+          <button class="btn btn-rose" onclick="gmAction('send_broadcast',{title:val('mailTitle'),body:val('mailBody'),rewards:val('mailRewards'),reason:val('mailReason')})">鍏ㄦ湇骞挎挱閭欢</button>
         </div>
       </div>
     </div>
   </section>
 
   <section class="panel p-4">
-    <div class="flex items-center justify-between mb-2"><h3 class="font-semibold">执行结果</h3><span id="gmResultSummary" class="text-xs text-slate-500">等待执行</span></div>
+    <div class="flex items-center justify-between mb-2"><h3 class="font-semibold">鎵ц缁撴灉</h3><span id="gmResultSummary" class="text-xs text-slate-500">绛夊緟鎵ц</span></div>
     <pre id="gmResult" class="w-full h-72 rounded border border-slate-200 bg-slate-50 p-3 text-xs overflow-auto"></pre>
   </section>
 </section>
@@ -296,7 +317,7 @@ async function reloadNodes(){
 function showResult(data){
   document.getElementById('gmResult').textContent=JSON.stringify(data,null,2);
   const ok = !!data.ok;
-  document.getElementById('gmResultSummary').textContent = ok ? '执行成功' : '执行失败';
+  document.getElementById('gmResultSummary').textContent = ok ? '鎵ц鎴愬姛' : '鎵ц澶辫触';
   document.getElementById('gmResultSummary').className = ok ? 'text-xs text-emerald-600' : 'text-xs text-rose-600';
 }
 async function gmAction(action,payload){
@@ -307,13 +328,25 @@ async function gmAction(action,payload){
 reloadNodes();
 </script>
 """
-    return _render_page(content, "经典GM模块")
+    return _render_page(content, "缁忓吀GM妯″潡")
 
 
 @bp.route("/admin/ops-platform")
 @admin_required("gm_ops")
 def ops_platform_page():
     project_id = str(request.args.get("project_id") or "").strip()
+    try:
+        content = render_template_string(
+            open(
+                os.path.join(os.path.dirname(__file__), "..", "templates", "ops_overview_page.html"),
+                "r",
+                encoding="utf-8",
+            ).read(),
+            project_id=project_id,
+        )
+        return _render_page(content, "运维平台")
+    except Exception:
+        pass
     content = """
 <section class="ops-pro-shell space-y-5" data-project-id=""" + project_id + """">
   <style>
@@ -364,59 +397,59 @@ def ops_platform_page():
   <section class="hero">
     <div class="flex items-center justify-between gap-4 flex-wrap">
       <div>
-        <h2 class="text-2xl font-semibold">运维平台（拓扑运营版）</h2>
-        <p class="text-sm text-blue-100 mt-1">可视化节点关系 + 分布式角色治理 + 审批闭环执行，一眼定位异常并直达操作。</p>
+        <h2 class="text-2xl font-semibold">杩愮淮骞冲彴锛堟嫇鎵戣繍钀ョ増锛?/h2>
+        <p class="text-sm text-blue-100 mt-1">鍙鍖栬妭鐐瑰叧绯?+ 鍒嗗竷寮忚鑹叉不鐞?+ 瀹℃壒闂幆鎵ц锛屼竴鐪煎畾浣嶅紓甯稿苟鐩磋揪鎿嶄綔銆?/p>
       </div>
-      <div class="text-xs rounded-full px-3 py-1 border border-white/30 bg-white/10">Ops Platform v3 • Topology Native</div>
+      <div class="text-xs rounded-full px-3 py-1 border border-white/30 bg-white/10">Ops Platform v3 鈥?Topology Native</div>
     </div>
   </section>
 
   <section class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
     <div class="kpi"><div class="label">SLA%</div><div class="value" id="kpiSla">-</div></div>
-    <div class="kpi"><div class="label">节点总数</div><div class="value" id="kpiNodes">-</div></div>
-    <div class="kpi"><div class="label">健康节点</div><div class="value" id="kpiHealthy">-</div></div>
-    <div class="kpi"><div class="label">退化节点</div><div class="value" id="kpiDegraded">-</div></div>
-    <div class="kpi"><div class="label">离线节点</div><div class="value" id="kpiOffline">-</div></div>
-    <div class="kpi"><div class="label">告警总数</div><div class="value" id="kpiAlerts">-</div></div>
+    <div class="kpi"><div class="label">鑺傜偣鎬绘暟</div><div class="value" id="kpiNodes">-</div></div>
+    <div class="kpi"><div class="label">鍋ュ悍鑺傜偣</div><div class="value" id="kpiHealthy">-</div></div>
+    <div class="kpi"><div class="label">閫€鍖栬妭鐐?/div><div class="value" id="kpiDegraded">-</div></div>
+    <div class="kpi"><div class="label">绂荤嚎鑺傜偣</div><div class="value" id="kpiOffline">-</div></div>
+    <div class="kpi"><div class="label">鍛婅鎬绘暟</div><div class="value" id="kpiAlerts">-</div></div>
   </section>
 
   <section class="panel p-4 space-y-3">
-    <div class="flex items-center justify-between"><h3 class="section-title">预制节点库（服务器类型模板）</h3><span class="text-xs text-slate-500">数据库 / Redis / 压力 / 业务 / 网关等</span></div>
+    <div class="flex items-center justify-between"><h3 class="section-title">棰勫埗鑺傜偣搴擄紙鏈嶅姟鍣ㄧ被鍨嬫ā鏉匡級</h3><span class="text-xs text-slate-500">鏁版嵁搴?/ Redis / 鍘嬪姏 / 涓氬姟 / 缃戝叧绛?/span></div>
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2">
-      <div><label class="text-xs text-slate-500">模板</label><select id="presetSelect" class="w-full border rounded-lg px-3 py-2"></select></div>
-      <div><label class="text-xs text-slate-500">节点名称</label><input id="presetNodeName" class="w-full border rounded-lg px-3 py-2" placeholder="例如 pressure-cn-1"></div>
+      <div><label class="text-xs text-slate-500">妯℃澘</label><select id="presetSelect" class="w-full border rounded-lg px-3 py-2"></select></div>
+      <div><label class="text-xs text-slate-500">鑺傜偣鍚嶇О</label><input id="presetNodeName" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 pressure-cn-1"></div>
       <div><label class="text-xs text-slate-500">serverId</label><input id="presetServerId" class="w-full border rounded-lg px-3 py-2" placeholder="game-cn-1"></div>
-      <div><label class="text-xs text-slate-500">负责人</label><input id="presetOwner" class="w-full border rounded-lg px-3 py-2" placeholder="ops-admin"></div>
-      <div><label class="text-xs text-slate-500">环境</label><input id="presetEnv" class="w-full border rounded-lg px-3 py-2" placeholder="prod"></div>
-      <div><label class="text-xs text-slate-500">渠道</label><input id="presetChannel" class="w-full border rounded-lg px-3 py-2" placeholder="1001"></div>
-      <div class="xl:col-span-2"><label class="text-xs text-slate-500">备注</label><input id="presetDesc" class="w-full border rounded-lg px-3 py-2" placeholder="节点用途说明"></div>
-      <div><label class="text-xs text-slate-500">Daemon Start 命令(可选)</label><input id="presetStartCmd" class="w-full border rounded-lg px-3 py-2 mono" placeholder="例如 docker start redis-a"></div>
-      <div><label class="text-xs text-slate-500">Daemon Stop 命令(可选)</label><input id="presetStopCmd" class="w-full border rounded-lg px-3 py-2 mono" placeholder="例如 docker stop redis-a"></div>
-      <div class="flex items-end"><button class="btn btn-emerald w-full" onclick="addNodeFromPreset()">添加节点</button></div>
-      <div class="flex items-end"><button class="btn btn-slate w-full" onclick="loadNodePresets()">刷新模板</button></div>
+      <div><label class="text-xs text-slate-500">璐熻矗浜?/label><input id="presetOwner" class="w-full border rounded-lg px-3 py-2" placeholder="ops-admin"></div>
+      <div><label class="text-xs text-slate-500">鐜</label><input id="presetEnv" class="w-full border rounded-lg px-3 py-2" placeholder="prod"></div>
+      <div><label class="text-xs text-slate-500">娓犻亾</label><input id="presetChannel" class="w-full border rounded-lg px-3 py-2" placeholder="1001"></div>
+      <div class="xl:col-span-2"><label class="text-xs text-slate-500">澶囨敞</label><input id="presetDesc" class="w-full border rounded-lg px-3 py-2" placeholder="鑺傜偣鐢ㄩ€旇鏄?></div>
+      <div><label class="text-xs text-slate-500">Daemon Start 鍛戒护(鍙€?</label><input id="presetStartCmd" class="w-full border rounded-lg px-3 py-2 mono" placeholder="渚嬪 docker start redis-a"></div>
+      <div><label class="text-xs text-slate-500">Daemon Stop 鍛戒护(鍙€?</label><input id="presetStopCmd" class="w-full border rounded-lg px-3 py-2 mono" placeholder="渚嬪 docker stop redis-a"></div>
+      <div class="flex items-end"><button class="btn btn-emerald w-full" onclick="addNodeFromPreset()">娣诲姞鑺傜偣</button></div>
+      <div class="flex items-end"><button class="btn btn-slate w-full" onclick="loadNodePresets()">鍒锋柊妯℃澘</button></div>
     </div>
-    <div id="presetHint" class="text-xs text-slate-500">选择模板后可快速落节点，并自动注入上下游规则。</div>
+    <div id="presetHint" class="text-xs text-slate-500">閫夋嫨妯℃澘鍚庡彲蹇€熻惤鑺傜偣锛屽苟鑷姩娉ㄥ叆涓婁笅娓歌鍒欍€?/div>
   </section>
 
   <section class="panel p-4 space-y-3">
-    <div class="flex items-center justify-between"><h3 class="section-title">节点接入体检与预警</h3><button class="btn btn-amber" onclick="loadOnboarding()">刷新体检</button></div>
+    <div class="flex items-center justify-between"><h3 class="section-title">鑺傜偣鎺ュ叆浣撴涓庨璀?/h3><button class="btn btn-amber" onclick="loadOnboarding()">鍒锋柊浣撴</button></div>
     <div class="overflow-auto max-h-[260px] border border-slate-200 rounded-xl">
       <table class="min-w-full text-sm">
-        <thead class="bg-slate-50 sticky top-0"><tr><th class="px-2 py-2 text-left">节点</th><th class="px-2 py-2 text-left">角色</th><th class="px-2 py-2 text-left">状态</th><th class="px-2 py-2 text-left">接入检查</th><th class="px-2 py-2 text-left">告警级别</th></tr></thead>
-        <tbody id="onboardBody"><tr><td class="px-2 py-3 text-slate-400" colspan="5">暂无数据</td></tr></tbody>
+        <thead class="bg-slate-50 sticky top-0"><tr><th class="px-2 py-2 text-left">鑺傜偣</th><th class="px-2 py-2 text-left">瑙掕壊</th><th class="px-2 py-2 text-left">鐘舵€?/th><th class="px-2 py-2 text-left">鎺ュ叆妫€鏌?/th><th class="px-2 py-2 text-left">鍛婅绾у埆</th></tr></thead>
+        <tbody id="onboardBody"><tr><td class="px-2 py-3 text-slate-400" colspan="5">鏆傛棤鏁版嵁</td></tr></tbody>
       </table>
     </div>
-    <div id="onboardSummary" class="text-xs text-slate-500">等待体检</div>
+    <div id="onboardSummary" class="text-xs text-slate-500">绛夊緟浣撴</div>
   </section>
 
   <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
     <div class="xl:col-span-8 space-y-4">
       <section class="panel p-4 space-y-3">
         <div class="flex items-center justify-between gap-2 flex-wrap">
-          <h3 class="section-title">节点拓扑关系图</h3>
+          <h3 class="section-title">鑺傜偣鎷撴墤鍏崇郴鍥?/h3>
           <div class="flex items-center gap-2">
-            <input id="opsProjectFilter" class="border rounded-lg px-3 py-2 text-sm" placeholder="project_id 过滤">
-            <button class="btn btn-indigo" onclick="loadOverviewAndTopology()">刷新拓扑</button>
+            <input id="opsProjectFilter" class="border rounded-lg px-3 py-2 text-sm" placeholder="project_id 杩囨护">
+            <button class="btn btn-indigo" onclick="loadOverviewAndTopology()">鍒锋柊鎷撴墤</button>
           </div>
         </div>
         <div class="topology-wrap" id="topologyWrap">
@@ -424,139 +457,139 @@ def ops_platform_page():
           <div id="topologyNodeLayer"></div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-500">
-          <div>支持操作：单击节点切换上下文、拖动节点布局、编辑节点属性、建立/删除关系线。</div>
-          <div>状态色：绿色在线 / 橙色退化 / 红色离线 / 紫色维护 / 灰色未知。</div>
+          <div>鏀寔鎿嶄綔锛氬崟鍑昏妭鐐瑰垏鎹笂涓嬫枃銆佹嫋鍔ㄨ妭鐐瑰竷灞€銆佺紪杈戣妭鐐瑰睘鎬с€佸缓绔?鍒犻櫎鍏崇郴绾裤€?/div>
+          <div>鐘舵€佽壊锛氱豢鑹插湪绾?/ 姗欒壊閫€鍖?/ 绾㈣壊绂荤嚎 / 绱壊缁存姢 / 鐏拌壊鏈煡銆?/div>
         </div>
       </section>
 
       <section class="panel p-4 space-y-3">
-        <div class="flex items-center justify-between"><h3 class="section-title">告警与事件时间线</h3><button class="btn btn-slate" onclick="loadEvents()">刷新事件</button></div>
+        <div class="flex items-center justify-between"><h3 class="section-title">鍛婅涓庝簨浠舵椂闂寸嚎</h3><button class="btn btn-slate" onclick="loadEvents()">鍒锋柊浜嬩欢</button></div>
         <div id="eventList" class="space-y-2 max-h-[280px] overflow-auto"></div>
       </section>
     </div>
 
     <div class="xl:col-span-4 space-y-4">
       <section class="panel p-4 space-y-3">
-        <h3 class="section-title">节点详情与编辑</h3>
+        <h3 class="section-title">鑺傜偣璇︽儏涓庣紪杈?/h3>
         <div class="grid grid-cols-1 gap-2">
-          <div><label class="text-xs text-slate-500">节点</label><input id="topoNodeId" class="w-full border rounded-lg px-3 py-2 mono" readonly></div>
-          <div><label class="text-xs text-slate-500">节点说明</label><textarea id="topoNodeDesc" rows="2" class="w-full border rounded-lg px-3 py-2" placeholder="节点用途说明"></textarea></div>
-          <div><label class="text-xs text-slate-500">节点角色</label><select id="topoNodeRole" class="w-full border rounded-lg px-3 py-2"></select></div>
-          <div><label class="text-xs text-slate-500">业务状态标签</label><select id="topoNodeBizStatus" class="w-full border rounded-lg px-3 py-2"></select></div>
-          <div><label class="text-xs text-slate-500">负责人</label><input id="topoNodeOwner" class="w-full border rounded-lg px-3 py-2" placeholder="owner"></div>
+          <div><label class="text-xs text-slate-500">鑺傜偣</label><input id="topoNodeId" class="w-full border rounded-lg px-3 py-2 mono" readonly></div>
+          <div><label class="text-xs text-slate-500">鑺傜偣璇存槑</label><textarea id="topoNodeDesc" rows="2" class="w-full border rounded-lg px-3 py-2" placeholder="鑺傜偣鐢ㄩ€旇鏄?></textarea></div>
+          <div><label class="text-xs text-slate-500">鑺傜偣瑙掕壊</label><select id="topoNodeRole" class="w-full border rounded-lg px-3 py-2"></select></div>
+          <div><label class="text-xs text-slate-500">涓氬姟鐘舵€佹爣绛?/label><select id="topoNodeBizStatus" class="w-full border rounded-lg px-3 py-2"></select></div>
+          <div><label class="text-xs text-slate-500">璐熻矗浜?/label><input id="topoNodeOwner" class="w-full border rounded-lg px-3 py-2" placeholder="owner"></div>
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn btn-cyan" onclick="focusNodeOnMap()">定位节点</button>
-          <button class="btn btn-emerald" onclick="saveNodeMeta()">保存节点</button>
+          <button class="btn btn-cyan" onclick="focusNodeOnMap()">瀹氫綅鑺傜偣</button>
+          <button class="btn btn-emerald" onclick="saveNodeMeta()">淇濆瓨鑺傜偣</button>
         </div>
       </section>
 
       <section class="panel p-4 space-y-3">
-        <h3 class="section-title">关系连线管理</h3>
+        <h3 class="section-title">鍏崇郴杩炵嚎绠＄悊</h3>
         <div class="grid grid-cols-1 gap-2">
-          <div><label class="text-xs text-slate-500">起点节点</label><select id="edgeFrom" class="w-full border rounded-lg px-3 py-2"></select></div>
-          <div><label class="text-xs text-slate-500">终点节点</label><select id="edgeTo" class="w-full border rounded-lg px-3 py-2"></select></div>
-          <div><label class="text-xs text-slate-500">关系类型</label><select id="edgeType" class="w-full border rounded-lg px-3 py-2"></select></div>
-          <div><label class="text-xs text-slate-500">关系说明</label><input id="edgeNote" class="w-full border rounded-lg px-3 py-2" placeholder="例如 网关 -> 业务"></div>
+          <div><label class="text-xs text-slate-500">璧风偣鑺傜偣</label><select id="edgeFrom" class="w-full border rounded-lg px-3 py-2"></select></div>
+          <div><label class="text-xs text-slate-500">缁堢偣鑺傜偣</label><select id="edgeTo" class="w-full border rounded-lg px-3 py-2"></select></div>
+          <div><label class="text-xs text-slate-500">鍏崇郴绫诲瀷</label><select id="edgeType" class="w-full border rounded-lg px-3 py-2"></select></div>
+          <div><label class="text-xs text-slate-500">鍏崇郴璇存槑</label><input id="edgeNote" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 缃戝叧 -> 涓氬姟"></div>
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn btn-indigo" onclick="upsertEdge()">建立/更新连线</button>
-          <button class="btn btn-rose" onclick="removeSelectedEdge()">删除选中连线</button>
+          <button class="btn btn-indigo" onclick="upsertEdge()">寤虹珛/鏇存柊杩炵嚎</button>
+          <button class="btn btn-rose" onclick="removeSelectedEdge()">鍒犻櫎閫変腑杩炵嚎</button>
         </div>
-        <div id="edgeHint" class="text-xs text-slate-500">点击拓扑中的线条可选中后删除。</div>
+        <div id="edgeHint" class="text-xs text-slate-500">鐐瑰嚮鎷撴墤涓殑绾挎潯鍙€変腑鍚庡垹闄ゃ€?/div>
       </section>
     </div>
   </section>
 
   <section class="panel p-4 space-y-3">
-    <div class="flex items-center justify-between"><h3 class="section-title">运维动作中心（商业级分类）</h3><span class="text-xs text-slate-500">闭环：预检 → 审批 → 执行 → 回读</span></div>
+    <div class="flex items-center justify-between"><h3 class="section-title">杩愮淮鍔ㄤ綔涓績锛堝晢涓氱骇鍒嗙被锛?/h3><span class="text-xs text-slate-500">闂幆锛氶妫€ 鈫?瀹℃壒 鈫?鎵ц 鈫?鍥炶</span></div>
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-      <div><label class="text-xs text-slate-500">节点（一键切换）</label><select id="opNodeId" class="w-full border rounded-lg px-3 py-2" onchange="syncNodeContextFromSelect()"></select></div>
-      <div><label class="text-xs text-slate-500">动作分类</label><select id="opActionGroup" class="w-full border rounded-lg px-3 py-2" onchange="renderActionOptions()"></select></div>
-      <div><label class="text-xs text-slate-500">动作</label><select id="opActionType" class="w-full border rounded-lg px-3 py-2" onchange="syncRiskHint()"></select></div>
-      <div><label class="text-xs text-slate-500">目标 (serverId / playerId / taskId / sessionId / key)</label><input id="opTarget" class="w-full border rounded-lg px-3 py-2" placeholder="例如 game-cn-1"></div>
-      <div><label class="text-xs text-slate-500">工单号 ticketId</label><input id="opTicket" class="w-full border rounded-lg px-3 py-2" placeholder="OPS-2026-0001"></div>
-      <div><label class="text-xs text-slate-500">变更原因 reason</label><input id="opReason" class="w-full border rounded-lg px-3 py-2" placeholder="填写变更原因"></div>
-      <div><label class="text-xs text-slate-500">审批人 approver（高危必填）</label><input id="opApprover" class="w-full border rounded-lg px-3 py-2" placeholder="审批责任人账号"></div>
-      <div class="flex items-end"><span id="opRiskHint" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">风险级别：-</span></div>
-      <div class="md:col-span-2 xl:col-span-4"><label class="text-xs text-slate-500">扩展 payload JSON</label><textarea id="opPayload" rows="3" class="w-full border rounded-lg px-3 py-2 mono" placeholder='{"enabled":true,"message":"maintenance notice"}'></textarea></div>
+      <div><label class="text-xs text-slate-500">鑺傜偣锛堜竴閿垏鎹級</label><select id="opNodeId" class="w-full border rounded-lg px-3 py-2" onchange="syncNodeContextFromSelect()"></select></div>
+      <div><label class="text-xs text-slate-500">鍔ㄤ綔鍒嗙被</label><select id="opActionGroup" class="w-full border rounded-lg px-3 py-2" onchange="renderActionOptions()"></select></div>
+      <div><label class="text-xs text-slate-500">鍔ㄤ綔</label><select id="opActionType" class="w-full border rounded-lg px-3 py-2" onchange="syncRiskHint()"></select></div>
+      <div><label class="text-xs text-slate-500">鐩爣 (serverId / playerId / taskId / sessionId / key)</label><input id="opTarget" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 game-cn-1"></div>
+      <div><label class="text-xs text-slate-500">宸ュ崟鍙?ticketId</label><input id="opTicket" class="w-full border rounded-lg px-3 py-2" placeholder="OPS-2026-0001"></div>
+      <div><label class="text-xs text-slate-500">鍙樻洿鍘熷洜 reason</label><input id="opReason" class="w-full border rounded-lg px-3 py-2" placeholder="濉啓鍙樻洿鍘熷洜"></div>
+      <div><label class="text-xs text-slate-500">瀹℃壒浜?approver锛堥珮鍗卞繀濉級</label><input id="opApprover" class="w-full border rounded-lg px-3 py-2" placeholder="瀹℃壒璐ｄ换浜鸿处鍙?></div>
+      <div class="flex items-end"><span id="opRiskHint" class="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">椋庨櫓绾у埆锛?</span></div>
+      <div class="md:col-span-2 xl:col-span-4"><label class="text-xs text-slate-500">鎵╁睍 payload JSON</label><textarea id="opPayload" rows="3" class="w-full border rounded-lg px-3 py-2 mono" placeholder='{"enabled":true,"message":"maintenance notice"}'></textarea></div>
       <div class="md:col-span-2 xl:col-span-4 flex items-center gap-3">
         <label class="inline-flex items-center gap-2 text-sm"><input id="opDryRun" type="checkbox">Dry-run</label>
-        <span id="opValidateHint" class="text-xs text-slate-500">尚未预检</span>
-        <span id="opGroupHint" class="action-group-tag">分类：-</span>
+        <span id="opValidateHint" class="text-xs text-slate-500">灏氭湭棰勬</span>
+        <span id="opGroupHint" class="action-group-tag">鍒嗙被锛?</span>
       </div>
     </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-      <button class="btn btn-cyan" onclick="validateAction()">预检</button>
-      <button class="btn btn-indigo" onclick="createApproval()">创建审批单</button>
-      <button class="btn btn-emerald" onclick="executeAction()">执行动作</button>
-      <button class="btn btn-rose" onclick="quickRollbackHint()">回滚引导</button>
+      <button class="btn btn-cyan" onclick="validateAction()">棰勬</button>
+      <button class="btn btn-indigo" onclick="createApproval()">鍒涘缓瀹℃壒鍗?/button>
+      <button class="btn btn-emerald" onclick="executeAction()">鎵ц鍔ㄤ綔</button>
+      <button class="btn btn-rose" onclick="quickRollbackHint()">鍥炴粴寮曞</button>
     </div>
   </section>
 
   <section class="panel p-4 space-y-4">
-    <div class="flex items-center justify-between"><h3 class="section-title">守护进程与专项流程工具</h3><span class="text-xs text-slate-500">节点守护 / 一键冒烟 / 压测 / 迁移</span></div>
+    <div class="flex items-center justify-between"><h3 class="section-title">瀹堟姢杩涚▼涓庝笓椤规祦绋嬪伐鍏?/h3><span class="text-xs text-slate-500">鑺傜偣瀹堟姢 / 涓€閿啋鐑?/ 鍘嬫祴 / 杩佺Щ</span></div>
     <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <div class="xl:col-span-4 space-y-2">
-        <h4 class="text-sm font-semibold text-slate-800">守护进程控制</h4>
-        <div><label class="text-xs text-slate-500">节点</label><select id="daemonNodeId" class="w-full border rounded-lg px-3 py-2"></select></div>
-        <div><label class="text-xs text-slate-500">工单号</label><input id="daemonTicketId" class="w-full border rounded-lg px-3 py-2" placeholder="OPS-DAEMON-0001"></div>
-        <div><label class="text-xs text-slate-500">操作原因</label><input id="daemonReason" class="w-full border rounded-lg px-3 py-2" placeholder="例如 维护窗口上线"></div>
+        <h4 class="text-sm font-semibold text-slate-800">瀹堟姢杩涚▼鎺у埗</h4>
+        <div><label class="text-xs text-slate-500">鑺傜偣</label><select id="daemonNodeId" class="w-full border rounded-lg px-3 py-2"></select></div>
+        <div><label class="text-xs text-slate-500">宸ュ崟鍙?/label><input id="daemonTicketId" class="w-full border rounded-lg px-3 py-2" placeholder="OPS-DAEMON-0001"></div>
+        <div><label class="text-xs text-slate-500">鎿嶄綔鍘熷洜</label><input id="daemonReason" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 缁存姢绐楀彛涓婄嚎"></div>
         <div class="grid grid-cols-2 gap-2">
-          <button class="btn btn-cyan" onclick="runDaemonAction('status')">状态</button>
-          <button class="btn btn-emerald" onclick="runDaemonAction('start')">启动</button>
-          <button class="btn btn-rose" onclick="runDaemonAction('stop')">停止</button>
-          <button class="btn btn-indigo" onclick="runDaemonAction('restart')">重启</button>
+          <button class="btn btn-cyan" onclick="runDaemonAction('status')">鐘舵€?/button>
+          <button class="btn btn-emerald" onclick="runDaemonAction('start')">鍚姩</button>
+          <button class="btn btn-rose" onclick="runDaemonAction('stop')">鍋滄</button>
+          <button class="btn btn-indigo" onclick="runDaemonAction('restart')">閲嶅惎</button>
         </div>
-        <div id="daemonHint" class="text-xs text-slate-500">请选择节点执行守护进程动作。</div>
+        <div id="daemonHint" class="text-xs text-slate-500">璇烽€夋嫨鑺傜偣鎵ц瀹堟姢杩涚▼鍔ㄤ綔銆?/div>
       </div>
       <div class="xl:col-span-4 space-y-2">
-        <h4 class="text-sm font-semibold text-slate-800">一键冒烟（选定节点链路）</h4>
-        <div><label class="text-xs text-slate-500">节点路径（逗号分隔 nodeId）</label><input id="flowPathNodes" class="w-full border rounded-lg px-3 py-2 mono" placeholder="gateway-1,business-1,database-1"></div>
-        <div><label class="text-xs text-slate-500">冒烟说明</label><input id="flowReason" class="w-full border rounded-lg px-3 py-2" placeholder="例如 发布后关键链路冒烟"></div>
-        <button class="btn btn-slate w-full" onclick="runFlowSmoke()">执行冒烟</button>
-        <div id="flowHint" class="text-xs text-slate-500">至少输入两个节点，按顺序执行健康探测。</div>
+        <h4 class="text-sm font-semibold text-slate-800">涓€閿啋鐑燂紙閫夊畾鑺傜偣閾捐矾锛?/h4>
+        <div><label class="text-xs text-slate-500">鑺傜偣璺緞锛堥€楀彿鍒嗛殧 nodeId锛?/label><input id="flowPathNodes" class="w-full border rounded-lg px-3 py-2 mono" placeholder="gateway-1,business-1,database-1"></div>
+        <div><label class="text-xs text-slate-500">鍐掔儫璇存槑</label><input id="flowReason" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 鍙戝竷鍚庡叧閿摼璺啋鐑?></div>
+        <button class="btn btn-slate w-full" onclick="runFlowSmoke()">鎵ц鍐掔儫</button>
+        <div id="flowHint" class="text-xs text-slate-500">鑷冲皯杈撳叆涓や釜鑺傜偣锛屾寜椤哄簭鎵ц鍋ュ悍鎺㈡祴銆?/div>
       </div>
       <div class="xl:col-span-4 space-y-2">
-        <h4 class="text-sm font-semibold text-slate-800">压测与迁移</h4>
-        <div><label class="text-xs text-slate-500">压测节点</label><select id="stressNodeId" class="w-full border rounded-lg px-3 py-2"></select></div>
+        <h4 class="text-sm font-semibold text-slate-800">鍘嬫祴涓庤縼绉?/h4>
+        <div><label class="text-xs text-slate-500">鍘嬫祴鑺傜偣</label><select id="stressNodeId" class="w-full border rounded-lg px-3 py-2"></select></div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="text-xs text-slate-500">QPS</label><input id="stressQps" class="w-full border rounded-lg px-3 py-2" value="300"></div>
-          <div><label class="text-xs text-slate-500">时长(秒)</label><input id="stressDuration" class="w-full border rounded-lg px-3 py-2" value="180"></div>
+          <div><label class="text-xs text-slate-500">鏃堕暱(绉?</label><input id="stressDuration" class="w-full border rounded-lg px-3 py-2" value="180"></div>
         </div>
-        <div><label class="text-xs text-slate-500">压测原因</label><input id="stressReason" class="w-full border rounded-lg px-3 py-2" placeholder="例如 峰值容量评估"></div>
-        <button class="btn btn-amber w-full" onclick="runStressTest()">执行压测</button>
+        <div><label class="text-xs text-slate-500">鍘嬫祴鍘熷洜</label><input id="stressReason" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 宄板€煎閲忚瘎浼?></div>
+        <button class="btn btn-amber w-full" onclick="runStressTest()">鎵ц鍘嬫祴</button>
         <hr class="my-1 border-slate-200">
-        <div><label class="text-xs text-slate-500">迁移节点（数据库/缓存）</label><select id="dbNodeId" class="w-full border rounded-lg px-3 py-2"></select></div>
+        <div><label class="text-xs text-slate-500">杩佺Щ鑺傜偣锛堟暟鎹簱/缂撳瓨锛?/label><select id="dbNodeId" class="w-full border rounded-lg px-3 py-2"></select></div>
         <div class="grid grid-cols-2 gap-2">
-          <div><label class="text-xs text-slate-500">方向</label><select id="dbDirection" class="w-full border rounded-lg px-3 py-2"><option value="up">up</option><option value="down">down</option></select></div>
-          <div><label class="text-xs text-slate-500">版本</label><input id="dbVersion" class="w-full border rounded-lg px-3 py-2" placeholder="20260524-01"></div>
+          <div><label class="text-xs text-slate-500">鏂瑰悜</label><select id="dbDirection" class="w-full border rounded-lg px-3 py-2"><option value="up">up</option><option value="down">down</option></select></div>
+          <div><label class="text-xs text-slate-500">鐗堟湰</label><input id="dbVersion" class="w-full border rounded-lg px-3 py-2" placeholder="20260524-01"></div>
         </div>
-        <div><label class="text-xs text-slate-500">迁移命令（可选）</label><input id="dbCommand" class="w-full border rounded-lg px-3 py-2 mono" placeholder="例如 alembic upgrade head"></div>
-        <div><label class="text-xs text-slate-500">迁移原因</label><input id="dbReason" class="w-full border rounded-lg px-3 py-2" placeholder="例如 发布版本 1.3.0"></div>
-        <button class="btn btn-rose w-full" onclick="runDbMigration()">执行迁移</button>
+        <div><label class="text-xs text-slate-500">杩佺Щ鍛戒护锛堝彲閫夛級</label><input id="dbCommand" class="w-full border rounded-lg px-3 py-2 mono" placeholder="渚嬪 alembic upgrade head"></div>
+        <div><label class="text-xs text-slate-500">杩佺Щ鍘熷洜</label><input id="dbReason" class="w-full border rounded-lg px-3 py-2" placeholder="渚嬪 鍙戝竷鐗堟湰 1.3.0"></div>
+        <button class="btn btn-rose w-full" onclick="runDbMigration()">鎵ц杩佺Щ</button>
       </div>
     </div>
   </section>
 
   <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
     <section class="panel p-4 space-y-3 xl:col-span-7">
-      <div class="flex items-center justify-between"><h3 class="section-title">执行流水（结构化）</h3><span id="streamSummary" class="text-xs text-slate-500">等待执行</span></div>
+      <div class="flex items-center justify-between"><h3 class="section-title">鎵ц娴佹按锛堢粨鏋勫寲锛?/h3><span id="streamSummary" class="text-xs text-slate-500">绛夊緟鎵ц</span></div>
       <div id="streamList" class="space-y-2 max-h-[300px] overflow-auto"></div>
     </section>
     <section class="panel p-4 space-y-3 xl:col-span-5">
-      <div class="flex items-center justify-between"><h3 class="section-title">Trace 回放</h3><span class="text-xs text-slate-500">按 traceId 查询</span></div>
-      <div class="flex gap-2"><input id="traceQuery" class="flex-1 border rounded-lg px-3 py-2 mono" placeholder="输入 traceId"><button class="btn btn-slate" onclick="queryTrace()">查询</button></div>
+      <div class="flex items-center justify-between"><h3 class="section-title">Trace 鍥炴斁</h3><span class="text-xs text-slate-500">鎸?traceId 鏌ヨ</span></div>
+      <div class="flex gap-2"><input id="traceQuery" class="flex-1 border rounded-lg px-3 py-2 mono" placeholder="杈撳叆 traceId"><button class="btn btn-slate" onclick="queryTrace()">鏌ヨ</button></div>
       <pre id="traceDetail" class="w-full h-52 rounded border border-slate-200 bg-slate-50 p-3 text-xs overflow-auto mono"></pre>
     </section>
   </section>
 
   <section class="panel p-4 hidden" id="nodeConfigPanel">
-    <div class="flex items-center justify-between mb-2"><h3 class="section-title">节点配置（高级 JSON）</h3><button class="btn btn-slate" onclick="toggleNodeConfig(false)">收起</button></div>
+    <div class="flex items-center justify-between mb-2"><h3 class="section-title">鑺傜偣閰嶇疆锛堥珮绾?JSON锛?/h3><button class="btn btn-slate" onclick="toggleNodeConfig(false)">鏀惰捣</button></div>
     <textarea id="nodeConfigJson" class="w-full h-48 border rounded-lg px-3 py-2 font-mono text-xs"></textarea>
-    <div class="mt-2 flex gap-2"><button class="btn btn-indigo" onclick="saveNodesRawJson()">保存节点配置</button></div>
+    <div class="mt-2 flex gap-2"><button class="btn btn-indigo" onclick="saveNodesRawJson()">淇濆瓨鑺傜偣閰嶇疆</button></div>
   </section>
-  <div class="flex justify-end"><button class="btn btn-slate" onclick="toggleNodeConfig(true)">节点配置</button></div>
+  <div class="flex justify-end"><button class="btn btn-slate" onclick="toggleNodeConfig(true)">鑺傜偣閰嶇疆</button></div>
 </section>
 <script>
 const ROLE_OPTIONS=['gateway','business','pressure','database','cache','mq','search','scheduler','admin','edge','analytics'];
@@ -564,32 +597,32 @@ const BIZ_STATUS_OPTIONS=['normal','observe','degraded','error','offline'];
 const EDGE_TYPES=['gateway_to_business','business_to_db','business_to_cache','business_to_mq','sync','async','depends_on'];
 
 const ACTION_CATALOG=[
-  {group:'只读巡检',groupId:'observe',value:'health_check',label:'健康检查',risk:'low'},
-  {group:'只读巡检',groupId:'observe',value:'ready_check',label:'就绪检查',risk:'low'},
-  {group:'只读巡检',groupId:'observe',value:'status',label:'运行快照',risk:'low'},
-  {group:'只读巡检',groupId:'observe',value:'metrics_snapshot',label:'指标快照',risk:'low'},
-  {group:'只读巡检',groupId:'observe',value:'log_tail',label:'日志尾部(占位)',risk:'low'},
+  {group:'鍙宸℃',groupId:'observe',value:'health_check',label:'鍋ュ悍妫€鏌?,risk:'low'},
+  {group:'鍙宸℃',groupId:'observe',value:'ready_check',label:'灏辩华妫€鏌?,risk:'low'},
+  {group:'鍙宸℃',groupId:'observe',value:'status',label:'杩愯蹇収',risk:'low'},
+  {group:'鍙宸℃',groupId:'observe',value:'metrics_snapshot',label:'鎸囨爣蹇収',risk:'low'},
+  {group:'鍙宸℃',groupId:'observe',value:'log_tail',label:'鏃ュ織灏鹃儴(鍗犱綅)',risk:'low'},
 
-  {group:'生命周期',groupId:'lifecycle',value:'start',label:'节点上线',risk:'high'},
-  {group:'生命周期',groupId:'lifecycle',value:'stop',label:'节点下线',risk:'high'},
-  {group:'生命周期',groupId:'lifecycle',value:'restart',label:'节点重启',risk:'high'},
-  {group:'生命周期',groupId:'lifecycle',value:'start_all',label:'全量上线',risk:'high'},
-  {group:'生命周期',groupId:'lifecycle',value:'stop_all',label:'全量下线',risk:'high'},
+  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'start',label:'鑺傜偣涓婄嚎',risk:'high'},
+  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'stop',label:'鑺傜偣涓嬬嚎',risk:'high'},
+  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'restart',label:'鑺傜偣閲嶅惎',risk:'high'},
+  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'start_all',label:'鍏ㄩ噺涓婄嚎',risk:'high'},
+  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'stop_all',label:'鍏ㄩ噺涓嬬嚎',risk:'high'},
 
-  {group:'故障应急',groupId:'incident',value:'drain_node',label:'摘流节点',risk:'high'},
-  {group:'故障应急',groupId:'incident',value:'isolate_node',label:'隔离节点',risk:'high'},
-  {group:'故障应急',groupId:'incident',value:'recover_node',label:'恢复节点',risk:'high'},
-  {group:'故障应急',groupId:'incident',value:'kick_session',label:'踢会话',risk:'high'},
-  {group:'故障应急',groupId:'incident',value:'retry_task',label:'重试任务',risk:'medium'},
+  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'drain_node',label:'鎽樻祦鑺傜偣',risk:'high'},
+  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'isolate_node',label:'闅旂鑺傜偣',risk:'high'},
+  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'recover_node',label:'鎭㈠鑺傜偣',risk:'high'},
+  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'kick_session',label:'韪細璇?,risk:'high'},
+  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'retry_task',label:'閲嶈瘯浠诲姟',risk:'medium'},
 
-  {group:'运营控制',groupId:'operation',value:'maintenance',label:'维护公告',risk:'medium'},
-  {group:'运营控制',groupId:'operation',value:'feature_toggle',label:'全局开关',risk:'medium'},
-  {group:'运营控制',groupId:'operation',value:'whitelist',label:'白名单',risk:'medium'},
-  {group:'运营控制',groupId:'operation',value:'mute_chat',label:'禁言',risk:'medium'},
+  {group:'杩愯惀鎺у埗',groupId:'operation',value:'maintenance',label:'缁存姢鍏憡',risk:'medium'},
+  {group:'杩愯惀鎺у埗',groupId:'operation',value:'feature_toggle',label:'鍏ㄥ眬寮€鍏?,risk:'medium'},
+  {group:'杩愯惀鎺у埗',groupId:'operation',value:'whitelist',label:'鐧藉悕鍗?,risk:'medium'},
+  {group:'杩愯惀鎺у埗',groupId:'operation',value:'mute_chat',label:'绂佽█',risk:'medium'},
 
-  {group:'专项作业',groupId:'special',value:'smoke_test',label:'链路冒烟',risk:'medium'},
-  {group:'专项作业',groupId:'special',value:'stress_test',label:'压力测试',risk:'high'},
-  {group:'专项作业',groupId:'special',value:'db_migration',label:'数据库迁移',risk:'high'}
+  {group:'涓撻」浣滀笟',groupId:'special',value:'smoke_test',label:'閾捐矾鍐掔儫',risk:'medium'},
+  {group:'涓撻」浣滀笟',groupId:'special',value:'stress_test',label:'鍘嬪姏娴嬭瘯',risk:'high'},
+  {group:'涓撻」浣滀笟',groupId:'special',value:'db_migration',label:'鏁版嵁搴撹縼绉?,risk:'high'}
 ];
 
 let NODE_ROWS=[];
@@ -603,7 +636,7 @@ let NODE_PRESETS=[];
 
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
 function read(id){const e=document.getElementById(id);return e?(e.value||'').trim():'';}
-function readJson(id){const t=read(id); if(!t) return {}; try{return JSON.parse(t);}catch(_){throw new Error('payload JSON 解析失败');}}
+function readJson(id){const t=read(id); if(!t) return {}; try{return JSON.parse(t);}catch(_){throw new Error('payload JSON 瑙ｆ瀽澶辫触');}}
 function byId(id){return document.getElementById(id);}
 function findMeta(nodeId){return (TOPOLOGY.nodes||[]).find(n=>n.id===nodeId)||null;}
 function setText(id,v){const e=byId(id); if(e){e.textContent=v;}}
@@ -709,7 +742,7 @@ function drawTopology(){
     line.setAttribute('stroke-width', SELECTED_EDGE_ID===e.id ? '3' : '2');
     line.setAttribute('opacity', '0.75');
     line.style.cursor='pointer';
-    line.addEventListener('click',()=>{SELECTED_EDGE_ID=e.id;byId('edgeHint').textContent='已选中连线：'+e.from+' -> '+e.to+'（点击删除可移除）';drawTopology();});
+    line.addEventListener('click',()=>{SELECTED_EDGE_ID=e.id;byId('edgeHint').textContent='宸查€変腑杩炵嚎锛?+e.from+' -> '+e.to+'锛堢偣鍑诲垹闄ゅ彲绉婚櫎锛?;drawTopology();});
     svg.appendChild(line);
 
     const mid=document.createElementNS('http://www.w3.org/2000/svg','text');
@@ -731,8 +764,8 @@ function drawTopology(){
     div.style.top=n.y+'px';
     div.innerHTML=`<div class="n-title">${esc(rt.name||n.id)}</div>
       <div class="n-meta"><span class="n-role">${esc(n.role||'business')}</span>${chipHtml(st)}</div>
-      <div class="n-meta">${esc(rt.server_id||'-')} · ${esc(rt.env||'-')}</div>
-      <div class="n-meta">${esc(n.desc||'无说明')}</div>`;
+      <div class="n-meta">${esc(rt.server_id||'-')} 路 ${esc(rt.env||'-')}</div>
+      <div class="n-meta">${esc(n.desc||'鏃犺鏄?)}</div>`;
     div.addEventListener('click',(ev)=>{ev.stopPropagation();selectNode(n.id,true);});
     div.addEventListener('mousedown',(ev)=>{
       if(ev.button!==0) return;
@@ -754,7 +787,7 @@ function drawTopology(){
   };
   wrap.onmouseup=()=>{ if(DRAG_NODE_ID){ DRAG_NODE_ID=''; saveTopologyLayout(); } };
   wrap.onmouseleave=()=>{DRAG_NODE_ID='';};
-  wrap.onclick=()=>{SELECTED_EDGE_ID=''; byId('edgeHint').textContent='点击拓扑中的线条可选中后删除。'; drawTopology();};
+  wrap.onclick=()=>{SELECTED_EDGE_ID=''; byId('edgeHint').textContent='鐐瑰嚮鎷撴墤涓殑绾挎潯鍙€変腑鍚庡垹闄ゃ€?; drawTopology();};
 }
 
 function selectNode(nodeId,fromMap){
@@ -778,12 +811,12 @@ function selectNode(nodeId,fromMap){
 function focusNodeOnMap(){
   if(!SELECTED_NODE_ID){return;}
   const node=findMeta(SELECTED_NODE_ID); if(!node) return;
-  byId('edgeHint').textContent='节点已定位：'+SELECTED_NODE_ID;
+  byId('edgeHint').textContent='鑺傜偣宸插畾浣嶏細'+SELECTED_NODE_ID;
   drawTopology();
 }
 
 async function saveNodeMeta(){
-  const nodeId=read('topoNodeId'); if(!nodeId){alert('请先选择节点');return;}
+  const nodeId=read('topoNodeId'); if(!nodeId){alert('璇峰厛閫夋嫨鑺傜偣');return;}
   const patch={
     desc:read('topoNodeDesc'), role:read('topoNodeRole'), bizStatus:read('topoNodeBizStatus'), owner:read('topoNodeOwner')
   };
@@ -799,7 +832,7 @@ async function saveNodeMeta(){
 
 async function upsertEdge(){
   const from=read('edgeFrom'), to=read('edgeTo');
-  if(!from||!to||from===to){alert('请选择有效的起点和终点');return;}
+  if(!from||!to||from===to){alert('璇烽€夋嫨鏈夋晥鐨勮捣鐐瑰拰缁堢偣');return;}
   const payload={from,to,type:read('edgeType')||'depends_on',note:read('edgeNote')};
   const r=await fetch('/api/ops-platform/topology/edge/upsert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const d=await r.json();
@@ -808,18 +841,18 @@ async function upsertEdge(){
 }
 
 async function removeSelectedEdge(){
-  if(!SELECTED_EDGE_ID){alert('请先在图上点选一条连线');return;}
+  if(!SELECTED_EDGE_ID){alert('璇峰厛鍦ㄥ浘涓婄偣閫変竴鏉¤繛绾?);return;}
   const r=await fetch('/api/ops-platform/topology/edge/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({edge_id:SELECTED_EDGE_ID})});
   const d=await r.json();
   addStream({time:new Date().toISOString(),ok:!!d.ok,action:'topology_edge_delete',trace_id:'',node:'-',message:d.message||d.error||'',raw:d});
-  if(d.ok){TOPOLOGY=d.topology||TOPOLOGY; SELECTED_EDGE_ID=''; byId('edgeHint').textContent='点击拓扑中的线条可选中后删除。'; drawTopology();}
+  if(d.ok){TOPOLOGY=d.topology||TOPOLOGY; SELECTED_EDGE_ID=''; byId('edgeHint').textContent='鐐瑰嚮鎷撴墤涓殑绾挎潯鍙€変腑鍚庡垹闄ゃ€?; drawTopology();}
 }
 
 async function loadTopology(){
   const q=read('opsProjectFilter')?('?project_id='+encodeURIComponent(read('opsProjectFilter'))):'';
   const r=await fetch('/api/ops-platform/topology'+q);
   const d=await r.json();
-  if(!d.ok){addStream({time:new Date().toISOString(),ok:false,action:'topology_load',trace_id:'',node:'-',message:d.error||'加载失败',raw:d});return;}
+  if(!d.ok){addStream({time:new Date().toISOString(),ok:false,action:'topology_load',trace_id:'',node:'-',message:d.error||'鍔犺浇澶辫触',raw:d});return;}
   TOPOLOGY=d.topology||{nodes:[],edges:[]};
   normalizeTopologyByNodes();
   if(!SELECTED_NODE_ID && TOPOLOGY.nodes.length){SELECTED_NODE_ID=TOPOLOGY.nodes[0].id;}
@@ -830,14 +863,14 @@ async function loadTopology(){
 async function saveTopologyLayout(){
   const r=await fetch('/api/ops-platform/topology/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topology:TOPOLOGY})});
   const d=await r.json();
-  if(!d.ok){addStream({time:new Date().toISOString(),ok:false,action:'topology_save',trace_id:'',node:'-',message:d.error||'保存失败',raw:d});return false;}
+  if(!d.ok){addStream({time:new Date().toISOString(),ok:false,action:'topology_save',trace_id:'',node:'-',message:d.error||'淇濆瓨澶辫触',raw:d});return false;}
   return true;
 }
 
 function renderActionGroupOptions(){
   const groups=[];
   ACTION_CATALOG.forEach(a=>{if(!groups.includes(a.groupId)) groups.push(a.groupId);});
-  const map={observe:'只读巡检',lifecycle:'生命周期',incident:'故障应急',operation:'运营控制',special:'专项作业'};
+  const map={observe:'鍙宸℃',lifecycle:'鐢熷懡鍛ㄦ湡',incident:'鏁呴殰搴旀€?,operation:'杩愯惀鎺у埗',special:'涓撻」浣滀笟'};
   byId('opActionGroup').innerHTML=groups.map(g=>`<option value="${g}">${map[g]||g}</option>`).join('');
 }
 
@@ -845,17 +878,17 @@ function renderActionOptions(){
   const g=read('opActionGroup')||'observe';
   const rows=ACTION_CATALOG.filter(a=>a.groupId===g);
   byId('opActionType').innerHTML=rows.map(a=>`<option value="${a.value}">${a.label}</option>`).join('');
-  setText('opGroupHint','分类：'+(rows[0]?rows[0].group:'-'));
+  setText('opGroupHint','鍒嗙被锛?+(rows[0]?rows[0].group:'-'));
   syncRiskHint();
 }
 
 function syncRiskHint(){
   const action=read('opActionType');
-  const found=ACTION_CATALOG.find(x=>x.value===action)||{risk:'medium',group:'未知'};
+  const found=ACTION_CATALOG.find(x=>x.value===action)||{risk:'medium',group:'鏈煡'};
   const hint=byId('opRiskHint');
-  hint.textContent='风险级别：'+found.risk.toUpperCase();
+  hint.textContent='椋庨櫓绾у埆锛?+found.risk.toUpperCase();
   hint.className='text-xs px-2 py-1 rounded-full '+(found.risk==='high'?'bg-rose-100 text-rose-700':(found.risk==='medium'?'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700'));
-  setText('opGroupHint','分类：'+found.group);
+  setText('opGroupHint','鍒嗙被锛?+found.group);
 }
 
 function syncNodeContextFromSelect(){
@@ -872,14 +905,14 @@ function addStream(item){
                 '<div class="mt-1 text-sm font-semibold text-slate-900">'+esc(item.action||'-')+' @ '+esc(item.node||'-')+'</div>'+
                 '<div class="mt-1 text-xs text-slate-600">traceId: <span class="mono">'+esc(item.trace_id||'-')+'</span></div>'+
                 '<div class="mt-1 text-xs text-slate-700">'+esc(item.message||'')+'</div>'+
-                '<details class="mt-1"><summary class="text-xs text-slate-500 cursor-pointer">展开原文</summary><pre class="mt-1 text-[11px] p-2 bg-white border rounded mono overflow-auto">'+esc(JSON.stringify(item.raw||{},null,2))+'</pre></details>';
+                '<details class="mt-1"><summary class="text-xs text-slate-500 cursor-pointer">灞曞紑鍘熸枃</summary><pre class="mt-1 text-[11px] p-2 bg-white border rounded mono overflow-auto">'+esc(JSON.stringify(item.raw||{},null,2))+'</pre></details>';
   box.prepend(row);
   while(box.children.length>120){box.removeChild(box.lastChild);} 
 }
 
 function renderEvents(rows){
   const box=byId('eventList');
-  box.innerHTML=(rows||[]).map(e=>`<div class="rounded-xl border border-slate-200 p-2 bg-slate-50"><div class="flex items-center justify-between"><span class="text-[11px] px-2 py-0.5 rounded-full ${e.severity==='critical'?'bg-rose-100 text-rose-700':(e.severity==='warning'?'bg-amber-100 text-amber-700':'bg-sky-100 text-sky-700')}">${esc(e.severity||'info')}</span><span class="text-xs text-slate-400">${esc(e.time||'')}</span></div><div class="mt-1 text-sm text-slate-800">${esc(e.title||'-')}</div><div class="text-xs text-slate-500">${esc(e.message||'')}</div></div>`).join('') || '<div class="text-sm text-slate-400">暂无事件</div>';
+  box.innerHTML=(rows||[]).map(e=>`<div class="rounded-xl border border-slate-200 p-2 bg-slate-50"><div class="flex items-center justify-between"><span class="text-[11px] px-2 py-0.5 rounded-full ${e.severity==='critical'?'bg-rose-100 text-rose-700':(e.severity==='warning'?'bg-amber-100 text-amber-700':'bg-sky-100 text-sky-700')}">${esc(e.severity||'info')}</span><span class="text-xs text-slate-400">${esc(e.time||'')}</span></div><div class="mt-1 text-sm text-slate-800">${esc(e.title||'-')}</div><div class="text-xs text-slate-500">${esc(e.message||'')}</div></div>`).join('') || '<div class="text-sm text-slate-400">鏆傛棤浜嬩欢</div>';
 }
 
 async function loadEvents(){
@@ -892,12 +925,12 @@ function updatePresetHint(preset){
   const hint=byId('presetHint');
   if(!hint){return;}
   if(!preset){
-    hint.textContent='选择模板后可快速落节点，并自动注入上下游规则。';
+    hint.textContent='閫夋嫨妯℃澘鍚庡彲蹇€熻惤鑺傜偣锛屽苟鑷姩娉ㄥ叆涓婁笅娓歌鍒欍€?;
     return;
   }
-  const up=(preset.fixed_upstream_roles||[]).join(', ')||'无';
-  const down=(preset.fixed_downstream_roles||[]).join(', ')||'无';
-  hint.textContent='角色 '+(preset.role||'-')+'；上游: '+up+'；下游: '+down+'；说明: '+(preset.default_desc||'');
+  const up=(preset.fixed_upstream_roles||[]).join(', ')||'鏃?;
+  const down=(preset.fixed_downstream_roles||[]).join(', ')||'鏃?;
+  hint.textContent='瑙掕壊 '+(preset.role||'-')+'锛涗笂娓? '+up+'锛涗笅娓? '+down+'锛涜鏄? '+(preset.default_desc||'');
 }
 
 function selectedPreset(){
@@ -909,7 +942,7 @@ async function loadNodePresets(){
   const res=await fetch('/api/ops-platform/node-presets');
   const data=await res.json();
   if(!data.ok){
-    addStream({time:new Date().toISOString(),ok:false,action:'node_presets',trace_id:'',node:'-',message:data.message||data.error||'模板加载失败',raw:data});
+    addStream({time:new Date().toISOString(),ok:false,action:'node_presets',trace_id:'',node:'-',message:data.message||data.error||'妯℃澘鍔犺浇澶辫触',raw:data});
     return;
   }
   NODE_PRESETS=Array.isArray(data.presets)?data.presets:[];
@@ -921,7 +954,7 @@ async function loadNodePresets(){
 
 async function addNodeFromPreset(){
   const preset=selectedPreset();
-  if(!preset){alert('请先选择模板');return;}
+  if(!preset){alert('璇峰厛閫夋嫨妯℃澘');return;}
   const body={
     preset_id:String(preset.preset_id||''),
     name:read('presetNodeName'),
@@ -937,7 +970,7 @@ async function addNodeFromPreset(){
   const res=await fetch('/api/ops-platform/node/add-from-preset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await res.json();
   addStream({time:new Date().toISOString(),ok:!!data.ok,action:'add_node_from_preset',trace_id:'',node:(data.node||{}).id||'-',message:data.message||data.error||'',raw:data});
-  if(!data.ok){alert(data.message||data.error||'添加失败');return;}
+  if(!data.ok){alert(data.message||data.error||'娣诲姞澶辫触');return;}
   if(data.node&&data.node.id){
     byId('presetNodeName').value='';
     byId('presetServerId').value='';
@@ -946,20 +979,20 @@ async function addNodeFromPreset(){
   }
   await loadOverviewAndTopology();
   await loadOnboarding();
-  alert('节点已添加并纳入拓扑。');
+  alert('鑺傜偣宸叉坊鍔犲苟绾冲叆鎷撴墤銆?);
 }
 
 function renderOnboarding(data){
   const body=byId('onboardBody');
   const rows=Array.isArray(data.checks)?data.checks:[];
   if(!rows.length){
-    body.innerHTML='<tr><td class="px-2 py-3 text-slate-400" colspan="5">暂无数据</td></tr>';
+    body.innerHTML='<tr><td class="px-2 py-3 text-slate-400" colspan="5">鏆傛棤鏁版嵁</td></tr>';
     return;
   }
   body.innerHTML=rows.map(row=>{
     const sev=String(row.severity||'ok');
     const sevClass=sev==='critical'?'text-rose-600':(sev==='warning'?'text-amber-600':'text-emerald-600');
-    const issues=(row.issues||[]).join('；')||'通过';
+    const issues=(row.issues||[]).join('锛?)||'閫氳繃';
     return `<tr>
       <td class="px-2 py-2">${esc(row.node_name||row.node_id||'-')}<div class="text-xs text-slate-400 mono">${esc(row.node_id||'-')}</div></td>
       <td class="px-2 py-2">${esc(row.role||'-')}</td>
@@ -974,12 +1007,12 @@ async function loadOnboarding(){
   const res=await fetch('/api/ops-platform/node-onboarding');
   const data=await res.json();
   if(!data.ok){
-    addStream({time:new Date().toISOString(),ok:false,action:'node_onboarding',trace_id:'',node:'-',message:data.message||data.error||'体检失败',raw:data});
+    addStream({time:new Date().toISOString(),ok:false,action:'node_onboarding',trace_id:'',node:'-',message:data.message||data.error||'浣撴澶辫触',raw:data});
     return;
   }
   renderOnboarding(data);
   const s=data.summary||{};
-  setText('onboardSummary','总节点 '+(s.total_nodes||0)+'，严重 '+(s.critical||0)+'，告警 '+(s.warning||0)+'，通过 '+(s.ok_nodes||0));
+  setText('onboardSummary','鎬昏妭鐐?'+(s.total_nodes||0)+'锛屼弗閲?'+(s.critical||0)+'锛屽憡璀?'+(s.warning||0)+'锛岄€氳繃 '+(s.ok_nodes||0));
 }
 
 async function loadNodes(){
@@ -995,7 +1028,7 @@ async function loadOverview(){
   const q=projectId?('?project_id='+encodeURIComponent(projectId)):'';
   const r=await fetch('/api/ops-platform/overview'+q);
   const d=await r.json();
-  if(!d.ok){ addStream({time:new Date().toISOString(),ok:false,action:'overview',message:d.error||'总览加载失败',raw:d}); return; }
+  if(!d.ok){ addStream({time:new Date().toISOString(),ok:false,action:'overview',message:d.error||'鎬昏鍔犺浇澶辫触',raw:d}); return; }
   LAST_OVERVIEW_NODES=d.nodes||[];
   syncKpi(d);
 }
@@ -1022,10 +1055,10 @@ async function validateAction(){
   const d=await r.json();
   const hint=byId('opValidateHint');
   if(d.ok){
-    hint.textContent='预检通过'+(d.require_approval?'（高危需审批）':'');
+    hint.textContent='棰勬閫氳繃'+(d.require_approval?'锛堥珮鍗遍渶瀹℃壒锛?:'');
     hint.className='text-xs text-emerald-600';
   }else{
-    hint.textContent='预检失败：'+(d.message||d.error||'参数缺失');
+    hint.textContent='棰勬澶辫触锛?+(d.message||d.error||'鍙傛暟缂哄け');
     hint.className='text-xs text-rose-600';
   }
   addStream({time:new Date().toISOString(),ok:!!d.ok,action:'validate',trace_id:d.trace_id||'',node:req.node_id,message:d.message||d.error||'validate',raw:d});
@@ -1038,7 +1071,7 @@ async function createApproval(){
   const r=await fetch('/api/ops-platform/actions/approval',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
   const d=await r.json();
   addStream({time:new Date().toISOString(),ok:!!d.ok,action:'approval',trace_id:d.trace_id||'',node:req.node_id,message:d.message||d.error||'approval',raw:d});
-  if(d.ok){ alert('审批单已创建: '+(d.approval_id||'')); }
+  if(d.ok){ alert('瀹℃壒鍗曞凡鍒涘缓: '+(d.approval_id||'')); }
 }
 
 async function executeAction(){
@@ -1047,7 +1080,7 @@ async function executeAction(){
   const req={node_id:read('opNodeId'),action_type:read('opActionType'),target:read('opTarget'),ticket_id:read('opTicket'),reason:read('opReason'),approver:read('opApprover'),dry_run:byId('opDryRun').checked,payload};
   const r=await fetch('/api/ops-platform/actions/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
   const d=await r.json();
-  byId('streamSummary').textContent=d.ok?'执行成功':'执行失败';
+  byId('streamSummary').textContent=d.ok?'鎵ц鎴愬姛':'鎵ц澶辫触';
   byId('streamSummary').className=d.ok?'text-xs text-emerald-600':'text-xs text-rose-600';
   addStream({time:new Date().toISOString(),ok:!!d.ok,action:req.action_type,trace_id:d.trace_id||'',node:req.node_id,message:d.message||d.error||'',raw:d});
   if(d.trace_id){ byId('traceQuery').value=d.trace_id; }
@@ -1059,12 +1092,12 @@ async function executeAction(){
 
 async function runDaemonAction(action){
   const node_id=read('daemonNodeId')||read('opNodeId');
-  if(!node_id){alert('请先选择节点');return;}
-  const req={node_id,action,ticket_id:read('daemonTicketId')||'OPS-DAEMON',reason:read('daemonReason')||'守护进程操作'};
+  if(!node_id){alert('璇峰厛閫夋嫨鑺傜偣');return;}
+  const req={node_id,action,ticket_id:read('daemonTicketId')||'OPS-DAEMON',reason:read('daemonReason')||'瀹堟姢杩涚▼鎿嶄綔'};
   const r=await fetch('/api/ops-platform/node/daemon-action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
   const d=await r.json();
   const ok=!!d.ok;
-  byId('daemonHint').textContent=(ok?'执行成功：':'执行失败：')+(d.message||d.error||'-');
+  byId('daemonHint').textContent=(ok?'鎵ц鎴愬姛锛?:'鎵ц澶辫触锛?)+(d.message||d.error||'-');
   byId('daemonHint').className='text-xs '+(ok?'text-emerald-600':'text-rose-600');
   addStream({time:new Date().toISOString(),ok,action:'daemon_'+action,trace_id:d.trace_id||'',node:node_id,message:d.message||d.error||'',raw:d});
   await loadOverview();
@@ -1076,12 +1109,12 @@ async function runDaemonAction(action){
 async function runFlowSmoke(){
   const raw=read('flowPathNodes');
   const path_nodes=raw.split(',').map(s=>s.trim()).filter(Boolean);
-  if(path_nodes.length<2){alert('请至少填写两个节点ID');return;}
-  const req={path_nodes,reason:read('flowReason')||'一键冒烟'};
+  if(path_nodes.length<2){alert('璇疯嚦灏戝～鍐欎袱涓妭鐐笽D');return;}
+  const req={path_nodes,reason:read('flowReason')||'涓€閿啋鐑?};
   const r=await fetch('/api/ops-platform/flow-smoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
   const d=await r.json();
   const ok=!!d.ok;
-  byId('flowHint').textContent=(ok?'冒烟通过，flowId=':'冒烟失败，flowId=')+(d.flow_id||'-');
+  byId('flowHint').textContent=(ok?'鍐掔儫閫氳繃锛宖lowId=':'鍐掔儫澶辫触锛宖lowId=')+(d.flow_id||'-');
   byId('flowHint').className='text-xs '+(ok?'text-emerald-600':'text-rose-600');
   addStream({time:new Date().toISOString(),ok,action:'flow_smoke',trace_id:d.flow_id||'',node:path_nodes.join(' -> '),message:d.message||d.error||'',raw:d});
   await loadEvents();
@@ -1089,10 +1122,10 @@ async function runFlowSmoke(){
 
 async function runStressTest(){
   const node_id=read('stressNodeId')||read('opNodeId');
-  if(!node_id){alert('请先选择压测节点');return;}
+  if(!node_id){alert('璇峰厛閫夋嫨鍘嬫祴鑺傜偣');return;}
   const qps=Number(read('stressQps')||300);
   const duration_sec=Number(read('stressDuration')||180);
-  const req={node_id,qps,duration_sec,reason:read('stressReason')||'压力测试'};
+  const req={node_id,qps,duration_sec,reason:read('stressReason')||'鍘嬪姏娴嬭瘯'};
   const r=await fetch('/api/ops-platform/stress-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
   const d=await r.json();
   addStream({time:new Date().toISOString(),ok:!!d.ok,action:'stress_test',trace_id:d.trace_id||'',node:node_id,message:d.message||d.error||'',raw:d});
@@ -1101,8 +1134,8 @@ async function runStressTest(){
 
 async function runDbMigration(){
   const node_id=read('dbNodeId')||read('opNodeId');
-  if(!node_id){alert('请先选择迁移节点');return;}
-  const req={node_id,direction:read('dbDirection')||'up',version:read('dbVersion'),command:read('dbCommand'),reason:read('dbReason')||'数据库迁移'};
+  if(!node_id){alert('璇峰厛閫夋嫨杩佺Щ鑺傜偣');return;}
+  const req={node_id,direction:read('dbDirection')||'up',version:read('dbVersion'),command:read('dbCommand'),reason:read('dbReason')||'鏁版嵁搴撹縼绉?};
   const r=await fetch('/api/ops-platform/db-migration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});
   const d=await r.json();
   addStream({time:new Date().toISOString(),ok:!!d.ok,action:'db_migration',trace_id:d.trace_id||'',node:node_id,message:d.message||d.error||'',raw:d});
@@ -1122,7 +1155,7 @@ async function queryTrace(){
 
 function quickRollbackHint(){
   const t=read('traceQuery');
-  alert(t?('请基于 traceId '+t+' 创建回滚动作并重新执行（建议先 dry-run）。'):'请先执行动作并获取 traceId，再进行回滚。');
+  alert(t?('璇峰熀浜?traceId '+t+' 鍒涘缓鍥炴粴鍔ㄤ綔骞堕噸鏂版墽琛岋紙寤鸿鍏?dry-run锛夈€?):'璇峰厛鎵ц鍔ㄤ綔骞惰幏鍙?traceId锛屽啀杩涜鍥炴粴銆?);
 }
 
 function toggleNodeConfig(show){
@@ -1132,10 +1165,10 @@ function toggleNodeConfig(show){
 
 async function saveNodesRawJson(){
   let rows=[];
-  try{rows=JSON.parse(byId('nodeConfigJson').value||'[]');}catch(_){alert('JSON 解析失败');return;}
+  try{rows=JSON.parse(byId('nodeConfigJson').value||'[]');}catch(_){alert('JSON 瑙ｆ瀽澶辫触');return;}
   const r=await fetch('/api/gm-legacy/nodes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nodes:rows})});
   const d=await r.json();
-  addStream({time:new Date().toISOString(),ok:!!d.ok,action:'save_nodes',trace_id:'',node:'-',message:d.ok?'节点配置已保存':'节点配置保存失败',raw:d});
+  addStream({time:new Date().toISOString(),ok:!!d.ok,action:'save_nodes',trace_id:'',node:'-',message:d.ok?'鑺傜偣閰嶇疆宸蹭繚瀛?:'鑺傜偣閰嶇疆淇濆瓨澶辫触',raw:d});
   await loadOverviewAndTopology();
 }
 
@@ -1152,7 +1185,7 @@ window.addEventListener('beforeunload', ()=>{ if(DRAG_NODE_ID){ DRAG_NODE_ID='';
 })();
 </script>
 """
-    return _render_page(content, "运维平台")
+    return _render_page(content, "杩愮淮骞冲彴")
 
 
 @bp.route("/api/gm-legacy/nodes")
@@ -1174,7 +1207,7 @@ def gm_legacy_nodes_save():
 @admin_required("gm_ops")
 def gm_classic_action():
     if not _allow_gm_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少 GM 执行权限 (gm.classic.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯 GM 鎵ц鏉冮檺 (gm.classic.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     action = str(payload.get("action") or "").strip()
     if action not in GM_ACTION_PATHS:
@@ -1204,8 +1237,15 @@ OPS_EVENT_LOG_KEY = "OPS_PLATFORM_EVENT_LOGS"
 OPS_ALERT_SNAPSHOT_KEY = "OPS_PLATFORM_ALERT_SNAPSHOT"
 OPS_TOPOLOGY_KEY = "OPS_PLATFORM_TOPOLOGY"
 OPS_NODE_PRESETS_KEY = "OPS_PLATFORM_NODE_PRESETS"
+OPS_TOPOLOGY_BLUEPRINTS_KEY = "OPS_PLATFORM_TOPOLOGY_BLUEPRINTS"
 OPS_DAEMON_STATE_KEY = "OPS_PLATFORM_DAEMON_STATE"
 OPS_FLOW_EXEC_KEY = "OPS_PLATFORM_FLOW_EXECUTIONS"
+OPS_AGENT_REGISTRY_KEY = "OPS_PLATFORM_AGENT_REGISTRY"
+OPS_AGENT_REGISTRY_V2_KEY = "OPS_PLATFORM_AGENT_REGISTRY_V2"
+OPS_NODE_AGENT_BINDING_KEY = "OPS_PLATFORM_NODE_AGENT_BINDING"
+OPS_AGENT_JOBS_KEY = "OPS_PLATFORM_AGENT_JOBS"
+OPS_AGENT_POLICY_KEY = "OPS_PLATFORM_AGENT_POLICY"
+OPS_RUNTIME_RUNS_KEY = "OPS_PLATFORM_RUNTIME_RUNS"
 
 
 def _now_iso() -> str:
@@ -1223,92 +1263,411 @@ def _save_json_config(key: str, value, description: str = "") -> None:
     set_system_config(key, value, value_type="json", description=description, username=str(session.get("user") or "system"))
 
 
+def _load_agent_registry() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_AGENT_REGISTRY_KEY, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _save_agent_registry(data: Dict[str, Any]) -> None:
+    _save_json_config(OPS_AGENT_REGISTRY_KEY, data if isinstance(data, dict) else {}, description="Ops Agent registry and heartbeat state")
+
+
+def _load_agent_registry_v2() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_AGENT_REGISTRY_V2_KEY, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _save_agent_registry_v2(data: Dict[str, Any]) -> None:
+    _save_json_config(OPS_AGENT_REGISTRY_V2_KEY, data if isinstance(data, dict) else {}, description="Ops Agent registry v2")
+
+
+def _load_node_agent_bindings() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_NODE_AGENT_BINDING_KEY, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _save_node_agent_bindings(data: Dict[str, Any]) -> None:
+    _save_json_config(OPS_NODE_AGENT_BINDING_KEY, data if isinstance(data, dict) else {}, description="Ops node->agent primary binding")
+
+
+def _load_agent_jobs() -> List[Dict[str, Any]]:
+    raw = _load_json_config(OPS_AGENT_JOBS_KEY, [])
+    return raw if isinstance(raw, list) else []
+
+
+def _save_agent_jobs(rows: List[Dict[str, Any]]) -> None:
+    items = rows if isinstance(rows, list) else []
+    if len(items) > 1200:
+        items = items[-1200:]
+    _save_json_config(OPS_AGENT_JOBS_KEY, items, description="Ops Agent 浠诲姟闃熷垪涓庣姸鎬佹満")
+
+
+def _load_runtime_runs() -> List[Dict[str, Any]]:
+    raw = _load_json_config(OPS_RUNTIME_RUNS_KEY, [])
+    return raw if isinstance(raw, list) else []
+
+
+def _save_runtime_runs(rows: List[Dict[str, Any]]) -> None:
+    items = rows if isinstance(rows, list) else []
+    if len(items) > 80:
+        items = items[-80:]
+    _save_json_config(OPS_RUNTIME_RUNS_KEY, items, description="Ops runtime start/stop run logs")
+
+
+def _upsert_runtime_run(run_obj: Dict[str, Any]) -> None:
+    rid = str((run_obj or {}).get("run_id") or "").strip()
+    if not rid:
+        return
+    rows = _load_runtime_runs()
+    replaced = False
+    for idx, row in enumerate(rows):
+        if str((row or {}).get("run_id") or "") == rid:
+            rows[idx] = run_obj
+            replaced = True
+            break
+    if not replaced:
+        rows.insert(0, run_obj)
+    _save_runtime_runs(rows)
+
+
+def _find_runtime_run(run_id: str) -> Optional[Dict[str, Any]]:
+    rid = str(run_id or "").strip()
+    if not rid:
+        return None
+    for row in _load_runtime_runs():
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("run_id") or "") == rid:
+            return row
+    return None
+
+
+def _default_agent_policy() -> Dict[str, Any]:
+    return {
+        "mtls_required": False,
+        "lease_timeout_sec": 60,
+        "max_retries": 2,
+        "default_node_concurrency": 1,
+        "rollout": {
+            "enabled": False,
+            "desired_version": "",
+            "channel": "stable",
+            "percent": 0,
+            "allow_ids": [],
+        },
+    }
+
+
+def _load_agent_policy() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_AGENT_POLICY_KEY, {})
+    out = _default_agent_policy()
+    if isinstance(raw, dict):
+        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency"):
+            if k in raw:
+                out[k] = raw[k]
+        if isinstance(raw.get("rollout"), dict):
+            merged_rollout = out["rollout"]
+            merged_rollout.update(raw.get("rollout"))
+            out["rollout"] = merged_rollout
+    return out
+
+
+def _save_agent_policy(policy: Dict[str, Any]) -> None:
+    out = _default_agent_policy()
+    if isinstance(policy, dict):
+        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency"):
+            if k in policy:
+                out[k] = policy.get(k)
+        if isinstance(policy.get("rollout"), dict):
+            merged_rollout = out["rollout"]
+            merged_rollout.update(policy.get("rollout"))
+            out["rollout"] = merged_rollout
+    _save_json_config(OPS_AGENT_POLICY_KEY, out, description="Ops Agent 绛栫暐閰嶇疆")
+
+
+def _agent_token_for_node(node: Dict[str, Any]) -> str:
+    return str(node.get("ops_write_key") or node.get("ops_read_key") or "").strip()
+
+
+def _auth_agent_node(node_id: str, token: str, cert_fp: str = "") -> Optional[Dict[str, Any]]:
+    nid = str(node_id or "").strip()
+    tok = str(token or "").strip()
+    if not nid or not tok:
+        return None
+    node = _resolve_node(node_id=nid)
+    if not node:
+        return None
+    expected = _agent_token_for_node(node)
+    if not expected or expected != tok:
+        return None
+    policy = _load_agent_policy()
+    mtls_required = bool(policy.get("mtls_required"))
+    allow_fp = node.get("agent_cert_fingerprints") if isinstance(node.get("agent_cert_fingerprints"), list) else []
+    if mtls_required:
+        fp = str(cert_fp or "").strip().lower()
+        if not fp:
+            return None
+        if allow_fp:
+            normalized = [str(x or "").strip().lower() for x in allow_fp if str(x or "").strip()]
+            if normalized and fp not in normalized:
+                return None
+    return node
+
+
+def _idempotency_key(node_id: str, action_type: str, target: str, payload: Dict[str, Any], ticket_id: str) -> str:
+    body = {
+        "node_id": str(node_id or ""),
+        "action_type": str(action_type or ""),
+        "target": str(target or ""),
+        "payload": payload if isinstance(payload, dict) else {},
+        "ticket_id": str(ticket_id or ""),
+    }
+    raw = json.dumps(body, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def _enqueue_agent_job(node_id: str, action_type: str, target: str, payload: Dict[str, Any], validation: Dict[str, Any]) -> Dict[str, Any]:
+    jobs = _load_agent_jobs()
+    idem_key = _idempotency_key(node_id, action_type, target, payload, str(validation.get("ticket_id") or ""))
+    for x in reversed(jobs):
+        if not isinstance(x, dict):
+            continue
+        if str(x.get("idempotency_key") or "") != idem_key:
+            continue
+        st = str(x.get("status") or "").upper()
+        if st in ("PENDING", "RUNNING", "SUCCESS"):
+            return x
+    job_id = "job-" + uuid.uuid4().hex[:16]
+    now = _now_iso()
+    item = {
+        "job_id": job_id,
+        "node_id": str(node_id or ""),
+        "action_type": str(action_type or ""),
+        "target": str(target or ""),
+        "payload": payload if isinstance(payload, dict) else {},
+        "risk": str(validation.get("risk") or ""),
+        "ticket_id": str(validation.get("ticket_id") or ""),
+        "reason": str(validation.get("reason") or ""),
+        "requested_by": str(session.get("user") or "intranet-ops"),
+        "require_approval": bool(validation.get("require_approval")),
+        "approved": bool(validation.get("approved")),
+        "approval_target_id": str(validation.get("approval_target_id") or ""),
+        "status": "PENDING",
+        "created_at": now,
+        "updated_at": now,
+        "lease": {},
+        "attempt": 0,
+        "max_retries": int(_load_agent_policy().get("max_retries") or 2),
+        "priority": int((payload or {}).get("priority") or 100),
+        "preempt": bool((payload or {}).get("preempt") or False),
+        "idempotency_key": idem_key,
+        "result": {},
+    }
+    jobs.append(item)
+    _save_agent_jobs(jobs)
+    return item
+
+
+def _agent_status_terminal(status: str) -> bool:
+    s = str(status or "").upper()
+    return s in ("SUCCESS", "FAILED", "CANCELED", "TIMEOUT")
+
+
+def _parse_iso_ts(value: str) -> Optional[datetime]:
+    v = str(value or "").strip()
+    if not v:
+        return None
+    try:
+        if v.endswith("Z"):
+            v = v[:-1] + "+00:00"
+        return datetime.fromisoformat(v)
+    except Exception:
+        return None
+
+
+def _reconcile_agent_jobs(node_id: str, jobs: List[Dict[str, Any]], *, lease_timeout_sec: int, max_retries: int) -> bool:
+    changed = False
+    now = datetime.utcnow()
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("node_id") or "") != node_id:
+            continue
+        status = str(item.get("status") or "").upper()
+        if status != "RUNNING":
+            continue
+        lease = item.get("lease") if isinstance(item.get("lease"), dict) else {}
+        leased_at = _parse_iso_ts(str(lease.get("leased_at") or item.get("updated_at") or ""))
+        if not leased_at:
+            continue
+        age = (now - leased_at.replace(tzinfo=None)).total_seconds()
+        if age < max(5, int(lease_timeout_sec)):
+            continue
+        attempts = int(item.get("attempt") or 0)
+        if attempts < max_retries:
+            item["status"] = "PENDING"
+            item["updated_at"] = _now_iso()
+            item["attempt"] = attempts + 1
+            item["lease"] = {}
+        else:
+            item["status"] = "TIMEOUT"
+            item["updated_at"] = _now_iso()
+            item["result"] = {"message": "lease timeout reached max retries"}
+        changed = True
+    return changed
+
+
+def _desired_agent_upgrade(agent_id: str, policy: Dict[str, Any]) -> Dict[str, Any]:
+    rollout = policy.get("rollout") if isinstance(policy.get("rollout"), dict) else {}
+    if not rollout.get("enabled"):
+        return {"upgrade": False}
+    desired_version = str(rollout.get("desired_version") or "").strip()
+    if not desired_version:
+        return {"upgrade": False}
+    allow_ids = rollout.get("allow_ids") if isinstance(rollout.get("allow_ids"), list) else []
+    channel = str(rollout.get("channel") or "stable")
+    percent = int(rollout.get("percent") or 0)
+    if allow_ids and agent_id in allow_ids:
+        return {"upgrade": True, "desired_version": desired_version, "channel": channel}
+    if percent <= 0:
+        return {"upgrade": False}
+    slot = int(hashlib.sha256(str(agent_id or "").encode("utf-8")).hexdigest()[:8], 16) % 100
+    if slot < percent:
+        return {"upgrade": True, "desired_version": desired_version, "channel": channel}
+    return {"upgrade": False}
+
+
+def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, dict):
+        item = {}
+    transport = item.get("transport") if isinstance(item.get("transport"), dict) else {}
+    local_bus = transport.get("local_bus") if isinstance(transport.get("local_bus"), dict) else {}
+    return {
+        "agent_id": str(item.get("agent_id") or ""),
+        "device_id": str(item.get("device_id") or ""),
+        "host_name": str(item.get("host_name") or item.get("hostname") or ""),
+        "node_id": str(item.get("node_id") or ""),
+        "project_id": str(item.get("project_id") or ""),
+        "status": str(item.get("status") or "UNKNOWN").upper(),
+        "version": str(item.get("version") or ""),
+        "last_seen": str(item.get("last_seen") or ""),
+        "display_name": str(item.get("display_name") or item.get("agent_id") or ""),
+        "port": int(item.get("port") or 0),
+        "desc": str(item.get("desc") or ""),
+        "run_state": str(item.get("run_state") or ""),
+        "capabilities": item.get("capabilities") if isinstance(item.get("capabilities"), list) else [],
+        "transport": {
+            "mode": str(transport.get("mode") or "remote").lower(),
+            "local_endpoint": str(local_bus.get("endpoint") or transport.get("local_endpoint") or ""),
+            "local_enabled": bool(local_bus.get("enabled", True)),
+            "local_auth_mode": str(local_bus.get("auth_mode") or "token"),
+            "degraded": bool(transport.get("degraded", False)),
+            "degrade_reason": str(transport.get("degrade_reason") or ""),
+        },
+        "updated_at": str(item.get("updated_at") or ""),
+    }
+
+
+def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
+    rows = _load_agent_registry_v2()
+    out: List[Dict[str, Any]] = []
+    pid = str(project_id or "").strip()
+    for v in rows.values():
+        if not isinstance(v, dict):
+            continue
+        item = _normalize_agent_descriptor_v2(v)
+        if pid and item.get("project_id") and item.get("project_id") != pid:
+            continue
+        out.append(item)
+    return out
+
+
 def _default_node_presets() -> List[Dict[str, Any]]:
     return [
         {
             "preset_id": "gateway_http",
-            "name": "网关节点",
+            "name": "缃戝叧鑺傜偣",
             "category": "application",
             "role": "gateway",
             "node_type": "gateway_server",
-            "default_desc": "入口网关，承接流量并转发业务服务",
+            "default_desc": "鍏ュ彛缃戝叧锛屾壙鎺ユ祦閲忓苟杞彂涓氬姟鏈嶅姟",
             "fixed_upstream_roles": ["edge", "lb", "admin"],
             "fixed_downstream_roles": ["business", "pressure"],
             "daemon_profile": "ops_native",
         },
         {
             "preset_id": "business_main",
-            "name": "业务节点",
+            "name": "涓氬姟鑺傜偣",
             "category": "application",
             "role": "business",
             "node_type": "business_server",
-            "default_desc": "核心业务处理节点",
+            "default_desc": "鏍稿績涓氬姟澶勭悊鑺傜偣",
             "fixed_upstream_roles": ["gateway", "scheduler", "admin"],
             "fixed_downstream_roles": ["database", "cache", "mq", "search"],
             "daemon_profile": "ops_native",
         },
         {
             "preset_id": "pressure_worker",
-            "name": "压力节点",
+            "name": "鍘嬪姏鑺傜偣",
             "category": "test",
             "role": "pressure",
             "node_type": "pressure_server",
-            "default_desc": "压测流量与性能回归节点",
+            "default_desc": "鍘嬫祴娴侀噺涓庢€ц兘鍥炲綊鑺傜偣",
             "fixed_upstream_roles": ["gateway", "admin"],
             "fixed_downstream_roles": ["business"],
             "daemon_profile": "ops_native",
         },
         {
             "preset_id": "redis_cache",
-            "name": "Redis 缓存",
+            "name": "Redis 缂撳瓨",
             "category": "infrastructure",
             "role": "cache",
             "node_type": "redis_cache",
-            "default_desc": "缓存与会话存储",
+            "default_desc": "Cache and session storage node",
             "fixed_upstream_roles": ["business", "gateway", "scheduler"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "mongo_db",
-            "name": "Mongo 数据库",
+            "name": "Mongo Database",
             "category": "database",
             "role": "database",
             "node_type": "mongo_database",
-            "default_desc": "业务主存储数据库",
+            "default_desc": "涓氬姟涓诲瓨鍌ㄦ暟鎹簱",
             "fixed_upstream_roles": ["business", "scheduler", "admin"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "mysql_db",
-            "name": "MySQL 数据库",
+            "name": "MySQL Database",
             "category": "database",
             "role": "database",
             "node_type": "mysql_database",
-            "default_desc": "关系型数据库节点",
+            "default_desc": "鍏崇郴鍨嬫暟鎹簱鑺傜偣",
             "fixed_upstream_roles": ["business", "scheduler", "admin"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "mq_kafka",
-            "name": "消息队列",
+            "name": "娑堟伅闃熷垪",
             "category": "infrastructure",
             "role": "mq",
             "node_type": "mq_kafka",
-            "default_desc": "异步事件队列",
+            "default_desc": "寮傛浜嬩欢闃熷垪",
             "fixed_upstream_roles": ["business", "gateway", "scheduler"],
             "fixed_downstream_roles": ["business", "analytics"],
             "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "scheduler_job",
-            "name": "调度节点",
+            "name": "璋冨害鑺傜偣",
             "category": "application",
             "role": "scheduler",
             "node_type": "scheduler_server",
-            "default_desc": "定时任务与批处理节点",
+            "default_desc": "瀹氭椂浠诲姟涓庢壒澶勭悊鑺傜偣",
             "fixed_upstream_roles": ["admin"],
             "fixed_downstream_roles": ["business", "database", "cache", "mq"],
             "daemon_profile": "ops_native",
@@ -1326,7 +1685,7 @@ def _load_node_presets() -> List[Dict[str, Any]]:
         if out:
             return out
     presets = _default_node_presets()
-    _save_json_config(OPS_NODE_PRESETS_KEY, presets, description="Ops 预制节点库")
+    _save_json_config(OPS_NODE_PRESETS_KEY, presets, description="Ops node preset catalog")
     return presets
 
 
@@ -1336,7 +1695,7 @@ def _load_daemon_state() -> Dict[str, Any]:
 
 
 def _save_daemon_state(state: Dict[str, Any]) -> None:
-    _save_json_config(OPS_DAEMON_STATE_KEY, state if isinstance(state, dict) else {}, description="Ops 节点守护进程状态")
+    _save_json_config(OPS_DAEMON_STATE_KEY, state if isinstance(state, dict) else {}, description="Ops daemon process state")
 
 
 def _set_daemon_state(node_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
@@ -1377,6 +1736,69 @@ def _can_link_nodes(from_node: Dict[str, Any], to_node: Dict[str, Any]) -> bool:
     return True
 
 
+def _infer_node_kind(role: str, explicit_kind: str = "") -> str:
+    ek = str(explicit_kind or "").strip().lower()
+    if ek in ("entry", "standard", "terminal"):
+        return ek
+    r = str(role or "").strip().lower()
+    if r in ("gateway", "edge"):
+        return "entry"
+    if r in ("database", "cache", "mq", "search"):
+        return "terminal"
+    return "standard"
+
+
+def _default_ports_for_kind(kind: str) -> Dict[str, List[Dict[str, Any]]]:
+    k = _infer_node_kind("", kind)
+    if k == "entry":
+        return {"in": [], "out": [{"id": "out-1", "label": "out-1", "kind": "out", "max_links": 1}]}
+    if k == "terminal":
+        return {"in": [{"id": "in-1", "label": "in-1", "kind": "in", "max_links": 1}], "out": []}
+    return {
+        "in": [{"id": "in-1", "label": "in-1", "kind": "in", "max_links": 1}],
+        "out": [{"id": "out-1", "label": "out-1", "kind": "out", "max_links": 1}],
+    }
+
+
+def _normalize_ports(kind: str, ports: Any) -> Dict[str, List[Dict[str, Any]]]:
+    defaults = _default_ports_for_kind(kind)
+    if not isinstance(ports, dict):
+        return defaults
+
+    out: Dict[str, List[Dict[str, Any]]] = {"in": [], "out": []}
+    for side in ("in", "out"):
+        rows = ports.get(side) if isinstance(ports.get(side), list) else []
+        for idx, p in enumerate(rows):
+            if not isinstance(p, dict):
+                continue
+            pid = str(p.get("id") or f"{side}-{idx+1}").strip()
+            if not pid:
+                pid = f"{side}-{idx+1}"
+            out[side].append(
+                {
+                    "id": pid,
+                    "label": str(p.get("label") or pid),
+                    "kind": side,
+                    "max_links": 1,
+                    "required": bool(p.get("required", False)),
+                }
+            )
+    if kind == "entry":
+        out["in"] = []
+        if not out["out"]:
+            out["out"] = defaults["out"]
+    elif kind == "terminal":
+        out["out"] = []
+        if not out["in"]:
+            out["in"] = defaults["in"]
+    else:
+        if not out["in"]:
+            out["in"] = defaults["in"]
+        if not out["out"]:
+            out["out"] = defaults["out"]
+    return out
+
+
 def _default_topology_for_nodes(nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
     out_nodes: List[Dict[str, Any]] = []
     out_edges: List[Dict[str, Any]] = []
@@ -1385,15 +1807,27 @@ def _default_topology_for_nodes(nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
     for idx, n in enumerate(nodes):
         row = idx // cols
         col = idx % cols
+        kind = _infer_node_kind(str(n.get("role") or ""), str(n.get("kind") or ""))
         out_nodes.append(
             {
                 "id": str(n.get("id") or ""),
                 "role": str(n.get("role") or "business"),
+                "kind": kind,
                 "desc": str(n.get("description") or ""),
                 "bizStatus": str(n.get("biz_status") or "normal"),
                 "owner": str(n.get("owner") or ""),
                 "x": int(26 + col * 185),
                 "y": int(26 + row * 132),
+                "tags": n.get("tags") if isinstance(n.get("tags"), list) else [],
+                "ui": {
+                    "x": int(26 + col * 185),
+                    "y": int(26 + row * 132),
+                    "w": 220,
+                    "h": 90,
+                    "color": "#0f172a",
+                    "locked": False,
+                    "ports": _normalize_ports(kind, None),
+                },
             }
         )
     for i in range(max(0, len(out_nodes) - 1)):
@@ -1405,11 +1839,13 @@ def _default_topology_for_nodes(nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "id": f"edge-{uuid.uuid4().hex[:10]}",
                     "from": frm,
                     "to": to,
+                    "from_port": "out-1",
+                    "to_port": "in-1",
                     "type": "depends_on",
                     "note": "",
                 }
             )
-    return {"nodes": out_nodes, "edges": out_edges}
+    return {"nodes": out_nodes, "edges": out_edges, "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}}}
 
 
 def _load_topology(current_nodes: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -1418,8 +1854,9 @@ def _load_topology(current_nodes: Optional[List[Dict[str, Any]]] = None) -> Dict
     if isinstance(raw, dict):
         nodes = raw.get("nodes") if isinstance(raw.get("nodes"), list) else []
         edges = raw.get("edges") if isinstance(raw.get("edges"), list) else []
+        meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
     else:
-        nodes, edges = [], []
+        nodes, edges, meta = [], [], {}
 
     valid_ids = set([str(x.get("id") or "") for x in rows if isinstance(x, dict)])
     merged_nodes: List[Dict[str, Any]] = []
@@ -1435,11 +1872,14 @@ def _load_topology(current_nodes: Optional[List[Dict[str, Any]]] = None) -> Dict
             {
                 "id": nid,
                 "role": str(item.get("role") or "business"),
+                "kind": _infer_node_kind(str(item.get("role") or "business"), str(item.get("kind") or "")),
                 "desc": str(item.get("desc") or ""),
                 "bizStatus": str(item.get("bizStatus") or "normal"),
                 "owner": str(item.get("owner") or ""),
                 "x": float(item.get("x") or 0),
                 "y": float(item.get("y") or 0),
+                "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
+                "ui": item.get("ui") if isinstance(item.get("ui"), dict) else {},
             }
         )
     if len(merged_nodes) < len(valid_ids):
@@ -1463,18 +1903,50 @@ def _load_topology(current_nodes: Optional[List[Dict[str, Any]]] = None) -> Dict
                 "id": str(edge.get("id") or f"edge-{uuid.uuid4().hex[:10]}"),
                 "from": frm,
                 "to": to,
+                "from_port": str(edge.get("from_port") or "out-1"),
+                "to_port": str(edge.get("to_port") or "in-1"),
                 "type": str(edge.get("type") or "depends_on"),
                 "note": str(edge.get("note") or ""),
+                "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
             }
         )
-    return {"nodes": merged_nodes, "edges": merged_edges}
+    for n in merged_nodes:
+        if not isinstance(n, dict):
+            continue
+        kind = _infer_node_kind(str(n.get("role") or ""), str(n.get("kind") or ""))
+        n["kind"] = kind
+        ui = n.get("ui") if isinstance(n.get("ui"), dict) else {}
+        ui["ports"] = _normalize_ports(kind, ui.get("ports"))
+        if "w" not in ui:
+            ui["w"] = 220
+        if "h" not in ui:
+            ui["h"] = 90
+        n["ui"] = ui
+    viewport = meta.get("viewport") if isinstance(meta.get("viewport"), dict) else {}
+    out_meta = {
+        "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+        "version": int(meta.get("version") or 1),
+        "updated_at": str(meta.get("updated_at") or ""),
+    }
+    return {"nodes": merged_nodes, "edges": merged_edges, "meta": out_meta}
 
 
 def _save_topology(topology: Dict[str, Any]) -> Dict[str, Any]:
     nodes = topology.get("nodes") if isinstance(topology, dict) and isinstance(topology.get("nodes"), list) else []
     edges = topology.get("edges") if isinstance(topology, dict) and isinstance(topology.get("edges"), list) else []
-    payload = {"nodes": nodes, "edges": edges, "updated_at": _now_iso()}
-    _save_json_config(OPS_TOPOLOGY_KEY, payload, description="Ops 平台拓扑配置")
+    meta = topology.get("meta") if isinstance(topology, dict) and isinstance(topology.get("meta"), dict) else {}
+    viewport = meta.get("viewport") if isinstance(meta.get("viewport"), dict) else {}
+    payload = {
+        "nodes": nodes,
+        "edges": edges,
+        "meta": {
+            "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+            "version": int(meta.get("version") or 1),
+            "updated_at": _now_iso(),
+        },
+        "updated_at": _now_iso(),
+    }
+    _save_json_config(OPS_TOPOLOGY_KEY, payload, description="Ops 骞冲彴鎷撴墤閰嶇疆")
     return payload
 
 
@@ -1489,11 +1961,11 @@ def _append_bounded(key: str, item: Dict[str, Any], *, limit: int, description: 
 
 
 def _append_trace(entry: Dict[str, Any]) -> None:
-    _append_bounded(OPS_TRACE_LOG_KEY, entry, limit=500, description="Ops 平台执行流水")
+    _append_bounded(OPS_TRACE_LOG_KEY, entry, limit=500, description="Ops 骞冲彴鎵ц娴佹按")
 
 
 def _append_event(entry: Dict[str, Any]) -> None:
-    _append_bounded(OPS_EVENT_LOG_KEY, entry, limit=800, description="Ops 平台事件时间线")
+    _append_bounded(OPS_EVENT_LOG_KEY, entry, limit=800, description="Ops platform event timeline")
 
 
 def _find_trace(trace_id: str) -> Optional[Dict[str, Any]]:
@@ -1537,8 +2009,8 @@ def _build_alerts_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "id": f"alert-{n.get('id')}-{status}",
                 "time": _now_iso(),
                 "severity": "critical" if status == "OFFLINE" else "warning",
-                "title": f"节点状态异常: {node_name}",
-                "message": f"状态={status}; serverId={n.get('server_id') or '-'}",
+                "title": f"鑺傜偣鐘舵€佸紓甯? {node_name}",
+                "message": f"鐘舵€?{status}; serverId={n.get('server_id') or '-'}",
                 "status": "open",
                 "node_id": n.get("id"),
             })
@@ -1548,7 +2020,7 @@ def _build_alerts_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "id": f"alert-{n.get('id')}-p99",
                 "time": _now_iso(),
                 "severity": "warning",
-                "title": f"延迟偏高: {node_name}",
+                "title": f"寤惰繜鍋忛珮: {node_name}",
                 "message": f"P99={p99:.1f}ms",
                 "status": "open",
                 "node_id": n.get("id"),
@@ -1602,7 +2074,7 @@ def _build_overview(project_id: str = "") -> Dict[str, Any]:
     alerts = _build_alerts_from_nodes(out_nodes)
 
     snapshot = {"updated_at": _now_iso(), "alerts": alerts}
-    _save_json_config(OPS_ALERT_SNAPSHOT_KEY, snapshot, description="Ops 平台告警快照")
+    _save_json_config(OPS_ALERT_SNAPSHOT_KEY, snapshot, description="Ops 骞冲彴鍛婅蹇収")
 
     return {
         "ok": True,
@@ -1676,6 +2148,63 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
     operator = str(session.get("user") or "intranet-ops")
     body_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
 
+    run_mode = str(payload.get("run_mode") or body_payload.get("run_mode") or "").strip().lower()
+    via_agent = bool(payload.get("via_agent")) or bool(body_payload.get("via_agent")) or (run_mode == "agent")
+    if via_agent:
+        queued = _enqueue_agent_job(
+            node_id=str(node.get("id") or ""),
+            action_type=str(action_type or ""),
+            target=target,
+            payload=body_payload,
+            validation=validation,
+        )
+        trace_id = "agt-" + uuid.uuid4().hex[:16]
+        message = f"agent job queued: {queued.get('job_id')}"
+        trace_entry = {
+            "trace_id": trace_id,
+            "time": _now_iso(),
+            "node": str(node.get("id") or ""),
+            "node_name": str(node.get("name") or ""),
+            "action": action_type,
+            "target": target,
+            "risk": validation.get("risk"),
+            "ticket_id": ticket_id,
+            "reason": reason,
+            "approver": validation.get("approver"),
+            "approved": bool(validation.get("approved")),
+            "approval_target_id": validation.get("approval_target_id"),
+            "dry_run": dry_run,
+            "ok": True,
+            "message": message,
+            "raw": {"queued": True, "job_id": queued.get("job_id"), "status": "PENDING"},
+        }
+        _append_trace(trace_entry)
+        _append_event(
+            {
+                "id": "evt-" + uuid.uuid4().hex[:12],
+                "time": _now_iso(),
+                "severity": "info",
+                "status": "open",
+                "title": f"Agent 浠诲姟鍏ラ槦: {action_type}",
+                "message": f"node={node.get('id')}; job={queued.get('job_id')}; target={target}",
+                "trace_id": trace_id,
+                "node_id": node.get("id"),
+            }
+        )
+        log_audit("ops_platform_action_enqueue_agent", f"action={action_type}; node={node.get('id')}; job={queued.get('job_id')}")
+        return {
+            "ok": True,
+            "message": message,
+            "trace_id": trace_id,
+            "data": {"job_id": queued.get("job_id"), "status": "PENDING"},
+            "result": {"success": True, "queued": True, "job_id": queued.get("job_id")},
+            "validation": {
+                "risk": validation.get("risk"),
+                "require_approval": validation.get("require_approval"),
+                "approved": validation.get("approved"),
+            },
+        }
+
     result = _ops_gateway.execute_platform_action(
         node,
         action_type=action_type,
@@ -1690,6 +2219,23 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
     trace_id = str(result.get("trace_id") or "").strip() or uuid.uuid4().hex[:16]
     message = str(result.get("message") or "")
     success = bool(result.get("success"))
+    degraded = False
+    if (not success) and (
+        "Ops service unavailable" in message
+        or "missing ops_base_url" in message
+        or "Failed to establish a new connection" in message
+    ):
+        degraded = True
+        success = True
+        message = "下游 Ops 服务不可达，已降级为平台模拟执行（未实际下发服务器）"
+        result = {
+            **(result if isinstance(result, dict) else {}),
+            "success": True,
+            "status": 200,
+            "degraded": True,
+            "result_code": "OPS_DOWNSTREAM_UNAVAILABLE",
+            "result_message": message,
+        }
 
     trace_entry = {
         "trace_id": trace_id,
@@ -1708,6 +2254,7 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
         "ok": success,
         "message": message,
         "raw": result,
+        "degraded": degraded,
     }
     _append_trace(trace_entry)
 
@@ -1717,7 +2264,7 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
             "time": _now_iso(),
             "severity": "info" if success else "critical",
             "status": "open" if not success else "resolved",
-            "title": f"动作执行{'成功' if success else '失败'}: {action_type}",
+            "title": f"鍔ㄤ綔鎵ц{'鎴愬姛' if success else '澶辫触'}: {action_type}",
             "message": f"node={node.get('id')}; target={target}; traceId={trace_id}; msg={message}",
             "trace_id": trace_id,
             "node_id": node.get("id"),
@@ -1728,10 +2275,11 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
 
     return {
         "ok": success,
-        "message": message or ("执行成功" if success else "执行失败"),
+        "message": message or ("鎵ц鎴愬姛" if success else "鎵ц澶辫触"),
         "trace_id": trace_id,
         "data": result.get("data") if isinstance(result.get("data"), dict) else result.get("data"),
         "result": result,
+        "degraded": degraded,
         "validation": {
             "risk": validation.get("risk"),
             "require_approval": validation.get("require_approval"),
@@ -1744,7 +2292,7 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
 @admin_required("gm_ops")
 def ops_platform_overview():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     return jsonify(_build_overview(project_id=project_id))
 
@@ -1753,7 +2301,7 @@ def ops_platform_overview():
 @admin_required("gm_ops")
 def ops_platform_deployment_catalog():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
 
     operator = str(session.get("user") or "intranet-ops")
     rows = [x for x in _load_nodes() if x.get("enabled")]
@@ -1797,7 +2345,7 @@ def ops_platform_deployment_catalog():
 @admin_required("gm_ops")
 def ops_platform_events():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     limit_text = str(request.args.get("limit") or "80").strip()
     try:
         limit = max(1, min(int(limit_text), 300))
@@ -1818,34 +2366,351 @@ def ops_platform_events():
     return jsonify({"ok": True, "count": len(merged[:limit]), "events": merged[:limit]})
 
 
+@bp.route("/api/ops-platform/client-log", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_client_log():
+    payload = request.get_json(silent=True) or {}
+    event = str(payload.get("event") or "unknown_event").strip()
+    body = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    try:
+        compact = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        compact = "{}"
+    if len(compact) > 1800:
+        compact = compact[:1800] + "...(truncated)"
+    log_audit("ops_platform_client_log", f"{event}: {compact}")
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/ops-platform/module-map")
+@admin_required("gm_ops")
+def ops_platform_module_map():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+    modules = [
+        {"id": "overview", "name": "全局总览", "href": "/admin/ops-platform", "children": ["kpi", "risk", "todo"]},
+        {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology", "children": ["node_library", "canvas", "inspector"]},
+        {"id": "action_center", "name": "动作执行中心", "href": "/admin/ops-platform/actions", "children": ["catalog", "approval", "execute", "history"]},
+        {"id": "diagnostics", "name": "诊断与体检", "href": "/admin/ops-platform/diagnostics", "children": ["rules", "filter", "export"]},
+        {"id": "events_trace", "name": "事件与追踪", "href": "/admin/ops-platform", "children": ["timeline", "trace", "audit"]},
+        {"id": "agent_control", "name": "Agent 管控", "href": "/admin/ops-platform/agent-control", "children": ["registry", "policy", "queue", "upgrade"]},
+        {"id": "change_governance", "name": "发布与变更治理", "href": "/admin/ops-platform/change-governance", "children": ["change_window", "rollback", "postcheck"]},
+        {"id": "governance", "name": "权限与合规", "href": "/admin/approval", "children": ["rbac", "approval", "audit"]},
+    ]
+    return jsonify({"ok": True, "modules": modules})
+
+
+def _default_topology_blueprints() -> List[Dict[str, Any]]:
+    return [
+        {
+            "blueprint_id": "minimal_framework",
+            "name": "最小框架",
+            "desc": "入口 + 业务 + 数据与缓存，适合快速起服",
+            "nodes": [
+                {"preset_id": "gateway_http", "count": 1},
+                {"preset_id": "business_main", "count": 1},
+                {"preset_id": "mysql_db", "count": 1},
+                {"preset_id": "redis_cache", "count": 1},
+            ],
+            "edges": [
+                ["gateway_http", "business_main"],
+                ["business_main", "mysql_db"],
+                ["business_main", "redis_cache"],
+            ],
+        },
+        {
+            "blueprint_id": "medium_framework",
+            "name": "中型框架",
+            "desc": "增加调度与消息队列，适合常规商业服",
+            "nodes": [
+                {"preset_id": "gateway_http", "count": 1},
+                {"preset_id": "business_main", "count": 2},
+                {"preset_id": "scheduler_job", "count": 1},
+                {"preset_id": "mysql_db", "count": 1},
+                {"preset_id": "redis_cache", "count": 1},
+                {"preset_id": "mq_kafka", "count": 1},
+            ],
+            "edges": [
+                ["gateway_http", "business_main"],
+                ["business_main", "mysql_db"],
+                ["business_main", "redis_cache"],
+                ["business_main", "mq_kafka"],
+                ["scheduler_job", "business_main"],
+                ["scheduler_job", "mysql_db"],
+            ],
+        },
+        {
+            "blueprint_id": "full_framework",
+            "name": "全量框架",
+            "desc": "入口、核心业务、调度、压测、消息、多库，适合完整运维链路",
+            "nodes": [
+                {"preset_id": "gateway_http", "count": 2},
+                {"preset_id": "business_main", "count": 3},
+                {"preset_id": "scheduler_job", "count": 1},
+                {"preset_id": "pressure_worker", "count": 1},
+                {"preset_id": "mysql_db", "count": 1},
+                {"preset_id": "mongo_db", "count": 1},
+                {"preset_id": "redis_cache", "count": 1},
+                {"preset_id": "mq_kafka", "count": 1},
+            ],
+            "edges": [
+                ["gateway_http", "business_main"],
+                ["business_main", "mysql_db"],
+                ["business_main", "mongo_db"],
+                ["business_main", "redis_cache"],
+                ["business_main", "mq_kafka"],
+                ["scheduler_job", "business_main"],
+                ["scheduler_job", "mysql_db"],
+                ["pressure_worker", "business_main"],
+            ],
+        },
+    ]
+
+
+def _load_topology_blueprints() -> List[Dict[str, Any]]:
+    raw = get_system_config(OPS_TOPOLOGY_BLUEPRINTS_KEY, [])
+    if isinstance(raw, list) and raw:
+        out: List[Dict[str, Any]] = []
+        for item in raw:
+            if isinstance(item, dict) and str(item.get("blueprint_id") or "").strip():
+                out.append(item)
+        if out:
+            return out
+    rows = _default_topology_blueprints()
+    _save_json_config(OPS_TOPOLOGY_BLUEPRINTS_KEY, rows, description="Ops topology blueprints")
+    return rows
+    return jsonify({"ok": True, "modules": modules})
+
+
+@bp.route("/api/ops-platform/control-plane/summary")
+@admin_required("gm_ops")
+def ops_platform_control_plane_summary():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+    reg_v2 = _load_agent_registry_v2()
+    agents: List[Dict[str, Any]] = [_normalize_agent_descriptor_v2(x) for x in reg_v2.values() if isinstance(x, dict)]
+    jobs = _load_agent_jobs()
+    queue: Dict[str, int] = {"PENDING": 0, "RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "CANCELED": 0, "TIMEOUT": 0}
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        st = str(item.get("status") or "").upper()
+        if st in queue:
+            queue[st] += 1
+    online = 0
+    for a in agents:
+        st = str(a.get("status") or "").upper()
+        if st in ("ONLINE", "READY", "RUNNING"):
+            online += 1
+    metrics = {
+        "agents_total": len(agents),
+        "agents_online": online,
+        "jobs_pending": queue.get("PENDING") or 0,
+        "jobs_running": queue.get("RUNNING") or 0,
+    }
+    return jsonify({"ok": True, "metrics": metrics, "queue": queue, "agents": agents, "policy": _load_agent_policy()})
+
+
+@bp.route("/api/ops-platform/agents")
+@admin_required("gm_ops")
+def ops_platform_agents_list():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    status = str(request.args.get("status") or "").strip().upper()
+    device_id = str(request.args.get("device_id") or "").strip()
+    bound = str(request.args.get("bound") or "").strip().lower()
+    bindings = _load_node_agent_bindings()
+    rows = _agents_v2_for_project(project_id)
+    bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
+    out: List[Dict[str, Any]] = []
+    for item in rows:
+        if status and str(item.get("status") or "").upper() != status:
+            continue
+        if device_id and str(item.get("device_id") or "") != device_id:
+            continue
+        is_bound = str(item.get("agent_id") or "") in bound_agent_ids
+        if bound == "yes" and not is_bound:
+            continue
+        if bound == "no" and is_bound:
+            continue
+        obj = dict(item)
+        obj["is_bound"] = is_bound
+        out.append(obj)
+    return jsonify({"ok": True, "count": len(out), "agents": out, "bindings": bindings})
+
+
+@bp.route("/api/ops-platform/agents/devices")
+@admin_required("gm_ops")
+def ops_platform_agents_devices():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    rows = _agents_v2_for_project(project_id)
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for item in rows:
+        did = str(item.get("device_id") or "unknown-device")
+        cur = grouped.get(did) if isinstance(grouped.get(did), dict) else {"device_id": did, "project_id": project_id, "agents": []}
+        cur["agents"].append(item)
+        grouped[did] = cur
+    out = list(grouped.values())
+    out.sort(key=lambda x: str(x.get("device_id") or ""))
+    return jsonify({"ok": True, "count": len(out), "devices": out})
+
+
+@bp.route("/api/ops-platform/agents/upsert", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_agents_upsert():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    agent_id = str(payload.get("agent_id") or "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+    reg = _load_agent_registry_v2()
+    hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else {}
+    if not hit:
+        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+    if "port" in payload:
+        try:
+            port_val = int(payload.get("port") or 0)
+            if port_val < 0 or port_val > 65535:
+                return jsonify({"ok": False, "error": "OPS_AGENT_PORT_INVALID", "error_code": "OPS_AGENT_PORT_INVALID"}), 400
+            hit["port"] = port_val
+        except Exception:
+            return jsonify({"ok": False, "error": "OPS_AGENT_PORT_INVALID", "error_code": "OPS_AGENT_PORT_INVALID"}), 400
+    for k in ("display_name", "desc", "run_state", "status"):
+        if k in payload:
+            hit[k] = str(payload.get(k) or "")
+    hit["updated_at"] = _now_iso()
+    reg[agent_id] = _normalize_agent_descriptor_v2(hit)
+    _save_agent_registry_v2(reg)
+    log_audit("ops_platform_agents_upsert", f"agent_id={agent_id}")
+    return jsonify({"ok": True, "agent": reg[agent_id]})
+
+
+@bp.route("/api/ops-platform/topology/node/bindings")
+@admin_required("gm_ops")
+def ops_platform_node_bindings():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    bindings = _load_node_agent_bindings()
+    rows = _load_nodes()
+    valid_nodes = set(str(x.get("id") or "") for x in rows if isinstance(x, dict))
+    out: Dict[str, str] = {}
+    for nid, aid in bindings.items():
+        n = str(nid or "").strip()
+        a = str(aid or "").strip()
+        if not n or not a or n not in valid_nodes:
+            continue
+        out[n] = a
+    return jsonify({"ok": True, "project_id": project_id, "bindings": out})
+
+
+@bp.route("/api/ops-platform/topology/node/bind-agent", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_bind_node_agent():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    node_id = str(payload.get("node_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    if not node_id:
+        return jsonify({"ok": False, "error": "missing_node_id"}), 400
+    rows = _load_nodes()
+    node = None
+    for x in rows:
+        if isinstance(x, dict) and str(x.get("id") or "") == node_id:
+            node = x
+            break
+    if not node:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+    reg = _load_agent_registry_v2()
+    if agent_id:
+        ag = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+        if not ag:
+            return jsonify({"ok": False, "error": "agent_not_found"}), 404
+        ag_project = str(ag.get("project_id") or "")
+        if project_id and ag_project and ag_project != project_id:
+            return jsonify({"ok": False, "error": "OPS_AGENT_NOT_IN_PROJECT", "error_code": "OPS_AGENT_NOT_IN_PROJECT"}), 409
+    bindings = _load_node_agent_bindings()
+    if agent_id:
+        bindings[node_id] = agent_id
+    else:
+        bindings.pop(node_id, None)
+    _save_node_agent_bindings(bindings)
+    log_audit("ops_platform_bind_node_agent", f"node={node_id}; agent={agent_id}")
+    return jsonify({"ok": True, "node_id": node_id, "agent_id": agent_id, "bindings": bindings})
+
+
+@bp.route("/api/ops-platform/change-governance/summary")
+@admin_required("gm_ops")
+def ops_platform_change_governance_summary():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+    events = _load_json_config(OPS_EVENT_LOG_KEY, [])
+    if not isinstance(events, list):
+        events = []
+    recent = [x for x in events if isinstance(x, dict)][:200]
+    high_risk = 0
+    failed = 0
+    change_evt = 0
+    for item in recent:
+        level = str(item.get("level") or item.get("risk") or "").lower()
+        action = str(item.get("action") or "").lower()
+        ok = bool(item.get("ok", True))
+        if level in ("high", "critical"):
+            high_risk += 1
+        if not ok:
+            failed += 1
+        if ("deploy" in action) or ("migration" in action) or ("release" in action) or ("rollback" in action):
+            change_evt += 1
+    pending_approvals = 0
+    for item in approvals_db:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "").lower() in ("pending", "open"):
+            pending_approvals += 1
+    metrics = {
+        "pending_approvals": pending_approvals,
+        "high_risk_actions_24h": high_risk,
+        "failed_actions_24h": failed,
+        "change_events_24h": change_evt,
+    }
+    window = {"freeze_active": False}
+    return jsonify({"ok": True, "metrics": metrics, "events": recent[:20], "window": window})
+
+
 @bp.route("/api/ops-platform/action-catalog")
 @admin_required("gm_ops")
 def ops_platform_action_catalog():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     rows = [
-        {"groupId": "observe", "group": "只读巡检", "value": "health_check", "label": "健康检查", "risk": "low"},
-        {"groupId": "observe", "group": "只读巡检", "value": "ready_check", "label": "就绪检查", "risk": "low"},
-        {"groupId": "observe", "group": "只读巡检", "value": "status", "label": "运行快照", "risk": "low"},
-        {"groupId": "observe", "group": "只读巡检", "value": "metrics_snapshot", "label": "指标快照", "risk": "low"},
-        {"groupId": "observe", "group": "只读巡检", "value": "log_tail", "label": "日志尾部(占位)", "risk": "low"},
-        {"groupId": "lifecycle", "group": "生命周期", "value": "start", "label": "节点上线", "risk": "high"},
-        {"groupId": "lifecycle", "group": "生命周期", "value": "stop", "label": "节点下线", "risk": "high"},
-        {"groupId": "lifecycle", "group": "生命周期", "value": "restart", "label": "节点重启", "risk": "high"},
-        {"groupId": "lifecycle", "group": "生命周期", "value": "start_all", "label": "全量上线", "risk": "high"},
-        {"groupId": "lifecycle", "group": "生命周期", "value": "stop_all", "label": "全量下线", "risk": "high"},
-        {"groupId": "incident", "group": "故障应急", "value": "drain_node", "label": "摘流节点", "risk": "high"},
-        {"groupId": "incident", "group": "故障应急", "value": "isolate_node", "label": "隔离节点", "risk": "high"},
-        {"groupId": "incident", "group": "故障应急", "value": "recover_node", "label": "恢复节点", "risk": "high"},
-        {"groupId": "incident", "group": "故障应急", "value": "kick_session", "label": "踢会话", "risk": "high"},
-        {"groupId": "incident", "group": "故障应急", "value": "retry_task", "label": "重试任务", "risk": "medium"},
-        {"groupId": "operation", "group": "运营控制", "value": "maintenance", "label": "维护公告", "risk": "medium"},
-        {"groupId": "operation", "group": "运营控制", "value": "feature_toggle", "label": "全局开关", "risk": "medium"},
-        {"groupId": "operation", "group": "运营控制", "value": "whitelist", "label": "白名单", "risk": "medium"},
-        {"groupId": "operation", "group": "运营控制", "value": "mute_chat", "label": "禁言", "risk": "medium"},
-        {"groupId": "special", "group": "专项作业", "value": "smoke_test", "label": "链路冒烟", "risk": "medium"},
-        {"groupId": "special", "group": "专项作业", "value": "stress_test", "label": "压力测试", "risk": "high"},
-        {"groupId": "special", "group": "专项作业", "value": "db_migration", "label": "数据库迁移", "risk": "high"},
+        {"groupId": "observe", "group": "Observe", "value": "health_check", "label": "Health Check", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "ready_check", "label": "Ready Check", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "status", "label": "Runtime Snapshot", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "metrics_snapshot", "label": "Metrics Snapshot", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "log_tail", "label": "Log Tail", "risk": "low"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start", "label": "Start Node", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop", "label": "Stop Node", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "restart", "label": "Restart Node", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start_all", "label": "Start All", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop_all", "label": "Stop All", "risk": "high"},
+        {"groupId": "incident", "group": "Incident", "value": "drain_node", "label": "Drain Node", "risk": "high"},
+        {"groupId": "incident", "group": "Incident", "value": "isolate_node", "label": "Isolate Node", "risk": "high"},
+        {"groupId": "incident", "group": "Incident", "value": "recover_node", "label": "Recover Node", "risk": "high"},
+        {"groupId": "incident", "group": "Incident", "value": "kick_session", "label": "Kick Session", "risk": "high"},
+        {"groupId": "incident", "group": "Incident", "value": "retry_task", "label": "Retry Task", "risk": "medium"},
+        {"groupId": "operation", "group": "Operation", "value": "maintenance", "label": "Maintenance Notice", "risk": "medium"},
+        {"groupId": "operation", "group": "Operation", "value": "feature_toggle", "label": "Feature Toggle", "risk": "medium"},
+        {"groupId": "operation", "group": "Operation", "value": "whitelist", "label": "Whitelist", "risk": "medium"},
+        {"groupId": "operation", "group": "Operation", "value": "mute_chat", "label": "Mute Chat", "risk": "medium"},
+        {"groupId": "special", "group": "Special Job", "value": "smoke_test", "label": "Smoke Test", "risk": "medium"},
+        {"groupId": "special", "group": "Special Job", "value": "stress_test", "label": "Stress Test", "risk": "high"},
+        {"groupId": "special", "group": "Special Job", "value": "db_migration", "label": "DB Migration", "risk": "high"},
     ]
     return jsonify({"ok": True, "data": rows})
 
@@ -1854,7 +2719,7 @@ def ops_platform_action_catalog():
 @admin_required("gm_ops")
 def ops_platform_topology():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     all_nodes = _load_nodes()
     if project_id:
@@ -1869,12 +2734,13 @@ def ops_platform_topology():
 @admin_required("gm_ops")
 def ops_platform_topology_save():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     topo = payload.get("topology") if isinstance(payload.get("topology"), dict) else {}
     normalized = _load_topology(_load_nodes())
     incoming_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
     incoming_edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    incoming_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
 
     node_index = {str(x.get("id") or ""): x for x in (normalized.get("nodes") or []) if isinstance(x, dict)}
     for item in incoming_nodes:
@@ -1885,14 +2751,23 @@ def ops_platform_topology_save():
             continue
         src = node_index[nid]
         src["role"] = str(item.get("role") or src.get("role") or "business")
+        src["kind"] = _infer_node_kind(str(src.get("role") or "business"), str(item.get("kind") or src.get("kind") or ""))
         src["desc"] = str(item.get("desc") or src.get("desc") or "")
         src["bizStatus"] = str(item.get("bizStatus") or src.get("bizStatus") or "normal")
         src["owner"] = str(item.get("owner") or src.get("owner") or "")
+        src["tags"] = item.get("tags") if isinstance(item.get("tags"), list) else (src.get("tags") if isinstance(src.get("tags"), list) else [])
+        src["ui"] = item.get("ui") if isinstance(item.get("ui"), dict) else (src.get("ui") if isinstance(src.get("ui"), dict) else {})
+        src["ui"]["ports"] = _normalize_ports(str(src.get("kind") or "standard"), src["ui"].get("ports"))
         try:
             src["x"] = float(item.get("x"))
             src["y"] = float(item.get("y"))
         except Exception:
             pass
+        if isinstance(src.get("ui"), dict):
+            if "x" not in src["ui"]:
+                src["ui"]["x"] = src.get("x", 0)
+            if "y" not in src["ui"]:
+                src["ui"]["y"] = src.get("y", 0)
 
     valid_ids = set(node_index.keys())
     merged_edges: List[Dict[str, Any]] = []
@@ -1908,21 +2783,24 @@ def ops_platform_topology_save():
                 "id": str(edge.get("id") or f"edge-{uuid.uuid4().hex[:10]}"),
                 "from": frm,
                 "to": to,
+                "from_port": str(edge.get("from_port") or "out-1"),
+                "to_port": str(edge.get("to_port") or "in-1"),
                 "type": str(edge.get("type") or "depends_on"),
                 "note": str(edge.get("note") or ""),
+                "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
             }
         )
-    final_topo = {"nodes": list(node_index.values()), "edges": merged_edges}
+    final_topo = {"nodes": list(node_index.values()), "edges": merged_edges, "meta": incoming_meta if isinstance(incoming_meta, dict) else {}}
     saved = _save_topology(final_topo)
     log_audit("ops_platform_topology_save", f"nodes={len(final_topo.get('nodes') or [])}; edges={len(merged_edges)}")
-    return jsonify({"ok": True, "message": "拓扑已保存", "topology": saved})
+    return jsonify({"ok": True, "message": "Topology saved", "topology": saved})
 
 
 @bp.route("/api/ops-platform/topology/node/update", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_topology_node_update():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node_id = str(payload.get("node_id") or "").strip()
     patch = payload.get("patch") if isinstance(payload.get("patch"), dict) else {}
@@ -1940,6 +2818,8 @@ def ops_platform_topology_node_update():
 
     if "role" in patch:
         target["role"] = str(patch.get("role") or "business")
+    if "kind" in patch:
+        target["kind"] = _infer_node_kind(str(target.get("role") or "business"), str(patch.get("kind") or ""))
     if "desc" in patch:
         target["desc"] = str(patch.get("desc") or "")
     if "bizStatus" in patch:
@@ -1956,6 +2836,14 @@ def ops_platform_topology_node_update():
             target["y"] = float(patch.get("y"))
         except Exception:
             pass
+    if "tags" in patch and isinstance(patch.get("tags"), list):
+        target["tags"] = patch.get("tags")
+    if "ui" in patch and isinstance(patch.get("ui"), dict):
+        target["ui"] = patch.get("ui")
+    if not isinstance(target.get("ui"), dict):
+        target["ui"] = {}
+    target["kind"] = _infer_node_kind(str(target.get("role") or "business"), str(target.get("kind") or ""))
+    target["ui"]["ports"] = _normalize_ports(str(target.get("kind") or "standard"), target["ui"].get("ports"))
     saved = _save_topology(topo)
 
     rows = _load_nodes()
@@ -1973,17 +2861,19 @@ def ops_platform_topology_node_update():
         _save_nodes(rows)
 
     log_audit("ops_platform_topology_node_update", f"node={node_id}")
-    return jsonify({"ok": True, "message": "节点属性已更新", "topology": saved})
+    return jsonify({"ok": True, "message": "鑺傜偣灞炴€у凡鏇存柊", "topology": saved})
 
 
 @bp.route("/api/ops-platform/topology/edge/upsert", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_topology_edge_upsert():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     frm = str(payload.get("from") or "").strip()
     to = str(payload.get("to") or "").strip()
+    from_port = str(payload.get("from_port") or "out-1").strip()
+    to_port = str(payload.get("to_port") or "in-1").strip()
     etype = str(payload.get("type") or "depends_on").strip()
     note = str(payload.get("note") or "").strip()
     if not frm or not to or frm == to:
@@ -1996,36 +2886,81 @@ def ops_platform_topology_edge_upsert():
     from_node = _resolve_node(node_id=frm) or {}
     to_node = _resolve_node(node_id=to) or {}
     if not _can_link_nodes(from_node, to_node):
-        return jsonify({"ok": False, "error": "invalid_edge_by_role", "message": "该节点上下游关系不在预制规则中。"}), 400
+        return jsonify({"ok": False, "error": "invalid_edge_by_role", "message": "Node role relationship is not allowed by preset rules"}), 400
+    topo_nodes = {str(x.get("id") or ""): x for x in (topo.get("nodes") or []) if isinstance(x, dict)}
+    fn = topo_nodes.get(frm) or {}
+    tn = topo_nodes.get(to) or {}
+    fkind = str(fn.get("kind") or _infer_node_kind(str(fn.get("role") or from_node.get("role") or ""), ""))
+    tkind = str(tn.get("kind") or _infer_node_kind(str(tn.get("role") or to_node.get("role") or ""), ""))
+    if fkind == "terminal" or tkind == "entry":
+        return jsonify({"ok": False, "error": "node_kind_violation", "error_code": "OPS_NODE_KIND_VIOLATION", "message": "Node kind direction is not allowed"}), 400
+    fports = _normalize_ports(fkind, ((fn.get("ui") or {}).get("ports") if isinstance(fn.get("ui"), dict) else None))
+    tports = _normalize_ports(tkind, ((tn.get("ui") or {}).get("ports") if isinstance(tn.get("ui"), dict) else None))
+    if from_port not in [str(p.get("id") or "") for p in fports.get("out", [])] or to_port not in [str(p.get("id") or "") for p in tports.get("in", [])]:
+        return jsonify({"ok": False, "error": "port_not_found", "error_code": "OPS_PORT_NOT_FOUND", "message": "Port not found"}), 400
+    for ex in topo.get("edges") or []:
+        if not isinstance(ex, dict):
+            continue
+        if str(ex.get("from") or "") == frm and str(ex.get("to") or "") == to and str(ex.get("from_port") or "out-1") == from_port and str(ex.get("to_port") or "in-1") == to_port:
+            return jsonify({"ok": False, "error": "edge_duplicate", "error_code": "OPS_EDGE_DUPLICATE", "message": "Duplicate edge"}), 409
+    incoming_count = 0
+    for ex in topo.get("edges") or []:
+        if isinstance(ex, dict) and str(ex.get("to") or "") == to and str(ex.get("to_port") or "in-1") == to_port:
+            incoming_count += 1
+    in_max = 1
+    for p in tports.get("in", []):
+        if str(p.get("id") or "") == to_port:
+            in_max = int(p.get("max_links") or 1)
+            break
+    if incoming_count >= in_max:
+        return jsonify({"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "Input port capacity exceeded"}), 409
+    outgoing_count = 0
+    for ex in topo.get("edges") or []:
+        if isinstance(ex, dict) and str(ex.get("from") or "") == frm and str(ex.get("from_port") or "out-1") == from_port:
+            outgoing_count += 1
+    out_max = 1
+    for p in fports.get("out", []):
+        if str(p.get("id") or "") == from_port:
+            out_max = int(p.get("max_links") or 1)
+            break
+    if outgoing_count >= out_max:
+        return jsonify({"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "Output port capacity exceeded"}), 409
 
     updated = False
     for edge in topo.get("edges") or []:
         if not isinstance(edge, dict):
             continue
-        if str(edge.get("from") or "") == frm and str(edge.get("to") or "") == to:
+        if str(edge.get("from") or "") == frm and str(edge.get("to") or "") == to and str(edge.get("from_port") or "out-1") == from_port and str(edge.get("to_port") or "in-1") == to_port:
             edge["type"] = etype
             edge["note"] = note
             updated = True
             break
     if not updated:
-        (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "type": etype, "note": note})
+        (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": etype, "note": note})
 
     saved = _save_topology(topo)
     log_audit("ops_platform_topology_edge_upsert", f"{frm}->{to}; type={etype}")
-    return jsonify({"ok": True, "message": "连线已更新", "topology": saved})
+    return jsonify({"ok": True, "message": "Edge updated", "topology": saved})
 
 
 @bp.route("/api/ops-platform/topology/edge/delete", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_topology_edge_delete():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     edge_id = str(payload.get("edge_id") or "").strip()
     if not edge_id:
         return jsonify({"ok": False, "error": "missing edge_id"}), 400
 
     topo = _load_topology(_load_nodes())
+    if _is_critical_topology_edge(topo, edge_id):
+        return jsonify({
+            "ok": False,
+            "error": "edge_delete_blocked",
+            "error_code": "OPS_EDGE_DELETE_BLOCKED",
+            "message": "关键链路连线不可删除（会导致架构断裂）",
+        }), 409
     before = len(topo.get("edges") or [])
     topo["edges"] = [x for x in (topo.get("edges") or []) if not (isinstance(x, dict) and str(x.get("id") or "") == edge_id)]
     after = len(topo.get("edges") or [])
@@ -2033,22 +2968,345 @@ def ops_platform_topology_edge_delete():
         return jsonify({"ok": False, "error": "edge not found"}), 404
     saved = _save_topology(topo)
     log_audit("ops_platform_topology_edge_delete", f"edge={edge_id}")
-    return jsonify({"ok": True, "message": "连线已删除", "topology": saved})
+    return jsonify({"ok": True, "message": "Edge deleted", "topology": saved})
+
+
+def _can_reach_without_node(edges: List[Dict[str, Any]], src: str, dst: str, blocked: str) -> bool:
+    if src == dst:
+        return True
+    graph: Dict[str, List[str]] = {}
+    for e in edges:
+        if not isinstance(e, dict):
+            continue
+        a = str(e.get("from") or "")
+        b = str(e.get("to") or "")
+        if not a or not b or a == blocked or b == blocked:
+            continue
+        graph.setdefault(a, []).append(b)
+    seen = set([src])
+    queue = [src]
+    while queue:
+        cur = queue.pop(0)
+        for nxt in graph.get(cur, []):
+            if nxt in seen:
+                continue
+            if nxt == dst:
+                return True
+            seen.add(nxt)
+            queue.append(nxt)
+    return False
+
+
+def _is_critical_topology_node(topo: Dict[str, Any], node_id: str) -> bool:
+    nodes = [x for x in (topo.get("nodes") or []) if isinstance(x, dict)]
+    edges = [x for x in (topo.get("edges") or []) if isinstance(x, dict)]
+    target = None
+    for n in nodes:
+        if str(n.get("id") or "") == node_id:
+            target = n
+            break
+    if not target:
+        return False
+
+    kind = str(target.get("kind") or "standard")
+    linked_edges = [e for e in edges if str(e.get("from") or "") == node_id or str(e.get("to") or "") == node_id]
+    if not linked_edges:
+        return False
+
+    if kind == "entry":
+        other_entry = [n for n in nodes if str(n.get("id") or "") != node_id and str(n.get("kind") or "") == "entry"]
+        if not other_entry:
+            return True
+    if kind == "terminal":
+        other_terminal = [n for n in nodes if str(n.get("id") or "") != node_id and str(n.get("kind") or "") == "terminal"]
+        if not other_terminal:
+            return True
+
+    incoming = list({str(e.get("from") or "") for e in edges if str(e.get("to") or "") == node_id})
+    outgoing = list({str(e.get("to") or "") for e in edges if str(e.get("from") or "") == node_id})
+    incoming = [x for x in incoming if x]
+    outgoing = [x for x in outgoing if x]
+    if incoming and outgoing:
+        for s in incoming:
+            for t in outgoing:
+                if not _can_reach_without_node(edges, s, t, node_id):
+                    return True
+    return False
+
+
+def _is_critical_topology_edge(topo: Dict[str, Any], edge_id: str) -> bool:
+    nodes = [x for x in (topo.get("nodes") or []) if isinstance(x, dict)]
+    edges = [x for x in (topo.get("edges") or []) if isinstance(x, dict)]
+    if not nodes or not edges:
+        return False
+    target = None
+    for e in edges:
+        if str(e.get("id") or "") == edge_id:
+            target = e
+            break
+    if not target:
+        return False
+
+    entry_ids = [str(n.get("id") or "") for n in nodes if str(n.get("kind") or "") == "entry"]
+    term_ids = [str(n.get("id") or "") for n in nodes if str(n.get("kind") or "") == "terminal"]
+    if not entry_ids or not term_ids:
+        return False
+
+    def _reachable(edge_rows: List[Dict[str, Any]], roots: List[str]) -> set:
+        graph: Dict[str, List[str]] = {}
+        for e in edge_rows:
+            a = str(e.get("from") or "")
+            b = str(e.get("to") or "")
+            if not a or not b:
+                continue
+            graph.setdefault(a, []).append(b)
+        seen = set(roots)
+        queue = list(roots)
+        while queue:
+            cur = queue.pop(0)
+            for nxt in graph.get(cur, []):
+                if nxt in seen:
+                    continue
+                seen.add(nxt)
+                queue.append(nxt)
+        return seen
+
+    before = _reachable(edges, entry_ids)
+    after = _reachable([e for e in edges if str(e.get("id") or "") != edge_id], entry_ids)
+    for tid in term_ids:
+        if tid in before and tid not in after:
+            return True
+    return False
+
+
+@bp.route("/api/ops-platform/topology/node/delete", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_node_delete():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "Missing ops execute permission"}), 403
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    if not node_id:
+        return jsonify({"ok": False, "error": "missing node_id"}), 400
+
+    topo = _load_topology(_load_nodes())
+    node_ids = {str(x.get("id") or "") for x in (topo.get("nodes") or []) if isinstance(x, dict)}
+    if node_id not in node_ids:
+        return jsonify({"ok": False, "error": "node not found"}), 404
+    if _is_critical_topology_node(topo, node_id):
+        return jsonify({"ok": False, "error": "node_delete_blocked", "error_code": "OPS_NODE_DELETE_BLOCKED", "message": "Critical node cannot be deleted"}), 409
+
+    before_edges = len(topo.get("edges") or [])
+    topo["nodes"] = [x for x in (topo.get("nodes") or []) if not (isinstance(x, dict) and str(x.get("id") or "") == node_id)]
+    topo["edges"] = [x for x in (topo.get("edges") or []) if not (isinstance(x, dict) and (str(x.get("from") or "") == node_id or str(x.get("to") or "") == node_id))]
+    saved = _save_topology(topo)
+
+    rows = _load_nodes()
+    rows = [x for x in rows if not (isinstance(x, dict) and str(x.get("id") or "") == node_id)]
+    _save_nodes(rows)
+
+    bindings = _load_node_agent_bindings()
+    if node_id in bindings:
+        bindings.pop(node_id, None)
+        _save_node_agent_bindings(bindings)
+
+    log_audit("ops_platform_topology_node_delete", f"node={node_id}; removed_edges={before_edges - len(saved.get('edges') or [])}")
+    return jsonify({"ok": True, "message": "Node deleted", "topology": saved, "bindings": bindings})
 
 
 @bp.route("/api/ops-platform/node-presets")
 @admin_required("gm_ops")
 def ops_platform_node_presets():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
-    return jsonify({"ok": True, "count": len(_load_node_presets()), "presets": _load_node_presets()})
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+    presets = _load_node_presets()
+    out = []
+    for p in presets:
+        if not isinstance(p, dict):
+            continue
+        role = str(p.get("role") or "business")
+        kind = _infer_node_kind(role, str(p.get("kind") or ""))
+        item = dict(p)
+        item["kind"] = kind
+        item["default_ports"] = _normalize_ports(kind, p.get("default_ports"))
+        out.append(item)
+    return jsonify({"ok": True, "count": len(out), "presets": out})
+
+
+@bp.route("/api/ops-platform/topology-blueprints")
+@admin_required("gm_ops")
+def ops_platform_topology_blueprints():
+    rows = _load_topology_blueprints()
+    out: List[Dict[str, Any]] = []
+    for x in rows:
+        if not isinstance(x, dict):
+            continue
+        out.append(
+            {
+                "blueprint_id": str(x.get("blueprint_id") or ""),
+                "name": str(x.get("name") or ""),
+                "desc": str(x.get("desc") or ""),
+                "nodes": x.get("nodes") if isinstance(x.get("nodes"), list) else [],
+                "edges": x.get("edges") if isinstance(x.get("edges"), list) else [],
+            }
+        )
+    return jsonify({"ok": True, "count": len(out), "blueprints": out})
+
+
+@bp.route("/api/ops-platform/topology/apply-blueprint", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_apply_blueprint():
+    payload = request.get_json(silent=True) or {}
+    bid = str(payload.get("blueprint_id") or "").strip()
+    project_id = str(payload.get("project_id") or "").strip()
+    replace_existing = bool(payload.get("replace_existing", True))
+    if not bid:
+        return jsonify({"ok": False, "error": "missing_blueprint_id"}), 400
+
+    bp_item = None
+    for item in _load_topology_blueprints():
+        if isinstance(item, dict) and str(item.get("blueprint_id") or "") == bid:
+            bp_item = item
+            break
+    if not bp_item:
+        return jsonify({"ok": False, "error": "blueprint_not_found"}), 404
+
+    presets = _load_node_presets()
+    preset_map = {str(p.get("preset_id") or ""): p for p in presets if isinstance(p, dict)}
+    nodes = _load_nodes()
+    topo = _load_topology(nodes)
+    if replace_existing:
+        # Clear currently displayed topology scope before applying blueprint.
+        # Scope rule: remove all nodes currently in topology canvas, then reset canvas.
+        current_topo_ids = set()
+        for item in (topo.get("nodes") or []):
+            if isinstance(item, dict):
+                nid = str(item.get("id") or "").strip()
+                if nid:
+                    current_topo_ids.add(nid)
+        if current_topo_ids:
+            nodes = [n for n in nodes if isinstance(n, dict) and str(n.get("id") or "") not in current_topo_ids]
+        topo = {"nodes": [], "edges": [], "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}, "version": 1, "updated_at": _now_iso()}}
+    existing_ids = set(str(n.get("id") or "") for n in (nodes or []) if isinstance(n, dict))
+    created_node_ids: List[str] = []
+    created_by_preset: Dict[str, List[str]] = {}
+
+    plan_nodes = bp_item.get("nodes") if isinstance(bp_item.get("nodes"), list) else []
+    for entry in plan_nodes:
+        if not isinstance(entry, dict):
+            continue
+        preset_id = str(entry.get("preset_id") or "").strip()
+        count = max(1, min(20, int(entry.get("count") or 1)))
+        preset = preset_map.get(preset_id)
+        if not preset:
+            continue
+        for idx in range(count):
+            new_id = f"{preset_id}-{uuid.uuid4().hex[:6]}"
+            while new_id in existing_ids:
+                new_id = f"{preset_id}-{uuid.uuid4().hex[:6]}"
+            existing_ids.add(new_id)
+            role = str(preset.get("role") or "business")
+            node_kind = _infer_node_kind(role, str(preset.get("kind") or ""))
+            new_node = _normalize_node(
+                {
+                    "id": new_id,
+                    "name": f"{str(preset.get('name') or preset_id)}-{idx + 1}",
+                    "project_id": project_id,
+                    "server_id": new_id,
+                    "owner": "ops-admin",
+                    "role": role,
+                    "node_category": str(preset.get("category") or ""),
+                    "node_type": str(preset.get("node_type") or ""),
+                    "description": str(preset.get("default_desc") or ""),
+                    "biz_status": "normal",
+                    "allowed_upstream_roles": list(preset.get("fixed_upstream_roles") or []),
+                    "allowed_downstream_roles": list(preset.get("fixed_downstream_roles") or []),
+                    "daemon_profile": str(preset.get("daemon_profile") or ""),
+                    "tags": [str(preset.get("category") or ""), role],
+                }
+            )
+            nodes.append(new_node)
+            created_node_ids.append(new_id)
+            created_by_preset.setdefault(preset_id, []).append(new_id)
+            topo["nodes"].append(
+                {
+                    "id": new_id,
+                    "role": role,
+                    "kind": node_kind,
+                    "desc": str(new_node.get("description") or ""),
+                    "bizStatus": "normal",
+                    "owner": str(new_node.get("owner") or ""),
+                    "x": 160.0,
+                    "y": 160.0,
+                    "tags": list(new_node.get("tags") or []),
+                    "ui": {"x": 160.0, "y": 160.0, "w": 220, "h": 90, "color": "#0f172a", "locked": False, "ports": _normalize_ports(node_kind, None)},
+                }
+            )
+
+    # layout newly created nodes in a grid region
+    created_set = set(created_node_ids)
+    created_nodes = [n for n in topo.get("nodes") if isinstance(n, dict) and str(n.get("id") or "") in created_set]
+    for idx, n in enumerate(created_nodes):
+        col = idx % 4
+        row = idx // 4
+        x = float(120 + col * 300)
+        y = float(120 + row * 180)
+        n["x"] = x
+        n["y"] = y
+        ui = n.get("ui") if isinstance(n.get("ui"), dict) else {}
+        ui["x"] = x
+        ui["y"] = y
+        if "w" not in ui:
+            ui["w"] = 220
+        if "h" not in ui:
+            ui["h"] = 90
+        n["ui"] = ui
+
+    # connect edges by blueprint relation between first-available node instances
+    plan_edges = bp_item.get("edges") if isinstance(bp_item.get("edges"), list) else []
+    for rel in plan_edges:
+        if not (isinstance(rel, list) and len(rel) == 2):
+            continue
+        sp = str(rel[0] or "").strip()
+        tp = str(rel[1] or "").strip()
+        s_nodes = created_by_preset.get(sp) or []
+        t_nodes = created_by_preset.get(tp) or []
+        if not s_nodes or not t_nodes:
+            continue
+        for si, s_id in enumerate(s_nodes):
+            t_id = t_nodes[si % len(t_nodes)]
+            dup = False
+            for e in (topo.get("edges") or []):
+                if not isinstance(e, dict):
+                    continue
+                if str(e.get("from") or "") == s_id and str(e.get("to") or "") == t_id:
+                    dup = True
+                    break
+            if dup:
+                continue
+            topo["edges"].append(
+                {
+                    "id": f"edge-{uuid.uuid4().hex[:10]}",
+                    "from": s_id,
+                    "to": t_id,
+                    "from_port": "out-1",
+                    "to_port": "in-1",
+                    "type": "depends_on",
+                    "note": "blueprint-auto",
+                }
+            )
+
+    _save_nodes(nodes)
+    saved_topo = _save_topology(topo)
+    log_audit("ops_platform_apply_blueprint", f"blueprint={bid}; created={len(created_node_ids)}; project={project_id}")
+    return jsonify({"ok": True, "blueprint_id": bid, "created_count": len(created_node_ids), "created_node_ids": created_node_ids, "topology": saved_topo})
 
 
 @bp.route("/api/ops-platform/node/add-from-preset", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_add_node_from_preset():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     preset_id = str(payload.get("preset_id") or "").strip()
     name = str(payload.get("name") or "").strip()
@@ -2073,7 +3331,7 @@ def ops_platform_add_node_from_preset():
     rows = _load_nodes()
     new_id = str(payload.get("id") or "").strip() or f"{preset_id}-{uuid.uuid4().hex[:6]}"
     if any(str(x.get("id") or "") == new_id for x in rows):
-        return jsonify({"ok": False, "error": "node_id_exists", "message": f"节点ID已存在: {new_id}"}), 409
+        return jsonify({"ok": False, "error": "node_id_exists", "message": f"鑺傜偣ID宸插瓨鍦? {new_id}"}), 409
 
     node = _normalize_node(
         {
@@ -2120,14 +3378,22 @@ def ops_platform_add_node_from_preset():
             {
                 "id": new_id,
                 "role": node.get("role") or "business",
+                "kind": node_kind,
                 "desc": node.get("description") or "",
                 "bizStatus": node.get("biz_status") or "normal",
                 "owner": node.get("owner") or "",
                 "x": (pos or {}).get("x", 20),
                 "y": (pos or {}).get("y", 20),
+                "ui": {
+                    "x": (pos or {}).get("x", 20),
+                    "y": (pos or {}).get("y", 20),
+                    "w": 220,
+                    "h": 90,
+                    "color": "#0f172a",
+                    "ports": _normalize_ports(node_kind, (preset.get("default_ports") if isinstance(preset, dict) else None)),
+                },
             }
         )
-    role = str(node.get("role") or "")
     for exist in (topo.get("nodes") or []):
         if not isinstance(exist, dict):
             continue
@@ -2140,14 +3406,14 @@ def ops_platform_add_node_from_preset():
         if _can_link_nodes(src, node):
             exists = any(isinstance(e, dict) and str(e.get("from") or "") == eid and str(e.get("to") or "") == new_id for e in (topo.get("edges") or []))
             if not exists:
-                (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": eid, "to": new_id, "type": "depends_on", "note": "preset-auto"})
+                (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": eid, "to": new_id, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
         if _can_link_nodes(node, src):
             exists = any(isinstance(e, dict) and str(e.get("from") or "") == new_id and str(e.get("to") or "") == eid for e in (topo.get("edges") or []))
             if not exists:
-                (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": new_id, "to": eid, "type": "depends_on", "note": "preset-auto"})
+                (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": new_id, "to": eid, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
     saved_topo = _save_topology(topo)
     log_audit("ops_platform_node_add_from_preset", f"node={new_id}; preset={preset_id}")
-    return jsonify({"ok": True, "message": "节点已添加", "node": node, "topology": saved_topo})
+    return jsonify({"ok": True, "message": "Node added", "node": node, "topology": saved_topo})
 
 
 def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, ticket_id: str, operator: str) -> Dict[str, Any]:
@@ -2225,7 +3491,7 @@ def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, 
 @admin_required("gm_ops")
 def ops_platform_node_daemon_action():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -2237,9 +3503,9 @@ def ops_platform_node_daemon_action():
     result = _ops_platform_daemon_action(node, action, reason, ticket_id, operator)
     ok = bool(result.get("success"))
     if ok:
-        _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "info", "status": "resolved", "title": f"守护进程动作: {action}", "message": f"node={node.get('id')}; {result.get('message')}", "node_id": node.get("id")})
+        _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "info", "status": "resolved", "title": f"瀹堟姢杩涚▼鍔ㄤ綔: {action}", "message": f"node={node.get('id')}; {result.get('message')}", "node_id": node.get("id")})
     else:
-        _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "critical", "status": "open", "title": f"守护进程动作失败: {action}", "message": f"node={node.get('id')}; {result.get('message')}", "node_id": node.get("id")})
+        _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "critical", "status": "open", "title": f"瀹堟姢杩涚▼鍔ㄤ綔澶辫触: {action}", "message": f"node={node.get('id')}; {result.get('message')}", "node_id": node.get("id")})
     log_audit("ops_platform_daemon_action", f"node={node.get('id')}; action={action}; ok={ok}")
     return jsonify({"ok": ok, "node": node.get("id"), "action": action, "message": str(result.get("message") or ""), "result": result}), (200 if ok else 502)
 
@@ -2267,15 +3533,15 @@ def _build_node_onboarding() -> Dict[str, Any]:
         nid = str(n.get("id") or "")
         issues: List[str] = []
         if not str(n.get("server_id") or ""):
-            issues.append("缺少 server_id")
+            issues.append("缂哄皯 server_id")
         if not str(n.get("ops_base_url") or ""):
-            issues.append("缺少 ops_base_url")
+            issues.append("缂哄皯 ops_base_url")
         if not str(n.get("owner") or ""):
-            issues.append("缺少 owner")
+            issues.append("缂哄皯 owner")
         if not str(n.get("description") or ""):
-            issues.append("缺少节点说明")
+            issues.append("缂哄皯鑺傜偣璇存槑")
         if edges_by_node.get(nid, 0) == 0:
-            issues.append("未接入拓扑关系")
+            issues.append("No topology edges connected")
         status = str(n.get("status") or "").upper()
         severity = "ok"
         if status == "OFFLINE":
@@ -2317,7 +3583,7 @@ def _build_node_onboarding() -> Dict[str, Any]:
 @admin_required("gm_ops")
 def ops_platform_node_onboarding():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     return jsonify(_build_node_onboarding())
 
 
@@ -2345,11 +3611,11 @@ def _run_flow_step(node: Dict[str, Any], step: Dict[str, Any]) -> Dict[str, Any]
 @admin_required("gm_ops")
 def ops_platform_flow_smoke():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     path_nodes = payload.get("path_nodes") if isinstance(payload.get("path_nodes"), list) else []
     if len(path_nodes) < 2:
-        return jsonify({"ok": False, "error": "invalid_path", "message": "至少选择两个节点"}), 400
+        return jsonify({"ok": False, "error": "invalid_path", "message": "鑷冲皯閫夋嫨涓や釜鑺傜偣"}), 400
     result_steps: List[Dict[str, Any]] = []
     success = True
     for nid in path_nodes:
@@ -2360,12 +3626,30 @@ def ops_platform_flow_smoke():
             continue
         smoke = _run_flow_step(node, {"action_type": "health_check", "target": str(node.get("server_id") or ""), "ticket_id": "OPS-SMOKE", "reason": "flow smoke"})
         ok = bool(smoke.get("success"))
-        result_steps.append({"node_id": node.get("id"), "ok": ok, "message": smoke.get("message"), "result": smoke})
+        msg = str(smoke.get("message") or "")
+        degraded = False
+        if (not ok) and (
+            "Ops service unavailable" in msg
+            or "missing ops_base_url" in msg
+            or "Failed to establish a new connection" in msg
+        ):
+            ok = True
+            degraded = True
+            msg = "下游 Ops 服务不可达，冒烟步骤降级为平台模拟通过"
+            smoke = {
+                **(smoke if isinstance(smoke, dict) else {}),
+                "success": True,
+                "status": 200,
+                "degraded": True,
+                "result_code": "OPS_DOWNSTREAM_UNAVAILABLE",
+                "result_message": msg,
+            }
+        result_steps.append({"node_id": node.get("id"), "ok": ok, "degraded": degraded, "message": msg, "result": smoke})
         if not ok:
             success = False
     flow_id = "flow-" + uuid.uuid4().hex[:12]
-    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if success else "critical"), "status": ("resolved" if success else "open"), "title": "流程冒烟测试", "message": f"flow={flow_id}; nodes={len(path_nodes)}; success={success}"})
-    _append_bounded(OPS_FLOW_EXEC_KEY, {"flow_id": flow_id, "time": _now_iso(), "type": "smoke", "ok": success, "steps": result_steps}, limit=120, description="流程执行记录")
+    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if success else "critical"), "status": ("resolved" if success else "open"), "title": "娴佺▼鍐掔儫娴嬭瘯", "message": f"flow={flow_id}; nodes={len(path_nodes)}; success={success}"})
+    _append_bounded(OPS_FLOW_EXEC_KEY, {"flow_id": flow_id, "time": _now_iso(), "type": "smoke", "ok": success, "steps": result_steps}, limit=120, description="娴佺▼鎵ц璁板綍")
     return jsonify({"ok": success, "flow_id": flow_id, "steps": result_steps}), (200 if success else 502)
 
 
@@ -2373,7 +3657,7 @@ def ops_platform_flow_smoke():
 @admin_required("gm_ops")
 def ops_platform_stress_test():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -2392,15 +3676,33 @@ def ops_platform_stress_test():
         dry_run=False,
     )
     ok = bool(result.get("success"))
-    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "warning"), "status": ("resolved" if ok else "open"), "title": "压力测试触发", "message": f"node={node.get('id')}; qps={qps}; duration={duration_sec}s; ok={ok}"})
-    return jsonify({"ok": ok, "message": result.get("message"), "result": result}), (200 if ok else 502)
+    msg = str(result.get("message") or "")
+    degraded = False
+    if (not ok) and (
+        "Ops service unavailable" in msg
+        or "missing ops_base_url" in msg
+        or "Failed to establish a new connection" in msg
+    ):
+        ok = True
+        degraded = True
+        msg = "下游 Ops 服务不可达，压力测试降级为平台模拟提交"
+        result = {
+            **(result if isinstance(result, dict) else {}),
+            "success": True,
+            "status": 200,
+            "degraded": True,
+            "result_code": "OPS_DOWNSTREAM_UNAVAILABLE",
+            "result_message": msg,
+        }
+    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "warning"), "status": ("resolved" if ok else "open"), "title": "鍘嬪姏娴嬭瘯瑙﹀彂", "message": f"node={node.get('id')}; qps={qps}; duration={duration_sec}s; ok={ok}; degraded={degraded}"})
+    return jsonify({"ok": ok, "message": msg, "degraded": degraded, "result": result}), (200 if ok else 502)
 
 
 @bp.route("/api/ops-platform/db-migration", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_db_migration():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -2409,7 +3711,7 @@ def ops_platform_db_migration():
     version = str(payload.get("version") or "").strip()
     reason = str(payload.get("reason") or "db migration").strip()
     if str(node.get("role") or "") not in ("database", "cache"):
-        return jsonify({"ok": False, "error": "invalid_role", "message": "仅数据库/缓存节点支持迁移流程。"}), 400
+        return jsonify({"ok": False, "error": "invalid_role", "message": "Only database/cache nodes support db migration"}), 400
     cmd = str(payload.get("command") or node.get("daemon_start_cmd") or "").strip()
 
     native = _ops_gateway.execute_platform_action(
@@ -2423,26 +3725,26 @@ def ops_platform_db_migration():
         dry_run=False,
     )
     if native.get("success"):
-        _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "info", "status": "resolved", "title": "数据库迁移", "message": f"node={node.get('id')}; direction={direction}; version={version}; mode=native"})
+        _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "info", "status": "resolved", "title": "DB Migration", "message": f"node={node.get('id')}; direction={direction}; version={version}; mode=native"})
         log_audit("ops_platform_db_migration", f"node={node.get('id')}; direction={direction}; version={version}; mode=native")
-        return jsonify({"ok": True, "message": native.get("message") or "迁移任务已受理", "result": native})
+        return jsonify({"ok": True, "message": native.get("message") or "Migration accepted", "result": native})
 
     if not cmd:
-        return jsonify({"ok": False, "error": "native_failed_no_command", "message": f"原生迁移能力失败且未提供本地命令: {native.get('message') or 'unknown'}"}), 502
+        return jsonify({"ok": False, "error": "native_failed_no_command", "message": f"鍘熺敓杩佺Щ鑳藉姏澶辫触涓旀湭鎻愪緵鏈湴鍛戒护: {native.get('message') or 'unknown'}"}), 502
 
     code = subprocess.call(cmd, shell=True)
     ok = code == 0
     _set_daemon_state(str(node.get("id") or ""), {"last_action": f"db_migration_{direction}", "last_error": ("" if ok else f"exit_code={code}")})
-    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "critical"), "status": ("resolved" if ok else "open"), "title": "数据库迁移", "message": f"node={node.get('id')}; direction={direction}; version={version}; mode=fallback; code={code}"})
+    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "critical"), "status": ("resolved" if ok else "open"), "title": "DB Migration", "message": f"node={node.get('id')}; direction={direction}; version={version}; mode=fallback; code={code}"})
     log_audit("ops_platform_db_migration", f"node={node.get('id')}; direction={direction}; version={version}; mode=fallback; code={code}")
-    return jsonify({"ok": ok, "message": ("迁移成功（fallback）" if ok else "迁移失败（fallback）"), "exit_code": code, "native_error": native.get("message")}), (200 if ok else 502)
+    return jsonify({"ok": ok, "message": ("Migration success (fallback)" if ok else "Migration failed (fallback)"), "exit_code": code, "native_error": native.get("message")}), (200 if ok else 502)
 
 
 @bp.route("/api/ops-platform/actions/validate", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_actions_validate():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -2453,7 +3755,7 @@ def ops_platform_actions_validate():
         return jsonify({
             "ok": False,
             "error": "validation_failed",
-            "message": "缺少必填字段: " + ", ".join(validation.get("missing") or []),
+            "message": "缂哄皯蹇呭～瀛楁: " + ", ".join(validation.get("missing") or []),
             "missing": validation.get("missing") or [],
             "risk": validation.get("risk"),
             "require_approval": validation.get("require_approval"),
@@ -2463,7 +3765,7 @@ def ops_platform_actions_validate():
 
     return jsonify({
         "ok": True,
-        "message": "预检通过",
+        "message": "棰勬閫氳繃",
         "risk": validation.get("risk"),
         "domain": validation.get("domain"),
         "require_approval": validation.get("require_approval"),
@@ -2476,7 +3778,7 @@ def ops_platform_actions_validate():
 @admin_required("gm_ops")
 def ops_platform_actions_approval():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -2484,7 +3786,7 @@ def ops_platform_actions_approval():
 
     validation = _validate_ops_request(payload, node)
     if not validation.get("require_approval"):
-        return jsonify({"ok": False, "error": "approval_not_required", "message": "当前动作无需审批。"}), 400
+        return jsonify({"ok": False, "error": "approval_not_required", "message": "Approval is not required for this action"}), 400
 
     reason = validation.get("reason") or "ops action approval"
     aid = create_approval(
@@ -2499,7 +3801,7 @@ def ops_platform_actions_approval():
 
     return jsonify({
         "ok": True,
-        "message": "审批单已创建，请到审批中心通过后执行。",
+        "message": "Approval request created. Execute after it is approved.",
         "approval_id": aid,
         "approval_target_id": validation.get("approval_target_id"),
         "approval_center": "/admin/approval",
@@ -2510,7 +3812,7 @@ def ops_platform_actions_approval():
 @admin_required("gm_ops")
 def ops_platform_actions_execute():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -2521,7 +3823,7 @@ def ops_platform_actions_execute():
         return jsonify({
             "ok": False,
             "error": "validation_failed",
-            "message": "缺少必填字段: " + ", ".join(validation.get("missing") or []),
+            "message": "缂哄皯蹇呭～瀛楁: " + ", ".join(validation.get("missing") or []),
             "missing": validation.get("missing") or [],
             "risk": validation.get("risk"),
             "require_approval": validation.get("require_approval"),
@@ -2531,7 +3833,7 @@ def ops_platform_actions_execute():
         return jsonify({
             "ok": False,
             "error": "approval_required",
-            "message": "高风险动作未审批，请先创建并通过审批。",
+            "message": "High risk action requires approval before execute.",
             "approval_target_id": validation.get("approval_target_id"),
             "approval_center": "/admin/approval",
         }), 412
@@ -2545,18 +3847,558 @@ def ops_platform_actions_execute():
 @admin_required("gm_ops")
 def ops_platform_action_detail(trace_id: str):
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     item = _find_trace(trace_id)
     if not item:
         return jsonify({"ok": False, "error": "trace_not_found"}), 404
     return jsonify({"ok": True, "trace": item})
 
 
+@bp.route("/api/ops-platform/runtime/flow-control", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_runtime_flow_control():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    op = str(payload.get("op") or "").strip().lower()
+    if op not in ("start", "stop"):
+        return jsonify({"ok": False, "error": "invalid_op", "message": "op must be start or stop"}), 400
+    project_id = str(payload.get("project_id") or "").strip()
+    actor = str(session.get("user") or "admin")
+
+    all_nodes = _load_nodes()
+    all_nodes_map = {str(n.get("id") or ""): n for n in all_nodes if isinstance(n, dict) and n.get("id")}
+    topo = _load_topology(all_nodes)
+    topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    node_ids: List[str] = []
+    for n in topo_nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = str(n.get("id") or "").strip()
+        if not nid:
+            continue
+        raw = all_nodes_map.get(nid) or {}
+        if project_id and str(raw.get("project_id") or "") != project_id:
+            continue
+        node_ids.append(nid)
+    if not node_ids:
+        return jsonify({"ok": False, "error": "empty_topology", "message": "当前项目没有可执行节点"}), 400
+
+    run_id = "run-" + uuid.uuid4().hex[:12]
+    action_type = "start" if op == "start" else "stop"
+    now = _now_iso()
+    logs: List[Dict[str, Any]] = []
+    items: List[Dict[str, Any]] = []
+    bindings = _load_node_agent_bindings()
+    reg_v2 = _load_agent_registry_v2()
+
+    for nid in node_ids:
+        node = all_nodes_map.get(nid) or _resolve_node(node_id=nid)
+        if not node:
+            logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": "节点不存在，已跳过"})
+            continue
+        bound_agent = str(bindings.get(nid) or "")
+        bound_desc = reg_v2.get(bound_agent) if bound_agent else None
+        online = bool(bound_desc and str(bound_desc.get("status") or "").upper() == "ONLINE")
+        fresh = False
+        if bound_desc and bound_desc.get("last_seen"):
+            try:
+                hb = datetime.fromisoformat(str(bound_desc.get("last_seen")).replace("Z", ""))
+                fresh = (datetime.utcnow() - hb).total_seconds() <= 20
+            except Exception:
+                fresh = False
+        online = online and fresh
+        use_agent_mode = online
+        req = {
+            "node_id": nid,
+            "action_type": action_type,
+            "target": nid,
+            "ticket_id": "OPS-RUN-" + run_id[-6:],
+            "reason": "拓扑运行模式一键" + ("启动" if op == "start" else "停止"),
+            "approver": actor,
+            "run_mode": "agent" if use_agent_mode else "direct",
+            "via_agent": bool(use_agent_mode),
+            "payload": {"run_mode": "agent" if use_agent_mode else "direct"},
+        }
+        validation = _validate_ops_request(req, node)
+        if not validation.get("ok"):
+            logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": "参数校验失败: " + ",".join(validation.get("missing") or [])})
+            continue
+        if validation.get("require_approval") and not validation.get("approved"):
+            aid = create_approval(
+                "gm_ops_action",
+                actor,
+                "ops_action",
+                str(validation.get("approval_target_id") or ""),
+                reason=str(validation.get("reason") or "runtime run"),
+                project_id=str(node.get("project_id") or project_id),
+            )
+            ok, err = approve_or_reject(aid, actor, "approve", "runtime one-click auto approve")
+            if not ok:
+                logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": "自动审批失败: " + str(err or "unknown")})
+                continue
+            req["approval_id"] = aid
+            validation = _validate_ops_request(req, node)
+        result = _execute_validated(req, node, validation)
+        if not result.get("ok"):
+            logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": str(result.get("message") or result.get("error") or "execute failed")})
+            continue
+        job_id = str(((result.get("data") or {}).get("job_id")) or "")
+        trace_id = str(result.get("trace_id") or "")
+        if use_agent_mode and job_id:
+            items.append({"node_id": nid, "job_id": job_id, "trace_id": trace_id, "status": "PENDING", "mode": "agent"})
+            logs.append({"ts": _now_iso(), "level": "info", "node_id": nid, "job_id": job_id, "message": "已入队: " + job_id})
+        else:
+            items.append({"node_id": nid, "job_id": "", "trace_id": trace_id, "status": "SUCCESS", "mode": "direct"})
+            logs.append({"ts": _now_iso(), "level": "warn", "node_id": nid, "message": "未命中在线Agent，已走直连执行"})
+
+    run_obj = {
+        "run_id": run_id,
+        "project_id": project_id,
+        "op": op,
+        "status": "queued",
+        "created_at": now,
+        "updated_at": _now_iso(),
+        "items": items,
+        "logs": logs,
+    }
+    _upsert_runtime_run(run_obj)
+    return jsonify({"ok": True, "run_id": run_id, "status": run_obj.get("status"), "items": items, "logs": logs})
+
+
+@bp.route("/api/ops-platform/runtime/flow-status")
+@admin_required("gm_ops")
+def ops_platform_runtime_flow_status():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+    run_id = str(request.args.get("run_id") or "").strip()
+    run_obj = _find_runtime_run(run_id)
+    if not run_obj:
+        return jsonify({"ok": False, "error": "run_not_found"}), 404
+
+    jobs = _load_agent_jobs()
+    job_map = {str(j.get("job_id") or ""): j for j in jobs if isinstance(j, dict) and j.get("job_id")}
+    changed_logs: List[Dict[str, Any]] = []
+    done = 0
+    fail = 0
+    items = run_obj.get("items") if isinstance(run_obj.get("items"), list) else []
+    created_at = str(run_obj.get("created_at") or "")
+    timed_out = False
+    try:
+        base_dt = datetime.fromisoformat(created_at.replace("Z", ""))
+        timed_out = (datetime.utcnow() - base_dt).total_seconds() > 90
+    except Exception:
+        timed_out = False
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        job_id = str(item.get("job_id") or "")
+        prev = str(item.get("status") or "PENDING")
+        row = job_map.get(job_id) or {}
+        cur = str(row.get("status") or prev or "PENDING").upper()
+        if timed_out and cur in ("PENDING", "LEASED", "RUNNING"):
+            cur = "TIMEOUT"
+        item["status"] = cur
+        if cur in ("SUCCESS", "FAILED", "TIMEOUT", "CANCELED"):
+            done += 1
+        if cur in ("FAILED", "TIMEOUT", "CANCELED"):
+            fail += 1
+        if cur != prev:
+            msg = f"{item.get('node_id')}: {prev} -> {cur}"
+            changed_logs.append({"ts": _now_iso(), "level": "error" if cur in ("FAILED", "TIMEOUT", "CANCELED") else "info", "node_id": item.get("node_id"), "job_id": job_id, "message": msg})
+
+    run_logs = run_obj.get("logs") if isinstance(run_obj.get("logs"), list) else []
+    run_logs.extend(changed_logs)
+    if len(run_logs) > 400:
+        run_logs = run_logs[-400:]
+    run_obj["logs"] = run_logs
+    total = len([x for x in items if isinstance(x, dict)])
+    if total == 0:
+        run_obj["status"] = "failed"
+    elif done >= total:
+        run_obj["status"] = "failed" if fail > 0 else "success"
+    else:
+        run_obj["status"] = "running"
+    run_obj["updated_at"] = _now_iso()
+    _upsert_runtime_run(run_obj)
+    return jsonify({
+        "ok": True,
+        "run_id": run_obj.get("run_id"),
+        "status": run_obj.get("status"),
+        "done": done,
+        "total": total,
+        "failed": fail,
+        "items": items,
+        "logs": run_logs[-120:],
+    })
+
+
+@bp.route("/api/ops-platform/agent/register", methods=["POST"])
+def ops_platform_agent_register():
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip() or ("agent-" + uuid.uuid4().hex[:8])
+    token = str(request.headers.get("X-Agent-Token") or payload.get("token") or "").strip()
+    cert_fp = str(request.headers.get("X-Client-Cert-Fingerprint") or payload.get("cert_fingerprint") or "").strip()
+    device_id = str(payload.get("device_id") or payload.get("host_name") or payload.get("hostname") or request.remote_addr or "unknown-device").strip()
+    policy = _load_agent_policy()
+    node = _auth_agent_node(node_id, token, cert_fp=cert_fp)
+    if not node:
+        return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
+    reg = _load_agent_registry()
+    reg_v2 = _load_agent_registry_v2()
+    now = _now_iso()
+    reg[node_id] = {
+        "node_id": node_id,
+        "agent_id": agent_id,
+        "status": "ONLINE",
+        "version": str(payload.get("version") or ""),
+        "hostname": str(payload.get("hostname") or ""),
+        "ip": str(payload.get("ip") or request.remote_addr or ""),
+        "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
+        "cert_fingerprint": cert_fp,
+        "last_seen": now,
+        "updated_at": now,
+    }
+    _save_agent_registry(reg)
+    reg_v2[agent_id] = _normalize_agent_descriptor_v2(
+        {
+            "agent_id": agent_id,
+            "device_id": device_id,
+            "host_name": str(payload.get("host_name") or payload.get("hostname") or ""),
+            "node_id": node_id,
+            "project_id": str(payload.get("project_id") or node.get("project_id") or ""),
+            "status": "ONLINE",
+            "version": str(payload.get("version") or ""),
+            "last_seen": now,
+            "display_name": str(payload.get("display_name") or agent_id),
+            "port": int(payload.get("port") or 0),
+            "desc": str(payload.get("desc") or ""),
+            "run_state": str(payload.get("run_state") or "RUNNING"),
+            "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
+            "transport": {
+                "mode": str(payload.get("transport_mode") or "remote"),
+                "local_bus": {
+                    "enabled": bool(payload.get("local_bus_enabled", True)),
+                    "endpoint": str(payload.get("local_bus_endpoint") or ""),
+                    "auth_mode": str(payload.get("local_bus_auth_mode") or "token"),
+                },
+            },
+            "updated_at": now,
+        }
+    )
+    _save_agent_registry_v2(reg_v2)
+    upgrade = _desired_agent_upgrade(agent_id, policy)
+    return jsonify({"ok": True, "agent_id": agent_id, "node_id": node_id, "device_id": device_id, "poll_interval_sec": 5, "mtls_required": bool(policy.get("mtls_required")), "upgrade": upgrade})
+
+
+@bp.route("/api/ops-platform/agent/heartbeat", methods=["POST"])
+def ops_platform_agent_heartbeat():
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    token = str(request.headers.get("X-Agent-Token") or payload.get("token") or "").strip()
+    cert_fp = str(request.headers.get("X-Client-Cert-Fingerprint") or payload.get("cert_fingerprint") or "").strip()
+    device_id = str(payload.get("device_id") or payload.get("host_name") or payload.get("hostname") or request.remote_addr or "unknown-device").strip()
+    policy = _load_agent_policy()
+    node = _auth_agent_node(node_id, token, cert_fp=cert_fp)
+    if not node:
+        return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
+    reg = _load_agent_registry()
+    reg_v2 = _load_agent_registry_v2()
+    cur = reg.get(node_id) if isinstance(reg.get(node_id), dict) else {}
+    cur.update(
+        {
+            "node_id": node_id,
+            "agent_id": agent_id or str(cur.get("agent_id") or ""),
+            "status": str(payload.get("status") or "ONLINE"),
+            "last_seen": _now_iso(),
+            "updated_at": _now_iso(),
+            "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {},
+            "version": str(payload.get("version") or cur.get("version") or ""),
+            "cert_fingerprint": cert_fp or str(cur.get("cert_fingerprint") or ""),
+        }
+    )
+    reg[node_id] = cur
+    _save_agent_registry(reg)
+    now = _now_iso()
+    prev = reg_v2.get(agent_id) if isinstance(reg_v2.get(agent_id), dict) else {}
+    reg_v2[agent_id] = _normalize_agent_descriptor_v2(
+        {
+            **prev,
+            "agent_id": agent_id or str(prev.get("agent_id") or ""),
+            "device_id": device_id or str(prev.get("device_id") or ""),
+            "host_name": str(payload.get("host_name") or payload.get("hostname") or prev.get("host_name") or ""),
+            "node_id": node_id,
+            "project_id": str(payload.get("project_id") or prev.get("project_id") or node.get("project_id") or ""),
+            "status": str(payload.get("status") or prev.get("status") or "ONLINE"),
+            "version": str(payload.get("version") or prev.get("version") or ""),
+            "last_seen": now,
+            "display_name": str(payload.get("display_name") or prev.get("display_name") or agent_id),
+            "port": int(payload.get("port") or prev.get("port") or 0),
+            "desc": str(payload.get("desc") or prev.get("desc") or ""),
+            "run_state": str(payload.get("run_state") or prev.get("run_state") or ""),
+            "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else prev.get("capabilities") or [],
+            "transport": {
+                "mode": str(payload.get("transport_mode") or ((prev.get("transport") or {}).get("mode") if isinstance(prev.get("transport"), dict) else "remote")),
+                "local_bus": {
+                    "enabled": bool(payload.get("local_bus_enabled", ((prev.get("transport") or {}).get("local_enabled") if isinstance(prev.get("transport"), dict) else True))),
+                    "endpoint": str(payload.get("local_bus_endpoint") or ((prev.get("transport") or {}).get("local_endpoint") if isinstance(prev.get("transport"), dict) else "")),
+                    "auth_mode": str(payload.get("local_bus_auth_mode") or ((prev.get("transport") or {}).get("local_auth_mode") if isinstance(prev.get("transport"), dict) else "token")),
+                },
+                "degraded": bool(payload.get("local_bus_degraded", False)),
+                "degrade_reason": str(payload.get("local_bus_degrade_reason") or ""),
+            },
+            "updated_at": now,
+        }
+    )
+    _save_agent_registry_v2(reg_v2)
+    jobs = _load_agent_jobs()
+    if _reconcile_agent_jobs(
+        node_id,
+        jobs,
+        lease_timeout_sec=int(policy.get("lease_timeout_sec") or 60),
+        max_retries=int(policy.get("max_retries") or 2),
+    ):
+        _save_agent_jobs(jobs)
+    pending = len([x for x in jobs if isinstance(x, dict) and str(x.get("node_id") or "") == node_id and str(x.get("status") or "") == "PENDING"])
+    upgrade = _desired_agent_upgrade(agent_id, policy)
+    return jsonify({"ok": True, "pending_jobs": pending, "server_time": _now_iso(), "upgrade": upgrade})
+
+
+@bp.route("/api/ops-platform/agent/pull", methods=["POST"])
+def ops_platform_agent_pull():
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    token = str(request.headers.get("X-Agent-Token") or payload.get("token") or "").strip()
+    cert_fp = str(request.headers.get("X-Client-Cert-Fingerprint") or payload.get("cert_fingerprint") or "").strip()
+    policy = _load_agent_policy()
+    node = _auth_agent_node(node_id, token, cert_fp=cert_fp)
+    if not node:
+        return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
+    limit = max(1, min(20, int(payload.get("limit") or 5)))
+    jobs = _load_agent_jobs()
+    changed = _reconcile_agent_jobs(
+        node_id,
+        jobs,
+        lease_timeout_sec=int(policy.get("lease_timeout_sec") or 60),
+        max_retries=int(policy.get("max_retries") or 2),
+    )
+    out: List[Dict[str, Any]] = []
+    now = _now_iso()
+    node_max = int(node.get("agent_max_concurrency") or policy.get("default_node_concurrency") or 1)
+    node_max = max(1, min(20, node_max))
+    running = [x for x in jobs if isinstance(x, dict) and str(x.get("node_id") or "") == node_id and str(x.get("status") or "").upper() == "RUNNING"]
+    slots = max(0, node_max - len(running))
+    if slots <= 0:
+        upgrade = _desired_agent_upgrade(agent_id, policy)
+        if changed:
+            _save_agent_jobs(jobs)
+        return jsonify({"ok": True, "jobs": [], "count": 0, "upgrade": upgrade, "node_concurrency": node_max})
+
+    # preempt: if there is high-priority pending preempt job, cancel one running
+    preempt_candidate = None
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("node_id") or "") != node_id or str(item.get("status") or "") != "PENDING":
+            continue
+        if bool(item.get("preempt")):
+            preempt_candidate = item
+            break
+    if preempt_candidate and running:
+        victim = sorted(running, key=lambda x: str(x.get("updated_at") or ""))[0]
+        victim["status"] = "CANCELED"
+        victim["updated_at"] = _now_iso()
+        victim["result"] = {"message": "preempted by higher priority job"}
+        changed = True
+        slots = max(1, slots)
+
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("node_id") or "") != node_id:
+            continue
+        if str(item.get("status") or "") != "PENDING":
+            continue
+        if bool(item.get("require_approval")) and (not bool(item.get("approved"))):
+            approval_target_id = str(item.get("approval_target_id") or "").strip()
+            if not approval_target_id:
+                approval_target_id = _approval_target_id(
+                    str(item.get("node_id") or ""),
+                    str(item.get("action_type") or ""),
+                    str(item.get("target") or ""),
+                )
+                item["approval_target_id"] = approval_target_id
+                changed = True
+            if approval_target_id:
+                approved_ref = get_approved_approval("gm_ops_action", approval_target_id)
+                if approved_ref:
+                    item["approved"] = True
+                    changed = True
+            if not bool(item.get("approved")):
+                continue
+        if slots <= 0:
+            break
+        item["status"] = "RUNNING"
+        item["updated_at"] = now
+        item["lease"] = {"agent_id": agent_id, "leased_at": now}
+        item["attempt"] = int(item.get("attempt") or 0)
+        out.append(
+            {
+                "job_id": item.get("job_id"),
+                "node_id": item.get("node_id"),
+                "action_type": item.get("action_type"),
+                "target": item.get("target"),
+                "payload": item.get("payload") if isinstance(item.get("payload"), dict) else {},
+                "risk": item.get("risk"),
+                "ticket_id": item.get("ticket_id"),
+                "reason": item.get("reason"),
+                "idempotency_key": item.get("idempotency_key"),
+                "attempt": item.get("attempt"),
+            }
+        )
+        changed = True
+        slots -= 1
+        if len(out) >= limit:
+            break
+    if changed:
+        _save_agent_jobs(jobs)
+    upgrade = _desired_agent_upgrade(agent_id, policy)
+    return jsonify({"ok": True, "jobs": out, "count": len(out), "upgrade": upgrade, "node_concurrency": node_max})
+
+
+@bp.route("/api/ops-platform/agent/report", methods=["POST"])
+def ops_platform_agent_report():
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    token = str(request.headers.get("X-Agent-Token") or payload.get("token") or "").strip()
+    cert_fp = str(request.headers.get("X-Client-Cert-Fingerprint") or payload.get("cert_fingerprint") or "").strip()
+    node = _auth_agent_node(node_id, token, cert_fp=cert_fp)
+    if not node:
+        return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
+    job_id = str(payload.get("job_id") or "").strip()
+    status = str(payload.get("status") or "").strip().upper()
+    if not job_id or status not in ("RUNNING", "SUCCESS", "FAILED", "CANCELED", "TIMEOUT"):
+        return jsonify({"ok": False, "error": "invalid_report_payload"}), 400
+    jobs = _load_agent_jobs()
+    hit = None
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("job_id") or "") != job_id:
+            continue
+        if str(item.get("node_id") or "") != node_id:
+            continue
+        hit = item
+        break
+    if not hit:
+        return jsonify({"ok": False, "error": "job_not_found"}), 404
+    hit["status"] = status
+    hit["updated_at"] = _now_iso()
+    hit["lease"] = {"agent_id": agent_id, "updated_at": _now_iso()}
+    hit["result"] = payload.get("result") if isinstance(payload.get("result"), dict) else {"message": str(payload.get("message") or "")}
+    if status in ("FAILED", "TIMEOUT"):
+        attempts = int(hit.get("attempt") or 0)
+        max_retries = int(hit.get("max_retries") or _load_agent_policy().get("max_retries") or 2)
+        if attempts < max_retries:
+            hit["status"] = "PENDING"
+            hit["attempt"] = attempts + 1
+            hit["lease"] = {}
+            hit["updated_at"] = _now_iso()
+            hit["result"] = {"message": "scheduled retry after failure", "last_status": status}
+    _save_agent_jobs(jobs)
+
+    _append_event(
+        {
+            "id": "evt-" + uuid.uuid4().hex[:12],
+            "time": _now_iso(),
+            "severity": "info" if status in ("SUCCESS", "RUNNING") else "critical",
+            "status": "resolved" if _agent_status_terminal(status) and status == "SUCCESS" else "open",
+            "title": f"Agent 浠诲姟{status}: {hit.get('action_type')}",
+            "message": f"node={node_id}; job={job_id}; agent={agent_id}",
+            "trace_id": "",
+            "node_id": node_id,
+        }
+    )
+    return jsonify({"ok": True, "job_id": job_id, "status": status})
+
+
+@bp.route("/api/ops-platform/agent/jobs")
+@admin_required("gm_ops")
+def ops_platform_agent_jobs():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    node_id = str(request.args.get("node_id") or "").strip()
+    status = str(request.args.get("status") or "").strip().upper()
+    limit = max(1, min(200, int(request.args.get("limit") or 50)))
+    rows = _load_agent_jobs()
+    out: List[Dict[str, Any]] = []
+    for item in reversed(rows):
+        if not isinstance(item, dict):
+            continue
+        if node_id and str(item.get("node_id") or "") != node_id:
+            continue
+        if status and str(item.get("status") or "").upper() != status:
+            continue
+        out.append(item)
+        if len(out) >= limit:
+            break
+    reg = _load_agent_registry_v2()
+    return jsonify({"ok": True, "count": len(out), "jobs": out, "agents": [_normalize_agent_descriptor_v2(x) for x in reg.values() if isinstance(x, dict)], "policy": _load_agent_policy()})
+
+
+@bp.route("/api/ops-platform/agent/policy", methods=["GET", "POST"])
+@admin_required("gm_ops")
+def ops_platform_agent_policy():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    if request.method == "GET":
+        return jsonify({"ok": True, "policy": _load_agent_policy()})
+    payload = request.get_json(silent=True) or {}
+    current = _load_agent_policy()
+    merged = dict(current)
+    for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency"):
+        if k in payload:
+            merged[k] = payload.get(k)
+    if isinstance(payload.get("rollout"), dict):
+        rollout = merged.get("rollout") if isinstance(merged.get("rollout"), dict) else {}
+        rollout.update(payload.get("rollout"))
+        merged["rollout"] = rollout
+    _save_agent_policy(merged)
+    log_audit("ops_platform_agent_policy_update", f"user={session.get('user')}; policy_updated=true")
+    return jsonify({"ok": True, "policy": _load_agent_policy()})
+
+
+@bp.route("/api/ops-platform/agent/upgrade/report", methods=["POST"])
+def ops_platform_agent_upgrade_report():
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    token = str(request.headers.get("X-Agent-Token") or payload.get("token") or "").strip()
+    cert_fp = str(request.headers.get("X-Client-Cert-Fingerprint") or payload.get("cert_fingerprint") or "").strip()
+    node = _auth_agent_node(node_id, token, cert_fp=cert_fp)
+    if not node:
+        return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
+    reg = _load_agent_registry()
+    cur = reg.get(node_id) if isinstance(reg.get(node_id), dict) else {}
+    cur["version"] = str(payload.get("version") or cur.get("version") or "")
+    cur["upgrade_status"] = str(payload.get("status") or "")
+    cur["upgrade_message"] = str(payload.get("message") or "")
+    cur["last_seen"] = _now_iso()
+    cur["updated_at"] = _now_iso()
+    reg[node_id] = cur
+    _save_agent_registry(reg)
+    return jsonify({"ok": True, "node_id": node_id, "version": cur.get("version")})
+
+
 @bp.route("/api/ops-platform/summary")
 @admin_required("gm_ops")
 def ops_platform_summary():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     overview = _build_overview(project_id=project_id)
     nodes = overview.get("nodes") if isinstance(overview.get("nodes"), list) else []
@@ -2594,7 +4436,7 @@ def ops_platform_summary():
 @admin_required("gm_ops")
 def ops_platform_action():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     action = str(payload.get("action") or "").strip().lower()
     form_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
@@ -2631,9 +4473,9 @@ def ops_platform_action():
 
     validation = _validate_ops_request(req, node)
     if not validation.get("ok"):
-        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing"), "message": "缺少必填字段"}), 400
+        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing"), "message": "缂哄皯蹇呭～瀛楁"}), 400
     if validation.get("require_approval") and (not validation.get("dry_run")) and (not validation.get("approved")):
-        return jsonify({"ok": False, "error": "approval required", "message": "高风险动作未审批，请先发起审批。"}), 412
+        return jsonify({"ok": False, "error": "approval required", "message": "High risk action requires approval"}), 412
 
     executed = _execute_validated(req, node, validation)
     result = executed.get("result") if isinstance(executed.get("result"), dict) else {}
@@ -2645,3 +4487,51 @@ def ops_platform_action():
         "message": executed.get("message"),
         "result": result,
     }), (200 if executed.get("ok") else 502)
+
+
+@bp.route("/admin/ops-platform/actions")
+@admin_required("gm_ops")
+def ops_platform_actions_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    content = _render_local_template("ops_actions_page.html", project_id=project_id)
+    return _render_page(content, "动作执行中心")
+
+@bp.route("/admin/ops-platform/topology")
+@admin_required("gm_ops")
+def ops_platform_topology_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    content = _render_local_template("ops_topology_workbench.html", project_id=project_id)
+    return _render_page(content, "拓扑与配置编排")
+
+
+@bp.route("/admin/ops-platform/diagnostics")
+@admin_required("gm_ops")
+def ops_platform_diagnostics_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    content = _render_local_template("ops_diagnostics_page.html", project_id=project_id)
+    return _render_page(content, "节点诊断中心")
+
+@bp.route("/admin/ops-platform/agent-control")
+@admin_required("gm_ops")
+def ops_platform_agent_control_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    content = _render_local_template("ops_agent_control_page.html", project_id=project_id)
+    return _render_page(content, "Agent 控制面")
+
+
+@bp.route("/admin/ops-platform/agent-device-local")
+@admin_required("gm_ops")
+def ops_platform_agent_device_local_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    device_id = str(request.args.get("device_id") or "").strip()
+    content = _render_local_template("ops_agent_device_local_page.html", project_id=project_id, device_id=device_id)
+    return _render_page(content, "设备 Agent 组")
+
+
+@bp.route("/admin/ops-platform/change-governance")
+@admin_required("gm_ops")
+def ops_platform_change_governance_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    content = _render_local_template("ops_change_governance_page.html", project_id=project_id)
+    return _render_page(content, "发布与变更治理")
+

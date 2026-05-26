@@ -1,0 +1,38 @@
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526n">
+<section class="ops-page" data-project-id="{{ project_id }}">
+  <div class="top">
+    <div><div class="title title-row"><span class="ops-ico ico-title ico-change">C</span>发布与变更治理</div><div class="sub">变更计划、审批冻结窗口、灰度与回滚、复盘治理</div></div>
+    <div class="ops-header-actions">
+      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回工作台</a>
+      <a class="btn" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
+      <a class="btn" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a>
+    </div>
+  </div>
+
+  <section class="panel ops-section">
+    <div class="hd"><b class="h-row"><span class="ops-ico ico-change">O</span>治理总览</b><button id="btnRefreshGov" class="btn">刷新</button></div>
+    <div class="bd"><div id="govMetrics" class="metric"></div></div>
+  </section>
+
+  <div class="grid ops-section">
+    <section class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-govern">A</span>审批与高危动作</b></div>
+      <div class="bd"><div id="govApprovals"></div></div>
+    </section>
+    <section class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-change">W</span>变更窗口与建议</b></div>
+      <div class="bd"><div id="govWindow"></div></div>
+    </section>
+  </div>
+
+  <section class="panel ops-section">
+    <div class="hd"><b class="h-row"><span class="ops-ico ico-event">E</span>最近治理事件</b></div>
+    <div class="bd"><div id="govEvents"></div></div>
+  </section>
+</section>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script src="/static/ops_platform_change_governance.js?v=20260526n"></script>
+
+
+
+

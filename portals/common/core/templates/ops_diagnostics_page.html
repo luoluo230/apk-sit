@@ -1,0 +1,19 @@
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526n">
+<section class="diag-page" data-project-id="{{ project_id }}">
+  <div class="top">
+    <div><div class="title title-row"><span class="ops-ico ico-title ico-diagnostic">D</span>节点诊断中心</div><div class="sub">体检筛选、排序、导出；主页仅展示关键告警</div></div>
+    <div class="ops-header-actions">
+      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回工作台</a>
+      <a class="btn" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
+      <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 控制面</a>
+    </div>
+  </div>
+  <section class="panel ops-section"><div class="hd"><b class="h-row"><span class="ops-ico ico-diagnostic">O</span>诊断概览</b><button id="btnRefreshDiag" class="btn">刷新</button></div><div class="bd"><div id="diagMetrics" class="metric"></div></div></section>
+  <section class="panel ops-section"><div class="hd"><b class="h-row"><span class="ops-ico ico-diagnostic">L</span>诊断明细</b><button id="btnExportDiag" class="btn">导出 CSV</button></div><div class="bd"><div class="filters ops-toolbar"><input id="fNode" class="inp" placeholder="节点ID关键字"><select id="fRole" class="sel"><option value="">全部角色</option></select><select id="fStatus" class="sel"><option value="">全部状态</option><option value="ONLINE">ONLINE</option><option value="DEGRADED">DEGRADED</option><option value="OFFLINE">OFFLINE</option><option value="UNKNOWN">UNKNOWN</option></select><button id="btnApplyFilter" class="btn">筛选</button></div><div id="diagTableWrap" class="ops-section"></div></div></section>
+</section>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script src="/static/ops_platform_diagnostics.js?v=20260526n"></script>
+
+
+
+

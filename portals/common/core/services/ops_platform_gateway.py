@@ -62,7 +62,15 @@ class OpsPlatformGateway:
         params: Optional[Dict[str, Any]] = None,
         json_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        base = self._normalize_base(str(node.get("ops_base_url") or ""))
+        base = self._normalize_base(
+            str(
+                node.get("ops_base_url")
+                or node.get("base_url")
+                or os.getenv("GM_LEGACY_OPS_BASE_URL", "")
+                or os.getenv("GM_LEGACY_BASE_URL", "")
+                or "http://127.0.0.1:5054"
+            )
+        )
         if not base:
             return {"success": False, "status": 400, "message": "missing ops_base_url", "data": {}}
 

@@ -1,0 +1,92 @@
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526n">
+<section class="ops-page" data-project-id="{{ project_id }}" data-device-id="{{ device_id }}">
+  <div class="top">
+    <div>
+      <div class="title title-row"><span class="ops-ico ico-title ico-agent">D</span>设备 Agent 组</div>
+      <div class="sub">本机 Agent 视图：编辑名称、端口、描述、状态并回推平台</div>
+    </div>
+    <div class="top-right" style="min-width:580px">
+      <div class="top-nav-row">
+        <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">返回 Agent 控制面</a>
+        <a class="btn" href="/admin/ops-platform/topology?project_id={{ project_id }}">返回拓扑编排</a>
+      </div>
+      <div class="top-tool-row">
+        <input id="deviceIdInput" class="inp top-project" value="{{ device_id }}" placeholder="device_id">
+        <button id="btnRefreshDevice" class="btn primary">刷新设备组</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel ops-section">
+    <div class="hd"><b class="h-row"><span class="ops-ico ico-agent">A</span>Agent 列表</b><span id="deviceMeta" class="ops-note"></span></div>
+    <div class="bd"><div id="deviceAgentList"></div></div>
+  </div>
+</section>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script>
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const root = document.querySelector('.ops-page');
+  const state = {
+    projectId: (root && root.dataset && root.dataset.projectId) || '',
+    deviceId: (root && root.dataset && root.dataset.deviceId) || ''
+  };
+
+  function esc(v){ return String(v==null?'':v).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
+  function toast(msg){
+    let n = document.getElementById('opsToast');
+    if(!n){ n = document.createElement('div'); n.id='opsToast'; n.style.cssText='position:fixed;right:16px;bottom:16px;padding:10px 12px;background:#0f172a;color:#e2e8f0;border-radius:10px;z-index:9999'; document.body.appendChild(n); }
+    n.textContent = msg || '';
+    clearTimeout(n._t); n._t = setTimeout(()=>{ if(n&&n.parentNode)n.parentNode.removeChild(n); }, 1800);
+  }
+
+  async function load(){
+    const did = String(($('deviceIdInput') && $('deviceIdInput').value) || state.deviceId || '').trim();
+    if(!did){ $('deviceAgentList').innerHTML = '<div class="card"><div class="d">缺少 device_id</div></div>'; return; }
+    state.deviceId = did;
+    const res = await OpsApi.agentDevices(state.projectId);
+    if(!res.ok){ $('deviceAgentList').innerHTML = '<div class="card"><div class="d">加载失败：'+esc(res.message || res.error)+'</div></div>'; return; }
+    const groups = Array.isArray(res.devices) ? res.devices : [];
+    const group = groups.find(g => String(g.device_id||'') === did);
+    if(!group){ $('deviceAgentList').innerHTML = '<div class="card"><div class="d">当前设备暂无 Agent</div></div>'; $('deviceMeta').textContent = did; return; }
+
+    $('deviceMeta').textContent = (group.device_id || '-') + ' · ' + ((group.agents||[]).length) + ' agents';
+    const rows = group.agents || [];
+    $('deviceAgentList').innerHTML = rows.map(a => {
+      const aid = String(a.agent_id||'');
+      return '<div class="card" style="margin-bottom:8px">'
+        + '<div class="h h-row"><span class="ops-ico ico-agent">G</span>'+esc(a.display_name || aid)+'</div>'
+        + '<div class="d">agent_id: '+esc(aid)+' · port: '+esc(a.port||'-')+' · status: '+esc(a.status||'-')+'</div>'
+        + '<div class="row" style="margin-top:8px">'
+        + '<input class="inp" data-k="display_name" data-aid="'+esc(aid)+'" value="'+esc(a.display_name||'')+'" placeholder="display name">'
+        + '<input class="inp" data-k="port" data-aid="'+esc(aid)+'" value="'+esc(a.port||'')+'" placeholder="port">'
+        + '</div>'
+        + '<input class="inp" style="margin-top:8px" data-k="desc" data-aid="'+esc(aid)+'" value="'+esc(a.desc||'')+'" placeholder="desc">'
+        + '<div style="margin-top:8px"><button class="btn primary" data-save="'+esc(aid)+'">保存</button></div>'
+        + '</div>';
+    }).join('');
+
+    document.querySelectorAll('[data-save]').forEach(btn => {
+      btn.onclick = async () => {
+        const aid = btn.getAttribute('data-save');
+        const pick = (k) => { const el = document.querySelector('[data-k="'+k+'"][data-aid="'+aid+'"]'); return el ? String(el.value||'').trim() : ''; };
+        const d = await OpsApi.upsertAgent({
+          agent_id: aid,
+          project_id: state.projectId,
+          device_id: state.deviceId,
+          display_name: pick('display_name'),
+          port: pick('port'),
+          desc: pick('desc')
+        });
+        if(!d.ok){ toast('保存失败: ' + (d.message||d.error||'')); return; }
+        toast('保存成功');
+        await load();
+      };
+    });
+  }
+
+  $('btnRefreshDevice').onclick = load;
+  load();
+})();
+</script>
+

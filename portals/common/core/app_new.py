@@ -207,6 +207,9 @@ def _register_blueprints():
         app.register_blueprint(gm_ops_bp)
         app.register_blueprint(gm_legacy_bp)
         app.register_blueprint(commercial_release_bp)
+        if _csrf_enabled and csrf is not None:
+            # Ops/Gm legacy frontend uses JSON fetch API; exempt this blueprint to avoid CSRF 400 on internal ops calls.
+            csrf.exempt(gm_legacy_bp)
 
 
 _register_blueprints()

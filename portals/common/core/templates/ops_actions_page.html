@@ -1,0 +1,66 @@
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526n">
+<section class="ops-page" data-project-id="{{ project_id }}">
+  <div class="top">
+    <div><div class="title title-row"><span class="ops-ico ico-title ico-action">A</span>动作执行中心</div><div class="sub">审批、预校验、执行回执、任务队列与历史流水</div></div>
+    <div class="ops-header-actions">
+      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回工作台</a>
+      <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 控制面</a>
+      <a class="btn" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
+    </div>
+  </div>
+
+  <div class="grid ops-section">
+    <section class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-action">A</span>动作执行</b></div>
+      <div class="bd">
+        <div class="ops-toolbar" style="margin-bottom:8px"><span class="chip low">低风险</span><span class="chip mid">中风险</span><span class="chip high">高风险</span></div>
+        <div class="row">
+          <div><label style="font-size:11px;color:#64748b">目标节点</label><select id="actNode" class="sel"></select></div>
+          <div><label style="font-size:11px;color:#64748b">动作类型</label><select id="actType" class="sel"></select></div>
+        </div>
+        <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">Target</label><input id="actTarget" class="inp">
+        <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">Reason</label><textarea id="actReason" class="txt" rows="3"></textarea>
+        <div class="row" style="margin-top:8px"><button id="btnValidate" class="btn">预校验</button><button id="btnExecute" class="btn success">执行动作</button></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-event">H</span>审批与执行历史</b></div>
+      <div class="bd">
+        <div id="execMeta" class="ops-note" style="margin-bottom:8px">等待执行...</div>
+        <pre id="execOutput" class="ops-code"></pre>
+        <div style="margin-top:10px"><b style="font-size:13px">近期事件</b><div id="execEvents" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid ops-section">
+    <section class="panel">
+      <div class="hd"><b class="h-row"><span class="ops-ico ico-agent">P</span>Agent 策略配置</b><button id="btnRefreshPolicy" class="btn">刷新</button></div>
+      <div class="bd">
+        <div class="row"><div><label style="font-size:11px;color:#64748b">mTLS 必须</label><select id="polMtls" class="sel"><option value="false">false</option><option value="true">true</option></select></div><div><label style="font-size:11px;color:#64748b">默认并发</label><input id="polConc" class="inp" type="number" min="1" max="20"></div></div>
+        <div class="row" style="margin-top:8px"><div><label style="font-size:11px;color:#64748b">租约超时(秒)</label><input id="polLease" class="inp" type="number" min="5" max="3600"></div><div><label style="font-size:11px;color:#64748b">最大重试</label><input id="polRetry" class="inp" type="number" min="0" max="10"></div></div>
+        <div style="margin-top:8px;border-top:1px solid #e7eefb;padding-top:8px">
+          <div style="font-size:12px;font-weight:700;margin-bottom:6px">灰度升级</div>
+          <div class="row"><div><label style="font-size:11px;color:#64748b">启用灰度</label><select id="polRollEnable" class="sel"><option value="false">false</option><option value="true">true</option></select></div><div><label style="font-size:11px;color:#64748b">目标版本</label><input id="polVersion" class="inp" placeholder="v1.2.3"></div></div>
+          <div class="row" style="margin-top:8px"><div><label style="font-size:11px;color:#64748b">通道</label><input id="polChannel" class="inp" placeholder="stable/canary"></div><div><label style="font-size:11px;color:#64748b">灰度百分比</label><input id="polPercent" class="inp" type="number" min="0" max="100"></div></div>
+          <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">白名单 Agent ID（逗号分隔）</label>
+          <input id="polAllowIds" class="inp" placeholder="agent-a,agent-b">
+        </div>
+        <button id="btnSavePolicy" class="btn success" style="margin-top:10px">保存策略</button>
+      </div>
+    </section>
+    <section class="panel"><div class="hd"><b class="h-row"><span class="ops-ico ico-agent">S</span>Agent 在线状态</b><button id="btnRefreshAgents" class="btn">刷新</button></div><div class="bd"><div id="agentRegistryWrap"></div></div></section>
+  </div>
+
+  <section class="panel ops-section">
+    <div class="hd"><b class="h-row"><span class="ops-ico ico-agent">Q</span>Agent 任务队列看板</b><div style="display:flex;gap:8px"><select id="qStatus" class="sel" style="width:140px"><option value="">全部状态</option><option value="PENDING">PENDING</option><option value="RUNNING">RUNNING</option><option value="SUCCESS">SUCCESS</option><option value="FAILED">FAILED</option><option value="CANCELED">CANCELED</option><option value="TIMEOUT">TIMEOUT</option></select><button id="btnRefreshQueue" class="btn">刷新队列</button></div></div>
+    <div class="bd"><div id="queueSummary" class="row" style="margin-bottom:8px"></div><div id="queueTableWrap"></div></div>
+  </section>
+</section>
+<script src="/static/ops_platform_api.js?v=20260526n"></script>
+<script src="/static/ops_platform_actions.js?v=20260526n"></script>
+
+
+
+
+
