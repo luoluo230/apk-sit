@@ -42,9 +42,35 @@
     runtimePollTimer: null,
     runtimeLogSeen: new Set(),
     runtimeProgressSig: "",
+    runtimeSteady: false,
+    runtimeLastStatus: "",
+    runtimeRequestedOp: "",
+    debugSeq: 0,
+    agentsRefreshAt: 0,
+    agentsTickTimer: null,
     modeLocked: false,
     highlight: { nodes: new Set(), edges: new Set() },
+    flowViz: {
+      mode: "",
+      nodes: new Set(),
+      edges: new Set(),
+      statusByNode: {},
+      seed: 0,
+      metricsByEdge: {},
+      history: [],
+      replayTimer: null,
+    },
   };
+  const MODE_STORAGE_KEY = "ops_topology_mode_v1";
+  const RUNTIME_STORAGE_KEY = "ops_topology_runtime_v1";
+
+  function dbg(tag, payload) {
+    state.debugSeq += 1;
+    const body = payload ? " " + JSON.stringify(payload) : "";
+    const line = "[DBG#" + state.debugSeq + "] " + tag + body;
+    try { console.debug(line); } catch (_) {}
+    logMode(line, "warn");
+  }
 
   function toast(msg, type) {
     let n = $("opsToast");
@@ -68,9 +94,86 @@
   function view() { return ((state.topology.meta || {}).viewport || { x: 0, y: 0, zoom: 1 }); }
   function getNode(id) { return (state.topology.nodes || []).find((n) => n.id === id) || null; }
   function runtimeById() { const m = {}; (state.overviewNodes || []).forEach((n) => { m[n.id] = n; }); return m; }
+  function boundAgentForNode(nodeId) {
+    const aid = String((state.nodeBindings || {})[String(nodeId || "")] || "");
+    if (!aid) return null;
+    return (state.agents || []).find((x) => String((x || {}).agent_id || "") === aid) || null;
+  }
   function isEditMode() { return state.mode === "edit"; }
   function isRunMode() { return state.mode === "run"; }
   function isTestMode() { return state.mode === "test"; }
+
+  function agentHeartbeatAgeSec(ag) {
+    if (!ag || !ag.last_seen) return null;
+    const d = new Date(String(ag.last_seen));
+    if (Number.isNaN(d.getTime())) return null;
+    return Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+  }
+
+  function deviceHeartbeatAgeSec(deviceId) {
+    const did = String(deviceId || "");
+    if (!did) return null;
+    const rows = (state.agents || []).filter((x) => String((x || {}).device_id || "") === did);
+    if (!rows.length) return null;
+    let newest = null;
+    rows.forEach((ag) => {
+      const raw = String((ag || {}).last_seen || "");
+      if (!raw) return;
+      const t = new Date(raw).getTime();
+      if (!Number.isFinite(t)) return;
+      if (newest == null || t > newest) newest = t;
+    });
+    if (newest == null) return null;
+    return Math.max(0, Math.round((Date.now() - newest) / 1000));
+  }
+
+  function agentHealthLabel(ag) {
+    if (!ag) return { cls: "warn", text: "Agent未绑定" };
+    const st = String(ag.status || "").toUpperCase();
+    const age = deviceHeartbeatAgeSec(ag.device_id) ?? agentHeartbeatAgeSec(ag);
+    const freshSec = 120;
+    if (!age && age !== 0) return { cls: "warn", text: "心跳未知" };
+    if (st === "ONLINE" && age <= freshSec) return { cls: "ok", text: "设备在线 · " + age + "s" };
+    return { cls: "err", text: "心跳过期 · " + age + "s" };
+  }
+
+  function saveModeState() {
+    try { localStorage.setItem(MODE_STORAGE_KEY, JSON.stringify({ mode: state.mode, modeLocked: !!state.modeLocked, ts: Date.now() })); } catch (_) {}
+  }
+
+  function loadModeState() {
+    try {
+      const raw = localStorage.getItem(MODE_STORAGE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const mode = String((obj || {}).mode || "");
+      if (["edit", "run", "test"].includes(mode)) state.mode = mode;
+      state.modeLocked = !!((obj || {}).modeLocked);
+    } catch (_) {}
+  }
+
+  function saveRuntimeState() {
+    try {
+      localStorage.setItem(RUNTIME_STORAGE_KEY, JSON.stringify({
+        runId: state.runtimeRunId || "",
+        runtimeSteady: !!state.runtimeSteady,
+        requestedOp: state.runtimeRequestedOp || "",
+        ts: Date.now(),
+      }));
+    } catch (_) {}
+  }
+
+  function loadRuntimeState() {
+    try {
+      const raw = localStorage.getItem(RUNTIME_STORAGE_KEY);
+      if (!raw) return;
+      const obj = JSON.parse(raw);
+      const runId = String((obj || {}).runId || "");
+      if (runId) state.runtimeRunId = runId;
+      state.runtimeSteady = !!((obj || {}).runtimeSteady);
+      state.runtimeRequestedOp = String((obj || {}).requestedOp || "");
+    } catch (_) {}
+  }
 
   function logMode(message, level) {
     const box = $("modeLog");
@@ -147,6 +250,207 @@
     }
   }
 
+  function nodeSeed(id) {
+    const s = String(id || "");
+    let h = 0;
+    for (let i = 0; i < s.length; i += 1) h = ((h << 5) - h) + s.charCodeAt(i);
+    return Math.abs(h || 1);
+  }
+
+  function metricTriplet(nodeId, status) {
+    const now = Date.now();
+    const sd = nodeSeed(nodeId) + Math.floor(now / 1500) + (state.flowViz.seed || 0);
+    const b = (n, m) => Math.max(6, Math.min(96, (n % m)));
+    const risk = ["FAILED", "TIMEOUT", "CANCELED"].includes(String(status || "").toUpperCase()) ? 18 : 0;
+    const cpu = b(sd * 7 + 31, 76) + risk;
+    const mem = b(sd * 11 + 17, 70) + Math.floor(risk * 0.6);
+    const qps = b(sd * 13 + 43, 66) + Math.floor(risk * 0.45);
+    return { cpu, mem, qps };
+  }
+
+  function realMetricTriplet(nodeId) {
+    const ag = boundAgentForNode(nodeId);
+    const m = (ag && ag.metrics && typeof ag.metrics === "object") ? ag.metrics : null;
+    if (!m) return null;
+    const cpu = Number(m.cpu_percent);
+    const mem = Number(m.mem_percent);
+    const qps = Number(m.qps);
+    const rtt = Number(m.rtt_ms);
+    const hasAny = Number.isFinite(cpu) || Number.isFinite(mem) || Number.isFinite(qps) || Number.isFinite(rtt);
+    if (!hasAny) return null;
+    return {
+      cpu: Number.isFinite(cpu) ? Math.max(0, Math.min(100, cpu)) : 0,
+      mem: Number.isFinite(mem) ? Math.max(0, Math.min(100, mem)) : 0,
+      qps: Number.isFinite(qps) ? Math.max(0, qps) : 0,
+      rtt: Number.isFinite(rtt) ? Math.max(0, rtt) : 0,
+      source: "real",
+      updatedAt: String(m.updated_at || ""),
+    };
+  }
+
+  function deviceMetricTriplet(deviceId) {
+    const did = String(deviceId || "");
+    if (!did) return null;
+    const rows = (state.agents || []).filter((x) => String((x || {}).device_id || "") === did);
+    if (!rows.length) return null;
+    let latest = null;
+    rows.forEach((ag) => {
+      const m = (ag && ag.metrics && typeof ag.metrics === "object") ? ag.metrics : null;
+      if (!m) return;
+      const tRaw = String(m.updated_at || ag.last_seen || "");
+      const t = new Date(tRaw).getTime();
+      if (!Number.isFinite(t)) return;
+      if (!latest || t > latest.t) latest = { t, m };
+    });
+    if (!latest || !latest.m) return null;
+    const cpu = Number(latest.m.cpu_percent);
+    const mem = Number(latest.m.mem_percent);
+    const qps = Number(latest.m.qps);
+    const rtt = Number(latest.m.rtt_ms);
+    const hasAny = Number.isFinite(cpu) || Number.isFinite(mem) || Number.isFinite(qps) || Number.isFinite(rtt);
+    if (!hasAny) return null;
+    return {
+      cpu: Number.isFinite(cpu) ? Math.max(0, Math.min(100, cpu)) : 0,
+      mem: Number.isFinite(mem) ? Math.max(0, Math.min(100, mem)) : 0,
+      qps: Number.isFinite(qps) ? Math.max(0, qps) : 0,
+      rtt: Number.isFinite(rtt) ? Math.max(0, rtt) : 0,
+    };
+  }
+
+  function nodeMetrics(nodeId, status) {
+    const real = realMetricTriplet(nodeId);
+    if (real) {
+      const ag = boundAgentForNode(nodeId);
+      const dev = deviceMetricTriplet((ag || {}).device_id);
+      if (dev) {
+        return {
+          cpu: dev.cpu,
+          mem: dev.mem,
+          qps: dev.qps,
+          rtt: dev.rtt,
+          source: "real",
+          updatedAt: real.updatedAt,
+        };
+      }
+      return real;
+    }
+    return { cpu: 0, mem: 0, qps: 0, rtt: 0, source: "missing", updatedAt: "" };
+  }
+
+  async function refreshAgentsIfNeeded(force) {
+    const now = Date.now();
+    if (!force && (now - Number(state.agentsRefreshAt || 0)) < 2000) return;
+    const d = await OpsApi.agents(state.projectId);
+    if (d && d.ok !== false && Array.isArray(d.agents)) {
+      state.agents = d.agents;
+      state.agentsRefreshAt = now;
+    }
+  }
+
+  function startAgentsRealtimeTick() {
+    if (state.agentsTickTimer) clearInterval(state.agentsTickTimer);
+    state.agentsTickTimer = setInterval(async () => {
+      await refreshAgentsIfNeeded(false);
+      drawEdges();
+      drawNodes();
+    }, 2000);
+  }
+
+  function syncFlowViz(mode, nodeIds, statusByNode) {
+    const nset = new Set((nodeIds || []).filter(Boolean));
+    const eset = new Set();
+    (state.topology.edges || []).forEach((e) => {
+      if (nset.has(e.from) && nset.has(e.to)) eset.add(e.id);
+    });
+    state.flowViz.mode = mode || "";
+    state.flowViz.nodes = nset;
+    state.flowViz.edges = eset;
+    state.flowViz.statusByNode = statusByNode || {};
+    state.flowViz.seed = Date.now();
+  }
+
+  function clearFlowViz(force, reason) {
+    dbg("clearFlowViz", { force: !!force, reason: reason || "", mode: state.mode, runtimeSteady: !!state.runtimeSteady });
+    if (!force && state.mode === "run" && state.runtimeSteady) {
+      logMode("已忽略一次可视化清理请求（运行态保护中）", "warn");
+      return;
+    }
+    if (state.flowViz.replayTimer) {
+      clearInterval(state.flowViz.replayTimer);
+      state.flowViz.replayTimer = null;
+    }
+    state.flowViz.mode = "";
+    state.flowViz.nodes = new Set();
+    state.flowViz.edges = new Set();
+    state.flowViz.statusByNode = {};
+    state.flowViz.metricsByEdge = {};
+    state.flowViz.history = [];
+  }
+
+  function edgeMetrics(edgeId, status) {
+    const edge = (state.topology.edges || []).find((e) => String(e.id) === String(edgeId));
+    if (edge) {
+      const fm = nodeMetrics(edge.from, status);
+      const tm = nodeMetrics(edge.to, status);
+      const hasReal = fm.source === "real" || tm.source === "real";
+      if (hasReal) {
+        const qps = Math.max(0, Math.round((Number(fm.qps || 0) + Number(tm.qps || 0)) / (tm.qps ? 2 : 1)));
+        const latency = Math.max(1, Math.round((Number(fm.rtt || 0) + Number(tm.rtt || 0)) / ((fm.rtt || tm.rtt) ? 2 : 1)));
+        const fail = ["FAILED", "TIMEOUT", "CANCELED"].includes(String(status || "").toUpperCase());
+        return { tps: qps || 1, latency: latency || 1, err: fail ? 12 : 0 };
+      }
+    }
+    const s = nodeSeed(edgeId) + Math.floor(Date.now() / 1200) + (state.flowViz.seed || 0);
+    const fail = ["FAILED", "TIMEOUT", "CANCELED"].includes(String(status || "").toUpperCase());
+    const tps = Math.max(6, (s % 380) + (fail ? 0 : 40));
+    const latency = Math.max(8, (s % 70) + (fail ? 55 : 12));
+    const err = fail ? Math.min(42, (s % 35) + 6) : Math.max(0, (s % 5));
+    return { tps, latency, err };
+  }
+
+  function pushFlowSnapshot() {
+    const snap = {
+      ts: Date.now(),
+      mode: state.flowViz.mode,
+      nodes: Array.from(state.flowViz.nodes || []),
+      edges: Array.from(state.flowViz.edges || []),
+      statusByNode: Object.assign({}, state.flowViz.statusByNode || {}),
+      metricsByEdge: Object.assign({}, state.flowViz.metricsByEdge || {}),
+    };
+    const h = state.flowViz.history || [];
+    h.push(snap);
+    const minTs = Date.now() - 10000;
+    state.flowViz.history = h.filter((x) => x && x.ts >= minTs).slice(-80);
+  }
+
+  function replayFailureFlow() {
+    const h = (state.flowViz.history || []).slice(-80);
+    if (!h.length) return;
+    const minTs = Date.now() - 10000;
+    const frames = h.filter((x) => x.ts >= minTs);
+    if (!frames.length) return;
+    if (state.flowViz.replayTimer) clearInterval(state.flowViz.replayTimer);
+    let i = 0;
+    logMode("失败回放开始（最近10秒链路）", "warn");
+    state.flowViz.replayTimer = setInterval(() => {
+      const f = frames[i];
+      if (!f) return;
+      state.flowViz.mode = f.mode || "run";
+      state.flowViz.nodes = new Set(f.nodes || []);
+      state.flowViz.edges = new Set(f.edges || []);
+      state.flowViz.statusByNode = Object.assign({}, f.statusByNode || {});
+      state.flowViz.metricsByEdge = Object.assign({}, f.metricsByEdge || {});
+      drawEdges();
+      drawNodes();
+      i += 1;
+      if (i >= frames.length) {
+        clearInterval(state.flowViz.replayTimer);
+        state.flowViz.replayTimer = null;
+        logMode("失败回放结束", "warn");
+      }
+    }, 180);
+  }
+
   function appendRuntimeLogs(logs) {
     (logs || []).forEach((row) => {
       if (!row || typeof row !== "object") return;
@@ -160,6 +464,7 @@
 
   async function pollRuntimeRun(runId) {
     if (!runId) return;
+    await refreshAgentsIfNeeded(false);
     const d = await OpsApi.runtimeFlowStatus(runId);
     if (!d || d.ok === false) {
       logMode("运行状态拉取失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
@@ -167,6 +472,29 @@
       return;
     }
     appendRuntimeLogs(d.logs || []);
+    if (d.debug && typeof d.debug === "object") {
+      dbg("runtime-debug", d.debug);
+    }
+    const statusByNode = {};
+    const activeNodes = [];
+    (d.items || []).forEach((it) => {
+      const nid = String((it && it.node_id) || "");
+      const st = String((it && it.status) || "PENDING").toUpperCase();
+      if (!nid) return;
+      statusByNode[nid] = st;
+      if (["PENDING", "LEASED", "RUNNING", "SUCCESS", "FAILED", "TIMEOUT", "CANCELED"].includes(st)) activeNodes.push(nid);
+    });
+    const metricsByEdge = {};
+    (state.topology.edges || []).forEach((e) => {
+      if (!activeNodes.includes(e.from) || !activeNodes.includes(e.to)) return;
+      const toSt = statusByNode[String(e.to)] || "";
+      metricsByEdge[e.id] = edgeMetrics(e.id, toSt);
+    });
+    syncFlowViz("run", activeNodes, statusByNode);
+    state.flowViz.metricsByEdge = metricsByEdge;
+    pushFlowSnapshot();
+    drawEdges();
+    drawNodes();
     const total = Number(d.total || 0);
     const done = Number(d.done || 0);
     if (total > 0) {
@@ -177,11 +505,51 @@
       }
     }
     const st = String(d.status || "").toLowerCase();
+    const op = String(d.op || "").toLowerCase();
+    const effectiveOp = op || String(state.runtimeRequestedOp || "").toLowerCase() || "start";
+    if (state.runtimeLastStatus !== st) {
+      dbg("runtime-status-transition", { from: state.runtimeLastStatus || "-", to: st, op, effectiveOp, done: Number(d.done || 0), total: Number(d.total || 0), failed: Number(d.failed || 0) });
+      state.runtimeLastStatus = st;
+    }
     if (st === "success" || st === "failed") {
       stopRuntimePolling();
       const ok = st === "success";
       toast(ok ? "全流程执行完成" : "全流程执行结束（含失败）", ok ? "ok" : "warn");
       logMode("运行结束: " + st.toUpperCase(), ok ? "" : "warn");
+      if (!ok) {
+        replayFailureFlow();
+        setTimeout(() => {
+          clearFlowViz(true, "pollRuntimeRun-failed-finalize");
+          drawEdges();
+          drawNodes();
+        }, 2200);
+        return;
+      }
+      if (effectiveOp === "start") {
+        state.runtimeSteady = true;
+        const steadyNodes = activeNodes.length ? activeNodes : (state.topology.nodes || []).map((n) => n.id);
+        const steadyStatus = {};
+        steadyNodes.forEach((nid) => { steadyStatus[String(nid)] = "RUNNING"; });
+        syncFlowViz("run", steadyNodes, steadyStatus);
+        const steadyMetrics = {};
+        (state.topology.edges || []).forEach((e) => {
+          if (steadyNodes.includes(e.from) && steadyNodes.includes(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
+        });
+        state.flowViz.metricsByEdge = steadyMetrics;
+        drawEdges();
+        drawNodes();
+        dbg("runtime-steady-on", { runId, activeNodes: steadyNodes.length });
+        logMode("启动成功，已进入持续运行态可视化（直到手动停止）");
+        saveRuntimeState();
+        return;
+      }
+      setTimeout(() => {
+        clearFlowViz(true, "pollRuntimeRun-stop-success");
+        drawEdges();
+        drawNodes();
+      }, 1200);
+      state.runtimeSteady = false;
+      saveRuntimeState();
     }
   }
 
@@ -273,6 +641,25 @@
     return "M " + a.x + " " + a.y + " C " + (a.x + bend) + " " + (a.y + offset) + ", " + (b.x - bend) + " " + (b.y + offset) + ", " + b.x + " " + b.y;
   }
 
+  function edgeMid(edge) {
+    const aNode = getNode(edge.from);
+    const bNode = getNode(edge.to);
+    if (!aNode || !bNode) return null;
+    const a = portAnchor(aNode, "out", edge.from_port);
+    const b = portAnchor(bNode, "in", edge.to_port);
+    const bend = Math.max(72, Math.min(220, Math.abs(b.x - a.x) * 0.35));
+    const offset = linkOffset(edge);
+    const p0 = { x: a.x, y: a.y };
+    const p1 = { x: a.x + bend, y: a.y + offset };
+    const p2 = { x: b.x - bend, y: b.y + offset };
+    const p3 = { x: b.x, y: b.y };
+    const t = 0.5;
+    const mt = 1 - t;
+    const x = (mt ** 3) * p0.x + 3 * (mt ** 2) * t * p1.x + 3 * mt * (t ** 2) * p2.x + (t ** 3) * p3.x;
+    const y = (mt ** 3) * p0.y + 3 * (mt ** 2) * t * p1.y + 3 * mt * (t ** 2) * p2.y + (t ** 3) * p3.y;
+    return { x, y };
+  }
+
   function normalizeTopology() {
     const ids = (state.nodesRaw || []).map((n) => String(n.id || "")).filter(Boolean);
     const old = {};
@@ -335,10 +722,34 @@
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", d);
       const hl = state.highlight.edges.has(edge.id) ? " hl" : "";
-      path.setAttribute("class", "edge" + hl + (state.selection.edgeId === edge.id ? " sel" : ""));
+      const flow = state.flowViz.edges.has(edge.id) ? " flow" : "";
+      const fail = (state.flowViz.statusByNode[String(edge.to)] && ["FAILED", "TIMEOUT", "CANCELED"].includes(String(state.flowViz.statusByNode[String(edge.to)]).toUpperCase())) ? " fail" : "";
+      path.setAttribute("class", "edge" + hl + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
       path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); drawEdges(); drawNodes(); };
       svg.appendChild(hit);
       svg.appendChild(path);
+      if (flow) {
+        const m = edgeMid(edge);
+        const mm = (state.flowViz.metricsByEdge || {})[edge.id];
+        if (m && mm) {
+          const grp = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          grp.setAttribute("class", "edge-metric" + (fail ? " fail" : ""));
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", String(Math.round(m.x - 56)));
+          rect.setAttribute("y", String(Math.round(m.y - 14)));
+          rect.setAttribute("width", "112");
+          rect.setAttribute("height", "24");
+          rect.setAttribute("rx", "11");
+          const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          txt.setAttribute("x", String(Math.round(m.x)));
+          txt.setAttribute("y", String(Math.round(m.y + 2)));
+          txt.setAttribute("text-anchor", "middle");
+          txt.textContent = "TPS " + mm.tps + " · " + mm.latency + "ms";
+          grp.appendChild(rect);
+          grp.appendChild(txt);
+          svg.appendChild(grp);
+        }
+      }
     });
     const delBtn = $("btnDeleteEdgeInline");
     if (delBtn) delBtn.disabled = !state.selection.edgeId;
@@ -365,12 +776,21 @@
       const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
       const bindText = ag ? ("Agent: " + (ag.display_name || ag.agent_id)) : "未绑定Agent";
       const bindCls = ag ? "state-ok" : "state-warn";
+      const agHealth = agentHealthLabel(ag);
       const st = String(n.bizStatus || "normal");
       const stLabel = STATUS_LABELS[st] || st;
+      const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
+      const isFlow = state.flowViz.nodes.has(n.id);
+      const metrics = nodeMetrics(n.id, flowSt);
       const palette = ROLE_COLOR[String(n.role || "").toLowerCase()] || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#f4f8ff" };
 
       const el = document.createElement("div");
-      el.className = "node" + (state.selection.nodes.has(n.id) ? " sel" : "") + (state.highlight.nodes.has(n.id) ? " hl" : "");
+      el.className = "node"
+        + (state.selection.nodes.has(n.id) ? " sel" : "")
+        + (state.highlight.nodes.has(n.id) ? " hl" : "")
+        + (isFlow ? " flow-active" : "")
+        + (["FAILED", "TIMEOUT", "CANCELED"].includes(flowSt) ? " flow-fail" : "")
+        + (flowSt === "SUCCESS" ? " flow-ok" : "");
       el.style.left = n.ui.x + "px";
       el.style.top = n.ui.y + "px";
       el.style.width = n.ui.w + "px";
@@ -382,7 +802,17 @@
         + '<div class="s">' + esc(n.role) + '</div>'
         + '<div class="s">状态: ' + esc(stLabel) + '</div>'
         + '<div class="s">' + esc(n.owner || "-") + '</div>'
-        + '<div class="state-pill ' + bindCls + '" style="margin-top:4px">' + esc(bindText) + "</div>";
+        + '<div class="state-pill ' + bindCls + '" style="margin-top:4px">' + esc(bindText) + "</div>"
+        + '<div class="state-pill state-' + esc(agHealth.cls) + '" style="margin-top:4px">' + esc(agHealth.text) + "</div>"
+        + (isFlow ? (
+          '<div class="node-metrics">'
+          + '<div class="metric-src ' + (metrics.source === "real" ? "real" : "mock") + '">' + (metrics.source === "real" ? "实时" : "实时缺失") + (metrics.rtt ? (" · RTT " + Math.round(metrics.rtt) + "ms") : "") + '</div>'
+          + '<div class="metric-row"><span>CPU</span><div class="metric-bar"><i style="width:' + Math.round(metrics.cpu) + '%"></i></div><em>' + Math.round(metrics.cpu) + '%</em></div>'
+          + '<div class="metric-row"><span>MEM</span><div class="metric-bar"><i style="width:' + Math.round(metrics.mem) + '%"></i></div><em>' + Math.round(metrics.mem) + '%</em></div>'
+          + '<div class="metric-row"><span>QPS</span><div class="metric-bar"><i style="width:' + Math.round(metrics.qps) + '%"></i></div><em>' + Math.round(metrics.qps) + '</em></div>'
+          + '<div class="metric-flame"><b style="width:' + Math.max(metrics.cpu, metrics.mem) + '%"></b><b style="width:' + Math.max(8, metrics.qps * 0.9) + '%"></b><b style="width:' + Math.max(6, metrics.cpu * 0.7) + '%"></b></div>'
+          + '</div>'
+        ) : "");
       el.onmousedown = (ev) => onNodeDown(ev, n);
       el.onclick = (ev) => { ev.stopPropagation(); openNodeEditor(n.id); };
       layer.appendChild(el);
@@ -828,7 +1258,12 @@
 
   async function runFullLifecycle(start) {
     const op = start ? "start" : "stop";
+    state.runtimeRequestedOp = op;
+    dbg("runFullLifecycle-click", { op, mode: state.mode, locked: !!state.modeLocked, currentRunId: state.runtimeRunId || "" });
     stopRuntimePolling();
+    if (!start) clearFlowViz(true, "runFullLifecycle-stop-before-control");
+    state.runtimeSteady = false;
+    state.runtimeLastStatus = "";
     state.runtimeLogSeen = new Set();
     state.runtimeProgressSig = "";
     logMode((start ? "开始" : "开始") + (start ? "一键启动" : "一键停止") + "全流程");
@@ -839,6 +1274,8 @@
       return;
     }
     state.runtimeRunId = String(d.run_id || "");
+    saveRuntimeState();
+    dbg("runtime-flow-control-return", { op, runId: state.runtimeRunId, items: (d.items || []).length, status: d.status || "" });
     appendRuntimeLogs(d.logs || []);
     const total = (d.items || []).length;
     logMode("任务已入队，run_id=" + state.runtimeRunId + "，节点任务数=" + total);
@@ -859,6 +1296,11 @@
     }
     logMode("测试参数确认: scope=" + scope + " start=" + (startNode || "-") + " end=" + (endNode || "-"));
     computePathHighlight();
+    syncFlowViz("test", Array.from(state.highlight.nodes || []), {});
+    state.flowViz.metricsByEdge = {};
+    Array.from(state.flowViz.edges || []).forEach((eid) => { state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, "RUNNING"); });
+    drawEdges();
+    drawNodes();
     if (isStress) {
       const target = scope === "segment" ? endNode : (startNode || ((state.topology.nodes || [])[0] || {}).id || "");
       testLogHeader("压力测试开始", "scope=" + scope + " target=" + target);
@@ -881,6 +1323,7 @@
         }
         appendJsonDetail("压力测试原始响应", d);
         toast("压力测试已提交", "ok");
+        setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-success"); drawEdges(); drawNodes(); }, 2600);
       } else {
         logMode("压力测试失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
         if (d) {
@@ -890,6 +1333,7 @@
         }
         appendJsonDetail("压力测试失败原始响应", d || {});
         toast((d && d.message) || "压力测试失败", "error");
+        setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-failed"); drawEdges(); drawNodes(); }, 2600);
       }
       return;
     }
@@ -910,6 +1354,16 @@
       logMode("单元测试汇总: ok_steps=" + okCount + " fail_steps=" + failCount + " flow_id=" + flowId, failCount > 0 ? "warn" : "");
       appendJsonDetail("单元测试原始响应", d);
       toast("单元测试完成", "ok");
+      const stepStatus = {};
+      (steps || []).forEach((s) => { if (s && s.node_id) stepStatus[String(s.node_id)] = s.ok ? "SUCCESS" : "FAILED"; });
+      syncFlowViz("test", Array.from(state.highlight.nodes || []), stepStatus);
+      state.flowViz.metricsByEdge = {};
+      Array.from(state.flowViz.edges || []).forEach((eid) => {
+        const anyFail = Object.values(stepStatus || {}).some((x) => String(x).toUpperCase() === "FAILED");
+        state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, anyFail ? "FAILED" : "SUCCESS");
+      });
+      drawEdges();
+      drawNodes();
     } else {
       logMode("单元测试失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
       if (d) {
@@ -919,6 +1373,11 @@
       }
       appendJsonDetail("单元测试失败原始响应", d || {});
       toast((d && d.message) || "单元测试失败", "error");
+      syncFlowViz("test", Array.from(state.highlight.nodes || []), {});
+      state.flowViz.metricsByEdge = {};
+      Array.from(state.flowViz.edges || []).forEach((eid) => { state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, "FAILED"); });
+      drawEdges();
+      drawNodes();
     }
   }
 
@@ -1047,9 +1506,12 @@
       test: { hint: "当前模式：测试模式（可选全链路或链路段测试）", run: "none", test: "flex" },
     };
     const cfg = map[state.mode] || map.edit;
-    $("modeHint").textContent = cfg.hint;
-    $("runBar").style.display = cfg.run;
-    $("testBar").style.display = cfg.test;
+    const modeHint = $("modeHint");
+    if (modeHint) modeHint.textContent = cfg.hint;
+    const runBar = $("runBar");
+    const testBar = $("testBar");
+    if (runBar) runBar.style.display = cfg.run;
+    if (testBar) testBar.style.display = cfg.test;
     const modeSelect = $("modeSelect");
     if (modeSelect) {
       modeSelect.value = state.mode;
@@ -1064,6 +1526,11 @@
     }
     if (state.mode !== "test") clearTestHighlight();
     if (state.mode === "test") computePathHighlight();
+    if (state.mode === "edit") {
+      clearFlowViz(true, "applyModeUI-edit-mode");
+      drawEdges();
+      drawNodes();
+    }
 
     const lock = state.mode !== "edit";
     ["insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodeDesc", "insNodeTags"]
@@ -1165,24 +1632,36 @@
 
     $("portModalClose").onclick = closeQuickAdd;
     $("nodeEditClose").onclick = closeNodeEditor;
-    $("modeSelect").onchange = () => {
-      if (state.modeLocked) return;
-      state.mode = $("modeSelect").value || "edit";
-      applyModeUI();
-      logMode("切换到" + (state.mode === "edit" ? "编辑" : state.mode === "run" ? "运行" : "测试") + "模式");
-    };
-    $("modeLockBtn").onclick = () => {
-      state.modeLocked = true;
-      applyModeUI();
-      logMode("模式已锁定");
-      toast("模式已锁定", "ok");
-    };
-    $("modeUnlockBtn").onclick = () => {
-      state.modeLocked = false;
-      applyModeUI();
-      logMode("模式已解锁");
-      toast("模式已解锁", "ok");
-    };
+    const modeSelectEl = $("modeSelect");
+    if (modeSelectEl) {
+      modeSelectEl.onchange = () => {
+        if (state.modeLocked) return;
+        state.mode = modeSelectEl.value || "edit";
+        applyModeUI();
+        logMode("切换到" + (state.mode === "edit" ? "编辑" : state.mode === "run" ? "运行" : "测试") + "模式");
+        saveModeState();
+      };
+    }
+    const modeLockEl = $("modeLockBtn");
+    if (modeLockEl) {
+      modeLockEl.onclick = () => {
+        state.modeLocked = true;
+        applyModeUI();
+        logMode("模式已锁定");
+        toast("模式已锁定", "ok");
+        saveModeState();
+      };
+    }
+    const modeUnlockEl = $("modeUnlockBtn");
+    if (modeUnlockEl) {
+      modeUnlockEl.onclick = () => {
+        state.modeLocked = false;
+        applyModeUI();
+        logMode("模式已解锁");
+        toast("模式已解锁", "ok");
+        saveModeState();
+      };
+    }
     $("btnRunStartAll").onclick = () => runFullLifecycle(true);
     $("btnRunStopAll").onclick = () => runFullLifecycle(false);
     $("btnTestSmoke").onclick = () => runSmokeOrStress(false);
@@ -1229,6 +1708,12 @@
     });
 
     window.addEventListener("keyup", (ev) => { if (ev.code === "Space") state.spaceDown = false; });
+    document.addEventListener("visibilitychange", () => {
+      dbg("visibilitychange", { hidden: document.hidden, mode: state.mode, runtimeSteady: !!state.runtimeSteady, runId: state.runtimeRunId || "" });
+    });
+    window.addEventListener("beforeunload", () => {
+      dbg("beforeunload", { mode: state.mode, runtimeSteady: !!state.runtimeSteady, runId: state.runtimeRunId || "" });
+    });
 
     window.addEventListener("mousemove", (ev) => {
       if (state.pan) {
@@ -1294,8 +1779,31 @@
   async function boot() {
     state.projectId = ((document.querySelector(".ops-shell") || {}).dataset || {}).projectId || "";
     $("opsProjectFilter").value = state.projectId;
+    loadModeState();
+    loadRuntimeState();
     bindEvents();
     await loadAll();
+    startAgentsRealtimeTick();
+    const act = await OpsApi.runtimeFlowActive(state.projectId);
+    if (act && act.ok !== false && act.active && act.run_id) {
+      state.mode = "run";
+      state.modeLocked = true;
+      state.runtimeRunId = String(act.run_id || "");
+      state.runtimeRequestedOp = "start";
+      state.runtimeSteady = true;
+      applyModeUI();
+      logMode("后端检测为运行中，自动恢复运行跟踪: " + state.runtimeRunId, "warn");
+      await pollRuntimeRun(state.runtimeRunId);
+      stopRuntimePolling();
+      state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+      return;
+    }
+    if (state.mode === "run" && state.runtimeRunId) {
+      logMode("检测到刷新前运行态，自动恢复运行跟踪: " + state.runtimeRunId, "warn");
+      await pollRuntimeRun(state.runtimeRunId);
+      stopRuntimePolling();
+      state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+    }
   }
 
   boot().catch((e) => {

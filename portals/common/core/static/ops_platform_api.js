@@ -133,16 +133,19 @@
   api.queryTrace = (traceId) => api.getJSON('/api/ops-platform/actions/' + encodeURIComponent(traceId));
   api.agentPolicy = () => api.getJSON('/api/ops-platform/agent/policy');
   api.updateAgentPolicy = (payload) => api.postJSON('/api/ops-platform/agent/policy', payload);
-  api.agents = (projectId, status, deviceId, bound) => {
+  api.agents = (projectId, status, deviceId, bound, hostIp) => {
     const q = [];
     if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
     if (status) q.push('status=' + encodeURIComponent(status));
     if (deviceId) q.push('device_id=' + encodeURIComponent(deviceId));
     if (bound) q.push('bound=' + encodeURIComponent(bound));
+    if (hostIp) q.push('host_ip=' + encodeURIComponent(hostIp));
     return api.getJSON('/api/ops-platform/agents' + (q.length ? ('?' + q.join('&')) : ''));
   };
   api.agentDevices = (projectId) => api.getJSON('/api/ops-platform/agents/devices' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
   api.upsertAgent = (payload) => api.postJSON('/api/ops-platform/agents/upsert', payload);
+  api.cleanupExpiredAgents = (payload) => api.postJSON('/api/ops-platform/agents/cleanup-expired', payload || {});
+  api.probeAgent = (payload) => api.postJSON('/api/ops-platform/agents/probe', payload || {});
   api.loadNodeBindings = (projectId) => api.getJSON('/api/ops-platform/topology/node/bindings' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
   api.bindNodeAgent = (payload) => api.postJSON('/api/ops-platform/topology/node/bind-agent', payload);
   api.agentJobs = (nodeId, status, limit) => {
@@ -157,6 +160,7 @@
   api.moduleMap = () => api.getJSON('/api/ops-platform/module-map');
   api.runtimeFlowControl = (payload) => api.postJSON('/api/ops-platform/runtime/flow-control', payload || {});
   api.runtimeFlowStatus = (runId) => api.getJSON('/api/ops-platform/runtime/flow-status?run_id=' + encodeURIComponent(runId || ''));
+  api.runtimeFlowActive = (projectId) => api.getJSON('/api/ops-platform/runtime/active' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
 
   window.OpsApi = api;
 })();

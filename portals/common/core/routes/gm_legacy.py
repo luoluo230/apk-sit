@@ -9,6 +9,7 @@ import signal
 import subprocess
 import uuid
 import hashlib
+import socket
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -1342,12 +1343,40 @@ def _find_runtime_run(run_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _runtime_active_for_project(project_id: str) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    rows = _load_runtime_runs()
+    latest_start = None
+    latest_stop = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if pid and str(row.get("project_id") or "") != pid:
+            continue
+        op = str(row.get("op") or "").lower()
+        st = str(row.get("status") or "").lower()
+        if op == "start" and st in ("running", "success"):
+            if latest_start is None:
+                latest_start = row
+        if op == "stop" and st in ("running", "success"):
+            if latest_stop is None:
+                latest_stop = row
+    if not latest_start:
+        return {"active": False, "run_id": "", "status": "", "reason": "no_start_run"}
+    start_ts = str(latest_start.get("updated_at") or latest_start.get("created_at") or "")
+    stop_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
+    if latest_stop and stop_ts and start_ts and stop_ts >= start_ts:
+        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "stopped_after_start"}
+    return {"active": True, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "start_alive"}
+
+
 def _default_agent_policy() -> Dict[str, Any]:
     return {
         "mtls_required": False,
         "lease_timeout_sec": 60,
         "max_retries": 2,
         "default_node_concurrency": 1,
+        "agent_online_fresh_sec": 120,
         "rollout": {
             "enabled": False,
             "desired_version": "",
@@ -1362,7 +1391,7 @@ def _load_agent_policy() -> Dict[str, Any]:
     raw = _load_json_config(OPS_AGENT_POLICY_KEY, {})
     out = _default_agent_policy()
     if isinstance(raw, dict):
-        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency"):
+        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency", "agent_online_fresh_sec"):
             if k in raw:
                 out[k] = raw[k]
         if isinstance(raw.get("rollout"), dict):
@@ -1375,7 +1404,7 @@ def _load_agent_policy() -> Dict[str, Any]:
 def _save_agent_policy(policy: Dict[str, Any]) -> None:
     out = _default_agent_policy()
     if isinstance(policy, dict):
-        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency"):
+        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency", "agent_online_fresh_sec"):
             if k in policy:
                 out[k] = policy.get(k)
         if isinstance(policy.get("rollout"), dict):
@@ -1542,6 +1571,36 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
         item = {}
     transport = item.get("transport") if isinstance(item.get("transport"), dict) else {}
     local_bus = transport.get("local_bus") if isinstance(transport.get("local_bus"), dict) else {}
+    raw_metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    runtime_metrics = item.get("runtime") if isinstance(item.get("runtime"), dict) else {}
+    cpu_val = raw_metrics.get("cpu_percent", raw_metrics.get("cpu"))
+    mem_val = raw_metrics.get("mem_percent", raw_metrics.get("mem"))
+    qps_val = raw_metrics.get("qps", raw_metrics.get("throughput_qps"))
+    rtt_val = raw_metrics.get("rtt_ms", raw_metrics.get("latency_ms"))
+    if cpu_val is None:
+        cpu_val = runtime_metrics.get("cpu_percent", runtime_metrics.get("cpu"))
+    if mem_val is None:
+        mem_val = runtime_metrics.get("mem_percent", runtime_metrics.get("mem"))
+    if qps_val is None:
+        qps_val = runtime_metrics.get("qps", runtime_metrics.get("throughput_qps"))
+    if rtt_val is None:
+        rtt_val = runtime_metrics.get("rtt_ms", runtime_metrics.get("latency_ms"))
+    try:
+        cpu_num = max(0.0, min(100.0, float(cpu_val))) if cpu_val is not None else None
+    except Exception:
+        cpu_num = None
+    try:
+        mem_num = max(0.0, min(100.0, float(mem_val))) if mem_val is not None else None
+    except Exception:
+        mem_num = None
+    try:
+        qps_num = max(0.0, float(qps_val)) if qps_val is not None else None
+    except Exception:
+        qps_num = None
+    try:
+        rtt_num = max(0.0, float(rtt_val)) if rtt_val is not None else None
+    except Exception:
+        rtt_num = None
     return {
         "agent_id": str(item.get("agent_id") or ""),
         "device_id": str(item.get("device_id") or ""),
@@ -1564,6 +1623,14 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
             "degraded": bool(transport.get("degraded", False)),
             "degrade_reason": str(transport.get("degrade_reason") or ""),
         },
+        "metrics": {
+            "cpu_percent": cpu_num,
+            "mem_percent": mem_num,
+            "qps": qps_num,
+            "rtt_ms": rtt_num,
+            "updated_at": str(raw_metrics.get("updated_at") or runtime_metrics.get("updated_at") or item.get("last_seen") or ""),
+            "source": str(raw_metrics.get("source") or runtime_metrics.get("source") or "agent"),
+        },
         "updated_at": str(item.get("updated_at") or ""),
     }
 
@@ -1580,6 +1647,35 @@ def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
             continue
         out.append(item)
     return out
+
+
+def _device_metrics_snapshot(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    snaps: Dict[str, Dict[str, Any]] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        did = str(item.get("device_id") or "unknown-device")
+        m = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+        ts_raw = str(m.get("updated_at") or item.get("last_seen") or "")
+        try:
+            ts_val = datetime.fromisoformat(ts_raw.replace("Z", "")).timestamp()
+        except Exception:
+            ts_val = 0.0
+        cur = snaps.get(did) if isinstance(snaps.get(did), dict) else None
+        if cur is None or float(cur.get("_ts") or 0.0) < ts_val:
+            snaps[did] = {
+                "_ts": ts_val,
+                "cpu_percent": m.get("cpu_percent"),
+                "mem_percent": m.get("mem_percent"),
+                "qps": m.get("qps"),
+                "rtt_ms": m.get("rtt_ms"),
+                "updated_at": ts_raw,
+                "source": str(m.get("source") or "agent"),
+                "metrics_missing": not any(x is not None for x in (m.get("cpu_percent"), m.get("mem_percent"), m.get("qps"), m.get("rtt_ms"))),
+            }
+    for did in list(snaps.keys()):
+        snaps[did].pop("_ts", None)
+    return snaps
 
 
 def _default_node_presets() -> List[Dict[str, Any]]:
@@ -2519,15 +2615,21 @@ def ops_platform_agents_list():
     project_id = str(request.args.get("project_id") or "").strip()
     status = str(request.args.get("status") or "").strip().upper()
     device_id = str(request.args.get("device_id") or "").strip()
+    host_ip = str(request.args.get("host_ip") or "").strip().lower()
     bound = str(request.args.get("bound") or "").strip().lower()
     bindings = _load_node_agent_bindings()
     rows = _agents_v2_for_project(project_id)
     bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
+    device_snap = _device_metrics_snapshot(rows)
+    now_ts = datetime.utcnow().timestamp()
     out: List[Dict[str, Any]] = []
     for item in rows:
         if status and str(item.get("status") or "").upper() != status:
             continue
         if device_id and str(item.get("device_id") or "") != device_id:
+            continue
+        host_name = str(item.get("host_name") or "").lower()
+        if host_ip and host_ip not in host_name and host_ip not in str(item.get("device_id") or "").lower():
             continue
         is_bound = str(item.get("agent_id") or "") in bound_agent_ids
         if bound == "yes" and not is_bound:
@@ -2535,6 +2637,28 @@ def ops_platform_agents_list():
         if bound == "no" and is_bound:
             continue
         obj = dict(item)
+        did = str(obj.get("device_id") or "unknown-device")
+        snap = device_snap.get(did) if isinstance(device_snap.get(did), dict) else {}
+        if snap:
+            obj["device_metrics_snapshot"] = snap
+            obj["metrics"] = {
+                "cpu_percent": snap.get("cpu_percent"),
+                "mem_percent": snap.get("mem_percent"),
+                "qps": snap.get("qps"),
+                "rtt_ms": snap.get("rtt_ms"),
+                "updated_at": snap.get("updated_at"),
+                "source": snap.get("source"),
+            }
+            obj["metrics_missing"] = bool(snap.get("metrics_missing"))
+        else:
+            obj["device_metrics_snapshot"] = {}
+            obj["metrics_missing"] = True
+        last_seen_raw = str(obj.get("last_seen") or "")
+        try:
+            last_seen_ts = datetime.fromisoformat(last_seen_raw.replace("Z", "")).timestamp()
+            obj["last_seen_age_sec"] = max(0, int(now_ts - last_seen_ts))
+        except Exception:
+            obj["last_seen_age_sec"] = None
         obj["is_bound"] = is_bound
         out.append(obj)
     return jsonify({"ok": True, "count": len(out), "agents": out, "bindings": bindings})
@@ -2547,13 +2671,20 @@ def ops_platform_agents_devices():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     rows = _agents_v2_for_project(project_id)
+    device_snap = _device_metrics_snapshot(rows)
     grouped: Dict[str, Dict[str, Any]] = {}
     for item in rows:
         did = str(item.get("device_id") or "unknown-device")
-        cur = grouped.get(did) if isinstance(grouped.get(did), dict) else {"device_id": did, "project_id": project_id, "agents": []}
+        cur = grouped.get(did) if isinstance(grouped.get(did), dict) else {"device_id": did, "project_id": project_id, "agents": [], "online": 0, "total": 0}
         cur["agents"].append(item)
+        cur["total"] = int(cur.get("total") or 0) + 1
+        if str(item.get("status") or "").upper() in ("ONLINE", "READY", "RUNNING"):
+            cur["online"] = int(cur.get("online") or 0) + 1
         grouped[did] = cur
     out = list(grouped.values())
+    for g in out:
+        did = str(g.get("device_id") or "unknown-device")
+        g["device_metrics_snapshot"] = device_snap.get(did) if isinstance(device_snap.get(did), dict) else {}
     out.sort(key=lambda x: str(x.get("device_id") or ""))
     return jsonify({"ok": True, "count": len(out), "devices": out})
 
@@ -2569,8 +2700,29 @@ def ops_platform_agents_upsert():
         return jsonify({"ok": False, "error": "missing_agent_id"}), 400
     reg = _load_agent_registry_v2()
     hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else {}
+    create_if_missing = bool(payload.get("create_if_missing"))
     if not hit:
-        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+        if not create_if_missing:
+            return jsonify({"ok": False, "error": "agent_not_found"}), 404
+        now = _now_iso()
+        hit = {
+            "agent_id": agent_id,
+            "node_id": str(payload.get("node_id") or ""),
+            "device_id": str(payload.get("device_id") or payload.get("host_name") or "unknown-device"),
+            "host_name": str(payload.get("host_name") or ""),
+            "project_id": str(payload.get("project_id") or ""),
+            "status": str(payload.get("status") or "ONLINE"),
+            "version": str(payload.get("version") or ""),
+            "last_seen": now,
+            "display_name": str(payload.get("display_name") or agent_id),
+            "port": int(payload.get("port") or 0),
+            "desc": str(payload.get("desc") or ""),
+            "run_state": str(payload.get("run_state") or "ONLINE"),
+            "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
+            "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {},
+            "updated_at": now,
+            "transport": {"mode": "remote", "local_bus": {"enabled": False, "endpoint": "", "auth_mode": "token"}},
+        }
     if "port" in payload:
         try:
             port_val = int(payload.get("port") or 0)
@@ -2579,6 +2731,9 @@ def ops_platform_agents_upsert():
             hit["port"] = port_val
         except Exception:
             return jsonify({"ok": False, "error": "OPS_AGENT_PORT_INVALID", "error_code": "OPS_AGENT_PORT_INVALID"}), 400
+    for k in ("host_name", "device_id", "project_id", "node_id"):
+        if k in payload:
+            hit[k] = str(payload.get(k) or "")
     for k in ("display_name", "desc", "run_state", "status"):
         if k in payload:
             hit[k] = str(payload.get(k) or "")
@@ -2587,6 +2742,122 @@ def ops_platform_agents_upsert():
     _save_agent_registry_v2(reg)
     log_audit("ops_platform_agents_upsert", f"agent_id={agent_id}")
     return jsonify({"ok": True, "agent": reg[agent_id]})
+
+
+@bp.route("/api/ops-platform/agents/probe", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_agents_probe():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    host = str(payload.get("host_name") or payload.get("ip") or "").strip()
+    port_raw = payload.get("port")
+    try:
+        port = int(port_raw or 0)
+    except Exception:
+        port = 0
+    if not host or port <= 0 or port > 65535:
+        return jsonify({"ok": False, "error": "invalid_host_or_port", "message": "请提供有效的 IP 和端口"}), 400
+    timeout_sec = 2.0
+    start = datetime.utcnow()
+    ok = False
+    err = ""
+    try:
+        with socket.create_connection((host, port), timeout=timeout_sec):
+            ok = True
+    except Exception as ex:
+        err = str(ex)
+    spent = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+    return jsonify(
+        {
+            "ok": ok,
+            "host_name": host,
+            "port": port,
+            "rtt_ms": round(spent, 1),
+            "message": ("连通性正常" if ok else ("连通性失败: " + (err or "unknown"))),
+            "error": ("" if ok else err),
+        }
+    )
+
+
+@bp.route("/api/ops-platform/agents/cleanup-expired", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_agents_cleanup_expired():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    ttl_hours_raw = payload.get("ttl_hours", 24)
+    try:
+        ttl_hours = int(ttl_hours_raw)
+    except Exception:
+        ttl_hours = 24
+    if ttl_hours < 1:
+        ttl_hours = 1
+    if ttl_hours > 24 * 30:
+        ttl_hours = 24 * 30
+    ttl_sec = int(ttl_hours * 3600)
+
+    reg = _load_agent_registry_v2()
+    now_ts = datetime.utcnow().timestamp()
+    deleted_agent_ids: List[str] = []
+    kept = 0
+
+    for agent_id, row in list(reg.items()):
+        if not isinstance(row, dict):
+            continue
+        aid = str(agent_id or "").strip()
+        if not aid:
+            continue
+        row_project = str(row.get("project_id") or "").strip()
+        if project_id and row_project and row_project != project_id:
+            kept += 1
+            continue
+        last_seen_raw = str(row.get("last_seen") or "").strip()
+        if not last_seen_raw:
+            # 无心跳时间的老残留直接清理
+            reg.pop(aid, None)
+            deleted_agent_ids.append(aid)
+            continue
+        try:
+            last_seen_ts = datetime.fromisoformat(last_seen_raw.replace("Z", "")).timestamp()
+        except Exception:
+            reg.pop(aid, None)
+            deleted_agent_ids.append(aid)
+            continue
+        age = max(0, int(now_ts - last_seen_ts))
+        if age > ttl_sec:
+            reg.pop(aid, None)
+            deleted_agent_ids.append(aid)
+        else:
+            kept += 1
+
+    bindings = _load_node_agent_bindings()
+    removed_bindings = 0
+    if deleted_agent_ids:
+        deleted_set = set(deleted_agent_ids)
+        for node_id, aid in list(bindings.items()):
+            if str(aid or "").strip() in deleted_set:
+                bindings.pop(node_id, None)
+                removed_bindings += 1
+
+    _save_agent_registry_v2(reg)
+    _save_node_agent_bindings(bindings)
+    log_audit(
+        "ops_platform_agents_cleanup_expired",
+        f"project={project_id or '-'}; ttl_hours={ttl_hours}; deleted={len(deleted_agent_ids)}; unbound={removed_bindings}",
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "project_id": project_id,
+            "ttl_hours": ttl_hours,
+            "deleted_count": len(deleted_agent_ids),
+            "removed_binding_count": removed_bindings,
+            "kept_count": kept,
+            "deleted_agent_ids": deleted_agent_ids[:80],
+        }
+    )
 
 
 @bp.route("/api/ops-platform/topology/node/bindings")
@@ -3891,6 +4162,7 @@ def ops_platform_runtime_flow_control():
     items: List[Dict[str, Any]] = []
     bindings = _load_node_agent_bindings()
     reg_v2 = _load_agent_registry_v2()
+    fresh_sec = max(20, int(policy.get("agent_online_fresh_sec") or 120))
 
     for nid in node_ids:
         node = all_nodes_map.get(nid) or _resolve_node(node_id=nid)
@@ -3899,16 +4171,27 @@ def ops_platform_runtime_flow_control():
             continue
         bound_agent = str(bindings.get(nid) or "")
         bound_desc = reg_v2.get(bound_agent) if bound_agent else None
-        online = bool(bound_desc and str(bound_desc.get("status") or "").upper() == "ONLINE")
+        online = bool(bound_desc and str(bound_desc.get("status") or "").upper() in ("ONLINE", "READY", "RUNNING"))
         fresh = False
+        hb_age = -1.0
         if bound_desc and bound_desc.get("last_seen"):
             try:
                 hb = datetime.fromisoformat(str(bound_desc.get("last_seen")).replace("Z", ""))
-                fresh = (datetime.utcnow() - hb).total_seconds() <= 20
+                hb_age = (datetime.utcnow() - hb).total_seconds()
+                fresh = hb_age <= fresh_sec
             except Exception:
                 fresh = False
+                hb_age = -1.0
         online = online and fresh
         use_agent_mode = online
+        desired_role = str(node.get("role") or "")
+        current_runtime = bound_desc.get("runtime") if isinstance(bound_desc, dict) and isinstance(bound_desc.get("runtime"), dict) else {}
+        current_role = str(current_runtime.get("current_role") or current_runtime.get("role") or "")
+        current_state = str(current_runtime.get("state") or bound_desc.get("run_state") or "").upper()
+        if op == "start" and use_agent_mode and desired_role and current_role == desired_role and current_state in ("RUNNING", "ONLINE", "READY", "SUCCESS"):
+            items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS", "mode": "agent-reuse"})
+            logs.append({"ts": _now_iso(), "level": "info", "node_id": nid, "message": f"复用远端已运行服务: role={desired_role}; 无需重启"})
+            continue
         req = {
             "node_id": nid,
             "action_type": action_type,
@@ -3918,7 +4201,13 @@ def ops_platform_runtime_flow_control():
             "approver": actor,
             "run_mode": "agent" if use_agent_mode else "direct",
             "via_agent": bool(use_agent_mode),
-            "payload": {"run_mode": "agent" if use_agent_mode else "direct"},
+            "payload": {
+                "run_mode": "agent" if use_agent_mode else "direct",
+                "desired_role": desired_role,
+                "desired_server_id": str(node.get("server_id") or ""),
+                "switch_required": bool(op == "start" and use_agent_mode and desired_role and current_role and current_role != desired_role),
+                "current_role": current_role,
+            },
         }
         validation = _validate_ops_request(req, node)
         if not validation.get("ok"):
@@ -3939,6 +4228,15 @@ def ops_platform_runtime_flow_control():
                 continue
             req["approval_id"] = aid
             validation = _validate_ops_request(req, node)
+        if bool((req.get("payload") or {}).get("switch_required")):
+            logs.append(
+                {
+                    "ts": _now_iso(),
+                    "level": "warn",
+                    "node_id": nid,
+                    "message": f"远端Agent当前类型为 {current_role or '-'}，将先停止后切换到 {desired_role or '-'}",
+                }
+            )
         result = _execute_validated(req, node, validation)
         if not result.get("ok"):
             logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": str(result.get("message") or result.get("error") or "execute failed")})
@@ -3950,7 +4248,15 @@ def ops_platform_runtime_flow_control():
             logs.append({"ts": _now_iso(), "level": "info", "node_id": nid, "job_id": job_id, "message": "已入队: " + job_id})
         else:
             items.append({"node_id": nid, "job_id": "", "trace_id": trace_id, "status": "SUCCESS", "mode": "direct"})
-            logs.append({"ts": _now_iso(), "level": "warn", "node_id": nid, "message": "未命中在线Agent，已走直连执行"})
+            reason = "agent_missing"
+            if bound_agent and not bound_desc:
+                reason = "agent_not_registered"
+            elif bound_desc and str(bound_desc.get("status") or "").upper() not in ("ONLINE", "READY", "RUNNING"):
+                reason = "agent_status_" + str(bound_desc.get("status") or "UNKNOWN")
+            elif bound_desc and not fresh:
+                reason = "agent_heartbeat_stale"
+            detail = f"未命中在线Agent，已走直连执行; reason={reason}; bound_agent={bound_agent or '-'}; hb_age_sec={(round(hb_age,1) if hb_age >= 0 else '-')}; fresh_sec={fresh_sec}"
+            logs.append({"ts": _now_iso(), "level": "warn", "node_id": nid, "message": detail})
 
     run_obj = {
         "run_id": run_id,
@@ -4022,16 +4328,42 @@ def ops_platform_runtime_flow_status():
         run_obj["status"] = "running"
     run_obj["updated_at"] = _now_iso()
     _upsert_runtime_run(run_obj)
+    debug_obj = {
+        "server_time": _now_iso(),
+        "run_updated_at": run_obj.get("updated_at"),
+        "timed_out": bool(timed_out),
+        "status_histogram": {
+            "PENDING": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "PENDING"]),
+            "LEASED": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "LEASED"]),
+            "RUNNING": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "RUNNING"]),
+            "SUCCESS": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "SUCCESS"]),
+            "FAILED": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "FAILED"]),
+            "TIMEOUT": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "TIMEOUT"]),
+            "CANCELED": len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() == "CANCELED"]),
+        },
+    }
     return jsonify({
         "ok": True,
         "run_id": run_obj.get("run_id"),
+        "op": run_obj.get("op"),
         "status": run_obj.get("status"),
         "done": done,
         "total": total,
         "failed": fail,
         "items": items,
         "logs": run_logs[-120:],
+        "debug": debug_obj,
     })
+
+
+@bp.route("/api/ops-platform/runtime/active")
+@admin_required("gm_ops")
+def ops_platform_runtime_active():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    info = _runtime_active_for_project(project_id)
+    return jsonify({"ok": True, "project_id": project_id, "active": bool(info.get("active")), "run_id": str(info.get("run_id") or ""), "status": str(info.get("status") or ""), "reason": str(info.get("reason") or "")})
 
 
 @bp.route("/api/ops-platform/agent/register", methods=["POST"])
@@ -4077,6 +4409,8 @@ def ops_platform_agent_register():
             "desc": str(payload.get("desc") or ""),
             "run_state": str(payload.get("run_state") or "RUNNING"),
             "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
+            "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {},
+            "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {},
             "transport": {
                 "mode": str(payload.get("transport_mode") or "remote"),
                 "local_bus": {
@@ -4140,6 +4474,8 @@ def ops_platform_agent_heartbeat():
             "desc": str(payload.get("desc") or prev.get("desc") or ""),
             "run_state": str(payload.get("run_state") or prev.get("run_state") or ""),
             "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else prev.get("capabilities") or [],
+            "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else (prev.get("metrics") if isinstance(prev.get("metrics"), dict) else {}),
+            "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else (prev.get("runtime") if isinstance(prev.get("runtime"), dict) else {}),
             "transport": {
                 "mode": str(payload.get("transport_mode") or ((prev.get("transport") or {}).get("mode") if isinstance(prev.get("transport"), dict) else "remote")),
                 "local_bus": {
@@ -4311,6 +4647,36 @@ def ops_platform_agent_report():
             hit["updated_at"] = _now_iso()
             hit["result"] = {"message": "scheduled retry after failure", "last_status": status}
     _save_agent_jobs(jobs)
+    reg_v2 = _load_agent_registry_v2()
+    cur_agent = reg_v2.get(agent_id) if isinstance(reg_v2.get(agent_id), dict) else {}
+    if cur_agent:
+        runtime = cur_agent.get("runtime") if isinstance(cur_agent.get("runtime"), dict) else {}
+        action_type = str(hit.get("action_type") or "").strip().lower()
+        hp = hit.get("payload") if isinstance(hit.get("payload"), dict) else {}
+        desired_role = str(hp.get("desired_role") or "")
+        if status == "RUNNING":
+            runtime["state"] = "RUNNING"
+        elif status == "SUCCESS":
+            if action_type == "start":
+                runtime["state"] = "RUNNING"
+                if desired_role:
+                    runtime["current_role"] = desired_role
+            elif action_type == "stop":
+                runtime["state"] = "STOPPED"
+            elif action_type == "restart":
+                runtime["state"] = "RUNNING"
+                if desired_role:
+                    runtime["current_role"] = desired_role
+        elif status in ("FAILED", "TIMEOUT", "CANCELED"):
+            runtime["state"] = "ERROR"
+        runtime["last_job_id"] = job_id
+        runtime["last_job_status"] = status
+        runtime["updated_at"] = _now_iso()
+        cur_agent["runtime"] = runtime
+        cur_agent["run_state"] = runtime.get("state") or cur_agent.get("run_state") or ""
+        cur_agent["updated_at"] = _now_iso()
+        reg_v2[agent_id] = _normalize_agent_descriptor_v2(cur_agent)
+        _save_agent_registry_v2(reg_v2)
 
     _append_event(
         {

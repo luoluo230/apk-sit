@@ -13,6 +13,10 @@ import uuid
 from typing import Any, Dict, List
 
 import requests
+try:
+    import psutil  # type: ignore
+except Exception:  # pragma: no cover
+    psutil = None
 
 
 def post_json(url: str, payload: Dict[str, Any], token: str, timeout: int = 6) -> Dict[str, Any]:
@@ -51,6 +55,30 @@ def run_job(base: str, node_id: str, token: str, agent_id: str, job: Dict[str, A
     post_json(f"{base}/api/ops-platform/agent/report", result, token)
 
 
+def collect_metrics(last_ts: float, processed_total: int, processed_prev: int) -> Dict[str, Any]:
+    now = time.time()
+    dt = max(0.001, now - max(0.0, last_ts))
+    qps = max(0.0, (processed_total - processed_prev) / dt)
+    cpu = None
+    mem = None
+    if psutil is not None:
+        try:
+            cpu = float(psutil.cpu_percent(interval=None))
+        except Exception:
+            cpu = None
+        try:
+            mem = float(psutil.virtual_memory().percent)
+        except Exception:
+            mem = None
+    return {
+        "cpu_percent": cpu if cpu is not None else 0.0,
+        "mem_percent": mem if mem is not None else 0.0,
+        "qps": round(float(qps), 2),
+        "rtt_ms": 0.0,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+    }
+
+
 def agent_loop(base: str, node_id: str, token: str, project_id: str, agent_name: str, device_id: str, port: int, loops: int, interval: float) -> Dict[str, Any]:
     agent_id = agent_name or f"agent-{node_id}-{uuid.uuid4().hex[:6]}"
     register_payload = {
@@ -76,7 +104,12 @@ def agent_loop(base: str, node_id: str, token: str, project_id: str, agent_name:
         return {"ok": False, "stage": "register", "detail": reg}
 
     processed = 0
+    last_metric_ts = time.time()
+    processed_prev = 0
     for _ in range(max(1, loops)):
+        metrics = collect_metrics(last_metric_ts, processed, processed_prev)
+        last_metric_ts = time.time()
+        processed_prev = processed
         hb = post_json(
             f"{base}/api/ops-platform/agent/heartbeat",
             {
@@ -90,6 +123,7 @@ def agent_loop(base: str, node_id: str, token: str, project_id: str, agent_name:
                 "status": "ONLINE",
                 "run_state": "RUNNING",
                 "runtime": {"platform": platform.platform(), "ts": time.time()},
+                "metrics": metrics,
                 "local_bus_enabled": True,
                 "local_bus_endpoint": f"pipe://{device_id}/{agent_id}",
                 "local_bus_auth_mode": "token",
@@ -143,4 +177,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
