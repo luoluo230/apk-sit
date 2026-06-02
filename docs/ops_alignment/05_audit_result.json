@@ -1,0 +1,76 @@
+{
+  "static": {
+    "routes": {
+      "/api/ops-platform/agent/register": true,
+      "/api/ops-platform/agent/heartbeat": true,
+      "/api/ops-platform/agent/pull": true,
+      "/api/ops-platform/agent/report": true,
+      "/api/ops-platform/agents": true,
+      "/api/ops-platform/agents/devices": true,
+      "/api/ops-platform/agents/probe": true,
+      "/api/ops-platform/agents/probe-all": true,
+      "/api/ops-platform/topology/node/bind-agent": true,
+      "/api/ops-platform/topology/node/start-remote": true,
+      "/api/ops-platform/runtime/flow-control": true,
+      "/api/ops-platform/runtime/flow-status": true,
+      "/api/ops-platform/runtime/active": true,
+      "/api/ops-platform/actions/validate": true,
+      "/api/ops-platform/actions/approval": true,
+      "/api/ops-platform/actions/execute": true
+    },
+    "agent_actions": {
+      "status": true,
+      "health_check": true,
+      "ready_check": true,
+      "runtime_snapshot": true,
+      "start": true,
+      "stop": true,
+      "restart": true,
+      "start_all": true,
+      "stop_all": true,
+      "smoke_test": true,
+      "stress_test": true
+    },
+    "frontend_bindings": {
+      "/api/ops-platform/agent/register": false,
+      "/api/ops-platform/agent/heartbeat": false,
+      "/api/ops-platform/agent/pull": false,
+      "/api/ops-platform/agent/report": false,
+      "/api/ops-platform/agents": true,
+      "/api/ops-platform/agents/devices": true,
+      "/api/ops-platform/agents/probe": true,
+      "/api/ops-platform/agents/probe-all": true,
+      "/api/ops-platform/topology/node/bind-agent": true,
+      "/api/ops-platform/topology/node/start-remote": true,
+      "/api/ops-platform/runtime/flow-control": true,
+      "/api/ops-platform/runtime/flow-status": true,
+      "/api/ops-platform/runtime/active": true,
+      "/api/ops-platform/actions/validate": true,
+      "/api/ops-platform/actions/approval": false,
+      "/api/ops-platform/actions/execute": true
+    }
+  },
+  "runtime": {
+    "health": {
+      "ok": true,
+      "status": 200,
+      "body": "{\"service\":\"apk-site\",\"status\":\"ok\"}\n"
+    },
+    "overview": {
+      "ok": true,
+      "status": 200,
+      "body": "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Contract Co - 登录工作台</title>\n    <link rel=\"stylesheet\" href=\"/static/tailwind.css\">\n    <link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css\">\n    <link href=\"https://fonts.googleapis.com/css2?f"
+    },
+    "agents": {
+      "ok": true,
+      "status": 200,
+      "body": "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Contract Co - 登录工作台</title>\n    <link rel=\"stylesheet\" href=\"/static/tailwind.css\">\n    <link rel=\"stylesheet\" href=\"https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css\">\n    <link href=\"https://fonts.googleapis.com/css2?f"
+    }
+  },
+  "summary": {
+    "route_coverage": "16/16",
+    "action_coverage": "11/11",
+    "runtime_health": true,
+    "note": "overview/agents may return 401/403 when no admin session is provided; static alignment still valid"
+  }
+}
