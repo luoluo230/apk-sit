@@ -1,4 +1,4 @@
-﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526p">
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260601e">
 <section class="ops-page" data-project-id="{{ project_id }}">
   <div class="top">
     <div>
@@ -17,8 +17,12 @@
       <b class="h-row"><span class="ops-ico ico-agent">S</span>控制面总览</b>
       <div class="ops-header-actions">
         <button id="btnRefreshCp" class="btn">立即刷新</button>
-        <button id="btnCreateAgent" class="btn primary">新建 Agent 卡</button>
-        <button id="btnCleanupExpired" class="btn ghost">清理过期 Agent</button>
+        <button id="btnCreateAgent" class="btn primary">新建设备 Agent</button>
+        <button id="btnCreateServiceTop" class="btn">新增服务实例</button>
+        <button id="btnProbeAllAgent" class="btn">一键联通测试</button>
+        <button id="btnProbeRepairAllAgent" class="btn">批量修复并探测</button>
+        <button id="btnCleanupExpired" class="btn ghost" title="清理超过1小时未心跳的Agent">清理过期(1h)</button>
+        <button id="btnCleanupExpiredCustom" class="btn ghost" title="自定义过期阈值">自定义清理</button>
       </div>
     </div>
     <div class="bd">
@@ -75,16 +79,21 @@
 <div id="agentEditModal" class="port-modal hidden" aria-hidden="true">
   <div class="port-modal-box agent-edit-modal-box">
     <div class="port-modal-head">
-      <h3>编辑 Agent</h3>
+      <h3 id="agentEditTitle">编辑 Agent</h3>
       <button id="btnCloseAgentEdit" class="btn">关闭</button>
     </div>
     <div class="port-modal-hint" id="agentEditHint">编辑保存后 2 秒内会同步到卡片</div>
     <div class="agent-edit-grid">
-      <label>Agent ID<input id="editAgentId" class="inp" readonly></label>
-      <label>设备 ID<input id="editDeviceId" class="inp" placeholder="例如: cloud-host-1"></label>
-      <label>IP 地址<input id="editHostIp" class="inp" placeholder="例如: 10.10.20.31"></label>
-      <label>显示名称<input id="editDisplayName" class="inp" placeholder="例如: agent-gateway-prod"></label>
-      <label>端口<input id="editPort" class="inp" type="number" min="1" max="65535"></label>
+      <label data-field="agent">Agent ID<input id="editAgentId" class="inp" readonly></label>
+      <label data-field="agent">设备 ID<input id="editDeviceId" class="inp" placeholder="例如: cloud-host-1"></label>
+      <label data-field="agent">IP 地址<input id="editHostIp" class="inp" placeholder="例如: 10.10.20.31"></label>
+      <label data-field="service">服务实例 ID<input id="editServiceId" class="inp" placeholder="例如: gateway-cn-1"></label>
+      <label data-field="service">服务类型<input id="editServiceType" class="inp" placeholder="例如: gateway/auth/game"></label>
+      <label data-field="agent">显示名称<input id="editDisplayName" class="inp" placeholder="例如: agent-gateway-prod"></label>
+      <label data-field="agent">Agent 端口<input id="editPort" class="inp" type="number" min="1" max="65535"></label>
+      <label data-field="service">服务端口<input id="editServicePort" class="inp" type="number" min="1" max="65535"></label>
+      <label data-field="service">远程启动 game-server 端口<input id="editRemotePort" class="inp" type="number" min="1" max="65535"></label>
+      <label data-field="service">节点通信地址(逗号分隔)<input id="editNetworkEndpoints" class="inp" placeholder="10.0.0.1:7001,10.0.0.2:7002"></label>
       <label>运行状态标签
         <select id="editRunState" class="sel">
           <option value="">(保持不变)</option>
@@ -105,5 +114,7 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260526p"></script>
-<script src="/static/ops_platform_agent_control.js?v=20260526p"></script>
+<script src="/static/ops_platform_api.js?v=20260601e"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260601e"></script>
+
+

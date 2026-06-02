@@ -14,7 +14,7 @@ class GameOpsClient:
     def __init__(self) -> None:
         base_url = (os.getenv("GAME_OPS_BASE_URL", "http://127.0.0.1:5054") or "").strip().rstrip("/")
         self._base_url = base_url
-        self._timeout = int(os.getenv("GAME_OPS_TIMEOUT_SECONDS", "8") or "8")
+        self._timeout = int(os.getenv("GAME_OPS_TIMEOUT_SECONDS", "2") or "2")
         self._read_key = os.getenv("GAME_OPS_READ_KEY", "ops-read-dev") or ""
         self._write_key = os.getenv("GAME_OPS_WRITE_KEY", "ops-write-dev") or ""
 

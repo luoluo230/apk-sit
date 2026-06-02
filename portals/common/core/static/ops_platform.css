@@ -317,6 +317,8 @@ td{padding:8px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa;back
   background:linear-gradient(180deg,#ffffff,#f8fbff);
   padding:10px;
 }
+.agent-device-wrap{display:grid;grid-template-columns:280px minmax(0,1fr);gap:12px;align-items:start}
+.agent-host-card{border:1px dashed #c7d2fe;border-radius:12px;padding:8px;background:#f8faff}
 .agent-device-head{
   display:flex;
   justify-content:space-between;
@@ -376,6 +378,7 @@ td{padding:8px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa;back
 }
 @media (max-width:1260px){
   .agent-filters{grid-template-columns:1fr 1fr 1fr}
+  .agent-device-wrap{grid-template-columns:1fr}
   .agent-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-width:900px){

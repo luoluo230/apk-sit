@@ -1,4 +1,4 @@
-﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260526s">
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260601e">
 <section class="ops-shell" data-project-id="{{ project_id }}">
   <div class="top">
     <div>
@@ -54,6 +54,7 @@
             <option value="">流程模板</option>
           </select>
           <button id="btnApplyBlueprint" class="btn" type="button">应用模板</button>
+          <button id="btnAutoBindAgents" class="btn" type="button">自动绑定可用Agent</button>
           <button id="btnDeleteEdgeInline" class="btn" type="button" title="先点击选中一条连线再删除">删除选中连线</button>
           <span id="zoomLabel" class="zoom-pill">100%</span>
           <input id="opsProjectFilter" class="inp top-project" value="{{ project_id }}" placeholder="project_id">
@@ -153,6 +154,16 @@
         <input id="insNodeAgentMeta" class="inp" readonly placeholder="设备/端口/心跳">
       </div>
     </div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">远程启动端口</label>
+        <input id="insNodeRemotePort" class="inp" type="number" min="1" max="65535" placeholder="为空则跟随Agent配置">
+      </div>
+      <div>
+        <label style="font-size:11px;color:#64748b;display:block">节点通信地址(逗号分隔)</label>
+        <input id="insNodeEndpoints" class="inp" placeholder="10.0.0.1:7001,10.0.0.2:7002">
+      </div>
+    </div>
 
     <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">说明</label><textarea id="insNodeDesc" class="txt" rows="3"></textarea>
     <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">标签</label><input id="insNodeTags" class="inp">
@@ -173,6 +184,13 @@
       <button id="btnDeleteEdge" class="btn" style="width:100%" type="button">删除当前选中连线</button>
     </div>
     <div class="row" style="margin-top:8px">
+      <button id="btnStartRemoteNode" class="btn success" style="width:100%" type="button">启动对应远端服务器</button>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#334155">
+        <input id="insNodeVisibleConsole" type="checkbox" checked>
+        远端可见黑窗口启动
+      </label>
+    </div>
+    <div class="row" style="margin-top:8px">
       <button id="btnDeleteSelectedPort" class="btn" style="width:100%" type="button">删除选中针脚</button>
       <div></div>
     </div>
@@ -183,6 +201,9 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260526o"></script>
-<script src="/static/ops_platform_workbench.js?v=20260526aa"></script>
+<script src="/static/ops_platform_api.js?v=20260601e"></script>
+<script src="/static/ops_platform_workbench.js?v=20260601e"></script>
+
+
+
 

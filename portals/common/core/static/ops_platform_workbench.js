@@ -131,7 +131,7 @@
     if (!ag) return { cls: "warn", text: "Agent未绑定" };
     const st = String(ag.status || "").toUpperCase();
     const age = deviceHeartbeatAgeSec(ag.device_id) ?? agentHeartbeatAgeSec(ag);
-    const freshSec = 120;
+    const freshSec = 300;
     if (!age && age !== 0) return { cls: "warn", text: "心跳未知" };
     if (st === "ONLINE" && age <= freshSec) return { cls: "ok", text: "设备在线 · " + age + "s" };
     return { cls: "err", text: "心跳过期 · " + age + "s" };
@@ -338,12 +338,14 @@
   }
 
   async function refreshAgentsIfNeeded(force) {
-    const now = Date.now();
-    if (!force && (now - Number(state.agentsRefreshAt || 0)) < 2000) return;
     const d = await OpsApi.agents(state.projectId);
+    if (d && d.ok === false && (d.error_code === 'OPS_AUTH_REQUIRED' || d.error === 'auth_redirect')) {
+      window.location.href = '/login';
+      return;
+    }
     if (d && d.ok !== false && Array.isArray(d.agents)) {
       state.agents = d.agents;
-      state.agentsRefreshAt = now;
+      state.agentsRefreshAt = Date.now();
     }
   }
 
@@ -806,7 +808,7 @@
         + '<div class="state-pill state-' + esc(agHealth.cls) + '" style="margin-top:4px">' + esc(agHealth.text) + "</div>"
         + (isFlow ? (
           '<div class="node-metrics">'
-          + '<div class="metric-src ' + (metrics.source === "real" ? "real" : "mock") + '">' + (metrics.source === "real" ? "实时" : "实时缺失") + (metrics.rtt ? (" · RTT " + Math.round(metrics.rtt) + "ms") : "") + '</div>'
+          + '<div class="metric-src ' + ((metrics.source === "real" || metrics.source === "local" || metrics.source === "agent") ? "real" : "mock") + '">' + ((metrics.source === "real" || metrics.source === "local" || metrics.source === "agent") ? "实时" : "实时缺失") + (metrics.rtt ? (" · RTT " + Math.round(metrics.rtt) + "ms") : "") + '</div>'
           + '<div class="metric-row"><span>CPU</span><div class="metric-bar"><i style="width:' + Math.round(metrics.cpu) + '%"></i></div><em>' + Math.round(metrics.cpu) + '%</em></div>'
           + '<div class="metric-row"><span>MEM</span><div class="metric-bar"><i style="width:' + Math.round(metrics.mem) + '%"></i></div><em>' + Math.round(metrics.mem) + '%</em></div>'
           + '<div class="metric-row"><span>QPS</span><div class="metric-bar"><i style="width:' + Math.round(metrics.qps) + '%"></i></div><em>' + Math.round(metrics.qps) + '</em></div>'
@@ -1092,11 +1094,11 @@
     const current = String((state.nodeBindings || {})[nodeId] || "");
     sel.value = current;
     const hit = state.agents.find((a) => String(a.agent_id || "") === current);
-    agMeta.value = hit ? ((hit.device_id || "-") + " / " + (hit.port || "-") + " / " + (hit.last_seen || "-")) : "未绑定";
+    agMeta.value = hit ? ((hit.device_id || "-") + " / " + (hit.host_name || "-") + ":" + (hit.port || "-") + " / " + (hit.last_seen || "-")) : "未绑定";
     sel.onchange = () => {
       const aid = String(sel.value || "");
       const x = state.agents.find((a) => String(a.agent_id || "") === aid);
-      agMeta.value = x ? ((x.device_id || "-") + " / " + (x.port || "-") + " / " + (x.last_seen || "-")) : "未绑定";
+      agMeta.value = x ? ((x.device_id || "-") + " / " + (x.host_name || "-") + ":" + (x.port || "-") + " / " + (x.last_seen || "-")) : "未绑定";
     };
   }
 
@@ -1113,6 +1115,9 @@
     $("insNodeDesc").value = n.desc;
     $("insNodeColor").value = n.ui.color || "#0f172a";
     $("insNodeTags").value = (n.tags || []).join(",");
+    $("insNodeRemotePort").value = String((((n.ui || {}).remote || {}).port || ""));
+    const eps = (((n.ui || {}).network || {}).endpoints || []);
+    $("insNodeEndpoints").value = Array.isArray(eps) ? eps.join(",") : "";
     $("insNodePortsSummary").value = "in: " + ((((n.ui || {}).ports || {}).in || []).length) + " / out: " + ((((n.ui || {}).ports || {}).out || []).length);
     state.selectedPort = null;
     fillAgentSelect(nodeId);
@@ -1191,13 +1196,21 @@
     n.desc = $("insNodeDesc").value || n.desc;
     n.tags = String($("insNodeTags").value || "").split(",").map((x) => x.trim()).filter(Boolean);
     n.ui.color = String($("insNodeColor").value || n.ui.color || "#0f172a");
+    n.ui.remote = n.ui.remote || {};
+    const remotePort = Number($("insNodeRemotePort").value || 0);
+    n.ui.remote.port = (Number.isFinite(remotePort) && remotePort > 0) ? remotePort : 0;
+    const epText = String($("insNodeEndpoints").value || "").trim();
+    n.ui.network = { endpoints: epText ? epText.split(",").map((x) => x.trim()).filter(Boolean) : [] };
     n.ui.ports = normalizePorts(n.kind, n.ui.ports);
 
     const nodeRes = await OpsApi.updateNode(id, { role: n.role, kind: n.kind, desc: n.desc, bizStatus: n.bizStatus, owner: n.owner, x: n.ui.x, y: n.ui.y, ui: n.ui, tags: n.tags });
     if (!nodeRes.ok) { toast(nodeRes.message || "Save node failed", "error"); return; }
 
     const aid = String($("insNodePrimaryAgent").value || "");
-    const bindRes = await OpsApi.bindNodeAgent({ node_id: id, agent_id: aid, project_id: state.projectId });
+    const serviceId = String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || "").trim();
+    const bindRes = await OpsApi.bindNodeService
+      ? await OpsApi.bindNodeService({ node_id: id, agent_id: aid, service_id: serviceId, project_id: state.projectId })
+      : await OpsApi.bindNodeAgent({ node_id: id, agent_id: aid, project_id: state.projectId });
     if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "Bind agent failed", "error"); return; }
 
     state.nodeBindings = bindRes.bindings || state.nodeBindings;
@@ -1207,6 +1220,46 @@
     closeNodeEditor();
     drawNodes();
     renderRuntimeNodeList();
+  }
+
+  async function startRemoteForNode(nodeId, launchVisibleConsole) {
+    const nid = String(nodeId || "").trim();
+    if (!nid) return { ok: false, message: "missing_node_id" };
+    const n = getNode(nid);
+    if (!n) return { ok: false, message: "node_not_found" };
+    const aid = String((state.nodeBindings || {})[nid] || "");
+    if (!aid) return { ok: false, message: "节点未绑定Agent", error_code: "OPS_AGENT_NOT_BOUND" };
+    const ag = (state.agents || []).find((x) => String((x || {}).agent_id || "") === aid) || null;
+    if (!ag) return { ok: false, message: "绑定Agent不存在", error_code: "OPS_AGENT_NOT_REGISTERED" };
+    const probe = String(ag.probe_status || "").toUpperCase();
+    if (probe !== "PASS") return { ok: false, message: "Agent联通测试未通过", error_code: "OPS_AGENT_PROBE_REQUIRED" };
+    const visible = (typeof launchVisibleConsole === "boolean")
+      ? launchVisibleConsole
+      : !!($("insNodeVisibleConsole") ? $("insNodeVisibleConsole").checked : true);
+    const resp = await OpsApi.startRemoteNode({
+      node_id: nid,
+      project_id: state.projectId,
+      service_id: String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || ""),
+      launch_visible_console: visible,
+    });
+    return resp || { ok: false, message: "remote_start_no_response" };
+  }
+
+  async function precheckAndStartRemoteForNodes(nodeIds) {
+    await refreshAgentsIfNeeded(true);
+    const uniq = Array.from(new Set((nodeIds || []).map((x) => String(x || "").trim()).filter(Boolean)));
+    const failures = [];
+    for (const nid of uniq) {
+      const r = await startRemoteForNode(nid, true);
+      if (!r || r.ok === false) {
+        failures.push({ node_id: nid, error_code: (r && r.error_code) || "OPS_REMOTE_START_FAILED", message: (r && (r.message || r.error)) || "remote start failed" });
+        logMode("远端启动失败 " + nid + ": " + ((r && (r.message || r.error)) || "unknown"), "error");
+        appendJsonDetail("远端启动失败 " + nid, r || {});
+      } else {
+        logMode("远端启动已提交 " + nid + " job_id=" + (r.job_id || "-") + " trace_id=" + (r.trace_id || "-"));
+      }
+    }
+    return { ok: failures.length === 0, failures };
   }
 
   async function deleteNode() {
@@ -1233,6 +1286,19 @@
     if (!ids.length) return;
     $("insNodeId").value = ids[0];
     deleteNode();
+  }
+
+  async function autoBindAgents() {
+    const d = await OpsApi.autoBindAgents({ project_id: state.projectId });
+    if (!d || d.ok === false) {
+      toast((d && (d.message || d.error)) || "自动绑定失败", "error");
+      return;
+    }
+    state.nodeBindings = d.bindings || state.nodeBindings;
+    drawNodes();
+    renderRuntimeNodeList();
+    toast(`自动绑定完成：成功 ${d.bound_count || 0}，跳过 ${d.skipped_count || 0}`, "ok");
+    logMode(`自动绑定完成：成功 ${d.bound_count || 0}，跳过 ${d.skipped_count || 0}`);
   }
 
   function deleteSelectedPort() {
@@ -1267,6 +1333,15 @@
     state.runtimeLogSeen = new Set();
     state.runtimeProgressSig = "";
     logMode((start ? "开始" : "开始") + (start ? "一键启动" : "一键停止") + "全流程");
+    if (start) {
+      const startupNodes = (state.topology.nodes || []).map((n) => n.id);
+      const pre = await precheckAndStartRemoteForNodes(startupNodes);
+      if (!pre.ok) {
+        toast("前置校验失败：存在未通过联通或远端启动失败节点", "error");
+        appendJsonDetail("运行前置校验失败节点清单", pre.failures);
+        return;
+      }
+    }
     const d = await OpsApi.runtimeFlowControl({ op, project_id: state.projectId });
     if (!d || d.ok === false) {
       toast((d && d.message) || "运行请求失败", "error");
@@ -1340,6 +1415,12 @@
     const pathNodes = scope === "full"
       ? (state.topology.nodes || []).map((n) => n.id)
       : [startNode, endNode].filter(Boolean);
+    const pre = await precheckAndStartRemoteForNodes(pathNodes);
+    if (!pre.ok) {
+      toast("测试前置校验失败，请先修复失败节点", "error");
+      appendJsonDetail("测试前置校验失败节点清单", pre.failures);
+      return;
+    }
     testLogHeader("单元测试开始", "scope=" + scope);
     testLogKV("path_nodes", pathNodes.join(" -> "));
     testLogKV("path_len", pathNodes.length);
@@ -1533,26 +1614,47 @@
     }
 
     const lock = state.mode !== "edit";
-    ["insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodeDesc", "insNodeTags"]
+    ["insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeEndpoints"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
     ["btnPortInAdd", "btnPortOutAdd", "btnPortInRemove", "btnPortOutRemove", "btnDeleteSelectedPort", "btnDeleteNode", "btnSaveNode"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
   }
 
+  // 检测 session 过期
+  function checkAuthExpired(resp) {
+    if (resp && (resp.error_code === 'OPS_AUTH_REQUIRED' || resp.error === 'auth_redirect')) {
+      window.location.href = '/login';
+      return true;
+    }
+    return false;
+  }
+
   async function loadAll() {
-    const [nodes, overview, topo, presets, blueprints, bindings, agents] = await Promise.all([
+    // 阶段1：只加载拓扑核心数据并立即渲染（nodes + topology，不等 overview）
+    const [nodes, topo] = await Promise.all([
       OpsApi.loadNodes(),
-      OpsApi.loadOverview(state.projectId),
       OpsApi.loadTopology(state.projectId),
+    ]);
+    if (checkAuthExpired(nodes) || checkAuthExpired(topo)) return;
+
+    state.nodesRaw = nodes.nodes || [];
+    state.topology = topo.topology || { nodes: [], edges: [], meta: { viewport: { x: 0, y: 0, zoom: 1 } } };
+
+    normalizeTopology();
+    renderScene();
+    drawEdges();
+    drawNodes();
+
+    // 阶段2：辅助数据异步加载（overview 可能慢，不阻塞拓扑渲染）
+    const [overview, presets, blueprints, bindings, agents] = await Promise.all([
+      OpsApi.loadOverview(state.projectId),
       OpsApi.loadPresets(),
       OpsApi.loadTopologyBlueprints(),
       OpsApi.loadNodeBindings(state.projectId),
       OpsApi.agents(state.projectId),
     ]);
 
-    state.nodesRaw = nodes.nodes || [];
     state.overviewNodes = overview.nodes || [];
-    state.topology = topo.topology || { nodes: [], edges: [], meta: { viewport: { x: 0, y: 0, zoom: 1 } } };
     state.presets = presets.presets || [];
     state.blueprints = (blueprints && blueprints.ok && Array.isArray(blueprints.blueprints)) ? blueprints.blueprints : [];
     state.nodeBindings = (bindings && bindings.bindings) || {};
@@ -1565,8 +1667,6 @@
       bpSel.innerHTML = '<option value="">流程模板</option>' + state.blueprints.map((b) => '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name) + '</option>').join("");
     }
 
-    normalizeTopology();
-    renderScene();
     drawEdges();
     drawNodes();
     renderPresets();
@@ -1609,9 +1709,22 @@
       toast("Blueprint applied", "ok");
       await loadAll();
     };
+    if ($("btnAutoBindAgents")) $("btnAutoBindAgents").onclick = autoBindAgents;
 
     $("btnSaveNode").onclick = saveNode;
     $("btnDeleteNode").onclick = deleteNode;
+    $("btnStartRemoteNode").onclick = async () => {
+      const nid = String($("insNodeId").value || "").trim();
+      if (!nid) return;
+      const r = await startRemoteForNode(nid);
+      if (!r || r.ok === false) {
+        toast((r && (r.message || r.error)) || "远端启动失败", "error");
+        appendJsonDetail("节点远端启动失败 " + nid, r || {});
+        return;
+      }
+      toast("远端启动已提交", "ok");
+      logMode("节点远端启动提交成功: " + nid + " job_id=" + (r.job_id || "-"));
+    };
     $("btnDeleteSelectedPort").onclick = deleteSelectedPort;
     $("btnPortInAdd").onclick = () => addPort("in");
     $("btnPortOutAdd").onclick = () => addPort("out");

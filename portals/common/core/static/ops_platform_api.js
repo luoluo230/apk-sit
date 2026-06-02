@@ -146,8 +146,16 @@
   api.upsertAgent = (payload) => api.postJSON('/api/ops-platform/agents/upsert', payload);
   api.cleanupExpiredAgents = (payload) => api.postJSON('/api/ops-platform/agents/cleanup-expired', payload || {});
   api.probeAgent = (payload) => api.postJSON('/api/ops-platform/agents/probe', payload || {});
+  api.probeAllAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-all', payload || {});
+  api.probeRepairAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-repair', payload || {});
+  api.startRemoteNode = (payload) => api.postJSON('/api/ops-platform/topology/node/start-remote', payload || {});
   api.loadNodeBindings = (projectId) => api.getJSON('/api/ops-platform/topology/node/bindings' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
   api.bindNodeAgent = (payload) => api.postJSON('/api/ops-platform/topology/node/bind-agent', payload);
+  api.bindNodeService = (payload) => api.postJSON('/api/ops-platform/topology/node/bind-service', payload);
+  api.listServices = (projectId) => api.getJSON('/api/ops-platform/services' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.upsertService = (payload) => api.postJSON('/api/ops-platform/services/upsert', payload || {});
+  api.serviceAction = (payload) => api.postJSON('/api/ops-platform/services/action', payload || {});
+  api.autoBindAgents = (payload) => api.postJSON('/api/ops-platform/topology/auto-bind-agents', payload || {});
   api.agentJobs = (nodeId, status, limit) => {
     const q = [];
     if (nodeId) q.push('node_id=' + encodeURIComponent(nodeId));

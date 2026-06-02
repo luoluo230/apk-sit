@@ -10,6 +10,7 @@ import subprocess
 import uuid
 import hashlib
 import socket
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -95,8 +96,8 @@ def _normalize_node(payload: Dict[str, Any]) -> Dict[str, Any]:
 def _default_nodes() -> List[Dict[str, Any]]:
     base_url = str(os.getenv("GM_LEGACY_BASE_URL", "http://127.0.0.1:8080")).strip()
     ops_base_url = str(os.getenv("GM_LEGACY_OPS_BASE_URL", "http://127.0.0.1:5054")).strip()
-    ops_read_key = str(os.getenv("GM_LEGACY_OPS_READ_KEY", "")).strip()
-    ops_write_key = str(os.getenv("GM_LEGACY_OPS_WRITE_KEY", "")).strip()
+    ops_read_key = str(os.getenv("GM_LEGACY_OPS_READ_KEY", "2062f00689b2abee75b9bab1bd49f435c57e580d14db436942374d09a5d5468a")).strip()
+    ops_write_key = str(os.getenv("GM_LEGACY_OPS_WRITE_KEY", "2062f00689b2abee75b9bab1bd49f435c57e580d14db436942374d09a5d5468a")).strip()
     ops_actor = str(os.getenv("GM_LEGACY_OPS_ACTOR", "intranet-ops")).strip()
     ops_role = str(os.getenv("GM_LEGACY_OPS_ROLE", "SuperAdmin")).strip()
     username = str(os.getenv("GM_LEGACY_USERNAME", "gm")).strip()
@@ -238,6 +239,15 @@ def _render_local_template(template_name: str, **kwargs):
 @bp.route("/admin/gm-classic")
 @admin_required("gm_ops")
 def gm_classic_page():
+    try:
+        content = _render_local_template("gm_classic_page.html")
+        return _render_page(content, "经典 GM 模块")
+    except Exception:
+        return _render_page(
+            '<section class="panel p-6"><h2 class="text-xl font-bold">经典 GM 模块</h2><p class="text-slate-600 mt-2">页面模板加载失败，请联系管理员检查模板文件。</p></section>',
+            "经典 GM 模块",
+        )
+
     content = """
 <section class="space-y-5 gm-classic-shell">
   <style>
@@ -347,7 +357,10 @@ def ops_platform_page():
         )
         return _render_page(content, "运维平台")
     except Exception:
-        pass
+        return _render_page(
+            '<section class="panel p-6"><h2 class="text-xl font-bold">运维平台</h2><p class="text-slate-600 mt-2">总览页面加载失败，请检查模板与静态资源。</p></section>',
+            "运维平台",
+        )
     content = """
 <section class="ops-pro-shell space-y-5" data-project-id=""" + project_id + """">
   <style>
@@ -598,32 +611,17 @@ const BIZ_STATUS_OPTIONS=['normal','observe','degraded','error','offline'];
 const EDGE_TYPES=['gateway_to_business','business_to_db','business_to_cache','business_to_mq','sync','async','depends_on'];
 
 const ACTION_CATALOG=[
-  {group:'鍙宸℃',groupId:'observe',value:'health_check',label:'鍋ュ悍妫€鏌?,risk:'low'},
-  {group:'鍙宸℃',groupId:'observe',value:'ready_check',label:'灏辩华妫€鏌?,risk:'low'},
-  {group:'鍙宸℃',groupId:'observe',value:'status',label:'杩愯蹇収',risk:'low'},
-  {group:'鍙宸℃',groupId:'observe',value:'metrics_snapshot',label:'鎸囨爣蹇収',risk:'low'},
-  {group:'鍙宸℃',groupId:'observe',value:'log_tail',label:'鏃ュ織灏鹃儴(鍗犱綅)',risk:'low'},
-
-  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'start',label:'鑺傜偣涓婄嚎',risk:'high'},
-  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'stop',label:'鑺傜偣涓嬬嚎',risk:'high'},
-  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'restart',label:'鑺傜偣閲嶅惎',risk:'high'},
-  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'start_all',label:'鍏ㄩ噺涓婄嚎',risk:'high'},
-  {group:'鐢熷懡鍛ㄦ湡',groupId:'lifecycle',value:'stop_all',label:'鍏ㄩ噺涓嬬嚎',risk:'high'},
-
-  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'drain_node',label:'鎽樻祦鑺傜偣',risk:'high'},
-  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'isolate_node',label:'闅旂鑺傜偣',risk:'high'},
-  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'recover_node',label:'鎭㈠鑺傜偣',risk:'high'},
-  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'kick_session',label:'韪細璇?,risk:'high'},
-  {group:'鏁呴殰搴旀€?,groupId:'incident',value:'retry_task',label:'閲嶈瘯浠诲姟',risk:'medium'},
-
-  {group:'杩愯惀鎺у埗',groupId:'operation',value:'maintenance',label:'缁存姢鍏憡',risk:'medium'},
-  {group:'杩愯惀鎺у埗',groupId:'operation',value:'feature_toggle',label:'鍏ㄥ眬寮€鍏?,risk:'medium'},
-  {group:'杩愯惀鎺у埗',groupId:'operation',value:'whitelist',label:'鐧藉悕鍗?,risk:'medium'},
-  {group:'杩愯惀鎺у埗',groupId:'operation',value:'mute_chat',label:'绂佽█',risk:'medium'},
-
-  {group:'涓撻」浣滀笟',groupId:'special',value:'smoke_test',label:'閾捐矾鍐掔儫',risk:'medium'},
-  {group:'涓撻」浣滀笟',groupId:'special',value:'stress_test',label:'鍘嬪姏娴嬭瘯',risk:'high'},
-  {group:'涓撻」浣滀笟',groupId:'special',value:'db_migration',label:'鏁版嵁搴撹縼绉?,risk:'high'}
+  {group:'观测',groupId:'observe',value:'health_check',label:'健康检查',risk:'low'},
+  {group:'观测',groupId:'observe',value:'ready_check',label:'就绪检查',risk:'low'},
+  {group:'观测',groupId:'observe',value:'status',label:'运行快照',risk:'low'},
+  {group:'观测',groupId:'observe',value:'runtime_snapshot',label:'运行态详情',risk:'low'},
+  {group:'生命周期',groupId:'lifecycle',value:'start',label:'启动节点',risk:'high'},
+  {group:'生命周期',groupId:'lifecycle',value:'stop',label:'停止节点',risk:'high'},
+  {group:'生命周期',groupId:'lifecycle',value:'restart',label:'重启节点',risk:'high'},
+  {group:'生命周期',groupId:'lifecycle',value:'start_all',label:'启动全节点',risk:'high'},
+  {group:'生命周期',groupId:'lifecycle',value:'stop_all',label:'停止全节点',risk:'high'},
+  {group:'专项作业',groupId:'special',value:'smoke_test',label:'冒烟测试',risk:'medium'},
+  {group:'专项作业',groupId:'special',value:'stress_test',label:'压力测试',risk:'high'}
 ];
 
 let NODE_ROWS=[];
@@ -1244,6 +1242,7 @@ OPS_FLOW_EXEC_KEY = "OPS_PLATFORM_FLOW_EXECUTIONS"
 OPS_AGENT_REGISTRY_KEY = "OPS_PLATFORM_AGENT_REGISTRY"
 OPS_AGENT_REGISTRY_V2_KEY = "OPS_PLATFORM_AGENT_REGISTRY_V2"
 OPS_NODE_AGENT_BINDING_KEY = "OPS_PLATFORM_NODE_AGENT_BINDING"
+OPS_NODE_SERVICE_BINDING_KEY = "OPS_PLATFORM_NODE_SERVICE_BINDING"
 OPS_AGENT_JOBS_KEY = "OPS_PLATFORM_AGENT_JOBS"
 OPS_AGENT_POLICY_KEY = "OPS_PLATFORM_AGENT_POLICY"
 OPS_RUNTIME_RUNS_KEY = "OPS_PLATFORM_RUNTIME_RUNS"
@@ -1261,7 +1260,11 @@ def _load_json_config(key: str, default):
 
 
 def _save_json_config(key: str, value, description: str = "") -> None:
-    set_system_config(key, value, value_type="json", description=description, username=str(session.get("user") or "system"))
+    try:
+        user = str(session.get("user") or "system")
+    except RuntimeError:
+        user = "system"
+    set_system_config(key, value, value_type="json", description=description, username=user)
 
 
 def _load_agent_registry() -> Dict[str, Any]:
@@ -1289,6 +1292,15 @@ def _load_node_agent_bindings() -> Dict[str, Any]:
 
 def _save_node_agent_bindings(data: Dict[str, Any]) -> None:
     _save_json_config(OPS_NODE_AGENT_BINDING_KEY, data if isinstance(data, dict) else {}, description="Ops node->agent primary binding")
+
+
+def _load_node_service_bindings() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_NODE_SERVICE_BINDING_KEY, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _save_node_service_bindings(data: Dict[str, Any]) -> None:
+    _save_json_config(OPS_NODE_SERVICE_BINDING_KEY, data if isinstance(data, dict) else {}, description="Ops node->service primary binding")
 
 
 def _load_agent_jobs() -> List[Dict[str, Any]]:
@@ -1401,6 +1413,846 @@ def _load_agent_policy() -> Dict[str, Any]:
     return out
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Cluster → Agent 同步：从 game-server 的 cluster.json /ops/cluster 自动同步拓扑
+# ──────────────────────────────────────────────────────────────────────
+
+CLUSTER_JSON_PATH = os.path.join(
+    os.getenv("GAME_SERVER_REPO", r"E:\maclient\game-server"),
+    "config", "cluster.json",
+)
+
+
+def _load_cluster_json() -> List[Dict[str, Any]]:
+    """从 game-server 的 cluster.json 读取集群拓扑定义。"""
+    path = CLUSTER_JSON_PATH
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        servers = data.get("Servers") if isinstance(data, dict) else []
+        return servers if isinstance(servers, list) else []
+    except Exception:
+        return []
+
+
+def _cluster_node_category(server_type: str) -> str:
+    """将 game-server 节点类型映射为 agent 管理中心的分类。"""
+    t = str(server_type or "").strip().lower()
+    app_types = {"gateway", "auth", "game", "cross", "ops"}
+    transport_types = {"tcp", "kcp", "httptransport"}
+    daemon_types = {"daemon"}
+    gm_types = {"gm"}
+    if t in app_types:
+        return "application"
+    if t in transport_types:
+        return "transport"
+    if t in daemon_types:
+        return "infrastructure"
+    if t in gm_types:
+        return "management"
+    return "other"
+
+
+def _cluster_node_capabilities(server: Dict[str, Any]) -> List[str]:
+    """根据节点类型推断支持的操作。"""
+    t = str(server.get("Type") or "").strip().lower()
+    cat = _cluster_node_category(t)
+    base = ["health_check", "status"]
+    if cat == "application" or cat == "transport":
+        base += ["start", "stop", "restart", "smoke_test"]
+    if cat == "infrastructure":
+        base += ["start", "stop", "restart"]
+    if t == "ops":
+        base += ["stress_test"]
+    supported = server.get("SupportedActions")
+    if isinstance(supported, list) and supported:
+        return [str(x) for x in supported if str(x).strip()]
+    return base
+
+
+def _sync_cluster_to_nodes(servers: List[Dict[str, Any]], project_id: str = "GomeKu") -> None:
+    """
+    从 cluster.json 同步拓扑到 nodes 配置（OpsPlatformGateway 需要用 ops_base_url 连 game-server）。
+    每个 cluster.json 里的 Ops 类型节点会生成一个 node 条目，ops_base_url 指向其 Ops 端口。
+    如果 cluster.json 里有 Ops 节点，用它的 host:port 作为所有 node 的 ops_base_url。
+    """
+    if not servers:
+        return
+    # 找到 Ops 节点的地址作为 ops_base_url
+    ops_host = "127.0.0.1"
+    ops_port = 5504
+    for srv in servers:
+        srv_type = str(srv.get("Type") or "").strip().lower()
+        if srv_type == "ops":
+            ops_host = str(srv.get("ProbeHost") or srv.get("Host") or "127.0.0.1").strip()
+            ops_port = int(srv.get("Port") or 5504)
+            break
+    ops_base_url = f"http://{ops_host}:{ops_port}"
+
+    # 生成新的 nodes 列表
+    new_nodes: List[Dict[str, Any]] = []
+    for srv in servers:
+        srv_id = str(srv.get("ServerId") or "").strip()
+        if not srv_id:
+            continue
+        srv_type = str(srv.get("Type") or "").strip()
+        role = str(srv.get("Role") or srv_type.lower()).strip()
+        host = str(srv.get("ProbeHost") or srv.get("Host") or "127.0.0.1").strip()
+        port = int(srv.get("Port") or 0)
+        new_nodes.append(_normalize_node({
+            "id": srv_id,
+            "name": str(srv.get("DisplayName") or srv_id),
+            "base_url": f"http://{host}:{port}" if port else ops_base_url,
+            "ops_base_url": ops_base_url,
+            "ops_read_key": "ops-read-key-2026",
+            "ops_write_key": "ops-write-key-2026",
+            "ops_actor": "local-ops",
+            "ops_role": "SuperAdmin",
+            "server_id": srv_id,
+            "project_id": project_id,
+            "owner": "ops-admin",
+            "role": role,
+            "description": str(srv.get("Description") or ""),
+            "enabled": True,
+            "env": "prod",
+            "channel": "1001",
+        }))
+    if new_nodes:
+        _save_nodes(new_nodes)
+
+
+def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
+    """
+    从 game-server cluster.json 同步拓扑到 agent registry v2。
+    以 cluster.json 为唯一 Source of Truth：
+    - cluster.json 里有但 registry 没有的 → 自动创建
+    - cluster.json 里有的 → 更新 host/port/capabilities 等字段
+    - cluster.json 里没有的老节点 → 标记 stale=True
+    返回同步统计。
+    """
+    servers = _load_cluster_json()
+    if not servers:
+        return {"synced": 0, "added": 0, "updated": 0, "stale": 0, "error": "no cluster.json data"}
+
+    reg = _load_agent_registry_v2()
+    now = _now_iso()
+
+    # 建立 node_id → agent_id 的现有映射
+    existing_by_node: Dict[str, str] = {}
+    for aid, entry in reg.items():
+        if isinstance(entry, dict):
+            nid = str(entry.get("node_id") or "").strip()
+            if nid:
+                existing_by_node[nid] = aid
+
+    # cluster.json 中的有效 node_id 集合
+    active_node_ids: set = set()
+    added = 0
+    updated = 0
+
+    for srv in servers:
+        srv_id = str(srv.get("ServerId") or "").strip()
+        if not srv_id:
+            continue
+        active_node_ids.add(srv_id)
+
+        host = str(srv.get("Host") or "127.0.0.1").strip()
+        # ProbeHost: 探活地址，分布式部署时填实际可达 IP；不填则用 Host
+        # 0.0.0.0 绑定是合法的（监听所有网卡），但探活需要具体 IP
+        probe_host = str(srv.get("ProbeHost") or host).strip()
+        port = int(srv.get("Port") or 0)
+        srv_type = str(srv.get("Type") or "").strip()
+        display_name = str(srv.get("DisplayName") or srv_id).strip()
+        desc = str(srv.get("Description") or "").strip()
+        category = str(srv.get("Category") or _cluster_node_category(srv_type)).strip()
+        capabilities = _cluster_node_capabilities(srv)
+        role = str(srv.get("Role") or srv_type.lower()).strip()
+        state_config = str(srv.get("State") or "").strip().upper()
+
+        agent_id = f"agent-{srv_id}"
+        hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+
+        if hit:
+            # 更新已有 agent 的关键字段（以 cluster.json 为准）
+            changed = False
+            for k, v in [("host_name", host), ("probe_host", probe_host),
+                         ("port", port),
+                         ("remote_game_server_port", port),
+                         ("display_name", display_name),
+                         ("desc", desc),
+                         ("node_id", srv_id),
+                         ("project_id", project_id),
+                         ("category", category),
+                         ("role", role),
+                         ("capabilities", capabilities)]:
+                if hit.get(k) != v:
+                    hit[k] = v
+                    changed = True
+            # 同步配置状态
+            if state_config:
+                hit["config_state"] = state_config
+            # KCP 用 UDP 探活
+            if srv_type.upper() == "KCP":
+                hit["probe_proto"] = "udp"
+            if changed:
+                hit["updated_at"] = now
+                updated += 1
+        else:
+            # 新建 agent
+            reg[agent_id] = _normalize_agent_descriptor_v2({
+                "agent_id": agent_id,
+                "device_id": "local-game-server",
+                "host_name": host,
+                "probe_host": probe_host,
+                "node_id": srv_id,
+                "project_id": project_id,
+                "status": "UNKNOWN",
+                "version": "game-server-cluster-v1",
+                "last_seen": now,
+                "display_name": display_name,
+                "port": port,
+                "remote_game_server_port": port,
+                "desc": desc,
+                "run_state": "UNKNOWN",
+                "probe_status": "",
+                "probe_at": "",
+                "probe_rtt_ms": 0.0,
+                "capabilities": capabilities,
+                "metrics": {},
+                "network": {"endpoints": [f"{host}:{port}"] if port else []},
+                "transport": {"mode": "remote", "local_bus": {"enabled": True, "endpoint": f"pipe://local-game-server/{agent_id}", "auth_mode": "token"}},
+                "config_state": state_config,
+                "category": category,
+                "role": role,
+                "probe_proto": "udp" if srv_type.upper() == "KCP" else "tcp",
+                "updated_at": now,
+            })
+            added += 1
+
+    # 标记不在 cluster.json 中的老节点为 stale
+    # 同一 project_id 下，cluster.json 里的 node_id 是唯一有效集合
+    # 老节点（如 gateway_http 等）不在 cluster.json 中 → stale
+    stale_count = 0
+    for aid, entry in reg.items():
+        if not isinstance(entry, dict):
+            continue
+        entry_project = str(entry.get("project_id") or "").strip()
+        # 只处理同一 project 的节点
+        if entry_project and entry_project != project_id:
+            continue
+        nid = str(entry.get("node_id") or "").strip()
+        if not nid:
+            # 没有 node_id 的老条目也标记 stale
+            entry["stale"] = True
+            entry["updated_at"] = now
+            stale_count += 1
+            continue
+        if nid not in active_node_ids:
+            entry["stale"] = True
+            entry["updated_at"] = now
+            stale_count += 1
+        else:
+            entry.pop("stale", None)
+
+    # 合并 Agent 心跳上报的 metrics 到 cluster.json 同步的 agent
+    # Agent 注册的 agent_id 可能跟 cluster.json 同步的 agent_id 不同，但 node_id 相同
+    for aid, entry in reg.items():
+        if not isinstance(entry, dict) or entry.get("stale"):
+            continue
+        entry_nid = str(entry.get("node_id") or "").strip()
+        if not entry_nid or entry_nid in active_node_ids:
+            continue
+        # 这个 agent 的 node_id 不在 cluster.json active set — 可能是 Agent 自己注册的
+        cluster_aid = f"agent-{entry_nid}"
+        cluster_entry = reg.get(cluster_aid) if isinstance(reg.get(cluster_aid), dict) else None
+        if cluster_entry and not cluster_entry.get("stale"):
+            # 合并 metrics、last_seen、run_state
+            for mk in ["cpu_percent", "mem_percent", "qps", "rtt_ms", "updated_at"]:
+                if entry.get("metrics", {}).get(mk) is not None:
+                    cluster_entry.setdefault("metrics", {})[mk] = entry["metrics"][mk]
+            if entry.get("last_seen"):
+                cluster_entry["last_seen"] = entry["last_seen"]
+            if entry.get("run_state") and entry.get("run_state") != "UNKNOWN":
+                cluster_entry["run_state"] = entry["run_state"]
+            if entry.get("status") and entry.get("status") != "UNKNOWN":
+                cluster_entry["status"] = entry["status"]
+            # 标记 Agent 自身条目为 stale（数据已合并）
+            entry["stale"] = True
+            entry["updated_at"] = now
+            stale_count += 1
+
+    _save_agent_registry_v2(reg)
+
+    # 同步 nodes 配置（OpsPlatformGateway 用 ops_base_url 连 game-server）
+    _sync_cluster_to_nodes(servers, project_id)
+
+    return {"synced": len(servers), "added": added, "updated": updated, "stale": stale_count}
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  实时探活：TCP connect 检测端口 + game-server /ops/cluster 联动
+# ──────────────────────────────────────────────────────────────────────
+
+def _tcp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
+    """TCP connect 探活，返回 {ok, rtt_ms, error}。"""
+    if not host or port <= 0:
+        return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
+    start = datetime.utcnow()
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
+        rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        return {"ok": True, "rtt_ms": round(rtt, 1), "error": ""}
+    except Exception as ex:
+        return {"ok": False, "rtt_ms": 0.0, "error": str(ex)}
+
+
+def _udp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
+    """UDP 探活：发送空包检测端口是否可达（KCP 等协议）。"""
+    if not host or port <= 0:
+        return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
+    start = datetime.utcnow()
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        # 发送一个空 UDP 包，如果端口没监听会收到 ICMP Port Unreachable
+        # 如果端口在监听，包会被静默丢弃（KCP 等协议不响应空包）
+        # 所以只要没收到 ICMP unreachable 就认为端口可达
+        sock.sendto(b"", (host, port))
+        # 尝试接收（KCP 可能回握手包）
+        try:
+            sock.recvfrom(64)
+        except socket.timeout:
+            # 超时 = 端口可达但无响应，算作在线
+            pass
+        rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        sock.close()
+        return {"ok": True, "rtt_ms": round(rtt, 1), "error": ""}
+    except OSError as ex:
+        # ICMP Port Unreachable → 端口未监听
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return {"ok": False, "rtt_ms": 0.0, "error": str(ex)}
+    except Exception as ex:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return {"ok": False, "rtt_ms": 0.0, "error": str(ex)}
+
+
+def _probe_by_protocol(host: str, port: int, proto: str = "tcp", timeout: float = 1.5) -> Dict[str, Any]:
+    """根据协议类型选择探活方式。"""
+    if proto == "udp":
+        return _udp_probe(host, port, timeout)
+    return _tcp_probe(host, port, timeout)
+
+
+def _probe_agents_realtime(agents: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """
+    批量实时探活：对每个 agent 执行 TCP connect 检测。
+    返回 {agent_id: {ok, rtt_ms, error, effective_status}} 字典。
+    同时尝试从 game-server /ops/cluster 拉取集群实际状态。
+    """
+    results: Dict[str, Dict[str, Any]] = {}
+    if not agents:
+        return results
+
+    # 并行 TCP 探活
+    lock = threading.Lock()
+    def _probe_one(agent: Dict[str, Any]) -> None:
+        aid = str(agent.get("agent_id") or "")
+        # 探活地址优先用 probe_host（分布式部署时填可达 IP），fallback 用 host_name
+        host = str(agent.get("probe_host") or agent.get("host_name") or "").strip()
+        port = int(agent.get("port") or agent.get("remote_game_server_port") or 0)
+        proto = str(agent.get("probe_proto") or "tcp").strip().lower()
+        probe = _probe_by_protocol(host, port, proto=proto)
+        # 根据探活结果确定 effective_status
+        if probe["ok"]:
+            probe["effective_status"] = "ONLINE"
+        else:
+            probe["effective_status"] = "OFFLINE"
+        with lock:
+            results[aid] = probe
+
+    threads = []
+    for a in agents:
+        t = threading.Thread(target=_probe_one, args=(a,))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join(timeout=3.0)
+
+    # 尝试从 game-server /ops/cluster 拉取集群实际运行状态
+    cluster_status: Dict[str, str] = {}
+    try:
+        gw = OpsPlatformGateway()
+        # 找第一个 ops_base_url 可用的节点
+        for a in agents:
+            node_candidate = _resolve_node(node_id=str(a.get("node_id") or ""))
+            if node_candidate and node_candidate.get("ops_base_url"):
+                cluster_resp = gw.cluster(node_candidate, actor="probe", reason="realtime-status", ticket_id="OPS-REALTIME")
+                if cluster_resp and cluster_resp.get("success"):
+                    cluster_data = cluster_resp.get("data") or {}
+                    servers = cluster_data.get("Servers") or cluster_data.get("servers") or []
+                    for srv in servers:
+                        sid = str(srv.get("ServerId") or srv.get("serverId") or "").strip()
+                        st = str(srv.get("State") or srv.get("state") or "").strip().upper()
+                        if sid and st:
+                            cluster_status[sid] = st
+                break
+    except Exception:
+        pass
+
+    # 合并 cluster 状态：如果 cluster.json 里配了 Maintenance 但端口通，标记为 MAINTENANCE
+    for aid, probe_info in results.items():
+        # 从 agent 列表反查 node_id
+        for a in agents:
+            if str(a.get("agent_id") or "") == aid:
+                nid = str(a.get("node_id") or "").strip()
+                config_state = str(a.get("config_state") or "").strip().upper()
+                if nid and nid in cluster_status:
+                    srv_state = cluster_status[nid]
+                    if srv_state == "MAINTENANCE":
+                        probe_info["effective_status"] = "MAINTENANCE"
+                    elif srv_state == "OFFLINE" and not probe_info["ok"]:
+                        probe_info["effective_status"] = "OFFLINE"
+                # 也考虑 config_state（cluster.json 配的 State 字段）
+                if config_state == "MAINTENANCE":
+                    probe_info["effective_status"] = "MAINTENANCE"
+                break
+
+    return results
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  后台探活引擎 + SSE 推送：定时探活缓存结果，状态变化时推送前端
+# ──────────────────────────────────────────────────────────────────────
+
+import queue as _queue_mod
+import time as _time_mod
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# --- 全局探活缓存 ---
+_probe_cache: Dict[str, Dict[str, Any]] = {}          # agent_id -> probe result
+_probe_cache_agents: List[Dict[str, Any]] = []          # 上次全量 agent 列表
+_probe_cache_ts: float = 0.0                           # 上次探活完成时间
+_probe_cache_sync_ts: float = 0.0                     # 上次 cluster sync 时间
+_probe_cache_lock = threading.Lock()                  # 保护缓存写
+_probe_change_seq = 0                                 # 变更序号，每次变化+1
+
+# --- SSE 订阅者队列 ---
+_sse_subscribers: List[_queue_mod.Queue] = []
+_sse_sub_lock = threading.Lock()
+
+# 探活线程池（限制并发，避免瞬时暴打远端）
+_probe_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="ops-probe")
+
+PROBE_INTERVAL_SEC = 5.0      # 探活轮次间隔
+PROBE_SYNC_INTERVAL_SEC = 30.0  # cluster.json 同步间隔
+
+
+def _probe_background_tick() -> None:
+    """后台探活一轮：线程池并发探测所有 agent，结果写入缓存，变化时通知 SSE。"""
+    global _probe_cache, _probe_cache_agents, _probe_cache_ts, _probe_cache_sync_ts, _probe_change_seq
+
+    # --- 1. 定期同步 cluster.json → agent registry ---
+    now = _time_mod.time()
+    if now - _probe_cache_sync_ts >= PROBE_SYNC_INTERVAL_SEC:
+        try:
+            _sync_cluster_to_agents()
+            _probe_cache_sync_ts = now
+        except Exception:
+            pass
+
+    # --- 2. 加载 agent 列表 ---
+    reg = _load_agent_registry_v2()
+    agents = [_normalize_agent_descriptor_v2(x) for x in reg.values() if isinstance(x, dict)]
+    agents = [a for a in agents if not a.get("stale")]
+
+    # --- 3. 线程池并发探活 ---
+    probe_results: Dict[str, Dict[str, Any]] = {}
+    futures = {}
+    for a in agents:
+        aid = str(a.get("agent_id") or "")
+        host = str(a.get("probe_host") or a.get("host_name") or "").strip()
+        port = int(a.get("port") or a.get("remote_game_server_port") or 0)
+        proto = str(a.get("probe_proto") or "tcp").strip().lower()
+        future = _probe_pool.submit(_probe_by_protocol, host, port, proto)
+        futures[future] = aid
+
+    # 尝试从 game-server /ops/health + /ops/cluster 拉取集群运行状态和指标
+    # 所有 game-server 节点共享同一个 Ops API，只需调一次
+    cluster_status: Dict[str, str] = {}
+    cluster_metrics: Dict[str, Dict[str, Any]] = {}  # node_id -> metrics
+    try:
+        gw = OpsPlatformGateway()
+        # 找到任一有 ops_base_url 的 node
+        ops_node = None
+        for a in agents:
+            nid = str(a.get("node_id") or "").strip()
+            node_candidate = _resolve_node(node_id=nid)
+            if node_candidate and node_candidate.get("ops_base_url"):
+                ops_node = node_candidate
+                break
+        if ops_node:
+            # /ops/health
+            try:
+                health_resp = gw.health(ops_node, actor="probe", reason="bg-metrics", ticket_id="OPS-BG")
+                if health_resp and health_resp.get("success"):
+                    h_data = health_resp.get("data") or {}
+                    tel = h_data.get("Telemetry") or {}
+                    if isinstance(tel, dict):
+                        # health 返回的是 ops-cn-1 的指标
+                        ops_nid = str(h_data.get("ServerId") or "ops-cn-1").strip()
+                        cluster_metrics[ops_nid] = {
+                            "cpu_percent": None,
+                            "mem_percent": None,
+                            "qps": tel.get("Qps"),
+                            "rtt_ms": tel.get("P99Ms"),
+                            "total_requests": tel.get("TotalRequests"),
+                            "total_responses": tel.get("TotalResponses"),
+                            "queue_depth": tel.get("QueueDepth"),
+                            "reconnect_success_rate": tel.get("ReconnectSuccessRate"),
+                            "source": "real",
+                        }
+            except Exception:
+                pass
+            # /ops/cluster — 拉取所有节点状态
+            try:
+                cluster_resp = gw.cluster(ops_node, actor="probe", reason="bg-health", ticket_id="OPS-BG")
+                if cluster_resp and cluster_resp.get("success"):
+                    cluster_data = cluster_resp.get("data") or {}
+                    c_servers = cluster_data.get("Servers") or cluster_data.get("servers") or []
+                    for srv in c_servers:
+                        sid = str(srv.get("ServerId") or srv.get("serverId") or "").strip()
+                        st = str(srv.get("State") or srv.get("state") or "").strip().upper()
+                        if sid and st:
+                            cluster_status[sid] = st
+                        # 从 cluster 响应提取各节点指标
+                        srv_metrics = srv.get("Metrics") or srv.get("metrics") or {}
+                        if isinstance(srv_metrics, dict) and any(v is not None for v in srv_metrics.values()):
+                            cluster_metrics[sid] = {
+                                "cpu_percent": srv_metrics.get("CpuPercent"),
+                                "mem_percent": srv_metrics.get("MemPercent"),
+                                "qps": srv_metrics.get("Qps"),
+                                "rtt_ms": srv_metrics.get("P99Ms"),
+                                "total_requests": srv_metrics.get("TotalRequests"),
+                                "total_responses": srv_metrics.get("TotalResponses"),
+                                "queue_depth": srv_metrics.get("QueueDepth"),
+                                "reconnect_success_rate": srv_metrics.get("ReconnectSuccessRate"),
+                                "source": "real",
+                            }
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 采集本机指标（Redis/MongoDB/Daemon 等非 game-server 节点）
+    try:
+        import psutil
+        proc_metrics = {
+            "cpu_percent": round(psutil.cpu_percent(interval=0.1), 1),
+            "mem_percent": round(psutil.virtual_memory().percent, 1),
+        }
+    except ImportError:
+        proc_metrics = {}
+    except Exception:
+        proc_metrics = {}
+
+    # 收集探活结果
+    for future in as_completed(futures, timeout=PROBE_INTERVAL_SEC):
+        aid = futures[future]
+        probe = future.result()
+        probe["probe_at"] = _now_iso()
+        if probe["ok"]:
+            probe["effective_status"] = "ONLINE"
+        else:
+            probe["effective_status"] = "OFFLINE"
+        probe["metrics"] = {}
+        probe_results[aid] = probe
+
+    # 合并 cluster 状态 + 指标
+    # game-server 集群节点不绑独立端口，TCP probe 不通不代表 OFFLINE
+    # 用 cluster_status (来自 /ops/cluster) 判断实际状态
+    for aid, probe_info in probe_results.items():
+        for a in agents:
+            if str(a.get("agent_id") or "") == aid:
+                nid = str(a.get("node_id") or "").strip()
+                config_state = str(a.get("config_state") or "").strip().upper()
+                cat = str(a.get("category") or "").strip().lower()
+                # cluster 状态覆盖
+                if nid and nid in cluster_status:
+                    cs = cluster_status[nid]
+                    # State 枚举: 0=Online, 1=Maintenance, 2=Stopped(集群视图)
+                    # 多进程模式下 State=2 不代表真 OFFLINE，只是不在同一进程内
+                    if cs in ("RUNNING", "READY", "ONLINE", "ACTIVE", "0"):
+                        probe_info["effective_status"] = "ONLINE"
+                    elif cs == "MAINTENANCE" or cs == "1":
+                        probe_info["effective_status"] = "MAINTENANCE"
+                    elif cs in ("STOPPED", "OFFLINE", "DOWN", "2"):
+                        # 多进程模式下不信任 cluster 视图的 Stopped
+                        # 如果 TCP probe 通了，保持 ONLINE
+                        if probe_info["ok"]:
+                            pass  # 保持 TCP probe 结果
+                        else:
+                            # 不绑端口的内部节点（auth/game/cross），
+                            # 如果 game-server 进程在运行就算 ONLINE
+                            if cat in ("application", "service"):
+                                probe_info["effective_status"] = "ONLINE"
+                            else:
+                                probe_info["effective_status"] = "OFFLINE"
+                    # 其他状态保持 TCP probe 结果
+                if config_state == "MAINTENANCE":
+                    probe_info["effective_status"] = "MAINTENANCE"
+                # 指标：优先 game-server 上报的，fallback 本机
+                if nid and nid in cluster_metrics:
+                    probe_info["metrics"] = cluster_metrics[nid]
+                    probe_info["metrics"]["source"] = "real"
+                else:
+                    # 非集群节点或集群没上报指标的，用本机指标
+                    if probe_info.get("effective_status") == "ONLINE" and proc_metrics:
+                        probe_info["metrics"] = dict(proc_metrics)
+                        probe_info["metrics"]["source"] = "local"
+                break
+
+    # --- 4. 检测变化，更新缓存 ---
+    changed = False
+    with _probe_cache_lock:
+        for aid, new_pr in probe_results.items():
+            old_pr = _probe_cache.get(aid)
+            # 状态变化 或 指标变化 都算 changed
+            if old_pr is None:
+                changed = True
+            elif old_pr.get("effective_status") != new_pr.get("effective_status"):
+                changed = True
+            elif old_pr.get("metrics") != new_pr.get("metrics"):
+                changed = True
+        _probe_cache = probe_results
+        _probe_cache_agents = agents
+        _probe_cache_ts = _time_mod.time()
+        if changed:
+            _probe_change_seq += 1
+
+    # --- 5. 每轮都推送（参数实时滚动） ---
+    payload = _build_sse_payload(agents, probe_results)
+    _sse_broadcast(payload)
+
+
+def _build_sse_payload(agents: List[Dict[str, Any]], probe_results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """构造推送给前端的完整 payload。"""
+    now_iso = _now_iso()
+    jobs = _load_agent_jobs()
+    queue: Dict[str, int] = {"PENDING": 0, "RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "CANCELED": 0, "TIMEOUT": 0}
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        st = str(item.get("status") or "").upper()
+        if st in queue:
+            queue[st] += 1
+    online = 0
+    out_agents: List[Dict[str, Any]] = []
+    bindings = _load_node_agent_bindings()
+    bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
+    for a in agents:
+        obj = dict(a)
+        aid = str(obj.get("agent_id") or "")
+        pr = probe_results.get(aid) or {}
+        obj["effective_status"] = pr.get("effective_status", "UNKNOWN")
+        obj["probe_status"] = "PASS" if pr.get("ok") else "FAIL"
+        obj["probe_rtt_ms"] = pr.get("rtt_ms", 0.0)
+        obj["probe_source"] = "bg-engine"
+        obj["probe_at"] = str(pr.get("probe_at") or now_iso)
+        obj["is_bound"] = aid in bound_agent_ids
+        # Heartbeat metrics are the source of truth. Probe metrics may be stale or
+        # synthetic, so only fill fields that the agent did not report.
+        pr_metrics = pr.get("metrics") or {}
+        base_m = obj.get("metrics") if isinstance(obj.get("metrics"), dict) else {}
+        merged_metrics = dict(base_m)
+        if pr_metrics:
+            for key in (
+                "cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms",
+                "service_cpu_percent", "service_memory_mb", "total_requests",
+                "total_responses", "queue_depth", "reconnect_success_rate",
+            ):
+                if merged_metrics.get(key) is None and pr_metrics.get(key) is not None:
+                    merged_metrics[key] = pr_metrics.get(key)
+            if not merged_metrics.get("updated_at"):
+                merged_metrics["updated_at"] = str(pr_metrics.get("updated_at") or now_iso)
+            if not merged_metrics.get("source"):
+                merged_metrics["source"] = str(pr_metrics.get("source") or "probe")
+        if merged_metrics:
+            control_metrics = {
+                "cpu_percent": merged_metrics.get("cpu_percent"),
+                "mem_percent": merged_metrics.get("mem_percent"),
+                "disk_percent": merged_metrics.get("disk_percent"),
+                "qps": merged_metrics.get("qps"),
+                "rtt_ms": merged_metrics.get("rtt_ms"),
+                "service_cpu_percent": merged_metrics.get("service_cpu_percent"),
+                "service_memory_mb": merged_metrics.get("service_memory_mb"),
+                "total_requests": merged_metrics.get("total_requests"),
+                "total_responses": merged_metrics.get("total_responses"),
+                "queue_depth": merged_metrics.get("queue_depth"),
+                "reconnect_success_rate": merged_metrics.get("reconnect_success_rate"),
+                "updated_at": str(merged_metrics.get("updated_at") or now_iso),
+                "source": str(merged_metrics.get("source") or "agent"),
+            }
+            business_metrics = (base_m.get("business") if isinstance(base_m.get("business"), dict) else {})
+            obj["metrics"] = {**control_metrics, "control": control_metrics, "business": business_metrics}
+            obj["metrics_missing"] = {
+                "control": not any(control_metrics.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")),
+                "business": not any(business_metrics.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn")),
+            }
+        else:
+            obj["metrics_missing"] = {"control": True, "business": True}
+        if str(obj.get("effective_status") or "").upper() in ("ONLINE", "READY", "RUNNING"):
+            online += 1
+        out_agents.append(obj)
+    device_snaps: Dict[str, Dict[str, Any]] = {}
+    for item in out_agents:
+        did = str(item.get("device_id") or "unknown-device")
+        m = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+        mc = m.get("control") if isinstance(m.get("control"), dict) else m
+        mb = m.get("business") if isinstance(m.get("business"), dict) else {}
+        snap = device_snaps.get(did) if isinstance(device_snaps.get(did), dict) else {
+            "control": {"cpu_percent": None, "mem_percent": None, "disk_percent": None, "qps": None, "rtt_ms": None, "service_cpu_percent": None, "service_memory_mb": None, "updated_at": "", "source": "missing"},
+            "business": {"qps": None, "rtt_p95_ms": None, "rtt_p99_ms": None, "error_rate": None, "conn": None, "updated_at": "", "source": "missing"},
+            "updated_at": "", "source": "missing",
+        }
+        for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+            if mc.get(key) is not None:
+                snap["control"][key] = mc.get(key)
+        for key in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"):
+            if mb.get(key) is not None:
+                snap["business"][key] = mb.get(key)
+        if mc.get("updated_at"):
+            snap["control"]["updated_at"] = str(mc.get("updated_at"))
+            snap["updated_at"] = str(mc.get("updated_at"))
+        if mc.get("source"):
+            snap["control"]["source"] = str(mc.get("source"))
+            snap["source"] = str(mc.get("source"))
+        device_snaps[did] = snap
+    for item in out_agents:
+        snap = device_snaps.get(str(item.get("device_id") or "unknown-device")) or {}
+        item["device_metrics_snapshot"] = snap
+        item["metrics"] = {**(snap.get("control") or {}), "control": (snap.get("control") or {}), "business": (snap.get("business") or {})}
+        item["metrics_missing"] = {"control": not any((snap.get("control") or {}).get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")), "business": not any((snap.get("business") or {}).get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"))}
+    return {
+        "ok": True,
+        "metrics": {
+            "agents_total": len(agents),
+            "agents_online": online,
+            "jobs_pending": queue.get("PENDING", 0),
+            "jobs_running": queue.get("RUNNING", 0),
+        },
+        "queue": queue,
+        "agents": out_agents,
+        "bindings": bindings,
+        "policy": _load_agent_policy(),
+        "probe_seq": _probe_change_seq,
+        "pushed_at": now_iso,
+    }
+
+
+def _sse_broadcast(payload: Dict[str, Any]) -> None:
+    """向所有 SSE 订阅者广播 payload。"""
+    msg = json.dumps(payload, ensure_ascii=False)
+    dead: List[_queue_mod.Queue] = []
+    with _sse_sub_lock:
+        for q in _sse_subscribers:
+            try:
+                q.put_nowait(msg)
+            except Exception:
+                dead.append(q)
+        for q in dead:
+            try:
+                _sse_subscribers.remove(q)
+            except ValueError:
+                pass
+
+
+def _probe_bg_loop(app_ref) -> None:
+    """后台探活主循环，daemon 线程。"""
+    while True:
+        with app_ref.app_context():
+            try:
+                _probe_background_tick()
+            except Exception as exc:
+                import logging
+                logging.getLogger("ops.probe").warning("probe tick failed: %s", exc, exc_info=True)
+        _time_mod.sleep(PROBE_INTERVAL_SEC)
+
+
+# --- 延迟启动后台探活线程（首次请求时触发，避免 import 时 app 未初始化）
+_probe_bg_started = False
+
+
+def _ensure_probe_bg_started() -> None:
+    """确保后台探活线程已启动。在首次 API 请求时调用。"""
+    global _probe_bg_started
+    if _probe_bg_started:
+        return
+    _probe_bg_started = True
+    from flask import current_app
+    app_ref = current_app._get_current_object()
+    t = threading.Thread(target=_probe_bg_loop, args=(app_ref,), name="ops-probe-bg", daemon=True)
+    t.start()
+
+
+@bp.route("/api/ops-platform/agents/stream")
+@admin_required("gm_ops")
+def ops_platform_agents_stream():
+    """SSE 推送端点：前端用 EventSource 订阅，状态变化时推送完整 payload。"""
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    _ensure_probe_bg_started()
+
+    q: _queue_mod.Queue = _queue_mod.Queue(maxsize=64)
+    with _sse_sub_lock:
+        _sse_subscribers.append(q)
+
+    def _generate():
+        # 先推一次全量快照
+        with _probe_cache_lock:
+            snap = _build_sse_payload(
+                _probe_cache_agents, _probe_cache
+            ) if _probe_cache_agents else None
+        if snap:
+            yield f"event: full\ndata: {json.dumps(snap, ensure_ascii=False)}\n\n"
+
+        # 后续增量推送
+        try:
+            while True:
+                try:
+                    msg = q.get(timeout=30)
+                    yield f"event: change\ndata: {msg}\n\n"
+                except _queue_mod.Empty:
+                    # 心跳：30s 无变化也推一次，防止连接超时
+                    yield f": heartbeat {int(_time_mod.time())}\n\n"
+        finally:
+            with _sse_sub_lock:
+                try:
+                    _sse_subscribers.remove(q)
+                except ValueError:
+                    pass
+
+    from flask import Response
+    return Response(
+        _generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 def _save_agent_policy(policy: Dict[str, Any]) -> None:
     out = _default_agent_policy()
     if isinstance(policy, dict):
@@ -1415,19 +2267,29 @@ def _save_agent_policy(policy: Dict[str, Any]) -> None:
 
 
 def _agent_token_for_node(node: Dict[str, Any]) -> str:
-    return str(node.get("ops_write_key") or node.get("ops_read_key") or "").strip()
+    tok = str(node.get("ops_write_key") or node.get("ops_read_key") or "").strip()
+    # 如果数据库里的 node 没有 key，从默认 nodes 里取
+    if not tok:
+        for dn in _default_nodes():
+            if str(dn.get("id") or "") == str(node.get("id") or ""):
+                tok = str(dn.get("ops_write_key") or dn.get("ops_read_key") or "").strip()
+                break
+    return tok
 
 
 def _auth_agent_node(node_id: str, token: str, cert_fp: str = "") -> Optional[Dict[str, Any]]:
     nid = str(node_id or "").strip()
     tok = str(token or "").strip()
     if not nid or not tok:
+        print(f"[auth_agent] missing nid or tok: nid={nid} tok={tok[:8] if tok else ''}")
         return None
     node = _resolve_node(node_id=nid)
     if not node:
+        print(f"[auth_agent] node not found: {nid}")
         return None
     expected = _agent_token_for_node(node)
     if not expected or expected != tok:
+        print(f"[auth_agent] token mismatch: expected={expected[:16] if expected else 'EMPTY'} got={tok[:16]} node_id={nid} node_keys={list(node.keys())}")
         return None
     policy = _load_agent_policy()
     mtls_required = bool(policy.get("mtls_required"))
@@ -1572,15 +2434,23 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
     transport = item.get("transport") if isinstance(item.get("transport"), dict) else {}
     local_bus = transport.get("local_bus") if isinstance(transport.get("local_bus"), dict) else {}
     raw_metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    raw_control = raw_metrics.get("control") if isinstance(raw_metrics.get("control"), dict) else {}
+    raw_business = raw_metrics.get("business") if isinstance(raw_metrics.get("business"), dict) else {}
+    raw_flat = raw_metrics if raw_control == {} and raw_business == {} else {}
     runtime_metrics = item.get("runtime") if isinstance(item.get("runtime"), dict) else {}
-    cpu_val = raw_metrics.get("cpu_percent", raw_metrics.get("cpu"))
-    mem_val = raw_metrics.get("mem_percent", raw_metrics.get("mem"))
-    qps_val = raw_metrics.get("qps", raw_metrics.get("throughput_qps"))
-    rtt_val = raw_metrics.get("rtt_ms", raw_metrics.get("latency_ms"))
+    cpu_val = raw_control.get("cpu_percent", raw_flat.get("cpu_percent", raw_flat.get("cpu")))
+    mem_val = raw_control.get("mem_percent", raw_flat.get("mem_percent", raw_flat.get("mem")))
+    disk_val = raw_control.get("disk_percent", raw_flat.get("disk_percent", raw_flat.get("disk")))
+    qps_val = raw_control.get("qps", raw_flat.get("qps", raw_flat.get("throughput_qps")))
+    rtt_val = raw_control.get("rtt_ms", raw_flat.get("rtt_ms", raw_flat.get("latency_ms")))
+    svc_cpu_val = raw_control.get("service_cpu_percent", raw_flat.get("service_cpu_percent"))
+    svc_mem_val = raw_control.get("service_memory_mb", raw_flat.get("service_memory_mb"))
     if cpu_val is None:
         cpu_val = runtime_metrics.get("cpu_percent", runtime_metrics.get("cpu"))
     if mem_val is None:
         mem_val = runtime_metrics.get("mem_percent", runtime_metrics.get("mem"))
+    if disk_val is None:
+        disk_val = runtime_metrics.get("disk_percent", runtime_metrics.get("disk"))
     if qps_val is None:
         qps_val = runtime_metrics.get("qps", runtime_metrics.get("throughput_qps"))
     if rtt_val is None:
@@ -1594,6 +2464,10 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         mem_num = None
     try:
+        disk_num = max(0.0, min(100.0, float(disk_val))) if disk_val is not None else None
+    except Exception:
+        disk_num = None
+    try:
         qps_num = max(0.0, float(qps_val)) if qps_val is not None else None
     except Exception:
         qps_num = None
@@ -1601,10 +2475,47 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
         rtt_num = max(0.0, float(rtt_val)) if rtt_val is not None else None
     except Exception:
         rtt_num = None
+    try:
+        svc_cpu_num = max(0.0, min(100.0, float(svc_cpu_val))) if svc_cpu_val is not None else None
+    except Exception:
+        svc_cpu_num = None
+    try:
+        svc_mem_num = max(0.0, float(svc_mem_val)) if svc_mem_val is not None else None
+    except Exception:
+        svc_mem_num = None
+    biz_qps_val = raw_business.get("qps", raw_flat.get("business_qps"))
+    biz_p95_val = raw_business.get("rtt_p95_ms", raw_flat.get("business_rtt_p95_ms"))
+    biz_p99_val = raw_business.get("rtt_p99_ms", raw_flat.get("business_rtt_p99_ms"))
+    biz_err_val = raw_business.get("error_rate", raw_flat.get("business_error_rate"))
+    biz_conn_val = raw_business.get("conn", raw_flat.get("business_conn"))
+    try:
+        biz_qps_num = max(0.0, float(biz_qps_val)) if biz_qps_val is not None else None
+    except Exception:
+        biz_qps_num = None
+    try:
+        biz_p95_num = max(0.0, float(biz_p95_val)) if biz_p95_val is not None else None
+    except Exception:
+        biz_p95_num = None
+    try:
+        biz_p99_num = max(0.0, float(biz_p99_val)) if biz_p99_val is not None else None
+    except Exception:
+        biz_p99_num = None
+    try:
+        biz_err_num = max(0.0, float(biz_err_val)) if biz_err_val is not None else None
+    except Exception:
+        biz_err_num = None
+    try:
+        biz_conn_num = max(0.0, float(biz_conn_val)) if biz_conn_val is not None else None
+    except Exception:
+        biz_conn_num = None
     return {
         "agent_id": str(item.get("agent_id") or ""),
         "device_id": str(item.get("device_id") or ""),
         "host_name": str(item.get("host_name") or item.get("hostname") or ""),
+        "host_ip": str(item.get("host_ip") or item.get("host_name") or item.get("hostname") or ""),
+        "region": str(item.get("region") or ""),
+        "zone": str(item.get("zone") or ""),
+        "rack": str(item.get("rack") or ""),
         "node_id": str(item.get("node_id") or ""),
         "project_id": str(item.get("project_id") or ""),
         "status": str(item.get("status") or "UNKNOWN").upper(),
@@ -1612,9 +2523,16 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
         "last_seen": str(item.get("last_seen") or ""),
         "display_name": str(item.get("display_name") or item.get("agent_id") or ""),
         "port": int(item.get("port") or 0),
+        "remote_game_server_port": int(item.get("remote_game_server_port") or item.get("port") or 0),
         "desc": str(item.get("desc") or ""),
         "run_state": str(item.get("run_state") or ""),
+        "probe_status": str(item.get("probe_status") or ""),
+        "probe_at": str(item.get("probe_at") or ""),
+        "probe_rtt_ms": float(item.get("probe_rtt_ms") or 0.0),
         "capabilities": item.get("capabilities") if isinstance(item.get("capabilities"), list) else [],
+        "service_id": str(item.get("service_id") or ""),
+        "services": item.get("services") if isinstance(item.get("services"), list) else [],
+        "network": item.get("network") if isinstance(item.get("network"), dict) else {"endpoints": []},
         "transport": {
             "mode": str(transport.get("mode") or "remote").lower(),
             "local_endpoint": str(local_bus.get("endpoint") or transport.get("local_endpoint") or ""),
@@ -1624,14 +2542,43 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
             "degrade_reason": str(transport.get("degrade_reason") or ""),
         },
         "metrics": {
+            "control": {
+                "cpu_percent": cpu_num,
+                "mem_percent": mem_num,
+                "disk_percent": disk_num,
+                "qps": qps_num,
+                "rtt_ms": rtt_num,
+                "service_cpu_percent": svc_cpu_num,
+                "service_memory_mb": svc_mem_num,
+                "updated_at": str(raw_control.get("updated_at") or raw_flat.get("updated_at") or runtime_metrics.get("updated_at") or item.get("last_seen") or ""),
+                "source": str(raw_control.get("source") or raw_flat.get("source") or runtime_metrics.get("source") or "agent"),
+            },
+            "business": {
+                "qps": biz_qps_num,
+                "rtt_p95_ms": biz_p95_num,
+                "rtt_p99_ms": biz_p99_num,
+                "error_rate": biz_err_num,
+                "conn": biz_conn_num,
+                "updated_at": str(raw_business.get("updated_at") or item.get("last_seen") or ""),
+                "source": str(raw_business.get("source") or "missing"),
+            },
             "cpu_percent": cpu_num,
             "mem_percent": mem_num,
+            "disk_percent": disk_num,
             "qps": qps_num,
             "rtt_ms": rtt_num,
-            "updated_at": str(raw_metrics.get("updated_at") or runtime_metrics.get("updated_at") or item.get("last_seen") or ""),
-            "source": str(raw_metrics.get("source") or runtime_metrics.get("source") or "agent"),
+            "updated_at": str(raw_control.get("updated_at") or raw_flat.get("updated_at") or runtime_metrics.get("updated_at") or item.get("last_seen") or ""),
+            "source": str(raw_control.get("source") or raw_flat.get("source") or runtime_metrics.get("source") or "agent"),
         },
         "updated_at": str(item.get("updated_at") or ""),
+        # cluster sync 附加字段
+        "stale": bool(item.get("stale", False)),
+        "config_state": str(item.get("config_state") or "").upper(),
+        "category": str(item.get("category") or "").strip(),
+        "role": str(item.get("role") or "").strip(),
+        "probe_host": str(item.get("probe_host") or item.get("host_name") or "").strip(),
+        "probe_source": str(item.get("probe_source") or "").strip(),
+        "probe_proto": str(item.get("probe_proto") or "tcp").strip().lower(),
     }
 
 
@@ -1649,6 +2596,81 @@ def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
     return out
 
 
+def _services_for_project(project_id: str = "") -> List[Dict[str, Any]]:
+    rows = _agents_v2_for_project(project_id)
+    out: List[Dict[str, Any]] = []
+    for a in rows:
+        if not isinstance(a, dict):
+            continue
+        services = a.get("services") if isinstance(a.get("services"), list) else []
+        if services:
+            for s in services:
+                if not isinstance(s, dict):
+                    continue
+                sid = str(s.get("service_id") or s.get("id") or "").strip()
+                if not sid:
+                    continue
+                out.append(
+                    {
+                        "service_id": sid,
+                        "agent_id": str(a.get("agent_id") or ""),
+                        "device_id": str(a.get("device_id") or ""),
+                        "project_id": str(a.get("project_id") or ""),
+                        "service_type": str(s.get("service_type") or s.get("type") or ""),
+                        "service_port": int(s.get("service_port") or s.get("port") or 0),
+                        "remote_game_server_port": int(s.get("remote_game_server_port") or s.get("service_port") or s.get("port") or a.get("remote_game_server_port") or 0),
+                        "run_state": str(s.get("run_state") or a.get("run_state") or ""),
+                        "status": str(s.get("status") or a.get("status") or "UNKNOWN"),
+                        "probe_status": str(s.get("probe_status") or a.get("probe_status") or ""),
+                        "probe_rtt_ms": float(s.get("probe_rtt_ms") or a.get("probe_rtt_ms") or 0.0),
+                        "metrics": s.get("metrics") if isinstance(s.get("metrics"), dict) else {},
+                        "endpoints": s.get("endpoints") if isinstance(s.get("endpoints"), list) else [],
+                        "updated_at": str(s.get("updated_at") or a.get("updated_at") or a.get("last_seen") or ""),
+                        "source": "agent.services",
+                    }
+                )
+        else:
+            # Backward compatibility: one agent as one service instance.
+            sid = str(a.get("service_id") or a.get("node_id") or a.get("agent_id") or "").strip()
+            if not sid:
+                continue
+            m = a.get("metrics") if isinstance(a.get("metrics"), dict) else {}
+            out.append(
+                {
+                    "service_id": sid,
+                    "agent_id": str(a.get("agent_id") or ""),
+                    "device_id": str(a.get("device_id") or ""),
+                    "project_id": str(a.get("project_id") or ""),
+                    "service_type": str(a.get("role") or a.get("node_id") or ""),
+                    "service_port": int(a.get("port") or 0),
+                    "remote_game_server_port": int(a.get("remote_game_server_port") or a.get("port") or 0),
+                    "run_state": str(a.get("run_state") or ""),
+                    "status": str(a.get("status") or "UNKNOWN"),
+                    "probe_status": str(a.get("probe_status") or ""),
+                    "probe_rtt_ms": float(a.get("probe_rtt_ms") or 0.0),
+                    "metrics": m.get("business") if isinstance(m.get("business"), dict) else m,
+                    "endpoints": ((a.get("network") or {}).get("endpoints") if isinstance(a.get("network"), dict) else []) or [],
+                    "updated_at": str(a.get("updated_at") or a.get("last_seen") or ""),
+                    "source": "agent.compat",
+                }
+            )
+    return out
+
+
+def _resolve_agent_from_node(node_id: str) -> Dict[str, str]:
+    service_bindings = _load_node_service_bindings()
+    agent_bindings = _load_node_agent_bindings()
+    service_id = str(service_bindings.get(node_id) or "").strip()
+    agent_id = str(agent_bindings.get(node_id) or "").strip()
+    if service_id and not agent_id:
+        # derive agent from service map
+        for s in _services_for_project(""):
+            if str(s.get("service_id") or "") == service_id:
+                agent_id = str(s.get("agent_id") or "")
+                break
+    return {"service_id": service_id, "agent_id": agent_id}
+
+
 def _device_metrics_snapshot(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     snaps: Dict[str, Dict[str, Any]] = {}
     for item in rows:
@@ -1656,7 +2678,9 @@ def _device_metrics_snapshot(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
             continue
         did = str(item.get("device_id") or "unknown-device")
         m = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
-        ts_raw = str(m.get("updated_at") or item.get("last_seen") or "")
+        mc = m.get("control") if isinstance(m.get("control"), dict) else m
+        mb = m.get("business") if isinstance(m.get("business"), dict) else {}
+        ts_raw = str(mc.get("updated_at") or m.get("updated_at") or item.get("last_seen") or "")
         try:
             ts_val = datetime.fromisoformat(ts_raw.replace("Z", "")).timestamp()
         except Exception:
@@ -1665,13 +2689,35 @@ def _device_metrics_snapshot(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
         if cur is None or float(cur.get("_ts") or 0.0) < ts_val:
             snaps[did] = {
                 "_ts": ts_val,
-                "cpu_percent": m.get("cpu_percent"),
-                "mem_percent": m.get("mem_percent"),
-                "qps": m.get("qps"),
-                "rtt_ms": m.get("rtt_ms"),
+                "control": {
+                    "cpu_percent": mc.get("cpu_percent"),
+                    "mem_percent": mc.get("mem_percent"),
+                    "disk_percent": mc.get("disk_percent"),
+                    "qps": mc.get("qps"),
+                    "rtt_ms": mc.get("rtt_ms"),
+                    "updated_at": ts_raw,
+                    "source": str(mc.get("source") or m.get("source") or "agent"),
+                },
+                "business": {
+                    "qps": mb.get("qps"),
+                    "rtt_p95_ms": mb.get("rtt_p95_ms"),
+                    "rtt_p99_ms": mb.get("rtt_p99_ms"),
+                    "error_rate": mb.get("error_rate"),
+                    "conn": mb.get("conn"),
+                    "updated_at": str(mb.get("updated_at") or ""),
+                    "source": str(mb.get("source") or "missing"),
+                },
+                "cpu_percent": mc.get("cpu_percent"),
+                "mem_percent": mc.get("mem_percent"),
+                "disk_percent": mc.get("disk_percent"),
+                "qps": mc.get("qps"),
+                "rtt_ms": mc.get("rtt_ms"),
                 "updated_at": ts_raw,
-                "source": str(m.get("source") or "agent"),
-                "metrics_missing": not any(x is not None for x in (m.get("cpu_percent"), m.get("mem_percent"), m.get("qps"), m.get("rtt_ms"))),
+                "source": str(mc.get("source") or m.get("source") or "agent"),
+                "metrics_missing": {
+                    "control": not any(x is not None for x in (mc.get("cpu_percent"), mc.get("mem_percent"), mc.get("disk_percent"), mc.get("qps"), mc.get("rtt_ms"))),
+                    "business": not any(x is not None for x in (mb.get("qps"), mb.get("rtt_p95_ms"), mb.get("rtt_p99_ms"), mb.get("error_rate"), mb.get("conn"))),
+                },
             }
     for did in list(snaps.keys()):
         snaps[did].pop("_ts", None)
@@ -2141,7 +3187,12 @@ def _build_overview(project_id: str = "") -> Dict[str, Any]:
             continue
         if project and str(item.get("project_id") or "") != project:
             continue
-        overview = _ops_gateway.build_node_overview(item, actor=operator)
+        try:
+            overview = _ops_gateway.build_node_overview(item, actor=operator)
+        except Exception as exc:
+            import logging as _el
+            _el.getLogger(__name__).warning("build_node_overview failed for %s: %s", item.get("id"), exc)
+            overview = {"id": item.get("id"), "name": item.get("name"), "server_id": str(item.get("server_id") or "").strip(), "project_id": item.get("project_id"), "env": item.get("env"), "channel": item.get("channel"), "owner": item.get("owner") or "", "base_url": item.get("base_url"), "ops_base_url": item.get("ops_base_url"), "status": "OFFLINE", "health_ok": False, "ready_ok": False, "qps": None, "p99_ms": None, "cpu": None, "memory_mb": None, "disk_percent": None}
         meta = topo_map.get(str(item.get("id") or "")) or {}
         overview["role"] = str(meta.get("role") or item.get("role") or "business")
         overview["description"] = str(meta.get("desc") or item.get("description") or "")
@@ -2216,9 +3267,25 @@ def _validate_ops_request(payload: Dict[str, Any], node: Dict[str, Any]) -> Dict
     approved_ref = get_approved_approval("gm_ops_action", approval_target)
     approved_by_id = _approved_by_id(approval_id)
     approved = bool(approved_ref) or bool(approved_by_id)
+    agent_supported_actions = {
+        "status",
+        "health_check",
+        "ready_check",
+        "runtime_snapshot",
+        "start",
+        "stop",
+        "restart",
+        "start_all",
+        "stop_all",
+        "smoke_test",
+        "stress_test",
+    }
+    unsupported = bool(action_type) and (action_type not in agent_supported_actions)
+    if unsupported:
+        missing.append("unsupported_action_type")
 
     return {
-        "ok": len(missing) == 0,
+        "ok": len(missing) == 0 and (not unsupported),
         "missing": missing,
         "risk": risk,
         "domain": domain,
@@ -2232,6 +3299,9 @@ def _validate_ops_request(payload: Dict[str, Any], node: Dict[str, Any]) -> Dict
         "reason": reason,
         "approver": approver,
         "action_type": action_type,
+        "unsupported": unsupported,
+        "error_code": ("OPS_ACTION_UNSUPPORTED" if unsupported else ""),
+        "agent_supported_actions": sorted(agent_supported_actions),
     }
 
 
@@ -2388,7 +3458,7 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
 @admin_required("gm_ops")
 def ops_platform_overview():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     return jsonify(_build_overview(project_id=project_id))
 
@@ -2397,7 +3467,7 @@ def ops_platform_overview():
 @admin_required("gm_ops")
 def ops_platform_deployment_catalog():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
 
     operator = str(session.get("user") or "intranet-ops")
     rows = [x for x in _load_nodes() if x.get("enabled")]
@@ -2441,7 +3511,7 @@ def ops_platform_deployment_catalog():
 @admin_required("gm_ops")
 def ops_platform_events():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     limit_text = str(request.args.get("limit") or "80").strip()
     try:
         limit = max(1, min(int(limit_text), 300))
@@ -2482,7 +3552,7 @@ def ops_platform_client_log():
 @admin_required("gm_ops")
 def ops_platform_module_map():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     modules = [
         {"id": "overview", "name": "全局总览", "href": "/admin/ops-platform", "children": ["kpi", "risk", "todo"]},
         {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology", "children": ["node_library", "canvas", "inspector"]},
@@ -2582,9 +3652,25 @@ def _load_topology_blueprints() -> List[Dict[str, Any]]:
 @admin_required("gm_ops")
 def ops_platform_control_plane_summary():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
-    reg_v2 = _load_agent_registry_v2()
-    agents: List[Dict[str, Any]] = [_normalize_agent_descriptor_v2(x) for x in reg_v2.values() if isinstance(x, dict)]
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+    _ensure_probe_bg_started()
+    # 走缓存，不再每次请求都同步+探活
+    with _probe_cache_lock:
+        cached_probe = dict(_probe_cache)
+        cached_agents = list(_probe_cache_agents)
+    agents = [_normalize_agent_descriptor_v2(x) for x in cached_agents if isinstance(x, dict)]
+    agents = [a for a in agents if not a.get("stale")]
+    for a in agents:
+        aid = str(a.get("agent_id") or "")
+        pr = cached_probe.get(aid)
+        if pr:
+            a["effective_status"] = pr.get("effective_status", "UNKNOWN")
+            a["probe_status"] = "PASS" if pr.get("ok") else "FAIL"
+            a["probe_rtt_ms"] = pr.get("rtt_ms", 0.0)
+            a["probe_source"] = "bg-engine"
+        else:
+            a["effective_status"] = "UNKNOWN"
+            a["probe_source"] = "missing"
     jobs = _load_agent_jobs()
     queue: Dict[str, int] = {"PENDING": 0, "RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "CANCELED": 0, "TIMEOUT": 0}
     for item in jobs:
@@ -2595,14 +3681,15 @@ def ops_platform_control_plane_summary():
             queue[st] += 1
     online = 0
     for a in agents:
-        st = str(a.get("status") or "").upper()
-        if st in ("ONLINE", "READY", "RUNNING"):
+        es = str(a.get("effective_status") or a.get("status") or "").upper()
+        if es in ("ONLINE", "READY", "RUNNING"):
             online += 1
     metrics = {
         "agents_total": len(agents),
         "agents_online": online,
         "jobs_pending": queue.get("PENDING") or 0,
         "jobs_running": queue.get("RUNNING") or 0,
+        "probe_cache_age_sec": round(max(0, _time_mod.time() - _probe_cache_ts), 1),
     }
     return jsonify({"ok": True, "metrics": metrics, "queue": queue, "agents": agents, "policy": _load_agent_policy()})
 
@@ -2612,24 +3699,34 @@ def ops_platform_control_plane_summary():
 def ops_platform_agents_list():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
+    _ensure_probe_bg_started()
     project_id = str(request.args.get("project_id") or "").strip()
     status = str(request.args.get("status") or "").strip().upper()
     device_id = str(request.args.get("device_id") or "").strip()
     host_ip = str(request.args.get("host_ip") or "").strip().lower()
+    region = str(request.args.get("region") or "").strip().lower()
     bound = str(request.args.get("bound") or "").strip().lower()
+    if project_id and not bound:
+        bound = "yes"
     bindings = _load_node_agent_bindings()
     rows = _agents_v2_for_project(project_id)
+    rows = [r for r in rows if not r.get("stale")]
     bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
-    device_snap = _device_metrics_snapshot(rows)
+        # 走缓存：不再每次请求都探活，用后台引擎缓存结果
+    with _probe_cache_lock:
+        cached_probe = dict(_probe_cache)
+    # 指标也走探活缓存（而不是 registry 里的旧 metrics）
+    # device_snap = _device_metrics_snapshot(rows)  # 旧逻辑
     now_ts = datetime.utcnow().timestamp()
     out: List[Dict[str, Any]] = []
     for item in rows:
-        if status and str(item.get("status") or "").upper() != status:
-            continue
         if device_id and str(item.get("device_id") or "") != device_id:
             continue
         host_name = str(item.get("host_name") or "").lower()
-        if host_ip and host_ip not in host_name and host_ip not in str(item.get("device_id") or "").lower():
+        item_host_ip = str(item.get("host_ip") or item.get("host_name") or "").lower()
+        if host_ip and host_ip not in host_name and host_ip not in str(item.get("device_id") or "").lower() and host_ip not in item_host_ip:
+            continue
+        if region and region != str(item.get("region") or "").lower():
             continue
         is_bound = str(item.get("agent_id") or "") in bound_agent_ids
         if bound == "yes" and not is_bound:
@@ -2638,29 +3735,114 @@ def ops_platform_agents_list():
             continue
         obj = dict(item)
         did = str(obj.get("device_id") or "unknown-device")
-        snap = device_snap.get(did) if isinstance(device_snap.get(did), dict) else {}
-        if snap:
-            obj["device_metrics_snapshot"] = snap
-            obj["metrics"] = {
-                "cpu_percent": snap.get("cpu_percent"),
-                "mem_percent": snap.get("mem_percent"),
-                "qps": snap.get("qps"),
-                "rtt_ms": snap.get("rtt_ms"),
-                "updated_at": snap.get("updated_at"),
-                "source": snap.get("source"),
+        # Agent heartbeat metrics are canonical. Probe metrics only fill missing values.
+        aid = str(obj.get("agent_id") or "")
+        cached_pr = cached_probe.get(aid)
+        base_m = obj.get("metrics") if isinstance(obj.get("metrics"), dict) else {}
+        base_c = base_m.get("control") if isinstance(base_m.get("control"), dict) else base_m
+        base_b = base_m.get("business") if isinstance(base_m.get("business"), dict) else {}
+        if cached_pr and isinstance(cached_pr.get("metrics"), dict):
+            pr_m = cached_pr.get("metrics") or {}
+            pr_c = pr_m.get("control") if isinstance(pr_m.get("control"), dict) else pr_m
+            merged = {
+                "cpu_percent": base_c.get("cpu_percent") if base_c.get("cpu_percent") is not None else pr_c.get("cpu_percent"),
+                "mem_percent": base_c.get("mem_percent") if base_c.get("mem_percent") is not None else pr_c.get("mem_percent"),
+                "disk_percent": base_c.get("disk_percent") if base_c.get("disk_percent") is not None else pr_c.get("disk_percent"),
+                "qps": base_c.get("qps") if base_c.get("qps") is not None else pr_c.get("qps"),
+                "rtt_ms": base_c.get("rtt_ms") if base_c.get("rtt_ms") is not None else pr_c.get("rtt_ms"),
+                "service_cpu_percent": base_c.get("service_cpu_percent") if base_c.get("service_cpu_percent") is not None else pr_c.get("service_cpu_percent"),
+                "service_memory_mb": base_c.get("service_memory_mb") if base_c.get("service_memory_mb") is not None else pr_c.get("service_memory_mb"),
+                "updated_at": str(base_c.get("updated_at") or pr_c.get("updated_at") or _now_iso()),
+                "source": str(base_c.get("source") or pr_c.get("source") or "agent"),
             }
-            obj["metrics_missing"] = bool(snap.get("metrics_missing"))
+            obj["metrics"] = {
+                "control": merged,
+                "business": base_b,
+                **merged,
+            }
+            obj["metrics_missing"] = {"control": not any(merged.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")), "business": not any(base_b.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"))}
         else:
-            obj["device_metrics_snapshot"] = {}
-            obj["metrics_missing"] = True
+            obj["metrics"] = {"control": base_c, "business": base_b, **base_c}
+            obj["metrics_missing"] = {"control": not any(base_c.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")), "business": not any(base_b.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"))}
+        obj["device_metrics_snapshot"] = {}
+        # 探活状态
+        if cached_pr:
+            obj["effective_status"] = cached_pr.get("effective_status", "UNKNOWN")
+            obj["probe_status"] = "PASS" if cached_pr.get("ok") else "FAIL"
+            obj["probe_rtt_ms"] = cached_pr.get("rtt_ms", 0.0)
+            obj["probe_at"] = str(cached_pr.get("probe_at") or "")
+            obj["probe_source"] = "bg-engine"
+        else:
+            base_status = str(obj.get("status") or "UNKNOWN").upper()
+            age_sec = obj.get("last_seen_age_sec")
+            if age_sec is None:
+                obj["effective_status"] = "UNKNOWN"
+            elif age_sec > 300:
+                obj["effective_status"] = "OFFLINE"
+            else:
+                obj["effective_status"] = base_status
+            obj["probe_source"] = "fallback"
         last_seen_raw = str(obj.get("last_seen") or "")
         try:
             last_seen_ts = datetime.fromisoformat(last_seen_raw.replace("Z", "")).timestamp()
             obj["last_seen_age_sec"] = max(0, int(now_ts - last_seen_ts))
         except Exception:
             obj["last_seen_age_sec"] = None
+        # 走缓存结果（bg-engine），不再实时探活
+        if status and str(obj.get("effective_status") or "").upper() != status:
+            continue
         obj["is_bound"] = is_bound
+        obj["topology_group"] = str(obj.get("node_id") or "ungrouped").split("-", 1)[0]
+        obj["placement"] = {
+            "region": str(obj.get("region") or ""),
+            "zone": str(obj.get("zone") or ""),
+            "host_ip": str(obj.get("host_ip") or obj.get("host_name") or ""),
+            "device_id": str(obj.get("device_id") or ""),
+        }
         out.append(obj)
+    # 同设备统一快照：同一 device_id 下所有卡片显示一致口径
+    grouped_snap: Dict[str, Dict[str, Any]] = {}
+    for a in out:
+        did = str(a.get("device_id") or "unknown-device")
+        m = a.get("metrics") if isinstance(a.get("metrics"), dict) else {}
+        mc = m.get("control") if isinstance(m.get("control"), dict) else m
+        mb = m.get("business") if isinstance(m.get("business"), dict) else {}
+        snap = grouped_snap.get(did) if isinstance(grouped_snap.get(did), dict) else {
+            "control": {"cpu_percent": None, "mem_percent": None, "disk_percent": None, "qps": None, "rtt_ms": None, "updated_at": "", "source": "missing"},
+            "business": {"qps": None, "rtt_p95_ms": None, "rtt_p99_ms": None, "error_rate": None, "conn": None, "updated_at": "", "source": "missing"},
+            "updated_at": "", "source": "missing"
+        }
+        for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+            if mc.get(k) is not None:
+                snap["control"][k] = mc.get(k)
+        for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"):
+            if mb.get(k) is not None:
+                snap["business"][k] = mb.get(k)
+        if mc.get("updated_at"):
+            snap["control"]["updated_at"] = str(mc.get("updated_at"))
+            snap["updated_at"] = str(mc.get("updated_at"))
+        if mc.get("source"):
+            snap["control"]["source"] = str(mc.get("source"))
+            snap["source"] = str(mc.get("source"))
+        if mb.get("updated_at"):
+            snap["business"]["updated_at"] = str(mb.get("updated_at"))
+        if mb.get("source"):
+            snap["business"]["source"] = str(mb.get("source"))
+        grouped_snap[did] = snap
+    for a in out:
+        did = str(a.get("device_id") or "unknown-device")
+        snap = grouped_snap.get(did) or {}
+        a["device_metrics_snapshot"] = snap
+        # Keep per-agent heartbeat metrics as the card truth.
+        # Device snapshot is for group header only and must not overwrite agent values.
+        m = a.get("metrics") if isinstance(a.get("metrics"), dict) else {}
+        mc = m.get("control") if isinstance(m.get("control"), dict) else m
+        mb = m.get("business") if isinstance(m.get("business"), dict) else {}
+        a["metrics"] = {**mc, "control": mc, "business": mb}
+        a["metrics_missing"] = {
+            "control": not any(mc.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")),
+            "business": not any(mb.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn")),
+        }
     return jsonify({"ok": True, "count": len(out), "agents": out, "bindings": bindings})
 
 
@@ -2669,22 +3851,102 @@ def ops_platform_agents_list():
 def ops_platform_agents_devices():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
+    _ensure_probe_bg_started()
     project_id = str(request.args.get("project_id") or "").strip()
     rows = _agents_v2_for_project(project_id)
-    device_snap = _device_metrics_snapshot(rows)
+    rows = [r for r in rows if not r.get("stale")]
+    # 走缓存
+    with _probe_cache_lock:
+        cached_probe = dict(_probe_cache)
     grouped: Dict[str, Dict[str, Any]] = {}
+    now_ts = datetime.utcnow().timestamp()
     for item in rows:
         did = str(item.get("device_id") or "unknown-device")
         cur = grouped.get(did) if isinstance(grouped.get(did), dict) else {"device_id": did, "project_id": project_id, "agents": [], "online": 0, "total": 0}
-        cur["agents"].append(item)
+        obj = dict(item)
+        age_sec = None
+        try:
+            last_seen_ts = datetime.fromisoformat(str(obj.get("last_seen") or "").replace("Z", "")).timestamp()
+            age_sec = max(0, int(now_ts - last_seen_ts))
+        except Exception:
+            age_sec = None
+        obj["last_seen_age_sec"] = age_sec
+        # 走缓存
+        aid = str(obj.get("agent_id") or "")
+        cached_pr = cached_probe.get(aid)
+        if cached_pr:
+            obj["effective_status"] = cached_pr.get("effective_status", "UNKNOWN")
+            obj["probe_status"] = "PASS" if cached_pr.get("ok") else "FAIL"
+            obj["probe_rtt_ms"] = cached_pr.get("rtt_ms", 0.0)
+            obj["probe_at"] = str(cached_pr.get("probe_at") or "")
+            obj["probe_source"] = "bg-engine"
+            if isinstance(cached_pr.get("metrics"), dict):
+                base_m = obj.get("metrics") if isinstance(obj.get("metrics"), dict) else {}
+                pr_m = cached_pr.get("metrics") or {}
+                merged = dict(base_m)
+                for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+                    if merged.get(key) is None and pr_m.get(key) is not None:
+                        merged[key] = pr_m.get(key)
+                if not merged.get("updated_at"):
+                    merged["updated_at"] = str(pr_m.get("updated_at") or "")
+                if not merged.get("source"):
+                    merged["source"] = str(pr_m.get("source") or "agent")
+                obj["metrics"] = merged
+        else:
+            base_status = str(obj.get("status") or "UNKNOWN").upper()
+            if age_sec is None:
+                obj["effective_status"] = "UNKNOWN"
+            elif age_sec > 300:
+                obj["effective_status"] = "OFFLINE"
+            else:
+                obj["effective_status"] = base_status
+            obj["probe_source"] = "fallback"
+        obj["topology_group"] = str(obj.get("node_id") or "ungrouped").split("-", 1)[0]
+        obj["placement"] = {
+            "region": str(obj.get("region") or ""),
+            "zone": str(obj.get("zone") or ""),
+            "host_ip": str(obj.get("host_ip") or obj.get("host_name") or ""),
+            "device_id": str(obj.get("device_id") or ""),
+        }
+        cur["agents"].append(obj)
         cur["total"] = int(cur.get("total") or 0) + 1
-        if str(item.get("status") or "").upper() in ("ONLINE", "READY", "RUNNING"):
+        if str(obj.get("effective_status") or "").upper() in ("ONLINE", "READY", "RUNNING"):
             cur["online"] = int(cur.get("online") or 0) + 1
         grouped[did] = cur
     out = list(grouped.values())
     for g in out:
-        did = str(g.get("device_id") or "unknown-device")
-        g["device_metrics_snapshot"] = device_snap.get(did) if isinstance(device_snap.get(did), dict) else {}
+        # 设备快照统一按同 device_id 聚合，避免卡片字段缺失/不一致
+        snap = {
+            "control": {"cpu_percent": None, "mem_percent": None, "disk_percent": None, "qps": None, "rtt_ms": None, "updated_at": "", "source": "missing"},
+            "business": {"qps": None, "rtt_p95_ms": None, "rtt_p99_ms": None, "error_rate": None, "conn": None, "updated_at": "", "source": "missing"},
+            "updated_at": "",
+            "source": "missing",
+        }
+        for a in (g.get("agents") if isinstance(g.get("agents"), list) else []):
+            m = a.get("metrics") if isinstance(a.get("metrics"), dict) else {}
+            mc = m.get("control") if isinstance(m.get("control"), dict) else m
+            mb = m.get("business") if isinstance(m.get("business"), dict) else {}
+            for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+                if mc.get(k) is not None:
+                    snap["control"][k] = mc.get(k)
+            for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"):
+                if mb.get(k) is not None:
+                    snap["business"][k] = mb.get(k)
+            if mc.get("updated_at"):
+                snap["control"]["updated_at"] = str(mc.get("updated_at"))
+                snap["updated_at"] = str(mc.get("updated_at"))
+            if mc.get("source"):
+                snap["control"]["source"] = str(mc.get("source"))
+                snap["source"] = str(mc.get("source"))
+            if mb.get("updated_at"):
+                snap["business"]["updated_at"] = str(mb.get("updated_at"))
+            if mb.get("source"):
+                snap["business"]["source"] = str(mb.get("source"))
+        snap["metrics_missing"] = {
+            "control": not any((snap["control"]).get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")),
+            "business": not any((snap["business"]).get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn")),
+        }
+        g["device_metrics_snapshot"] = snap
     out.sort(key=lambda x: str(x.get("device_id") or ""))
     return jsonify({"ok": True, "count": len(out), "devices": out})
 
@@ -2716,10 +3978,21 @@ def ops_platform_agents_upsert():
             "last_seen": now,
             "display_name": str(payload.get("display_name") or agent_id),
             "port": int(payload.get("port") or 0),
+            "remote_game_server_port": int(payload.get("remote_game_server_port") or payload.get("port") or 0),
             "desc": str(payload.get("desc") or ""),
             "run_state": str(payload.get("run_state") or "ONLINE"),
+            "region": str(payload.get("region") or ""),
+            "zone": str(payload.get("zone") or ""),
+            "rack": str(payload.get("rack") or ""),
+            "host_ip": str(payload.get("host_ip") or payload.get("host_name") or ""),
+            "probe_status": "",
+            "probe_at": "",
+            "probe_rtt_ms": 0.0,
             "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
+            "service_id": str(payload.get("service_id") or ""),
+            "services": payload.get("services") if isinstance(payload.get("services"), list) else [],
             "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {},
+            "network": payload.get("network") if isinstance(payload.get("network"), dict) else {"endpoints": []},
             "updated_at": now,
             "transport": {"mode": "remote", "local_bus": {"enabled": False, "endpoint": "", "auth_mode": "token"}},
         }
@@ -2731,9 +4004,19 @@ def ops_platform_agents_upsert():
             hit["port"] = port_val
         except Exception:
             return jsonify({"ok": False, "error": "OPS_AGENT_PORT_INVALID", "error_code": "OPS_AGENT_PORT_INVALID"}), 400
-    for k in ("host_name", "device_id", "project_id", "node_id"):
+    for k in ("host_name", "device_id", "project_id", "node_id", "region", "zone", "rack", "host_ip"):
         if k in payload:
             hit[k] = str(payload.get(k) or "")
+    if "remote_game_server_port" in payload:
+        try:
+            rgp = int(payload.get("remote_game_server_port") or 0)
+            if rgp < 0 or rgp > 65535:
+                return jsonify({"ok": False, "error": "OPS_AGENT_PORT_INVALID", "error_code": "OPS_AGENT_PORT_INVALID"}), 400
+            hit["remote_game_server_port"] = rgp
+        except Exception:
+            return jsonify({"ok": False, "error": "OPS_AGENT_PORT_INVALID", "error_code": "OPS_AGENT_PORT_INVALID"}), 400
+    if "network" in payload and isinstance(payload.get("network"), dict):
+        hit["network"] = payload.get("network")
     for k in ("display_name", "desc", "run_state", "status"):
         if k in payload:
             hit[k] = str(payload.get(k) or "")
@@ -2744,12 +4027,164 @@ def ops_platform_agents_upsert():
     return jsonify({"ok": True, "agent": reg[agent_id]})
 
 
+@bp.route("/api/ops-platform/services")
+@admin_required("gm_ops")
+def ops_platform_services_list():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    rows = _services_for_project(project_id)
+    return jsonify({"ok": True, "count": len(rows), "services": rows})
+
+
+@bp.route("/api/ops-platform/services/upsert", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_services_upsert():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    service_id = str(payload.get("service_id") or "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+    if not service_id:
+        return jsonify({"ok": False, "error": "missing_service_id"}), 400
+
+    reg = _load_agent_registry_v2()
+    hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+    if not hit:
+        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+    if project_id:
+        ag_project = str(hit.get("project_id") or "").strip()
+        if ag_project and ag_project != project_id:
+            return jsonify({"ok": False, "error": "OPS_AGENT_NOT_IN_PROJECT", "error_code": "OPS_AGENT_NOT_IN_PROJECT"}), 409
+
+    services = hit.get("services") if isinstance(hit.get("services"), list) else []
+    idx = -1
+    for i, svc in enumerate(services):
+        if isinstance(svc, dict) and str(svc.get("service_id") or "").strip() == service_id:
+            idx = i
+            break
+    now = _now_iso()
+    svc_obj = dict(services[idx]) if idx >= 0 and isinstance(services[idx], dict) else {}
+    svc_obj["service_id"] = service_id
+    svc_obj["agent_id"] = agent_id
+    svc_obj["project_id"] = str(payload.get("project_id") or svc_obj.get("project_id") or hit.get("project_id") or "")
+    svc_obj["node_id"] = str(payload.get("node_id") or svc_obj.get("node_id") or "")
+    svc_obj["display_name"] = str(payload.get("display_name") or svc_obj.get("display_name") or service_id)
+    svc_obj["service_type"] = str(payload.get("service_type") or svc_obj.get("service_type") or "standard")
+    if "service_port" in payload:
+        try:
+            svc_obj["service_port"] = int(payload.get("service_port") or 0)
+        except Exception:
+            svc_obj["service_port"] = 0
+    if "remote_game_server_port" in payload:
+        try:
+            svc_obj["remote_game_server_port"] = int(payload.get("remote_game_server_port") or 0)
+        except Exception:
+            svc_obj["remote_game_server_port"] = 0
+    if "run_state" in payload:
+        svc_obj["run_state"] = str(payload.get("run_state") or "")
+    if "status" in payload:
+        svc_obj["status"] = str(payload.get("status") or "")
+    if "desc" in payload:
+        svc_obj["desc"] = str(payload.get("desc") or "")
+    if "network" in payload and isinstance(payload.get("network"), dict):
+        svc_obj["network"] = payload.get("network")
+    svc_obj["updated_at"] = now
+
+    if idx >= 0:
+        services[idx] = svc_obj
+    else:
+        services.append(svc_obj)
+    hit["services"] = services
+    hit["updated_at"] = now
+    reg[agent_id] = _normalize_agent_descriptor_v2(hit)
+    _save_agent_registry_v2(reg)
+    return jsonify({"ok": True, "service": svc_obj})
+
+
+@bp.route("/api/ops-platform/services/action", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_services_action():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    service_id = str(payload.get("service_id") or "").strip()
+    action = str(payload.get("action") or "status").strip().lower()
+    if not service_id:
+        return jsonify({"ok": False, "error": "missing_service_id"}), 400
+
+    service_hit = None
+    for svc in _services_for_project(project_id):
+        if isinstance(svc, dict) and str(svc.get("service_id") or "").strip() == service_id:
+            service_hit = svc
+            break
+    if not service_hit:
+        return jsonify({"ok": False, "error": "service_not_found", "error_code": "OPS_SERVICE_NOT_FOUND"}), 404
+
+    node_id = str(payload.get("node_id") or service_hit.get("node_id") or "").strip()
+    if not node_id:
+        return jsonify({"ok": False, "error": "missing_node_id"}), 400
+    action_map = {
+        "start": "start",
+        "stop": "stop",
+        "restart": "restart",
+        "status": "status",
+        "probe": "health_check",
+        "logs": "runtime_snapshot",
+    }
+    action_type = action_map.get(action, "")
+    if not action_type:
+        return jsonify({"ok": False, "error": "unsupported_action"}), 400
+
+    nodes = _load_nodes()
+    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
+    if not node:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+    req = {
+        "node_id": node_id,
+        "action_type": action_type,
+        "target": node_id,
+        "ticket_id": "OPS-SVC-" + uuid.uuid4().hex[:8],
+        "reason": "服务实例标准运维动作",
+        "approver": str(session.get("user") or "admin"),
+        "run_mode": "agent",
+        "via_agent": True,
+        "payload": {
+            "run_mode": "agent",
+            "desired_role": str(service_hit.get("service_type") or ""),
+            "desired_service_id": service_id,
+            "desired_server_id": str(service_hit.get("node_id") or node_id),
+            "switch_required": action in ("start", "restart"),
+            "launch_visible_console": bool(payload.get("launch_visible_console", True)),
+        },
+    }
+    validation = _validate_ops_request(req, node)
+    if not validation.get("ok"):
+        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing") or []}), 400
+    result = _execute_validated(req, node, validation)
+    if not result.get("ok"):
+        return jsonify({"ok": False, "error": "OPS_REMOTE_START_FAILED", "error_code": "OPS_REMOTE_START_FAILED", "message": str(result.get("message") or result.get("error") or "service action failed")}), 502
+    return jsonify({
+        "ok": True,
+        "node_id": node_id,
+        "service_id": service_id,
+        "action": action,
+        "job_id": ((result.get("data") or {}).get("job_id") if isinstance(result.get("data"), dict) else ""),
+        "trace_id": str(result.get("trace_id") or ""),
+    })
+
+
 @bp.route("/api/ops-platform/agents/probe", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_agents_probe():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     payload = request.get_json(silent=True) or {}
+    agent_id = str(payload.get("agent_id") or "").strip()
     host = str(payload.get("host_name") or payload.get("ip") or "").strip()
     port_raw = payload.get("port")
     try:
@@ -2768,8 +4203,7 @@ def ops_platform_agents_probe():
     except Exception as ex:
         err = str(ex)
     spent = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
-    return jsonify(
-        {
+    out = {
             "ok": ok,
             "host_name": host,
             "port": port,
@@ -2777,7 +4211,142 @@ def ops_platform_agents_probe():
             "message": ("连通性正常" if ok else ("连通性失败: " + (err or "unknown"))),
             "error": ("" if ok else err),
         }
+    if agent_id:
+        reg = _load_agent_registry_v2()
+        hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+        if hit:
+            hit["probe_status"] = "PASS" if ok else "FAIL"
+            hit["probe_at"] = _now_iso()
+            hit["probe_rtt_ms"] = round(spent, 1)
+            hit["updated_at"] = _now_iso()
+            reg[agent_id] = _normalize_agent_descriptor_v2(hit)
+            _save_agent_registry_v2(reg)
+            out["agent_id"] = agent_id
+            out["probe_status"] = hit["probe_status"]
+    return jsonify(
+        {
+            **out
+        }
     )
+
+
+@bp.route("/api/ops-platform/agents/probe-all", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_agents_probe_all():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    rows = _agents_v2_for_project(project_id)
+    reg = _load_agent_registry_v2()
+    out: List[Dict[str, Any]] = []
+    pass_count = 0
+    fail_count = 0
+    for item in rows:
+        aid = str(item.get("agent_id") or "")
+        host = str(item.get("host_name") or "")
+        port = int(item.get("remote_game_server_port") or item.get("port") or 0)
+        if not host or port <= 0:
+            fail_count += 1
+            out.append({"agent_id": aid, "ok": False, "message": "缺少 host/port"})
+            continue
+        ok = False
+        msg = ""
+        rtt_ms = 0.0
+        start = datetime.utcnow()
+        try:
+            with socket.create_connection((host, port), timeout=2.0):
+                ok = True
+        except Exception as ex:
+            ok = False
+            msg = str(ex)
+        rtt_ms = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        hit = reg.get(aid) if isinstance(reg.get(aid), dict) else None
+        if hit:
+            hit["probe_status"] = "PASS" if ok else "FAIL"
+            hit["probe_at"] = _now_iso()
+            hit["probe_rtt_ms"] = round(rtt_ms, 1)
+            hit["updated_at"] = _now_iso()
+            reg[aid] = _normalize_agent_descriptor_v2(hit)
+        if ok:
+            pass_count += 1
+        else:
+            fail_count += 1
+        out.append({
+            "agent_id": aid,
+            "host_name": host,
+            "port": port,
+            "ok": ok,
+            "rtt_ms": round(rtt_ms, 1),
+            "message": ("连通性正常" if ok else ("连通性失败: " + (msg or "unknown"))),
+        })
+    _save_agent_registry_v2(reg)
+    return jsonify({"ok": True, "project_id": project_id, "pass_count": pass_count, "fail_count": fail_count, "results": out})
+
+
+@bp.route("/api/ops-platform/agents/probe-repair", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_agents_probe_repair():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    default_host = str(payload.get("default_host") or "127.0.0.1").strip() or "127.0.0.1"
+    rows = _agents_v2_for_project(project_id)
+    reg = _load_agent_registry_v2()
+    out: List[Dict[str, Any]] = []
+    fixed = 0
+    pass_count = 0
+    fail_count = 0
+    for item in rows:
+        aid = str(item.get("agent_id") or "")
+        hit = reg.get(aid) if isinstance(reg.get(aid), dict) else None
+        if not hit:
+            continue
+        host = str(hit.get("host_name") or "").strip()
+        if not host or host == "0.0.0.0":
+            host = default_host
+            hit["host_name"] = host
+            fixed += 1
+        port = int(hit.get("port") or 0)
+        if port <= 0:
+            port = int(hit.get("remote_game_server_port") or 0)
+            if port > 0:
+                hit["port"] = port
+                fixed += 1
+        ok = False
+        msg = ""
+        rtt_ms = 0.0
+        if host and port > 0:
+            start = datetime.utcnow()
+            try:
+                with socket.create_connection((host, port), timeout=2.0):
+                    ok = True
+            except Exception as ex:
+                ok = False
+                msg = str(ex)
+            rtt_ms = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        else:
+            msg = "缺少 host/port"
+        hit["probe_status"] = "PASS" if ok else "FAIL"
+        hit["probe_at"] = _now_iso()
+        hit["probe_rtt_ms"] = round(rtt_ms, 1)
+        hit["updated_at"] = _now_iso()
+        reg[aid] = _normalize_agent_descriptor_v2(hit)
+        if ok:
+            pass_count += 1
+        else:
+            fail_count += 1
+        out.append({
+            "agent_id": aid,
+            "host_name": host,
+            "port": port,
+            "ok": ok,
+            "rtt_ms": round(rtt_ms, 1),
+            "message": ("连通性正常" if ok else ("连通性失败: " + (msg or "unknown"))),
+        })
+    _save_agent_registry_v2(reg)
+    return jsonify({"ok": True, "project_id": project_id, "fixed_count": fixed, "pass_count": pass_count, "fail_count": fail_count, "results": out})
 
 
 @bp.route("/api/ops-platform/agents/cleanup-expired", methods=["POST"])
@@ -2833,19 +4402,35 @@ def ops_platform_agents_cleanup_expired():
             kept += 1
 
     bindings = _load_node_agent_bindings()
+    service_bindings = _load_node_service_bindings()
     removed_bindings = 0
+    removed_service_bindings = 0
     if deleted_agent_ids:
         deleted_set = set(deleted_agent_ids)
         for node_id, aid in list(bindings.items()):
             if str(aid or "").strip() in deleted_set:
                 bindings.pop(node_id, None)
                 removed_bindings += 1
+        services = _services_for_project(project_id)
+        service_agent_map = {
+            str(s.get("service_id") or "").strip(): str(s.get("agent_id") or "").strip()
+            for s in services
+            if isinstance(s, dict) and str(s.get("service_id") or "").strip()
+        }
+        for node_id, sid in list(service_bindings.items()):
+            sid_text = str(sid or "").strip()
+            if not sid_text:
+                continue
+            if service_agent_map.get(sid_text, "") in deleted_set:
+                service_bindings.pop(node_id, None)
+                removed_service_bindings += 1
 
     _save_agent_registry_v2(reg)
     _save_node_agent_bindings(bindings)
+    _save_node_service_bindings(service_bindings)
     log_audit(
         "ops_platform_agents_cleanup_expired",
-        f"project={project_id or '-'}; ttl_hours={ttl_hours}; deleted={len(deleted_agent_ids)}; unbound={removed_bindings}",
+        f"project={project_id or '-'}; ttl_hours={ttl_hours}; deleted={len(deleted_agent_ids)}; unbound={removed_bindings}; unbound_service={removed_service_bindings}",
     )
     return jsonify(
         {
@@ -2854,6 +4439,7 @@ def ops_platform_agents_cleanup_expired():
             "ttl_hours": ttl_hours,
             "deleted_count": len(deleted_agent_ids),
             "removed_binding_count": removed_bindings,
+            "removed_service_binding_count": removed_service_bindings,
             "kept_count": kept,
             "deleted_agent_ids": deleted_agent_ids[:80],
         }
@@ -2867,16 +4453,31 @@ def ops_platform_node_bindings():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     bindings = _load_node_agent_bindings()
+    service_bindings = _load_node_service_bindings()
     rows = _load_nodes()
     valid_nodes = set(str(x.get("id") or "") for x in rows if isinstance(x, dict))
     out: Dict[str, str] = {}
+    out_services: Dict[str, str] = {}
     for nid, aid in bindings.items():
         n = str(nid or "").strip()
         a = str(aid or "").strip()
         if not n or not a or n not in valid_nodes:
             continue
         out[n] = a
-    return jsonify({"ok": True, "project_id": project_id, "bindings": out})
+    valid_services = set(
+        str(x.get("service_id") or "").strip()
+        for x in _services_for_project(project_id)
+        if isinstance(x, dict)
+    )
+    for nid, sid in service_bindings.items():
+        n = str(nid or "").strip()
+        s = str(sid or "").strip()
+        if not n or not s or n not in valid_nodes:
+            continue
+        if valid_services and s not in valid_services:
+            continue
+        out_services[n] = s
+    return jsonify({"ok": True, "project_id": project_id, "bindings": out, "service_bindings": out_services})
 
 
 @bp.route("/api/ops-platform/topology/node/bind-agent", methods=["POST"])
@@ -2906,21 +4507,232 @@ def ops_platform_bind_node_agent():
         ag_project = str(ag.get("project_id") or "")
         if project_id and ag_project and ag_project != project_id:
             return jsonify({"ok": False, "error": "OPS_AGENT_NOT_IN_PROJECT", "error_code": "OPS_AGENT_NOT_IN_PROJECT"}), 409
+        if str(ag.get("probe_status") or "").upper() != "PASS":
+            return jsonify({"ok": False, "error": "OPS_AGENT_PROBE_REQUIRED", "error_code": "OPS_AGENT_PROBE_REQUIRED", "message": "Agent 尚未通过联通测试，禁止绑定"}), 412
     bindings = _load_node_agent_bindings()
+    service_bindings = _load_node_service_bindings()
     if agent_id:
         bindings[node_id] = agent_id
+        # Backward-compat: if service primary missing, map by node->service candidate under this agent.
+        if not str(service_bindings.get(node_id) or "").strip():
+            for svc in _services_for_project(project_id):
+                if not isinstance(svc, dict):
+                    continue
+                if str(svc.get("agent_id") or "").strip() != agent_id:
+                    continue
+                if str(svc.get("node_id") or "").strip() == node_id:
+                    sid = str(svc.get("service_id") or "").strip()
+                    if sid:
+                        service_bindings[node_id] = sid
+                        break
     else:
         bindings.pop(node_id, None)
+        service_bindings.pop(node_id, None)
     _save_node_agent_bindings(bindings)
+    _save_node_service_bindings(service_bindings)
     log_audit("ops_platform_bind_node_agent", f"node={node_id}; agent={agent_id}")
-    return jsonify({"ok": True, "node_id": node_id, "agent_id": agent_id, "bindings": bindings})
+    return jsonify({"ok": True, "node_id": node_id, "agent_id": agent_id, "bindings": bindings, "service_bindings": service_bindings})
+
+
+@bp.route("/api/ops-platform/topology/node/bind-service", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_bind_node_service():
+    payload = request.get_json(silent=True) or {}
+    service_id = str(payload.get("service_id") or "").strip()
+    if not service_id:
+        return jsonify({"ok": False, "error": "missing_service_id"}), 400
+    project_id = str(payload.get("project_id") or "").strip()
+    node_id = str(payload.get("node_id") or "").strip()
+    if not node_id:
+        return jsonify({"ok": False, "error": "missing_node_id"}), 400
+
+    rows = _load_nodes()
+    node = None
+    for x in rows:
+        if isinstance(x, dict) and str(x.get("id") or "") == node_id:
+            node = x
+            break
+    if not node:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+
+    agent_id = str(payload.get("agent_id") or "").strip()
+    service_hit = None
+    for svc in _services_for_project(project_id):
+        if not isinstance(svc, dict):
+            continue
+        if str(svc.get("service_id") or "").strip() == service_id:
+            service_hit = svc
+            break
+    if not service_hit:
+        return jsonify({"ok": False, "error": "service_not_found", "error_code": "OPS_SERVICE_NOT_FOUND"}), 404
+    if not agent_id:
+        agent_id = str(service_hit.get("agent_id") or "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+    reg = _load_agent_registry_v2()
+    ag = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+    if not ag:
+        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+    ag_project = str(ag.get("project_id") or "")
+    if project_id and ag_project and ag_project != project_id:
+        return jsonify({"ok": False, "error": "OPS_AGENT_NOT_IN_PROJECT", "error_code": "OPS_AGENT_NOT_IN_PROJECT"}), 409
+    if str(ag.get("probe_status") or "").upper() != "PASS":
+        return jsonify({"ok": False, "error": "OPS_AGENT_PROBE_REQUIRED", "error_code": "OPS_AGENT_PROBE_REQUIRED", "message": "Agent 尚未通过联通测试，禁止绑定"}), 412
+
+    bindings = _load_node_agent_bindings()
+    service_bindings = _load_node_service_bindings()
+    bindings[node_id] = agent_id
+    service_bindings[node_id] = service_id
+    _save_node_agent_bindings(bindings)
+    _save_node_service_bindings(service_bindings)
+    log_audit("ops_platform_bind_node_service", f"node={node_id}; service={service_id}; agent={agent_id}")
+    return jsonify({
+        "ok": True,
+        "node_id": node_id,
+        "agent_id": agent_id,
+        "service_id": service_id,
+        "binding_mode": "service_primary",
+        "bindings": bindings,
+        "service_bindings": service_bindings,
+    })
+
+
+@bp.route("/api/ops-platform/topology/node/start-remote", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_node_start_remote():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    project_id = str(payload.get("project_id") or "").strip()
+    if not node_id:
+        return jsonify({"ok": False, "error": "missing_node_id"}), 400
+    nodes = _load_nodes()
+    node = None
+    for x in nodes:
+        if isinstance(x, dict) and str(x.get("id") or "") == node_id:
+            node = x
+            break
+    if not node:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+    if project_id and str(node.get("project_id") or "") and str(node.get("project_id") or "") != project_id:
+        return jsonify({"ok": False, "error": "project_mismatch"}), 409
+
+    bindings = _load_node_agent_bindings()
+    service_bindings = _load_node_service_bindings()
+    bound_service_id = str(payload.get("service_id") or service_bindings.get(node_id) or "").strip()
+    agent_id = str(bindings.get(node_id) or "")
+    if bound_service_id and not agent_id:
+        for svc in _services_for_project(project_id):
+            if not isinstance(svc, dict):
+                continue
+            if str(svc.get("service_id") or "").strip() == bound_service_id:
+                agent_id = str(svc.get("agent_id") or "").strip()
+                if agent_id:
+                    break
+    if not agent_id:
+        return jsonify({"ok": False, "error": "agent_not_bound", "error_code": "OPS_REMOTE_START_FAILED", "message": "节点未绑定 Agent"}), 412
+    reg = _load_agent_registry_v2()
+    ag = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+    if not ag:
+        return jsonify({"ok": False, "error": "agent_not_registered", "error_code": "OPS_REMOTE_START_FAILED", "message": "绑定 Agent 不存在"}), 404
+    if str(ag.get("probe_status") or "").upper() != "PASS":
+        return jsonify({"ok": False, "error": "OPS_AGENT_PROBE_FAILED", "error_code": "OPS_AGENT_PROBE_FAILED", "message": "Agent 联通测试未通过"}), 412
+
+    req = {
+        "node_id": node_id,
+        "action_type": "start",
+        "target": node_id,
+        "ticket_id": "OPS-REMOTE-" + uuid.uuid4().hex[:8],
+        "reason": "节点编辑器远端启动",
+        "approver": str(session.get("user") or "admin"),
+        "run_mode": "agent",
+        "via_agent": True,
+        "payload": {
+            "run_mode": "agent",
+            "desired_role": str(node.get("role") or ""),
+            "desired_server_id": str(node.get("server_id") or ""),
+            "desired_service_id": bound_service_id,
+            "switch_required": True,
+            "launch_visible_console": bool(payload.get("launch_visible_console", True)),
+        },
+    }
+    validation = _validate_ops_request(req, node)
+    if not validation.get("ok"):
+        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing") or []}), 400
+    if validation.get("require_approval") and not validation.get("approved"):
+        aid = create_approval(
+            "gm_ops_action",
+            str(session.get("user") or "admin"),
+            "ops_action",
+            str(validation.get("approval_target_id") or ""),
+            reason=str(validation.get("reason") or "remote start"),
+            project_id=str(node.get("project_id") or project_id),
+        )
+        ok, err = approve_or_reject(aid, str(session.get("user") or "admin"), "approve", "remote start auto approve")
+        if not ok:
+            return jsonify({"ok": False, "error": "approval_failed", "message": str(err or "approval failed")}), 502
+        req["approval_id"] = aid
+        validation = _validate_ops_request(req, node)
+
+    result = _execute_validated(req, node, validation)
+    if not result.get("ok"):
+        return jsonify({"ok": False, "error": "OPS_REMOTE_START_FAILED", "error_code": "OPS_REMOTE_START_FAILED", "message": str(result.get("message") or result.get("error") or "remote start failed")}), 502
+    return jsonify({
+        "ok": True,
+        "node_id": node_id,
+        "agent_id": agent_id,
+        "service_id": bound_service_id,
+        "job_id": ((result.get("data") or {}).get("job_id") if isinstance(result.get("data"), dict) else ""),
+        "trace_id": str(result.get("trace_id") or ""),
+    })
+
+
+@bp.route("/api/ops-platform/topology/auto-bind-agents", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_auto_bind_agents():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    topo = _load_topology(_load_nodes())
+    node_ids = [str(n.get("id") or "") for n in (topo.get("nodes") or []) if isinstance(n, dict) and str(n.get("id") or "")]
+    reg = _load_agent_registry_v2()
+    bindings = _load_node_agent_bindings()
+    bound = 0
+    skipped = 0
+    detail: List[Dict[str, Any]] = []
+    for nid in node_ids:
+        matched = None
+        for aid, row in reg.items():
+            if not isinstance(row, dict):
+                continue
+            if project_id and str(row.get("project_id") or "") not in ("", project_id):
+                continue
+            if str(row.get("node_id") or "") != nid:
+                continue
+            if str(row.get("probe_status") or "").upper() != "PASS":
+                continue
+            if str(row.get("effective_status") or row.get("status") or "").upper() not in ("ONLINE", "READY", "RUNNING"):
+                continue
+            matched = str(aid or "")
+            break
+        if matched:
+            bindings[nid] = matched
+            bound += 1
+            detail.append({"node_id": nid, "agent_id": matched, "ok": True})
+        else:
+            skipped += 1
+            detail.append({"node_id": nid, "agent_id": "", "ok": False})
+    _save_node_agent_bindings(bindings)
+    return jsonify({"ok": True, "project_id": project_id, "bound_count": bound, "skipped_count": skipped, "bindings": bindings, "detail": detail})
 
 
 @bp.route("/api/ops-platform/change-governance/summary")
 @admin_required("gm_ops")
 def ops_platform_change_governance_summary():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     events = _load_json_config(OPS_EVENT_LOG_KEY, [])
     if not isinstance(events, list):
         events = []
@@ -2958,30 +4770,19 @@ def ops_platform_change_governance_summary():
 @admin_required("gm_ops")
 def ops_platform_action_catalog():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     rows = [
-        {"groupId": "observe", "group": "Observe", "value": "health_check", "label": "Health Check", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "ready_check", "label": "Ready Check", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "status", "label": "Runtime Snapshot", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "metrics_snapshot", "label": "Metrics Snapshot", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "log_tail", "label": "Log Tail", "risk": "low"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start", "label": "Start Node", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop", "label": "Stop Node", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "restart", "label": "Restart Node", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start_all", "label": "Start All", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop_all", "label": "Stop All", "risk": "high"},
-        {"groupId": "incident", "group": "Incident", "value": "drain_node", "label": "Drain Node", "risk": "high"},
-        {"groupId": "incident", "group": "Incident", "value": "isolate_node", "label": "Isolate Node", "risk": "high"},
-        {"groupId": "incident", "group": "Incident", "value": "recover_node", "label": "Recover Node", "risk": "high"},
-        {"groupId": "incident", "group": "Incident", "value": "kick_session", "label": "Kick Session", "risk": "high"},
-        {"groupId": "incident", "group": "Incident", "value": "retry_task", "label": "Retry Task", "risk": "medium"},
-        {"groupId": "operation", "group": "Operation", "value": "maintenance", "label": "Maintenance Notice", "risk": "medium"},
-        {"groupId": "operation", "group": "Operation", "value": "feature_toggle", "label": "Feature Toggle", "risk": "medium"},
-        {"groupId": "operation", "group": "Operation", "value": "whitelist", "label": "Whitelist", "risk": "medium"},
-        {"groupId": "operation", "group": "Operation", "value": "mute_chat", "label": "Mute Chat", "risk": "medium"},
-        {"groupId": "special", "group": "Special Job", "value": "smoke_test", "label": "Smoke Test", "risk": "medium"},
-        {"groupId": "special", "group": "Special Job", "value": "stress_test", "label": "Stress Test", "risk": "high"},
-        {"groupId": "special", "group": "Special Job", "value": "db_migration", "label": "DB Migration", "risk": "high"},
+        {"groupId": "observe", "group": "Observe", "value": "health_check", "label": "健康检查", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "ready_check", "label": "就绪检查", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "status", "label": "运行快照", "risk": "low"},
+        {"groupId": "observe", "group": "Observe", "value": "runtime_snapshot", "label": "运行态详情", "risk": "low"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start", "label": "启动节点", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop", "label": "停止节点", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "restart", "label": "重启节点", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start_all", "label": "启动全节点", "risk": "high"},
+        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop_all", "label": "停止全节点", "risk": "high"},
+        {"groupId": "special", "group": "Special Job", "value": "smoke_test", "label": "冒烟测试", "risk": "medium"},
+        {"groupId": "special", "group": "Special Job", "value": "stress_test", "label": "压力测试", "risk": "high"},
     ]
     return jsonify({"ok": True, "data": rows})
 
@@ -2990,7 +4791,7 @@ def ops_platform_action_catalog():
 @admin_required("gm_ops")
 def ops_platform_topology():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     all_nodes = _load_nodes()
     if project_id:
@@ -3005,7 +4806,7 @@ def ops_platform_topology():
 @admin_required("gm_ops")
 def ops_platform_topology_save():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     topo = payload.get("topology") if isinstance(payload.get("topology"), dict) else {}
     normalized = _load_topology(_load_nodes())
@@ -3071,7 +4872,7 @@ def ops_platform_topology_save():
 @admin_required("gm_ops")
 def ops_platform_topology_node_update():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node_id = str(payload.get("node_id") or "").strip()
     patch = payload.get("patch") if isinstance(payload.get("patch"), dict) else {}
@@ -3139,7 +4940,7 @@ def ops_platform_topology_node_update():
 @admin_required("gm_ops")
 def ops_platform_topology_edge_upsert():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     frm = str(payload.get("from") or "").strip()
     to = str(payload.get("to") or "").strip()
@@ -3218,7 +5019,7 @@ def ops_platform_topology_edge_upsert():
 @admin_required("gm_ops")
 def ops_platform_topology_edge_delete():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     edge_id = str(payload.get("edge_id") or "").strip()
     if not edge_id:
@@ -3389,7 +5190,7 @@ def ops_platform_topology_node_delete():
 @admin_required("gm_ops")
 def ops_platform_node_presets():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     presets = _load_node_presets()
     out = []
     for p in presets:
@@ -3577,7 +5378,7 @@ def ops_platform_apply_blueprint():
 @admin_required("gm_ops")
 def ops_platform_add_node_from_preset():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     preset_id = str(payload.get("preset_id") or "").strip()
     name = str(payload.get("name") or "").strip()
@@ -3762,7 +5563,7 @@ def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, 
 @admin_required("gm_ops")
 def ops_platform_node_daemon_action():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -3804,13 +5605,13 @@ def _build_node_onboarding() -> Dict[str, Any]:
         nid = str(n.get("id") or "")
         issues: List[str] = []
         if not str(n.get("server_id") or ""):
-            issues.append("缂哄皯 server_id")
+            issues.append("缺少 server_id")
         if not str(n.get("ops_base_url") or ""):
-            issues.append("缂哄皯 ops_base_url")
+            issues.append("缺少 ops_base_url")
         if not str(n.get("owner") or ""):
-            issues.append("缂哄皯 owner")
+            issues.append("缺少 owner")
         if not str(n.get("description") or ""):
-            issues.append("缂哄皯鑺傜偣璇存槑")
+            issues.append("缺少节点说明")
         if edges_by_node.get(nid, 0) == 0:
             issues.append("No topology edges connected")
         status = str(n.get("status") or "").upper()
@@ -3854,7 +5655,7 @@ def _build_node_onboarding() -> Dict[str, Any]:
 @admin_required("gm_ops")
 def ops_platform_node_onboarding():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     return jsonify(_build_node_onboarding())
 
 
@@ -3882,53 +5683,62 @@ def _run_flow_step(node: Dict[str, Any], step: Dict[str, Any]) -> Dict[str, Any]
 @admin_required("gm_ops")
 def ops_platform_flow_smoke():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     path_nodes = payload.get("path_nodes") if isinstance(payload.get("path_nodes"), list) else []
     if len(path_nodes) < 2:
         return jsonify({"ok": False, "error": "invalid_path", "message": "鑷冲皯閫夋嫨涓や釜鑺傜偣"}), 400
     result_steps: List[Dict[str, Any]] = []
     success = True
+    trace_ids: List[str] = []
+    job_ids: List[str] = []
     for nid in path_nodes:
         node = _resolve_node(node_id=str(nid or "").strip())
         if not node:
             result_steps.append({"node_id": nid, "ok": False, "message": "node not found"})
             success = False
             continue
-        smoke = _run_flow_step(node, {"action_type": "health_check", "target": str(node.get("server_id") or ""), "ticket_id": "OPS-SMOKE", "reason": "flow smoke"})
-        ok = bool(smoke.get("success"))
-        msg = str(smoke.get("message") or "")
-        degraded = False
-        if (not ok) and (
-            "Ops service unavailable" in msg
-            or "missing ops_base_url" in msg
-            or "Failed to establish a new connection" in msg
-        ):
-            ok = True
-            degraded = True
-            msg = "下游 Ops 服务不可达，冒烟步骤降级为平台模拟通过"
-            smoke = {
-                **(smoke if isinstance(smoke, dict) else {}),
-                "success": True,
-                "status": 200,
-                "degraded": True,
-                "result_code": "OPS_DOWNSTREAM_UNAVAILABLE",
-                "result_message": msg,
-            }
-        result_steps.append({"node_id": node.get("id"), "ok": ok, "degraded": degraded, "message": msg, "result": smoke})
+        req = {
+            "node_id": str(node.get("id") or ""),
+            "action_type": "smoke_test",
+            "target": str(node.get("server_id") or ""),
+            "ticket_id": "OPS-SMOKE",
+            "reason": "flow smoke",
+            "run_mode": "agent",
+            "via_agent": True,
+            "payload": {"flow_smoke": True, "path_nodes": path_nodes},
+        }
+        validation = _validate_ops_request(req, node)
+        if not validation.get("ok"):
+            msg = "validation failed"
+            if validation.get("unsupported"):
+                msg = "smoke_test unsupported by agent"
+            result_steps.append({"node_id": node.get("id"), "ok": False, "message": msg, "validation": validation})
+            success = False
+            continue
+        executed = _execute_validated(req, node, validation)
+        ok = bool(executed.get("ok"))
+        msg = str(executed.get("message") or "")
+        trace_id = str(executed.get("trace_id") or "")
+        job_id = str(((executed.get("data") or {}) if isinstance(executed.get("data"), dict) else {}).get("job_id") or "")
+        if trace_id:
+            trace_ids.append(trace_id)
+        if job_id:
+            job_ids.append(job_id)
+        result_steps.append({"node_id": node.get("id"), "ok": ok, "message": msg, "trace_id": trace_id, "job_id": job_id, "result": executed})
         if not ok:
             success = False
     flow_id = "flow-" + uuid.uuid4().hex[:12]
     _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if success else "critical"), "status": ("resolved" if success else "open"), "title": "娴佺▼鍐掔儫娴嬭瘯", "message": f"flow={flow_id}; nodes={len(path_nodes)}; success={success}"})
     _append_bounded(OPS_FLOW_EXEC_KEY, {"flow_id": flow_id, "time": _now_iso(), "type": "smoke", "ok": success, "steps": result_steps}, limit=120, description="娴佺▼鎵ц璁板綍")
-    return jsonify({"ok": success, "flow_id": flow_id, "steps": result_steps}), (200 if success else 502)
+    return jsonify({"ok": success, "flow_id": flow_id, "trace_ids": trace_ids, "job_ids": job_ids, "steps": result_steps}), (200 if success else 502)
 
 
 @bp.route("/api/ops-platform/stress-test", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_stress_test():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -3936,44 +5746,37 @@ def ops_platform_stress_test():
     qps = int(payload.get("qps") or 300)
     duration_sec = int(payload.get("duration_sec") or 180)
     reason = str(payload.get("reason") or "stress test").strip()
-    result = _ops_gateway.execute_platform_action(
-        node,
-        action_type="stress_test",
-        target=str(node.get("server_id") or ""),
-        payload={"qps": qps, "duration_sec": duration_sec},
-        actor=str(session.get("user") or "intranet-ops"),
-        reason=reason,
-        ticket_id="OPS-STRESS",
-        dry_run=False,
-    )
-    ok = bool(result.get("success"))
+    req = {
+        "node_id": str(node.get("id") or ""),
+        "action_type": "stress_test",
+        "target": str(node.get("server_id") or ""),
+        "ticket_id": "OPS-STRESS",
+        "reason": reason,
+        "run_mode": "agent",
+        "via_agent": True,
+        "payload": {"qps": qps, "duration_sec": duration_sec},
+    }
+    validation = _validate_ops_request(req, node)
+    if not validation.get("ok"):
+        return jsonify({
+            "ok": False,
+            "error": "validation_failed",
+            "error_code": validation.get("error_code") or "",
+            "message": "压力测试请求未通过校验",
+            "validation": validation,
+        }), 400
+    result = _execute_validated(req, node, validation)
+    ok = bool(result.get("ok"))
     msg = str(result.get("message") or "")
-    degraded = False
-    if (not ok) and (
-        "Ops service unavailable" in msg
-        or "missing ops_base_url" in msg
-        or "Failed to establish a new connection" in msg
-    ):
-        ok = True
-        degraded = True
-        msg = "下游 Ops 服务不可达，压力测试降级为平台模拟提交"
-        result = {
-            **(result if isinstance(result, dict) else {}),
-            "success": True,
-            "status": 200,
-            "degraded": True,
-            "result_code": "OPS_DOWNSTREAM_UNAVAILABLE",
-            "result_message": msg,
-        }
-    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "warning"), "status": ("resolved" if ok else "open"), "title": "鍘嬪姏娴嬭瘯瑙﹀彂", "message": f"node={node.get('id')}; qps={qps}; duration={duration_sec}s; ok={ok}; degraded={degraded}"})
-    return jsonify({"ok": ok, "message": msg, "degraded": degraded, "result": result}), (200 if ok else 502)
+    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "warning"), "status": ("resolved" if ok else "open"), "title": "鍘嬪姏娴嬭瘯瑙﹀彂", "message": f"node={node.get('id')}; qps={qps}; duration={duration_sec}s; ok={ok}"})
+    return jsonify({"ok": ok, "message": msg, "trace_id": result.get("trace_id"), "job_id": ((result.get("data") or {}) if isinstance(result.get("data"), dict) else {}).get("job_id"), "result": result}), (200 if ok else 502)
 
 
 @bp.route("/api/ops-platform/db-migration", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_db_migration():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -3996,9 +5799,27 @@ def ops_platform_db_migration():
         dry_run=False,
     )
     if native.get("success"):
+        trace_id = "mig-" + uuid.uuid4().hex[:16]
+        _append_trace({
+            "trace_id": trace_id,
+            "time": _now_iso(),
+            "node": str(node.get("id") or ""),
+            "node_name": str(node.get("name") or ""),
+            "action": "db_migration",
+            "target": str(node.get("server_id") or ""),
+            "risk": "high",
+            "ticket_id": "OPS-DB-MIGRATION",
+            "reason": reason,
+            "approver": str(session.get("user") or "intranet-ops"),
+            "approved": True,
+            "dry_run": False,
+            "ok": True,
+            "message": str(native.get("message") or "Migration accepted"),
+            "raw": native,
+        })
         _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": "info", "status": "resolved", "title": "DB Migration", "message": f"node={node.get('id')}; direction={direction}; version={version}; mode=native"})
         log_audit("ops_platform_db_migration", f"node={node.get('id')}; direction={direction}; version={version}; mode=native")
-        return jsonify({"ok": True, "message": native.get("message") or "Migration accepted", "result": native})
+        return jsonify({"ok": True, "message": native.get("message") or "Migration accepted", "trace_id": trace_id, "job_id": None, "result": native})
 
     if not cmd:
         return jsonify({"ok": False, "error": "native_failed_no_command", "message": f"鍘熺敓杩佺Щ鑳藉姏澶辫触涓旀湭鎻愪緵鏈湴鍛戒护: {native.get('message') or 'unknown'}"}), 502
@@ -4006,16 +5827,34 @@ def ops_platform_db_migration():
     code = subprocess.call(cmd, shell=True)
     ok = code == 0
     _set_daemon_state(str(node.get("id") or ""), {"last_action": f"db_migration_{direction}", "last_error": ("" if ok else f"exit_code={code}")})
+    trace_id = "mig-" + uuid.uuid4().hex[:16]
+    _append_trace({
+        "trace_id": trace_id,
+        "time": _now_iso(),
+        "node": str(node.get("id") or ""),
+        "node_name": str(node.get("name") or ""),
+        "action": "db_migration",
+        "target": str(node.get("server_id") or ""),
+        "risk": "high",
+        "ticket_id": "OPS-DB-MIGRATION",
+        "reason": reason,
+        "approver": str(session.get("user") or "intranet-ops"),
+        "approved": True,
+        "dry_run": False,
+        "ok": ok,
+        "message": ("Migration success (fallback)" if ok else "Migration failed (fallback)"),
+        "raw": {"exit_code": code, "native_error": native.get("message"), "mode": "fallback"},
+    })
     _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "critical"), "status": ("resolved" if ok else "open"), "title": "DB Migration", "message": f"node={node.get('id')}; direction={direction}; version={version}; mode=fallback; code={code}"})
     log_audit("ops_platform_db_migration", f"node={node.get('id')}; direction={direction}; version={version}; mode=fallback; code={code}")
-    return jsonify({"ok": ok, "message": ("Migration success (fallback)" if ok else "Migration failed (fallback)"), "exit_code": code, "native_error": native.get("message")}), (200 if ok else 502)
+    return jsonify({"ok": ok, "message": ("Migration success (fallback)" if ok else "Migration failed (fallback)"), "trace_id": trace_id, "job_id": None, "exit_code": code, "native_error": native.get("message")}), (200 if ok else 502)
 
 
 @bp.route("/api/ops-platform/actions/validate", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_actions_validate():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -4023,10 +5862,19 @@ def ops_platform_actions_validate():
 
     validation = _validate_ops_request(payload, node)
     if not validation.get("ok"):
+        if validation.get("unsupported"):
+            return jsonify({
+                "ok": False,
+                "error": "unsupported_action",
+                "error_code": validation.get("error_code") or "OPS_ACTION_UNSUPPORTED",
+                "message": "该动作未接入 game-server Agent 能力，请更换动作。",
+                "action_type": validation.get("action_type"),
+                "supported_actions": validation.get("agent_supported_actions") or [],
+            }), 400
         return jsonify({
             "ok": False,
             "error": "validation_failed",
-            "message": "缂哄皯蹇呭～瀛楁: " + ", ".join(validation.get("missing") or []),
+            "message": "缺少必填字段: " + ", ".join(validation.get("missing") or []),
             "missing": validation.get("missing") or [],
             "risk": validation.get("risk"),
             "require_approval": validation.get("require_approval"),
@@ -4049,7 +5897,7 @@ def ops_platform_actions_validate():
 @admin_required("gm_ops")
 def ops_platform_actions_approval():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -4083,7 +5931,7 @@ def ops_platform_actions_approval():
 @admin_required("gm_ops")
 def ops_platform_actions_execute():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     node, err = _node_or_400(payload)
     if err:
@@ -4091,10 +5939,19 @@ def ops_platform_actions_execute():
 
     validation = _validate_ops_request(payload, node)
     if not validation.get("ok"):
+        if validation.get("unsupported"):
+            return jsonify({
+                "ok": False,
+                "error": "unsupported_action",
+                "error_code": validation.get("error_code") or "OPS_ACTION_UNSUPPORTED",
+                "message": "该动作未接入 game-server Agent 能力，请更换动作。",
+                "action_type": validation.get("action_type"),
+                "supported_actions": validation.get("agent_supported_actions") or [],
+            }), 400
         return jsonify({
             "ok": False,
             "error": "validation_failed",
-            "message": "缂哄皯蹇呭～瀛楁: " + ", ".join(validation.get("missing") or []),
+            "message": "缺少必填字段: " + ", ".join(validation.get("missing") or []),
             "missing": validation.get("missing") or [],
             "risk": validation.get("risk"),
             "require_approval": validation.get("require_approval"),
@@ -4118,7 +5975,7 @@ def ops_platform_actions_execute():
 @admin_required("gm_ops")
 def ops_platform_action_detail(trace_id: str):
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     item = _find_trace(trace_id)
     if not item:
         return jsonify({"ok": False, "error": "trace_not_found"}), 404
@@ -4129,13 +5986,14 @@ def ops_platform_action_detail(trace_id: str):
 @admin_required("gm_ops")
 def ops_platform_runtime_flow_control():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     op = str(payload.get("op") or "").strip().lower()
     if op not in ("start", "stop"):
         return jsonify({"ok": False, "error": "invalid_op", "message": "op must be start or stop"}), 400
     project_id = str(payload.get("project_id") or "").strip()
     actor = str(session.get("user") or "admin")
+    policy = _load_agent_policy()
 
     all_nodes = _load_nodes()
     all_nodes_map = {str(n.get("id") or ""): n for n in all_nodes if isinstance(n, dict) and n.get("id")}
@@ -4172,6 +6030,7 @@ def ops_platform_runtime_flow_control():
         bound_agent = str(bindings.get(nid) or "")
         bound_desc = reg_v2.get(bound_agent) if bound_agent else None
         online = bool(bound_desc and str(bound_desc.get("status") or "").upper() in ("ONLINE", "READY", "RUNNING"))
+        probe_ok = bool(bound_desc and str(bound_desc.get("probe_status") or "").upper() == "PASS")
         fresh = False
         hb_age = -1.0
         if bound_desc and bound_desc.get("last_seen"):
@@ -4182,7 +6041,7 @@ def ops_platform_runtime_flow_control():
             except Exception:
                 fresh = False
                 hb_age = -1.0
-        online = online and fresh
+        online = online and fresh and probe_ok
         use_agent_mode = online
         desired_role = str(node.get("role") or "")
         current_runtime = bound_desc.get("runtime") if isinstance(bound_desc, dict) and isinstance(bound_desc.get("runtime"), dict) else {}
@@ -4207,6 +6066,7 @@ def ops_platform_runtime_flow_control():
                 "desired_server_id": str(node.get("server_id") or ""),
                 "switch_required": bool(op == "start" and use_agent_mode and desired_role and current_role and current_role != desired_role),
                 "current_role": current_role,
+                "launch_visible_console": bool(op == "start"),
             },
         }
         validation = _validate_ops_request(req, node)
@@ -4253,6 +6113,8 @@ def ops_platform_runtime_flow_control():
                 reason = "agent_not_registered"
             elif bound_desc and str(bound_desc.get("status") or "").upper() not in ("ONLINE", "READY", "RUNNING"):
                 reason = "agent_status_" + str(bound_desc.get("status") or "UNKNOWN")
+            elif bound_desc and str(bound_desc.get("probe_status") or "").upper() != "PASS":
+                reason = "agent_probe_not_pass"
             elif bound_desc and not fresh:
                 reason = "agent_heartbeat_stale"
             detail = f"未命中在线Agent，已走直连执行; reason={reason}; bound_agent={bound_agent or '-'}; hb_age_sec={(round(hb_age,1) if hb_age >= 0 else '-')}; fresh_sec={fresh_sec}"
@@ -4276,7 +6138,7 @@ def ops_platform_runtime_flow_control():
 @admin_required("gm_ops")
 def ops_platform_runtime_flow_status():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     run_id = str(request.args.get("run_id") or "").strip()
     run_obj = _find_runtime_run(run_id)
     if not run_obj:
@@ -4406,8 +6268,14 @@ def ops_platform_agent_register():
             "last_seen": now,
             "display_name": str(payload.get("display_name") or agent_id),
             "port": int(payload.get("port") or 0),
+            "remote_game_server_port": int(payload.get("remote_game_server_port") or payload.get("port") or 0),
             "desc": str(payload.get("desc") or ""),
             "run_state": str(payload.get("run_state") or "RUNNING"),
+            "network": payload.get("network") if isinstance(payload.get("network"), dict) else {"endpoints": []},
+            "region": str(payload.get("region") or ""),
+            "zone": str(payload.get("zone") or ""),
+            "rack": str(payload.get("rack") or ""),
+            "host_ip": str(payload.get("host_ip") or payload.get("host_name") or payload.get("hostname") or ""),
             "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
             "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {},
             "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {},
@@ -4471,9 +6339,17 @@ def ops_platform_agent_heartbeat():
             "last_seen": now,
             "display_name": str(payload.get("display_name") or prev.get("display_name") or agent_id),
             "port": int(payload.get("port") or prev.get("port") or 0),
+            "remote_game_server_port": int(payload.get("remote_game_server_port") or prev.get("remote_game_server_port") or payload.get("port") or prev.get("port") or 0),
             "desc": str(payload.get("desc") or prev.get("desc") or ""),
             "run_state": str(payload.get("run_state") or prev.get("run_state") or ""),
+            "network": payload.get("network") if isinstance(payload.get("network"), dict) else (prev.get("network") if isinstance(prev.get("network"), dict) else {"endpoints": []}),
+            "region": str(payload.get("region") or prev.get("region") or ""),
+            "zone": str(payload.get("zone") or prev.get("zone") or ""),
+            "rack": str(payload.get("rack") or prev.get("rack") or ""),
+            "host_ip": str(payload.get("host_ip") or payload.get("host_name") or payload.get("hostname") or prev.get("host_ip") or prev.get("host_name") or ""),
             "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else prev.get("capabilities") or [],
+            "service_id": str(payload.get("service_id") or prev.get("service_id") or ""),
+            "services": payload.get("services") if isinstance(payload.get("services"), list) else (prev.get("services") if isinstance(prev.get("services"), list) else []),
             "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else (prev.get("metrics") if isinstance(prev.get("metrics"), dict) else {}),
             "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else (prev.get("runtime") if isinstance(prev.get("runtime"), dict) else {}),
             "transport": {
@@ -4764,7 +6640,7 @@ def ops_platform_agent_upgrade_report():
 @admin_required("gm_ops")
 def ops_platform_summary():
     if not _allow_ops_view():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鏌ョ湅鏉冮檺 (ops.platform.view)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
     overview = _build_overview(project_id=project_id)
     nodes = overview.get("nodes") if isinstance(overview.get("nodes"), list) else []
@@ -4802,7 +6678,7 @@ def ops_platform_summary():
 @admin_required("gm_ops")
 def ops_platform_action():
     if not _allow_ops_execute():
-        return jsonify({"ok": False, "error": "forbidden", "message": "缂哄皯杩愮淮鎵ц鏉冮檺 (ops.platform.execute)"}), 403
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     action = str(payload.get("action") or "").strip().lower()
     form_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
@@ -4839,7 +6715,7 @@ def ops_platform_action():
 
     validation = _validate_ops_request(req, node)
     if not validation.get("ok"):
-        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing"), "message": "缂哄皯蹇呭～瀛楁"}), 400
+        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing"), "message": "缺少必填字段"}), 400
     if validation.get("require_approval") and (not validation.get("dry_run")) and (not validation.get("approved")):
         return jsonify({"ok": False, "error": "approval required", "message": "High risk action requires approval"}), 412
 
@@ -4900,4 +6776,5 @@ def ops_platform_change_governance_page():
     project_id = str(request.args.get("project_id") or "").strip()
     content = _render_local_template("ops_change_governance_page.html", project_id=project_id)
     return _render_page(content, "发布与变更治理")
+
 

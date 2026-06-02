@@ -38,6 +38,9 @@ backups/
 *.temp
 
 # Database local runtime artifacts
+data/apk_site.db
+data/apk_site.db-shm
+data/apk_site.db-wal
 *.db-wal
 *.db-shm
 

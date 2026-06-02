@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Ops platform gateway: native Ops API integration for intranet."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ class OpsPlatformGateway:
     """Unified native Ops API gateway with header injection and error normalization."""
 
     def __init__(self) -> None:
-        self._timeout = int(os.getenv("OPS_PLATFORM_TIMEOUT_SECONDS", "10") or "10")
+        self._timeout = int(os.getenv("OPS_PLATFORM_TIMEOUT_SECONDS", "2") or "2")
 
     @staticmethod
     def _normalize_base(base_url: str) -> str:
