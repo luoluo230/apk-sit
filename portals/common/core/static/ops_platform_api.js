@@ -129,6 +129,10 @@
   api.deleteNode = (nodeId) => api.postJSON('/api/ops-platform/topology/node/delete', {node_id:nodeId});
   api.upsertEdge = (payload) => api.postJSON('/api/ops-platform/topology/edge/upsert', payload);
   api.deleteEdge = (edgeId) => api.postJSON('/api/ops-platform/topology/edge/delete', {edge_id:edgeId});
+  api.structuredAddExistingTarget = (payload) => api.postJSON('/api/ops-platform/topology/structured/add-existing-target', payload || {});
+  api.structuredAddNewTarget = (payload) => api.postJSON('/api/ops-platform/topology/structured/add-new-target', payload || {});
+  api.structuredDeleteNode = (payload) => api.postJSON('/api/ops-platform/topology/structured/delete-node', payload || {});
+  api.structuredDeleteEdge = (payload) => api.postJSON('/api/ops-platform/topology/structured/delete-edge', payload || {});
   api.addNodeFromPreset = (payload) => api.postJSON('/api/ops-platform/node/add-from-preset', payload);
   api.queryTrace = (traceId) => api.getJSON('/api/ops-platform/actions/' + encodeURIComponent(traceId));
   api.agentPolicy = () => api.getJSON('/api/ops-platform/agent/policy');

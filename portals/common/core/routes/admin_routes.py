@@ -184,6 +184,12 @@ def _approval_project_id(approval):
 
 def _admin_layout(content, title, back_href='/admin'):
     username = session.get("user") or ""
+    is_ops_app = 'class="ops-app"' in (content or "")
+    content_wrap_class = (
+        "w-full px-0 py-0"
+        if is_ops_app
+        else "max-w-6xl mx-auto px-4 py-6 md:py-8"
+    )
     return f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -240,7 +246,7 @@ def _admin_layout(content, title, back_href='/admin'):
             </div>
         </header>
         <main class="flex-1">
-            <div class="max-w-6xl mx-auto px-4 py-6 md:py-8">
+            <div class="{content_wrap_class}">
                 {content}
             </div>
         </main>

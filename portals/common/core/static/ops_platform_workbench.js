@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const ROLE_OPTIONS = ["gateway", "business", "pressure", "database", "cache", "mq", "search", "scheduler", "admin", "edge", "analytics"];
   const STATUS_OPTIONS = ["normal", "observe", "degraded", "error", "offline"];
   const STATUS_LABELS = { normal: "正常", observe: "观察", degraded: "退化", error: "异常", offline: "离线" };
@@ -16,6 +16,11 @@
     analytics: { border: "#06b6d4", bg1: "#ecfeff", bg2: "#cffafe" },
   };
   const KINDS = ["entry", "standard", "terminal"];
+  function roleColor(role) {
+    const key = String(role || "").toLowerCase();
+    const p = ROLE_COLOR[key] || ROLE_COLOR.business || { border: "#3b82f6" };
+    return p.border || "#3b82f6";
+  }
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (s) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[s]));
 
@@ -34,8 +39,7 @@
     drag: null,
     pan: null,
     spaceDown: false,
-    quickAddCtx: null,
-    hoverPortKey: "",
+    structuredAddCtx: null,
     mode: "edit",
     selectedPort: null,
     runtimeRunId: "",
@@ -93,6 +97,20 @@
 
   function view() { return ((state.topology.meta || {}).viewport || { x: 0, y: 0, zoom: 1 }); }
   function getNode(id) { return (state.topology.nodes || []).find((n) => n.id === id) || null; }
+  function runtimeName(id) {
+    const n = getNode(id);
+    return String((n && (n.name || n.node_name || n.title || n.id)) || id || "-");
+  }
+  function rawNodeMeta(id) {
+    const key = String(id || "");
+    const raw = (state.nodesRaw || []).find((n) => String((n || {}).id || "") === key) || {};
+    const topo = getNode(key) || {};
+    return Object.assign({}, raw, topo, {
+      role: String(topo.role || raw.role || ""),
+      allowed_upstream_roles: Array.isArray(raw.allowed_upstream_roles) ? raw.allowed_upstream_roles : [],
+      allowed_downstream_roles: Array.isArray(raw.allowed_downstream_roles) ? raw.allowed_downstream_roles : [],
+    });
+  }
   function runtimeById() { const m = {}; (state.overviewNodes || []).forEach((n) => { m[n.id] = n; }); return m; }
   function boundAgentForNode(nodeId) {
     const aid = String((state.nodeBindings || {})[String(nodeId || "")] || "");
@@ -130,7 +148,7 @@
   function agentHealthLabel(ag) {
     if (!ag) return { cls: "warn", text: "Agent未绑定" };
     const st = String(ag.status || "").toUpperCase();
-    const age = deviceHeartbeatAgeSec(ag.device_id) ?? agentHeartbeatAgeSec(ag);
+    const age = agentHeartbeatAgeSec(ag);
     const freshSec = 300;
     if (!age && age !== 0) return { cls: "warn", text: "心跳未知" };
     if (st === "ONLINE" && age <= freshSec) return { cls: "ok", text: "设备在线 · " + age + "s" };
@@ -353,8 +371,7 @@
     if (state.agentsTickTimer) clearInterval(state.agentsTickTimer);
     state.agentsTickTimer = setInterval(async () => {
       await refreshAgentsIfNeeded(false);
-      drawEdges();
-      drawNodes();
+      redrawGraph();
     }, 2000);
   }
 
@@ -442,8 +459,7 @@
       state.flowViz.edges = new Set(f.edges || []);
       state.flowViz.statusByNode = Object.assign({}, f.statusByNode || {});
       state.flowViz.metricsByEdge = Object.assign({}, f.metricsByEdge || {});
-      drawEdges();
-      drawNodes();
+      redrawGraph();
       i += 1;
       if (i >= frames.length) {
         clearInterval(state.flowViz.replayTimer);
@@ -495,8 +511,7 @@
     syncFlowViz("run", activeNodes, statusByNode);
     state.flowViz.metricsByEdge = metricsByEdge;
     pushFlowSnapshot();
-    drawEdges();
-    drawNodes();
+    redrawGraph();
     const total = Number(d.total || 0);
     const done = Number(d.done || 0);
     if (total > 0) {
@@ -522,8 +537,7 @@
         replayFailureFlow();
         setTimeout(() => {
           clearFlowViz(true, "pollRuntimeRun-failed-finalize");
-          drawEdges();
-          drawNodes();
+          redrawGraph();
         }, 2200);
         return;
       }
@@ -538,8 +552,7 @@
           if (steadyNodes.includes(e.from) && steadyNodes.includes(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
         });
         state.flowViz.metricsByEdge = steadyMetrics;
-        drawEdges();
-        drawNodes();
+        redrawGraph();
         dbg("runtime-steady-on", { runId, activeNodes: steadyNodes.length });
         logMode("启动成功，已进入持续运行态可视化（直到手动停止）");
         saveRuntimeState();
@@ -547,8 +560,7 @@
       }
       setTimeout(() => {
         clearFlowViz(true, "pollRuntimeRun-stop-success");
-        drawEdges();
-        drawNodes();
+        redrawGraph();
       }, 1200);
       state.runtimeSteady = false;
       saveRuntimeState();
@@ -614,60 +626,199 @@
   }
 
   function portAnchor(node, side, portId) {
-    const dot = document.querySelector('.port-dot[data-node-id="' + node.id + '"][data-side="' + side + '"][data-port-id="' + portId + '"]');
-    if (dot) {
-      const dr = dot.getBoundingClientRect();
-      const p = world(dr.left + dr.width / 2, dr.top + dr.height / 2);
-      return { x: p.x, y: p.y };
-    }
     const ports = (((node.ui || {}).ports || {})[side] || []);
     const idx = Math.max(0, ports.findIndex((p) => String(p.id) === String(portId)));
-    const y = node.ui.y + 20 + idx * 20;
+    const rowGap = 24;
+    const topPad = 10;
+    const dotRadius = 6;
+    const y = Number(node.ui.y || 0) + topPad + dotRadius + idx * rowGap;
     return side === "out" ? { x: node.ui.x + node.ui.w, y } : { x: node.ui.x, y };
   }
 
+  function cssEsc(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(value || ""));
+    return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  function structuredMode() {
+    return true;
+  }
+
+  function graphOut() {
+    const out = {};
+    (state.topology.nodes || []).forEach((n) => {
+      if (n && n.id) out[n.id] = out[n.id] || [];
+    });
+    (state.topology.edges || []).forEach((e) => {
+      if (!e || !e.from || !e.to) return;
+      if (!out[e.from]) out[e.from] = [];
+      if (!out[e.from].includes(e.to)) out[e.from].push(e.to);
+    });
+    return out;
+  }
+
+  function firstEntryNodeId() {
+    const nodes = state.topology.nodes || [];
+    const entry = nodes.find((n) => String(n.kind || "").toLowerCase() === "entry");
+    if (entry) return entry.id;
+    const gateway = nodes.find((n) => ["gateway", "edge"].includes(String(n.role || "").toLowerCase()));
+    return gateway ? gateway.id : ((nodes[0] || {}).id || "");
+  }
+
   function linkOffset(edge) {
-    const siblings = (state.topology.edges || []).filter((e) => e.from === edge.from && e.to === edge.to).sort((a, b) => (a.id > b.id ? 1 : -1));
-    const idx = Math.max(0, siblings.findIndex((e) => e.id === edge.id));
-    return (idx - (siblings.length - 1) / 2) * 16;
+    const siblings = (state.topology.edges || [])
+      .filter((e) => String(e.from) === String(edge.from) && String(e.to) === String(edge.to))
+      .sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+    const idx = Math.max(0, siblings.findIndex((e) => String(e.id) === String(edge.id)));
+    return (idx - (siblings.length - 1) / 2) * 18;
+  }
+
+  function layoutStructuredGraph() {
+    if (!state.topology || !Array.isArray(state.topology.nodes)) return;
+    if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+    state.topology.meta.layout_mode = "structured";
+    const nodes = state.topology.nodes || [];
+    const byId = {};
+    nodes.forEach((n) => { if (n && n.id) byId[n.id] = n; });
+    const out = graphOut();
+    const entryId = firstEntryNodeId();
+    const rank = {};
+    if (entryId) {
+      rank[entryId] = 0;
+      const queue = [entryId];
+      while (queue.length) {
+        const cur = queue.shift();
+        (out[cur] || []).forEach((next) => {
+          const nextRank = (rank[cur] || 0) + 1;
+          if (rank[next] == null || nextRank > rank[next]) {
+            rank[next] = nextRank;
+            queue.push(next);
+          }
+        });
+      }
+    }
+    let maxRank = Object.keys(rank).reduce((m, k) => Math.max(m, rank[k] || 0), 0);
+    nodes.forEach((n) => {
+      if (rank[n.id] == null) {
+        maxRank += 1;
+        rank[n.id] = maxRank;
+      }
+    });
+    const ranks = {};
+    nodes.forEach((n) => {
+      const r = rank[n.id] || 0;
+      if (!ranks[r]) ranks[r] = [];
+      ranks[r].push(n);
+    });
+    const roleOrder = ["gateway", "edge", "admin", "business", "scheduler", "pressure", "mq", "cache", "database", "search", "analytics"];
+    const roleIndex = (role) => {
+      const idx = roleOrder.indexOf(String(role || "").toLowerCase());
+      return idx < 0 ? 99 : idx;
+    };
+    const startX = 120;
+    const startY = 118;
+    const rankGap = 340;
+    const rowGap = 150;
+    Object.keys(ranks).map(Number).sort((a, b) => a - b).forEach((r) => {
+      const rows = ranks[r].sort((a, b) => {
+        const rr = roleIndex(a.role) - roleIndex(b.role);
+        if (rr !== 0) return rr;
+        return String(a.id).localeCompare(String(b.id));
+      });
+      const totalH = Math.max(0, (rows.length - 1) * rowGap);
+      const y0 = startY + Math.max(0, (360 - totalH) / 2);
+      rows.forEach((n, i) => {
+        if (!n.ui || typeof n.ui !== "object") n.ui = {};
+        n.ui.w = Number(n.ui.w || 240);
+        n.ui.h = Number(n.ui.h || 104);
+        n.ui.x = startX + r * rankGap;
+        n.ui.y = y0 + i * rowGap;
+        n.ui.rank = r;
+        n.ui.order = i;
+      });
+    });
+  }
+
+  function structuredAnchor(node, side) {
+    if (!node || !node.ui) return { x: 0, y: 0 };
+    const x = Number(node.ui.x || 0) + (side === "out" ? Number(node.ui.w || 240) : 0);
+    const y = Number(node.ui.y || 0) + Number(node.ui.h || 104) / 2;
+    return { x, y };
   }
 
   function edgePath(edge) {
     const aNode = getNode(edge.from);
     const bNode = getNode(edge.to);
     if (!aNode || !bNode) return "";
-    const a = portAnchor(aNode, "out", edge.from_port);
-    const b = portAnchor(bNode, "in", edge.to_port);
-    const bend = Math.max(72, Math.min(220, Math.abs(b.x - a.x) * 0.35));
+    const a = structuredMode() ? structuredAnchor(aNode, "out") : portAnchor(aNode, "out", edge.from_port);
+    const b = structuredMode() ? structuredAnchor(bNode, "in") : portAnchor(bNode, "in", edge.to_port);
     const offset = linkOffset(edge);
-    return "M " + a.x + " " + a.y + " C " + (a.x + bend) + " " + (a.y + offset) + ", " + (b.x - bend) + " " + (b.y + offset) + ", " + b.x + " " + b.y;
+    const minGap = 96;
+    const midX = Math.round((a.x + b.x) / 2);
+    const turnX = b.x > a.x ? Math.max(a.x + minGap, midX) : a.x + minGap;
+    const ay = Math.round(a.y + offset);
+    const by = Math.round(b.y + offset);
+    if (structuredMode()) {
+      edge.ui = Object.assign({}, edge.ui || {}, {
+        route: [
+          { x: Math.round(a.x), y: Math.round(a.y) },
+          { x: turnX, y: Math.round(a.y) },
+          { x: turnX, y: Math.round(b.y) },
+          { x: Math.round(b.x), y: Math.round(b.y) },
+        ],
+      });
+      return "M " + Math.round(a.x) + " " + Math.round(a.y)
+        + " H " + turnX
+        + " V " + Math.round(b.y)
+        + " H " + Math.round(b.x);
+    }
+    return "M " + Math.round(a.x) + " " + ay
+      + " H " + turnX
+      + " V " + by
+      + " H " + Math.round(b.x);
   }
 
   function edgeMid(edge) {
     const aNode = getNode(edge.from);
     const bNode = getNode(edge.to);
     if (!aNode || !bNode) return null;
-    const a = portAnchor(aNode, "out", edge.from_port);
-    const b = portAnchor(bNode, "in", edge.to_port);
-    const bend = Math.max(72, Math.min(220, Math.abs(b.x - a.x) * 0.35));
+    const a = structuredMode() ? structuredAnchor(aNode, "out") : portAnchor(aNode, "out", edge.from_port);
+    const b = structuredMode() ? structuredAnchor(bNode, "in") : portAnchor(bNode, "in", edge.to_port);
     const offset = linkOffset(edge);
-    const p0 = { x: a.x, y: a.y };
-    const p1 = { x: a.x + bend, y: a.y + offset };
-    const p2 = { x: b.x - bend, y: b.y + offset };
-    const p3 = { x: b.x, y: b.y };
-    const t = 0.5;
-    const mt = 1 - t;
-    const x = (mt ** 3) * p0.x + 3 * (mt ** 2) * t * p1.x + 3 * mt * (t ** 2) * p2.x + (t ** 3) * p3.x;
-    const y = (mt ** 3) * p0.y + 3 * (mt ** 2) * t * p1.y + 3 * mt * (t ** 2) * p2.y + (t ** 3) * p3.y;
-    return { x, y };
+    const minGap = 96;
+    const midX = Math.round((a.x + b.x) / 2);
+    const turnX = b.x > a.x ? Math.max(a.x + minGap, midX) : a.x + minGap;
+    return { x: turnX, y: Math.round((a.y + b.y) / 2 + offset) };
   }
 
   function normalizeTopology() {
-    const ids = (state.nodesRaw || []).map((n) => String(n.id || "")).filter(Boolean);
+    const rawById = {};
+    (state.nodesRaw || []).forEach((n) => {
+      const id = String((n && n.id) || "");
+      if (id) rawById[id] = n || {};
+    });
+    const ids = [];
+    const seen = new Set();
+    (state.topology.nodes || []).forEach((n) => {
+      const id = String((n && n.id) || "");
+      if (id && !seen.has(id)) {
+        ids.push(id);
+        seen.add(id);
+      }
+    });
+    if (!ids.length) {
+      (state.nodesRaw || []).forEach((n) => {
+        const id = String((n && n.id) || "");
+        if (id && !seen.has(id)) {
+          ids.push(id);
+          seen.add(id);
+        }
+      });
+    }
     const old = {};
-    (state.topology.nodes || []).forEach((n) => { if (n && n.id) old[n.id] = n; });
+    (state.topology.nodes || []).forEach((n) => { if (n && n.id) old[String(n.id)] = n; });
     state.topology.nodes = ids.map((id, i) => {
-      const raw = (state.nodesRaw || []).find((x) => String(x.id || "") === id) || {};
+      const raw = rawById[id] || {};
       const prev = old[id] || {};
       const role = String(prev.role || raw.role || "business");
       const kind = inferKind(role, prev.kind || raw.kind);
@@ -702,6 +853,7 @@
         to_port: String(e.to_port || "in-1"),
         type: String(e.type || "depends_on"),
         note: String(e.note || ""),
+        ui: (e.ui && typeof e.ui === "object") ? e.ui : {},
       }));
   }
 
@@ -711,25 +863,102 @@
     $("zoomLabel").textContent = Math.round(v.zoom * 100) + "%";
   }
 
+  function setTopologyHint(text, type) {
+    const el = $("topologyLoadHint");
+    if (!el) return;
+    el.textContent = String(text || "");
+    el.className = "topology-load-hint" + (type ? (" " + type) : "");
+    el.style.display = text ? "" : "none";
+  }
+
+  function bindLeftTabs() {
+    const tabs = Array.from(document.querySelectorAll("[data-topology-left-tab]"));
+    const panels = Array.from(document.querySelectorAll("[data-left-panel]"));
+    if (!tabs.length || !panels.length) return;
+    const activate = (name) => {
+      tabs.forEach((tab) => {
+        const on = tab.getAttribute("data-topology-left-tab") === name;
+        tab.classList.toggle("active", on);
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      panels.forEach((panel) => {
+        panel.classList.toggle("is-hidden", panel.getAttribute("data-left-panel") !== name);
+      });
+    };
+    tabs.forEach((tab) => {
+      tab.onclick = () => activate(tab.getAttribute("data-topology-left-tab") || "tools");
+    });
+    activate("tools");
+  }
+
+  function redrawGraph() {
+    drawNodes();
+    drawEdges();
+  }
+
   function drawEdges() {
     const svg = $("edgeSvg");
     svg.innerHTML = "";
+    let visible = 0;
+    let skipped = 0;
     (state.topology.edges || []).forEach((edge) => {
       const d = edgePath(edge);
-      if (!d) return;
+      if (!d) { skipped += 1; return; }
+      visible += 1;
       const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
       hit.setAttribute("d", d);
       hit.setAttribute("class", "edge-hit");
-      hit.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); drawEdges(); drawNodes(); };
+      hit.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", d);
       const hl = state.highlight.edges.has(edge.id) ? " hl" : "";
       const flow = state.flowViz.edges.has(edge.id) ? " flow" : "";
       const fail = (state.flowViz.statusByNode[String(edge.to)] && ["FAILED", "TIMEOUT", "CANCELED"].includes(String(state.flowViz.statusByNode[String(edge.to)]).toUpperCase())) ? " fail" : "";
       path.setAttribute("class", "edge" + hl + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
-      path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); drawEdges(); drawNodes(); };
+      if (!flow && !hl && !fail) {
+        const src = getNode(edge.from);
+        path.style.stroke = roleColor(src && src.role);
+      }
+      path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       svg.appendChild(hit);
       svg.appendChild(path);
+      const m = edgeMid(edge);
+      if (m) {
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        label.setAttribute("class", "edge-route-label");
+        const txtValue = runtimeName(edge.from) + "." + String(edge.from_port || "out-1") + " → " + runtimeName(edge.to) + "." + String(edge.to_port || "in-1");
+        const labelWidth = Math.max(120, Math.min(260, txtValue.length * 6 + 18));
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("x", String(Math.round(m.x - labelWidth / 2)));
+        rect.setAttribute("y", String(Math.round(m.y - 28)));
+        rect.setAttribute("width", String(labelWidth));
+        rect.setAttribute("height", "20");
+        rect.setAttribute("rx", "10");
+        const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        txt.setAttribute("x", String(Math.round(m.x)));
+        txt.setAttribute("y", String(Math.round(m.y - 14)));
+        txt.setAttribute("text-anchor", "middle");
+        txt.textContent = txtValue;
+        label.appendChild(rect);
+        label.appendChild(txt);
+        svg.appendChild(label);
+        if (isEditMode()) {
+          const del = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          del.setAttribute("class", "edge-remove");
+          del.setAttribute("transform", "translate(" + Math.round(m.x) + "," + Math.round(m.y - 42) + ")");
+          del.setAttribute("title", "删除连线");
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          c.setAttribute("r", "10");
+          const minus = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          minus.setAttribute("text-anchor", "middle");
+          minus.setAttribute("y", "4");
+          minus.textContent = "-";
+          del.appendChild(c);
+          del.appendChild(minus);
+          del.onclick = (ev) => { ev.stopPropagation(); confirmStructuredDeleteEdge(edge.id); };
+          svg.appendChild(del);
+        }
+      }
       if (flow) {
         const m = edgeMid(edge);
         const mm = (state.flowViz.metricsByEdge || {})[edge.id];
@@ -753,19 +982,28 @@
         }
       }
     });
+    const sig = (state.topology.edges || []).map((e) => [e.id, e.from, e.from_port, e.to, e.to_port].join(":")).join("|");
+    const drawSig = visible + "/" + skipped + "/" + sig;
+    if (state.lastEdgeDrawSig !== drawSig) {
+      state.lastEdgeDrawSig = drawSig;
+      logMode("连线重绘: 数据=" + ((state.topology.edges || []).length) + " 可见=" + visible + " 跳过=" + skipped, skipped ? "warn" : "info");
+    }
     const delBtn = $("btnDeleteEdgeInline");
     if (delBtn) delBtn.disabled = !state.selection.edgeId;
+    const hint = $("edgeSelectionHint");
+    if (hint) {
+      hint.textContent = state.selection.edgeId ? ("已选中连线: " + state.selection.edgeId) : "未选中连线";
+      hint.className = "state-pill " + (state.selection.edgeId ? "state-ok" : "state-info");
+    }
   }
 
   function drawPorts(node, side) {
     const ports = (((node.ui || {}).ports || {})[side] || []);
-    return '<div class="ports ' + side + '">' + ports.map((p) => {
-      const key = node.id + ":" + side + ":" + p.id;
-      const target = key === state.hoverPortKey ? " target" : "";
+    return '<div class="ports ' + side + '" aria-hidden="true">' + ports.map((p) => {
       const label = '<span class="port-label">' + esc(p.label || p.id) + ' (' + countLinks(node.id, side, p.id) + ")</span>";
       const dot = '<span class="port-dot" data-node-id="' + esc(node.id) + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '" title="' + esc(p.label || p.id) + '"></span>';
       const inner = side === "in" ? (label + dot) : (dot + label);
-      return '<div class="port-item ' + side + target + '" data-node-id="' + esc(node.id) + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '">' + inner + "</div>";
+      return '<div class="port-item ' + side + '" data-node-id="' + esc(node.id) + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '">' + inner + "</div>";
     }).join("") + "</div>";
   }
 
@@ -780,14 +1018,14 @@
       const bindCls = ag ? "state-ok" : "state-warn";
       const agHealth = agentHealthLabel(ag);
       const st = String(n.bizStatus || "normal");
-      const stLabel = STATUS_LABELS[st] || st;
+      const stLabel = agHealth.cls === "err" ? "心跳过期" : (agHealth.cls === "warn" ? "Agent异常" : (STATUS_LABELS[st] || st));
       const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
       const isFlow = state.flowViz.nodes.has(n.id);
       const metrics = nodeMetrics(n.id, flowSt);
       const palette = ROLE_COLOR[String(n.role || "").toLowerCase()] || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#f4f8ff" };
 
       const el = document.createElement("div");
-      el.className = "node"
+      el.className = "node structured-node"
         + (state.selection.nodes.has(n.id) ? " sel" : "")
         + (state.highlight.nodes.has(n.id) ? " hl" : "")
         + (isFlow ? " flow-active" : "")
@@ -799,10 +1037,13 @@
       el.style.minHeight = n.ui.h + "px";
       el.style.borderColor = palette.border;
       el.style.background = "linear-gradient(165deg," + palette.bg1 + "," + palette.bg2 + ")";
-      el.innerHTML = drawPorts(n, "in") + drawPorts(n, "out")
+      el.innerHTML = '<div class="node-role-strip" style="background:' + esc(palette.border) + '"></div>'
+        + drawPorts(n, "in") + drawPorts(n, "out")
+        + (isEditMode() ? '<button class="node-remove-btn" type="button" data-node-id="' + esc(n.id) + '" title="删除节点">-</button>' : "")
+        + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游">+</button>' : "")
         + '<div class="t">' + esc((runtime[n.id] || {}).name || n.id) + '</div>'
         + '<div class="s">' + esc(n.role) + '</div>'
-        + '<div class="s">状态: ' + esc(stLabel) + '</div>'
+        + '<div class="s node-status-line status-' + esc(agHealth.cls) + '">状态: ' + esc(stLabel) + '</div>'
         + '<div class="s">' + esc(n.owner || "-") + '</div>'
         + '<div class="state-pill ' + bindCls + '" style="margin-top:4px">' + esc(bindText) + "</div>"
         + '<div class="state-pill state-' + esc(agHealth.cls) + '" style="margin-top:4px">' + esc(agHealth.text) + "</div>"
@@ -815,19 +1056,27 @@
           + '<div class="metric-flame"><b style="width:' + Math.max(metrics.cpu, metrics.mem) + '%"></b><b style="width:' + Math.max(8, metrics.qps * 0.9) + '%"></b><b style="width:' + Math.max(6, metrics.cpu * 0.7) + '%"></b></div>'
           + '</div>'
         ) : "");
-      el.onmousedown = (ev) => onNodeDown(ev, n);
       el.onclick = (ev) => { ev.stopPropagation(); openNodeEditor(n.id); };
       layer.appendChild(el);
     });
 
-    layer.querySelectorAll(".port-item").forEach((item) => {
-      const nodeId = item.getAttribute("data-node-id");
-      const side = item.getAttribute("data-side");
-      const portId = item.getAttribute("data-port-id");
-      item.onmousedown = (ev) => startLink(ev, nodeId, side, portId);
-      item.onclick = (ev) => { ev.stopPropagation(); if (side === "out") openQuickAdd({ side: "out", fromNodeId: nodeId, fromPortId: portId }); };
-      item.ondblclick = (ev) => { ev.stopPropagation(); if (side === "in") openQuickAdd({ side: "in", toNodeId: nodeId, toPortId: portId }); };
+    layer.querySelectorAll(".node-add-btn").forEach((btn) => {
+      btn.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openStructuredAddMenu(btn.getAttribute("data-node-id"));
+      };
     });
+    layer.querySelectorAll(".node-remove-btn").forEach((btn) => {
+      btn.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        confirmStructuredDeleteNode(btn.getAttribute("data-node-id"));
+      };
+    });
+
+    // Structured mode is the only exposed authoring model: ports remain data,
+    // but users add/delete topology through node/edge +/- controls.
   }
 
   function renderRuntimeNodeList() {
@@ -844,71 +1093,138 @@
     });
   }
 
-  function nearestPort(pos, side) {
-    let best = null;
-    let min = Infinity;
-    (state.topology.nodes || []).forEach((n) => {
-      ((((n.ui || {}).ports || {})[side] || [])).forEach((p) => {
-        const a = portAnchor(n, side, p.id);
-        const d = Math.hypot(pos.x - a.x, pos.y - a.y);
-        if (d < 24 && d < min) { min = d; best = { nodeId: n.id, portId: p.id, side, anchor: a }; }
-      });
-    });
-    return best;
-  }
-
-  function validLink(fromNodeId, fromPortId, toNodeId, toPortId) {
-    if (fromNodeId === toNodeId) return { ok: false, msg: "Cannot connect same node" };
+  function canStructuredConnect(fromNodeId, toLike) {
     const fromNode = getNode(fromNodeId);
-    const toNode = getNode(toNodeId);
-    if (!fromNode || !toNode) return { ok: false, msg: "Node not found" };
-    if (fromNode.kind === "terminal" || toNode.kind === "entry") return { ok: false, msg: "Node kind direction violation" };
-    const dup = (state.topology.edges || []).some((e) => e.from === fromNodeId && e.to === toNodeId && e.from_port === fromPortId && e.to_port === toPortId);
-    if (dup) return { ok: false, msg: "Duplicate edge" };
-    const outLinks = countLinks(fromNodeId, "out", fromPortId);
-    if (outLinks >= 1) return { ok: false, msg: "Output port already occupied" };
-    const inLinks = countLinks(toNodeId, "in", toPortId);
-    if (inLinks >= 1) return { ok: false, msg: "Input port already occupied" };
+    if (!fromNode || !toLike) return { ok: false, msg: "节点不存在" };
+    const toId = String(toLike.id || "");
+    if (toId && toId === fromNodeId) return { ok: false, msg: "不能连接同一个节点" };
+    const fromMeta = rawNodeMeta(fromNodeId);
+    const fromRole = String(fromMeta.role || fromNode.role || "");
+    const toRole = String(toLike.role || "");
+    const toKind = inferKind(toRole, toLike.kind);
+    if (fromNode.kind === "terminal" || toKind === "entry") return { ok: false, msg: "节点语义方向不允许连接" };
+    const allowDown = Array.isArray(fromMeta.allowed_downstream_roles) ? fromMeta.allowed_downstream_roles.map(String) : [];
+    const allowUp = Array.isArray(toLike.allowed_upstream_roles)
+      ? toLike.allowed_upstream_roles.map(String)
+      : (Array.isArray(toLike.fixed_upstream_roles) ? toLike.fixed_upstream_roles.map(String) : []);
+    if (allowDown.length && toRole && !allowDown.includes(toRole)) return { ok: false, msg: "当前节点规则不允许该下游角色" };
+    if (allowUp.length && fromRole && !allowUp.includes(fromRole)) return { ok: false, msg: "目标节点不接受该上游角色" };
+    if (toId && (state.topology.edges || []).some((e) => String(e.from) === String(fromNodeId) && String(e.to) === toId)) {
+      return { ok: false, msg: "两个节点之间已存在连线" };
+    }
     return { ok: true };
   }
 
-  async function commitLink(fromNodeId, fromPortId, toNodeId, toPortId) {
-    const vr = validLink(fromNodeId, fromPortId, toNodeId, toPortId);
-    if (!vr.ok) { toast(vr.msg, "warn"); return; }
-    const d = await OpsApi.upsertEdge({ from: fromNodeId, to: toNodeId, from_port: fromPortId, to_port: toPortId, type: "depends_on", note: "" });
-    if (!d.ok) { toast(d.message || "Link failed", "error"); return; }
+  function legalExistingTargetsForNode(nodeId) {
+    return (state.topology.nodes || [])
+      .filter((n) => n && n.id && n.id !== nodeId)
+      .map((n) => ({ node: n, check: canStructuredConnect(nodeId, n) }))
+      .filter((x) => x.check.ok)
+      .map((x) => x.node);
+  }
+
+  function legalPresetsForNode(nodeId) {
+    return (state.presets || [])
+      .filter((p) => canStructuredConnect(nodeId, {
+        id: "",
+        role: p.role,
+        kind: p.kind,
+        allowed_upstream_roles: p.fixed_upstream_roles || [],
+        allowed_downstream_roles: p.fixed_downstream_roles || [],
+      }).ok);
+  }
+
+  function applyStructuredTopologyResponse(d, successText) {
+    if (!d || d.ok === false) {
+      toast((d && (d.message || d.error)) || "结构化操作失败", "error");
+      appendJsonDetail("结构化操作失败原始响应", d || {});
+      return false;
+    }
     state.topology = d.topology || state.topology;
-    drawEdges();
-    drawNodes();
+    normalizeTopology();
+    layoutStructuredGraph();
+    state.selection.edgeId = "";
+    redrawGraph();
+    renderRuntimeNodeList();
+    fillTestNodeOptions();
+    toast(successText || d.message || "操作成功", "ok");
+    logMode(successText || d.message || "结构化操作成功");
+    return true;
   }
 
-  function startLink(ev, nodeId, side, portId) {
-    ev.stopPropagation();
-    if (ev.button !== 0) return;
-    if (isTestMode()) { toast("测试模式禁止修改连线", "warn"); return; }
-    if (side !== "out") { toast("Start link from output port", "warn"); return; }
-    state.drag = { mode: "link", fromNodeId: nodeId, fromPortId: portId, target: null };
-    state.hoverPortKey = "";
-    logMode("开始从 " + nodeId + ":" + portId + " 拖拽连线");
+  function openStructuredAddMenu(nodeId) {
+    if (!isEditMode()) { toast("运行/测试模式不可修改结构", "warn"); return; }
+    const node = getNode(nodeId);
+    if (!node) return;
+    state.structuredAddCtx = { fromNodeId: nodeId };
+    const modal = $("structuredAddModal");
+    const title = $("structuredAddTitle");
+    const existingBox = $("structuredExistingList");
+    const presetBox = $("structuredPresetList");
+    if (!modal || !existingBox || !presetBox) return;
+    if (title) title.textContent = "从 “" + runtimeName(nodeId) + "” 添加下游";
+    const existing = legalExistingTargetsForNode(nodeId);
+    const presets = legalPresetsForNode(nodeId);
+    existingBox.innerHTML = existing.length ? "" : '<div class="preset-empty">当前拓扑中没有可连接的已有节点</div>';
+    existing.forEach((n) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "structured-menu-item";
+      item.innerHTML = '<b>' + esc(runtimeName(n.id)) + '</b><span>' + esc((n.role || "-") + " / " + (n.kind || "-")) + '</span>';
+      item.onclick = () => structuredAddExistingTarget(nodeId, n.id);
+      existingBox.appendChild(item);
+    });
+    presetBox.innerHTML = presets.length ? "" : '<div class="preset-empty">当前节点没有可添加的下游类型</div>';
+    const grouped = {};
+    presets.forEach((p) => { const g = presetGroup(p.role); if (!grouped[g]) grouped[g] = []; grouped[g].push(p); });
+    Object.keys(grouped).sort().forEach((g) => {
+      const sec = document.createElement("div");
+      sec.className = "structured-menu-group";
+      sec.innerHTML = '<div class="structured-menu-group-title">' + esc(g) + '</div>';
+      grouped[g].forEach((p) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "structured-menu-item";
+        item.innerHTML = '<b>' + esc(p.name || p.preset_id || "-") + '</b><span>' + esc((p.role || "-") + " / " + inferKind(p.role, p.kind)) + '</span>';
+        item.onclick = () => structuredAddNewTarget(nodeId, p.preset_id);
+        sec.appendChild(item);
+      });
+      presetBox.appendChild(sec);
+    });
+    modal.classList.remove("hidden");
   }
 
-  function drawPreview(clientX, clientY) {
-    drawEdges();
-    const fromNode = getNode(state.drag.fromNodeId);
-    if (!fromNode) return;
-    const s = portAnchor(fromNode, "out", state.drag.fromPortId);
-    const p = world(clientX, clientY);
-    const target = nearestPort(p, "in");
-    state.drag.target = target;
-    const e = target ? target.anchor : p;
-    state.hoverPortKey = target ? (target.nodeId + ":in:" + target.portId) : "";
-    drawNodes();
-    const bend = Math.max(72, Math.min(220, Math.abs(e.x - s.x) * 0.35));
-    const d = "M " + s.x + " " + s.y + " C " + (s.x + bend) + " " + s.y + ", " + (e.x - bend) + " " + e.y + ", " + e.x + " " + e.y;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("class", "edge edge-preview");
-    $("edgeSvg").appendChild(path);
+  function closeStructuredAddMenu() {
+    const modal = $("structuredAddModal");
+    if (modal) modal.classList.add("hidden");
+    state.structuredAddCtx = null;
+  }
+
+  async function structuredAddExistingTarget(fromNodeId, toNodeId) {
+    const d = await OpsApi.structuredAddExistingTarget({ project_id: state.projectId, from_node_id: fromNodeId, to_node_id: toNodeId });
+    if (applyStructuredTopologyResponse(d, "已连接已有下游节点")) closeStructuredAddMenu();
+  }
+
+  async function structuredAddNewTarget(fromNodeId, presetId) {
+    const d = await OpsApi.structuredAddNewTarget({ project_id: state.projectId, from_node_id: fromNodeId, preset_id: presetId });
+    if (applyStructuredTopologyResponse(d, "已新增并连接下游节点")) closeStructuredAddMenu();
+  }
+
+  async function confirmStructuredDeleteNode(nodeId) {
+    if (!isEditMode()) { toast("运行/测试模式不可删除节点", "warn"); return; }
+    const name = runtimeName(nodeId);
+    if (!window.confirm("确认删除节点 “" + name + "”？\n\n删除会同时移除相关连线，关键链路会被系统拦截。")) return;
+    const d = await OpsApi.structuredDeleteNode({ node_id: nodeId, project_id: state.projectId });
+    applyStructuredTopologyResponse(d, "节点已删除");
+  }
+
+  async function confirmStructuredDeleteEdge(edgeId) {
+    if (!isEditMode()) { toast("运行/测试模式不可删除连线", "warn"); return; }
+    const edge = (state.topology.edges || []).find((e) => String(e.id) === String(edgeId));
+    const label = edge ? (runtimeName(edge.from) + " → " + runtimeName(edge.to)) : edgeId;
+    if (!window.confirm("确认删除连线 “" + label + "”？\n\n关键链路会被系统拦截。")) return;
+    const d = await OpsApi.structuredDeleteEdge({ edge_id: edgeId, project_id: state.projectId });
+    applyStructuredTopologyResponse(d, "连线已删除");
   }
 
   function presetGroup(role) {
@@ -920,88 +1236,16 @@
     return "其他";
   }
 
-  function canPresetConnect(ctx, preset) {
-    const k = inferKind(preset.role, preset.kind);
-    if (ctx.side === "out") return k !== "entry";
-    return k !== "terminal";
-  }
-
-  function openQuickAdd(ctx) {
-    state.quickAddCtx = ctx;
-    $("portModalTitle").textContent = ctx.side === "in" ? "为输入端口添加上游节点" : "为输出端口添加下游节点";
-    $("portModalHint").textContent = "仅显示可连接模板";
-    const list = $("portModalList");
-    list.innerHTML = "";
-    const rows = (state.presets || []).filter((p) => canPresetConnect(ctx, p));
-    if (!rows.length) {
-      list.innerHTML = '<div class="preset-empty">没有可连接模板</div>';
-      $("portQuickAdd").classList.remove("hidden");
-      return;
-    }
-    const groups = {};
-    rows.forEach((p) => { const g = presetGroup(p.role); if (!groups[g]) groups[g] = []; groups[g].push(p); });
-    Object.keys(groups).sort().forEach((g) => {
-      const sec = document.createElement("div");
-      sec.className = "port-modal-group";
-      sec.innerHTML = '<div class="port-modal-group-hd"><span>' + esc(g) + '</span><span>' + groups[g].length + "</span></div>";
-      groups[g].forEach((p) => {
-        const item = document.createElement("div");
-        item.className = "port-modal-item";
-        item.innerHTML = '<div style="font-size:13px;font-weight:700">' + esc(p.name || "-") + '</div><div style="font-size:11px;color:#64748b;margin-top:4px">' + esc((p.role || "-") + " / " + inferKind(p.role, p.kind)) + "</div>";
-        item.onclick = () => quickAddCreate(p);
-        sec.appendChild(item);
-      });
-      list.appendChild(sec);
-    });
-    $("portQuickAdd").classList.remove("hidden");
-  }
-
-  function closeQuickAdd() { $("portQuickAdd").classList.add("hidden"); state.quickAddCtx = null; }
-
-  async function quickAddCreate(preset) {
-    const ctx = state.quickAddCtx;
-    if (!ctx) return;
-    const anchorNode = ctx.side === "in" ? getNode(ctx.toNodeId) : getNode(ctx.fromNodeId);
-    const place = ctx.side === "in"
-      ? { x: (anchorNode ? anchorNode.ui.x : 260) - 320, y: (anchorNode ? anchorNode.ui.y : 140) }
-      : { x: (anchorNode ? anchorNode.ui.x : 260) + 320, y: (anchorNode ? anchorNode.ui.y : 140) };
-
-    const d = await OpsApi.addNodeFromPreset({
-      preset_id: String(preset.preset_id || ""),
-      name: "",
-      server_id: "",
-      project_id: state.projectId,
-      owner: "",
-      env: "prod",
-      channel: "",
-      description: preset.default_desc || "",
-    });
-    if (!d.ok) { toast(d.message || "Add node failed", "error"); logMode("快捷建点失败: " + (d.message || d.error || "unknown"), "error"); return; }
-
-    await loadAll();
-    if (d.node && d.node.id) {
-      const n = getNode(d.node.id);
-      if (n) {
-        n.ui.x = Math.round(place.x / 8) * 8;
-        n.ui.y = Math.round(place.y / 8) * 8;
-      }
-      const fromId = ctx.side === "in" ? d.node.id : ctx.fromNodeId;
-      const toId = ctx.side === "in" ? ctx.toNodeId : d.node.id;
-      if (fromId && toId) await commitLink(fromId, "out-1", toId, "in-1");
-      await OpsApi.saveTopology(state.topology);
-      closeQuickAdd();
-      drawEdges();
-      drawNodes();
-      renderRuntimeNodeList();
-      logMode("快捷建点成功: " + (d.node.id || "-"));
-    }
-  }
-
   function renderPresets() {
     const box = $("presetList");
     const kw = String($("presetSearch").value || "").toLowerCase().trim();
+    const category = $("presetCategoryFilter") ? String($("presetCategoryFilter").value || "") : "";
     box.innerHTML = "";
-    const rows = (state.presets || []).filter((p) => !kw || (String(p.name || "") + " " + String(p.role || "")).toLowerCase().includes(kw));
+    const rows = (state.presets || []).filter((p) => {
+      const group = presetGroup(p.role);
+      const hay = (String(p.name || "") + " " + String(p.role || "") + " " + String(p.preset_id || "")).toLowerCase();
+      return (!kw || hay.includes(kw)) && (!category || group === category);
+    });
     const active = (state.presets || []).find((x) => x.preset_id === state.activePresetId);
     $("presetQuickBar").textContent = active ? ("已选择模板: " + (active.name || active.preset_id) + " / " + (active.role || "-")) : "未选择模板";
     if (!rows.length) { box.innerHTML = '<div class="preset-empty">没有匹配模板</div>'; return; }
@@ -1049,7 +1293,7 @@
         n.ui.x = Math.round(worldPos.x / 8) * 8;
         n.ui.y = Math.round(worldPos.y / 8) * 8;
         await OpsApi.saveTopology(state.topology);
-        drawEdges(); drawNodes(); renderRuntimeNodeList();
+        redrawGraph(); renderRuntimeNodeList();
         logMode("新增节点成功: " + d.node.id);
       }
     }
@@ -1067,8 +1311,8 @@
       }
       box.innerHTML = ports.map((p) => {
         const selected = state.selectedPort && state.selectedPort.side === side && String(state.selectedPort.id) === String(p.id);
-        const cls = selected ? "state-info" : "state-ok";
-        return '<button type="button" class="state-pill ' + cls + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '" style="cursor:pointer">' + esc(p.label || p.id) + " (" + countLinks(node.id, side, p.id) + ")</button>";
+        const cls = selected ? "port-pill selected" : "port-pill";
+        return '<button type="button" class="' + cls + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '">' + esc(p.label || p.id) + " (" + countLinks(node.id, side, p.id) + ")</button>";
       }).join(" ");
       box.querySelectorAll("[data-port-id]").forEach((btn) => {
         btn.onclick = () => {
@@ -1094,11 +1338,16 @@
     const current = String((state.nodeBindings || {})[nodeId] || "");
     sel.value = current;
     const hit = state.agents.find((a) => String(a.agent_id || "") === current);
-    agMeta.value = hit ? ((hit.device_id || "-") + " / " + (hit.host_name || "-") + ":" + (hit.port || "-") + " / " + (hit.last_seen || "-")) : "未绑定";
+    const metaText = (x) => {
+      if (!x) return "未绑定";
+      const h = agentHealthLabel(x);
+      return h.text + " / " + (x.device_id || "-") + " / " + (x.host_name || "-") + ":" + (x.port || "-") + " / " + (x.last_seen || "-");
+    };
+    agMeta.value = metaText(hit);
     sel.onchange = () => {
       const aid = String(sel.value || "");
       const x = state.agents.find((a) => String(a.agent_id || "") === aid);
-      agMeta.value = x ? ((x.device_id || "-") + " / " + (x.host_name || "-") + ":" + (x.port || "-") + " / " + (x.last_seen || "-")) : "未绑定";
+      agMeta.value = metaText(x);
     };
   }
 
@@ -1158,8 +1407,7 @@
     n.ui.ports[side] = ports;
     refreshPortSummary(n);
     renderPortLists(n);
-    drawEdges();
-    drawNodes();
+    redrawGraph();
   }
 
   function removePort(side) {
@@ -1170,16 +1418,21 @@
     const ports = ((n.ui && n.ui.ports && n.ui.ports[side]) || []);
     if (!ports.length) return;
     if (ports.length <= 1) { toast("At least one port must remain on this side", "warn"); return; }
-    const last = ports[ports.length - 1];
-    const hasLinks = countLinks(n.id, side, last.id) > 0;
+    if (!state.selectedPort || state.selectedPort.side !== side) {
+      toast("请先在" + (side === "in" ? "输入" : "输出") + "针脚列表中选择要删除的针脚", "warn");
+      return;
+    }
+    const pid = String(state.selectedPort.id || "");
+    const hit = ports.find((p) => String(p.id) === pid);
+    if (!hit) { toast("选中的针脚不存在，请重新选择", "warn"); state.selectedPort = null; renderPortLists(n); return; }
+    const hasLinks = countLinks(n.id, side, pid) > 0;
     if (hasLinks) { toast("Please remove connected edge first", "warn"); return; }
-    ports.pop();
+    n.ui.ports[side] = ports.filter((p) => String(p.id) !== pid);
     n.ui.ports = n.ui.ports || { in: [], out: [] };
-    n.ui.ports[side] = ports;
+    state.selectedPort = null;
     refreshPortSummary(n);
     renderPortLists(n);
-    drawEdges();
-    drawNodes();
+    redrawGraph();
   }
 
   function closeNodeEditor() { $("nodeEditModal").classList.add("hidden"); }
@@ -1274,8 +1527,7 @@
     state.selection.nodes.clear();
     state.selection.edgeId = "";
     closeNodeEditor();
-    drawEdges();
-    drawNodes();
+    redrawGraph();
     renderRuntimeNodeList();
     toast("Node deleted", "ok");
     logMode("删除节点成功: " + nodeId);
@@ -1317,8 +1569,7 @@
     state.selectedPort = null;
     refreshPortSummary(n);
     renderPortLists(n);
-    drawEdges();
-    drawNodes();
+    redrawGraph();
     logMode("删除针脚: " + n.id + ":" + side + ":" + pid);
   }
 
@@ -1374,8 +1625,7 @@
     syncFlowViz("test", Array.from(state.highlight.nodes || []), {});
     state.flowViz.metricsByEdge = {};
     Array.from(state.flowViz.edges || []).forEach((eid) => { state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, "RUNNING"); });
-    drawEdges();
-    drawNodes();
+    redrawGraph();
     if (isStress) {
       const target = scope === "segment" ? endNode : (startNode || ((state.topology.nodes || [])[0] || {}).id || "");
       testLogHeader("压力测试开始", "scope=" + scope + " target=" + target);
@@ -1398,7 +1648,7 @@
         }
         appendJsonDetail("压力测试原始响应", d);
         toast("压力测试已提交", "ok");
-        setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-success"); drawEdges(); drawNodes(); }, 2600);
+        setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-success"); redrawGraph(); }, 2600);
       } else {
         logMode("压力测试失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
         if (d) {
@@ -1408,7 +1658,7 @@
         }
         appendJsonDetail("压力测试失败原始响应", d || {});
         toast((d && d.message) || "压力测试失败", "error");
-        setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-failed"); drawEdges(); drawNodes(); }, 2600);
+        setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-failed"); redrawGraph(); }, 2600);
       }
       return;
     }
@@ -1443,8 +1693,7 @@
         const anyFail = Object.values(stepStatus || {}).some((x) => String(x).toUpperCase() === "FAILED");
         state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, anyFail ? "FAILED" : "SUCCESS");
       });
-      drawEdges();
-      drawNodes();
+      redrawGraph();
     } else {
       logMode("单元测试失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
       if (d) {
@@ -1457,15 +1706,13 @@
       syncFlowViz("test", Array.from(state.highlight.nodes || []), {});
       state.flowViz.metricsByEdge = {};
       Array.from(state.flowViz.edges || []).forEach((eid) => { state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, "FAILED"); });
-      drawEdges();
-      drawNodes();
+      redrawGraph();
     }
   }
 
   function clearTestHighlight() {
     state.highlight = { nodes: new Set(), edges: new Set() };
-    drawEdges();
-    drawNodes();
+    redrawGraph();
   }
 
   function computePathHighlight() {
@@ -1478,8 +1725,7 @@
         nodes: new Set((state.topology.nodes || []).map((n) => n.id)),
         edges: new Set((state.topology.edges || []).map((e) => e.id)),
       };
-      drawEdges();
-      drawNodes();
+      redrawGraph();
       return;
     }
     if (!startNode || !endNode) { clearTestHighlight(); return; }
@@ -1515,8 +1761,7 @@
       nodes.add(cursor);
     }
     state.highlight = { nodes, edges: hlEdges };
-    drawEdges();
-    drawNodes();
+    redrawGraph();
   }
 
   function fillTestNodeOptions() {
@@ -1609,8 +1854,7 @@
     if (state.mode === "test") computePathHighlight();
     if (state.mode === "edit") {
       clearFlowViz(true, "applyModeUI-edit-mode");
-      drawEdges();
-      drawNodes();
+      redrawGraph();
     }
 
     const lock = state.mode !== "edit";
@@ -1630,63 +1874,96 @@
   }
 
   async function loadAll() {
-    // 阶段1：只加载拓扑核心数据并立即渲染（nodes + topology，不等 overview）
-    const [nodes, topo] = await Promise.all([
-      OpsApi.loadNodes(),
+    setTopologyHint("正在加载拓扑核心数据...", "");
+    const [topo, presets] = await Promise.all([
       OpsApi.loadTopology(state.projectId),
+      OpsApi.loadPresets(),
     ]);
-    if (checkAuthExpired(nodes) || checkAuthExpired(topo)) return;
+    if (checkAuthExpired(topo) || checkAuthExpired(presets)) return;
+    if (!topo || topo.ok === false) {
+      setTopologyHint((topo && (topo.message || topo.error)) || "拓扑核心数据加载失败", "error");
+      return;
+    }
 
-    state.nodesRaw = nodes.nodes || [];
     state.topology = topo.topology || { nodes: [], edges: [], meta: { viewport: { x: 0, y: 0, zoom: 1 } } };
+    state.nodesRaw = (state.topology.nodes || []).map((n) => ({
+      id: n.id,
+      role: n.role,
+      kind: n.kind,
+      desc: n.desc,
+      bizStatus: n.bizStatus,
+      owner: n.owner,
+      tags: n.tags,
+    }));
+    state.presets = (presets && presets.presets) || [];
+    if (!state.activePresetId && state.presets.length) state.activePresetId = state.presets[0].preset_id;
 
     normalizeTopology();
+    layoutStructuredGraph();
     renderScene();
-    drawEdges();
-    drawNodes();
+    redrawGraph();
+    renderPresets();
+    renderRuntimeNodeList();
+    fillTestNodeOptions();
+    applyModeUI();
+    setTopologyHint("拓扑已可操作，正在后台同步 Agent、绑定与总览数据...", "loading");
 
-    // 阶段2：辅助数据异步加载（overview 可能慢，不阻塞拓扑渲染）
-    const [overview, presets, blueprints, bindings, agents] = await Promise.all([
+    loadAuxiliaryData();
+  }
+
+  async function loadAuxiliaryData() {
+    const settled = await Promise.allSettled([
+      OpsApi.loadNodes(),
       OpsApi.loadOverview(state.projectId),
-      OpsApi.loadPresets(),
       OpsApi.loadTopologyBlueprints(),
       OpsApi.loadNodeBindings(state.projectId),
       OpsApi.agents(state.projectId),
     ]);
+    const [nodes, overview, blueprints, bindings, agents] = settled.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
+    if (checkAuthExpired(nodes) || checkAuthExpired(overview) || checkAuthExpired(blueprints) || checkAuthExpired(bindings) || checkAuthExpired(agents)) return;
 
-    state.overviewNodes = overview.nodes || [];
-    state.presets = presets.presets || [];
-    state.blueprints = (blueprints && blueprints.ok && Array.isArray(blueprints.blueprints)) ? blueprints.blueprints : [];
-    state.nodeBindings = (bindings && bindings.bindings) || {};
-    state.agents = (agents && agents.agents) || [];
-
-    if (!state.activePresetId && state.presets.length) state.activePresetId = state.presets[0].preset_id;
+    const warns = [];
+    if (nodes && nodes.ok !== false && Array.isArray(nodes.nodes)) {
+      state.nodesRaw = nodes.nodes;
+      normalizeTopology();
+      layoutStructuredGraph();
+    } else {
+      warns.push("节点清单");
+    }
+    if (overview && overview.ok !== false) state.overviewNodes = overview.nodes || [];
+    else warns.push("总览");
+    if (blueprints && blueprints.ok !== false && Array.isArray(blueprints.blueprints)) state.blueprints = blueprints.blueprints;
+    else warns.push("流程模板");
+    if (bindings && bindings.ok !== false) state.nodeBindings = bindings.bindings || {};
+    else warns.push("绑定");
+    if (agents && agents.ok !== false) state.agents = agents.agents || [];
+    else warns.push("Agent");
 
     const bpSel = $("flowBlueprintSelect");
     if (bpSel) {
       bpSel.innerHTML = '<option value="">流程模板</option>' + state.blueprints.map((b) => '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name) + '</option>').join("");
     }
 
-    drawEdges();
-    drawNodes();
-    renderPresets();
+    redrawGraph();
     renderRuntimeNodeList();
     fillTestNodeOptions();
     applyModeUI();
+    setTopologyHint(warns.length ? ("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
   }
 
   function bindEvents() {
+    bindLeftTabs();
     ROLE_OPTIONS.forEach((v) => $("insNodeRole").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + v + '</option>'));
     STATUS_OPTIONS.forEach((v) => $("insNodeBizStatus").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
 
     $("presetSearch").oninput = renderPresets;
+    if ($("presetCategoryFilter")) $("presetCategoryFilter").onchange = renderPresets;
 
     $("toolAuto").onclick = () => {
       if (isTestMode()) { toast("测试模式禁止自动布局", "warn"); return; }
-      const n = state.topology.nodes || [];
-      const cols = Math.max(3, Math.min(6, Math.ceil(Math.sqrt(n.length || 1))));
-      n.forEach((x, i) => { x.ui.x = 80 + (i % cols) * 280; x.ui.y = 100 + Math.floor(i / cols) * 170; });
-      drawEdges(); drawNodes();
+      layoutStructuredGraph();
+      redrawGraph();
+      toast("已按结构化规则重新排布", "ok");
     };
 
     $("toolReset").onclick = () => { state.topology.meta.viewport = { x: 0, y: 0, zoom: 1 }; renderScene(); };
@@ -1733,17 +2010,10 @@
     $("btnDeleteEdge").onclick = async () => {
       const id = state.selection.edgeId;
       if (!id) { toast("请先选中一条连线", "warn"); return; }
-      const d = await OpsApi.deleteEdge(id);
-      if (!d.ok) { toast(d.message || "Delete edge failed", "error"); logMode("连线删除失败: " + (d.message || d.error || "unknown"), "error"); return; }
-      state.topology = d.topology || state.topology;
-      normalizeTopology();
-      state.selection.edgeId = "";
-      logMode("连线删除成功: " + id);
-      if (isTestMode()) computePathHighlight();
-      drawEdges(); drawNodes();
+      await confirmStructuredDeleteEdge(id);
     };
 
-    $("portModalClose").onclick = closeQuickAdd;
+    if ($("structuredAddClose")) $("structuredAddClose").onclick = closeStructuredAddMenu;
     $("nodeEditClose").onclick = closeNodeEditor;
     const modeSelectEl = $("modeSelect");
     if (modeSelectEl) {
@@ -1779,7 +2049,10 @@
     $("btnRunStopAll").onclick = () => runFullLifecycle(false);
     $("btnTestSmoke").onclick = () => runSmokeOrStress(false);
     $("btnTestStress").onclick = () => runSmokeOrStress(true);
-    $("btnDeleteEdgeInline").onclick = () => $("btnDeleteEdge").click();
+    $("btnDeleteEdgeInline").onclick = () => {
+      if (state.selection.edgeId) confirmStructuredDeleteEdge(state.selection.edgeId);
+      else toast("请先点击选择一条连线", "warn");
+    };
     $("testScope").onchange = computePathHighlight;
     $("testStartNode").onchange = computePathHighlight;
     $("testEndNode").onchange = computePathHighlight;
@@ -1804,7 +2077,7 @@
       if (ev.target === shell || (ev.target && ev.target.classList && ev.target.classList.contains("ops-grid-bg"))) {
         state.selection.nodes.clear();
         state.selection.edgeId = "";
-        drawEdges(); drawNodes();
+        redrawGraph();
       }
     });
 
@@ -1817,7 +2090,7 @@
       }
       if (ev.key === "Delete" && state.selection.edgeId) $("btnDeleteEdge").click();
       if (ev.key === "Delete" && !state.selection.edgeId && state.selection.nodes.size) deleteSelectedNode();
-      if (ev.key === "Escape") { closeQuickAdd(); closeNodeEditor(); }
+      if (ev.key === "Escape") { closeStructuredAddMenu(); closeNodeEditor(); }
     });
 
     window.addEventListener("keyup", (ev) => { if (ev.code === "Space") state.spaceDown = false; });
@@ -1834,35 +2107,10 @@
         renderScene();
         return;
       }
-      if (state.drag && state.drag.mode === "move") {
-        if (isTestMode()) return;
-        const p1 = world(state.drag.sx, state.drag.sy);
-        const p2 = world(ev.clientX, ev.clientY);
-        const dx = Math.round((p2.x - p1.x) / 8) * 8;
-        const dy = Math.round((p2.y - p1.y) / 8) * 8;
-        state.drag.ids.forEach((id) => {
-          const n = getNode(id);
-          if (n) { n.ui.x = state.drag.start[id].x + dx; n.ui.y = state.drag.start[id].y + dy; }
-        });
-        drawEdges(); drawNodes();
-        return;
-      }
-      if (state.drag && state.drag.mode === "link") drawPreview(ev.clientX, ev.clientY);
     });
 
     window.addEventListener("mouseup", async (ev) => {
       if (state.pan) { state.pan = null; return; }
-      if (state.drag && state.drag.mode === "move") { state.drag = null; if (!isTestMode()) await OpsApi.saveTopology(state.topology); return; }
-      if (state.drag && state.drag.mode === "link") {
-        const fromNodeId = state.drag.fromNodeId;
-        const fromPortId = state.drag.fromPortId;
-        const target = state.drag.target || nearestPort(world(ev.clientX, ev.clientY), "in");
-        state.drag = null;
-        state.hoverPortKey = "";
-        drawNodes();
-        if (target) await commitLink(fromNodeId, fromPortId, target.nodeId, target.portId);
-        drawEdges();
-      }
     });
 
     shell.ondragover = (ev) => ev.preventDefault();
@@ -1873,20 +2121,6 @@
       state.activePresetId = pid;
       await addPresetAt(world(ev.clientX, ev.clientY));
     };
-  }
-
-  function onNodeDown(ev, node) {
-    if (ev.button !== 0) return;
-    if (ev.target && ev.target.closest && ev.target.closest(".port-item")) return;
-    if (isRunMode() || isTestMode()) return;
-    state.selection.nodes = new Set([node.id]);
-    const ids = [node.id];
-    state.drag = { mode: "move", ids, sx: ev.clientX, sy: ev.clientY, start: {} };
-    ids.forEach((id) => {
-      const n = getNode(id);
-      if (n) state.drag.start[id] = { x: n.ui.x, y: n.ui.y };
-    });
-    ev.preventDefault();
   }
 
   async function boot() {

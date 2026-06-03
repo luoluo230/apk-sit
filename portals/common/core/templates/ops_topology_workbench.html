@@ -1,109 +1,43 @@
-﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260601e">
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260603p">
+<div class="ops-app" data-page="topology">
+<aside class="ops-side">
+  <div class="ops-brand"><span class="ops-ico ico-title">O</span><div><b>运维平台</b><span>GameOps Console</span></div></div>
+  <div class="ops-project-pill">GomeKu 运维工作台</div>
+  <div class="ops-nav-group">工作台</div>
+  <a class="ops-nav-item " href="/admin/ops-platform?project_id={{ project_id }}">总览看板</a>
+  <div class="ops-nav-group">架构编排</div>
+  <a class="ops-nav-item active" href="/admin/ops-platform/topology?project_id={{ project_id }}">拓扑编排</a>
+  <a class="ops-nav-item " href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 与服务器</a>
+  <div class="ops-nav-group">执行与诊断</div>
+  <a class="ops-nav-item" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
+  <a class="ops-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a>
+  <div class="ops-nav-group">治理与合规</div>
+  <a class="ops-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
+  <a class="ops-nav-item" href="/admin/approval">审批中心</a>
+</aside>
+<main class="ops-main ops-main-topology">
 <section class="ops-shell" data-project-id="{{ project_id }}">
-  <div class="top">
-    <div>
-      <div class="title title-row"><span class="ops-ico ico-title ico-topology">T</span>拓扑编排工作区</div>
-      <div class="sub">直接拖拽端口连线，多端口语义节点 + 运行/测试可视化</div>
-    </div>
-    <div class="top-right">
-      <div class="top-nav-row">
-        <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">总览</a>
-        <a class="btn active" href="/admin/ops-platform/topology?project_id={{ project_id }}">拓扑编排</a>
-        <a class="btn" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
-        <a class="btn" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a>
-        <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 管控</a>
-        <a class="btn" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
-        <a class="btn" href="/admin/approval">审批中心</a>
-      </div>
-    </div>
+  <div class="top ops-topology-hero">
+    <div><div class="title title-row"><span class="ops-ico ico-title ico-topology">T</span>拓扑编排工作区</div><div class="sub">结构化服务器架构编排：节点右侧 + 添加合法下游，系统自动布局并绘制折线链路</div></div>
+    <div class="top-right"><a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回总览</a><input id="opsProjectFilter" class="inp top-project" value="{{ project_id }}" placeholder="project_id"></div>
   </div>
-
-  <div class="panel" style="margin-top:10px">
-    <div class="bd" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div class="h-row" style="font-size:12px;color:#334155">
-        <span class="state-pill state-info">当前页面：拓扑编排</span>
-        <span>从输出端口拖到输入端口可连线；双击输入端口/点击输出端口可快捷加点</span>
-      </div>
-      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回运维总览</a>
-    </div>
-  </div>
-
-  <div class="ops-work" style="margin-top:12px">
-    <aside class="panel">
-      <div class="hd"><b class="h-row"><span class="ops-ico ico-library">L</span>Node Library</b></div>
-      <div class="bd">
-        <div id="presetQuickBar" class="preset-quick">未选择模板</div>
-        <input id="presetSearch" class="inp" placeholder="搜索模板/角色">
-        <div id="presetList" class="preset-list"></div>
-        <div class="hd" style="margin:10px -12px 0;border-top:1px solid #e9f0fb;border-bottom:none;background:transparent;padding:12px 12px 6px"><b class="h-row"><span class="ops-ico ico-inspector">N</span>节点列表</b></div>
-        <div id="runtimeNodeList" class="runtime-node-list"></div>
-      </div>
+  <div class="panel topology-guide-panel"><div class="bd topology-guide-row"><div class="h-row" style="font-size:12px;color:#334155"><span class="state-pill state-info">当前页面：拓扑编排</span><span>点击节点右侧 + 添加合法下游；点击节点或连线上的 - 可删除，系统会保护关键链路。</span></div><a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回运维总览</a></div></div>
+  <div class="ops-work ops-topology-work topology-workbench-v2">
+    <aside class="topology-left-stack">
+      <section class="panel topology-control-panel"><div class="hd"><b class="h-row"><span class="ops-ico ico-canvas">C</span>画布控制台</b></div><div class="bd">
+        <div class="topology-left-tabs"><button class="topology-left-tab active" type="button" data-topology-left-tab="tools">工具</button><button class="topology-left-tab" type="button" data-topology-left-tab="mode">模式</button><button class="topology-left-tab" type="button" data-topology-left-tab="nodes">节点</button></div>
+        <div class="tool-block" data-left-panel="tools"><b class="tool-block-title">编辑工具</b><div class="tool-button-grid"><button id="toolSelect" class="btn primary" type="button">选择</button><button id="toolAuto" class="btn" type="button">重新布局</button><button id="toolUndo" class="btn" type="button">撤销</button><button id="toolRedo" class="btn" type="button">重做</button><button id="toolReset" class="btn" type="button">重置视图</button><button id="toolSave" class="btn success" type="button">保存</button></div></div>
+        <div class="tool-block" data-left-panel="tools"><b class="tool-block-title">流程工具</b><select id="flowBlueprintSelect" class="sel"><option value="">流程模板</option></select><div class="tool-button-grid two" style="margin-top:8px"><button id="btnApplyBlueprint" class="btn" type="button">应用模板</button><button id="btnAutoBindAgents" class="btn" type="button">自动绑定</button></div></div>
+        <div class="tool-block warn"><b class="tool-block-title">连线与视图</b><div class="tool-button-grid two"><button id="btnDeleteEdgeInline" class="btn" type="button" title="先点击选中一条连线再删除">删除选中连线</button><button id="toolReset2" class="btn" type="button" onclick="document.getElementById('toolReset')&&document.getElementById('toolReset').click()">重置视图</button></div><div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span id="edgeSelectionHint" class="state-pill state-info">未选中连线</span><span id="zoomLabel" class="zoom-pill">100%</span></div></div>
+      </div></section>
+      <section class="panel topology-mode-panel is-hidden" data-left-panel="mode"><div class="hd"><b class="h-row"><span class="ops-ico ico-inspector">M</span>模式</b></div><div class="bd"><div id="modeBar" class="mode-toolbar"><select id="modeSelect" class="sel mode-select"><option value="edit">编辑模式</option><option value="run">运行模式</option><option value="test">测试模式</option></select><button id="modeLockBtn" class="btn" type="button">锁定模式</button><button id="modeUnlockBtn" class="btn ghost" style="display:none">解锁模式</button><span id="modeHint" class="state-pill state-info">当前模式：编辑模式（可编辑节点属性、端口、删除）</span><div id="runBar" style="display:none;gap:8px"><button id="btnRunStartAll" class="btn success" type="button">一键启动全流程</button><button id="btnRunStopAll" class="btn" type="button" style="background:#7f1d1d;border-color:#b91c1c;color:#fff">一键停止全流程</button></div><div id="testBar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap"><select id="testScope" class="sel"><option value="full">完整架构</option><option value="segment">中间链路段</option></select><select id="testStartNode" class="sel"></select><select id="testEndNode" class="sel"></select><button id="btnTestSmoke" class="btn" type="button">单元测试</button><button id="btnTestStress" class="btn" type="button">压力测试</button></div></div></div></section>
+      <section class="panel topology-assets-panel is-hidden" data-left-panel="nodes"><div class="hd"><b class="h-row"><span class="ops-ico ico-library">L</span>节点资产库</b></div><div class="bd"><div class="preset-quick"><b>节点模板</b><span>按业务线选择节点，点击添加到画布</span></div><div id="presetQuickBar" class="preset-quick">未选择模板</div><div class="asset-filter-row"><input id="presetSearch" class="inp" placeholder="搜索模板/角色"><select id="presetCategoryFilter" class="sel"><option value="">全部分类</option></select></div><div id="presetList" class="preset-list"></div><div class="hd" style="margin:10px -12px 0;border-top:1px solid #e9f0fb;border-bottom:none;background:transparent;padding:12px 12px 6px"><b class="h-row"><span class="ops-ico ico-inspector">N</span>节点列表</b></div><div id="runtimeNodeList" class="runtime-node-list"></div></div></section>
     </aside>
-
-    <section class="panel">
-      <div class="hd"><b class="h-row"><span class="ops-ico ico-canvas">C</span>Topology Canvas</b><span style="font-size:11px;color:#64748b">滚轮缩放 / Space 拖拽 / Shift 框选</span></div>
-      <div class="bd">
-        <div class="top-tool-row canvas-tool-row">
-          <button id="toolSelect" class="btn primary" type="button">选择</button>
-          <button id="toolAuto" class="btn" type="button">自动布局</button>
-          <button id="toolUndo" class="btn" type="button">撤销</button>
-          <button id="toolRedo" class="btn" type="button">重做</button>
-          <button id="toolReset" class="btn" type="button">重置视图</button>
-          <button id="toolSave" class="btn success" type="button">保存拓扑</button>
-          <select id="flowBlueprintSelect" class="sel" style="max-width:180px;height:32px;padding:4px 8px">
-            <option value="">流程模板</option>
-          </select>
-          <button id="btnApplyBlueprint" class="btn" type="button">应用模板</button>
-          <button id="btnAutoBindAgents" class="btn" type="button">自动绑定可用Agent</button>
-          <button id="btnDeleteEdgeInline" class="btn" type="button" title="先点击选中一条连线再删除">删除选中连线</button>
-          <span id="zoomLabel" class="zoom-pill">100%</span>
-          <input id="opsProjectFilter" class="inp top-project" value="{{ project_id }}" placeholder="project_id">
-        </div>
-
-        <div id="modeBar" class="mode-toolbar">
-          <select id="modeSelect" class="sel mode-select">
-            <option value="edit">编辑模式</option>
-            <option value="run">运行模式</option>
-            <option value="test">测试模式</option>
-          </select>
-          <button id="modeLockBtn" class="btn" type="button">锁定模式</button>
-          <button id="modeUnlockBtn" class="btn ghost" style="display:none">解锁模式</button>
-          <span id="modeHint" class="state-pill state-info">当前模式：编辑模式（可编辑节点属性、端口、删除）</span>
-          <div id="runBar" style="display:none;gap:8px">
-            <button id="btnRunStartAll" class="btn success" type="button">一键启动全流程</button>
-            <button id="btnRunStopAll" class="btn" type="button" style="background:#7f1d1d;border-color:#b91c1c;color:#fff">一键停止全流程</button>
-          </div>
-          <div id="testBar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
-            <select id="testScope" class="sel" style="width:160px">
-              <option value="full">完整架构</option>
-              <option value="segment">中间链路段</option>
-            </select>
-            <select id="testStartNode" class="sel" style="width:180px"></select>
-            <select id="testEndNode" class="sel" style="width:180px"></select>
-            <button id="btnTestSmoke" class="btn" type="button">单元测试</button>
-            <button id="btnTestStress" class="btn" type="button">压力测试</button>
-          </div>
-        </div>
-
-        <div id="canvasShell" class="ops-canvas">
-          <div class="ops-grid-bg"></div>
-          <div id="scene" class="scene">
-            <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
-            <div id="nodeLayer" class="nodes"></div>
-          </div>
-          <div id="marquee" style="position:absolute;border:1px dashed #22d3ee;background:rgba(34,211,238,.12);display:none"></div>
-        </div>
-
-        <div style="margin-top:10px">
-          <label style="font-size:11px;color:#64748b;display:block;margin-bottom:6px">模式日志</label>
-          <div id="modeLog" class="mode-log"></div>
-          <div id="modeLogDetails" class="mode-log-details"></div>
-        </div>
-      </div>
-    </section>
+    <section class="panel topology-canvas-panel"><div class="hd"><b class="h-row"><span class="ops-ico ico-canvas">C</span>拓扑画布</b><span style="font-size:11px;color:#64748b">滚轮缩放 / Space 拖拽</span></div><div class="bd"><div id="topologyLoadHint" class="topology-load-hint loading">正在加载拓扑核心数据...</div><div id="canvasShell" class="ops-canvas"><div class="ops-grid-bg"></div><div id="scene" class="scene"><svg id="edgeSvg" class="edges" width="4000" height="2600"></svg><div id="nodeLayer" class="nodes"></div></div><div id="marquee" style="position:absolute;border:1px dashed #22d3ee;background:rgba(34,211,238,.12);display:none"></div></div><div style="margin-top:10px"><label style="font-size:11px;color:#64748b;display:block;margin-bottom:6px">模式日志</label><div id="modeLog" class="mode-log"></div><div id="modeLogDetails" class="mode-log-details"></div></div></div></section>
   </div>
 </section>
-
+</main>
+</div>
 <div id="portQuickAdd" class="port-modal hidden">
   <div class="port-modal-box">
     <div class="port-modal-head">
@@ -201,9 +135,9 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260601e"></script>
-<script src="/static/ops_platform_workbench.js?v=20260601e"></script>
 
 
+<script src="/static/ops_platform_api.js?v=20260603p"></script>
+<script src="/static/ops_platform_workbench.js?v=20260603p"></script>
 
 

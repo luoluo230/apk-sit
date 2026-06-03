@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const POLL_MS = 2000;  // fallback: SSE 不可用时轮询间隔
   const SSE_ENDPOINT = "/api/ops-platform/agents/stream";
   const $ = (id) => document.getElementById(id);
@@ -19,14 +19,19 @@
     authRedirectCount: 0,
     loadInflight: false,
     modalKind: "agent", // agent|service
+    editingServiceKey: "",
+    openServiceKeys: new Set(),
+    eventSource: null,
   };
 
   function statusMeta(status) {
     const s = String(status || "UNKNOWN").toUpperCase();
-    if (["ONLINE", "READY", "SUCCESS"].includes(s)) return { cls: "ok", label: s };
-    if (["RUNNING", "PENDING", "DEGRADED", "LEASED"].includes(s)) return { cls: "warn", label: s };
-    if (["OFFLINE", "ERROR", "FAILED", "TIMEOUT", "CANCELED"].includes(s)) return { cls: "err", label: s };
-    return { cls: "info", label: s || "UNKNOWN" };
+    if (["ONLINE", "READY", "SUCCESS"].includes(s)) return { cls: "ok", label: "运行中" };
+    if (["RUNNING", "PENDING", "LEASED"].includes(s)) return { cls: "warn", label: "处理中" };
+    if (["DEGRADED"].includes(s)) return { cls: "warn", label: "降级" };
+    if (["OFFLINE", "ERROR", "FAILED", "TIMEOUT", "CANCELED"].includes(s)) return { cls: "err", label: "异常" };
+    if (["STOPPED", "STOP", "IDLE"].includes(s)) return { cls: "stopped", label: "已停止" };
+    return { cls: "info", label: s === "UNKNOWN" ? "未知" : s };
   }
 
   function metricValue(m, key) {
@@ -101,8 +106,98 @@
     return byPriority[0] || rows[0];
   }
 
+  function serviceKey(a) {
+    return [
+      String((a || {}).agent_id || ""),
+      String((a || {}).service_id || ""),
+      String((a || {}).node_id || ""),
+    ].join("::");
+  }
+
+  function splitDeviceRows(rows) {
+    const filtered = Array.isArray(rows) ? rows : [];
+    const deviceAgent = pickDeviceAgent(filtered);
+    const hostAgentId = String((deviceAgent || {}).agent_id || "");
+    const hostServiceId = String((deviceAgent || {}).service_id || "");
+    const hostNodeId = String((deviceAgent || {}).node_id || "");
+    const services = filtered.filter((a) => {
+      if (!deviceAgent) return true;
+      return !(
+        String(a.agent_id || "") === hostAgentId &&
+        String(a.service_id || "") === hostServiceId &&
+        String(a.node_id || "") === hostNodeId
+      );
+    });
+    return { deviceAgent, services };
+  }
+
+  function agentStatusLabel(a) {
+    const status = String((a || {}).effective_status || (a || {}).status || "UNKNOWN").toUpperCase();
+    if (status === "ONLINE") return "在线";
+    if (status === "RUNNING") return "运行中";
+    if (status === "OFFLINE") return "离线";
+    if (status === "DEGRADED") return "异常";
+    return status || "未知";
+  }
+
+  function shortId(value, maxLen) {
+    const text = String(value || "-");
+    const limit = Number(maxLen || 18);
+    if (text.length <= limit) return text;
+    return `${text.slice(0, Math.max(4, limit - 5))}...${text.slice(-4)}`;
+  }
+
+  function renderDeviceMetrics(snapC) {
+    return `
+      <span>CPU ${esc(metricValue(snapC, "cpu_percent"))}</span>
+      <span>MEM ${esc(metricValue(snapC, "mem_percent"))}</span>
+      <span>DISK ${esc(metricValue(snapC, "disk_percent"))}</span>
+    `;
+  }
+
+  function captureOpenServiceRows() {
+    document.querySelectorAll("details.service-row[data-service-key]").forEach((el) => {
+      const key = String(el.getAttribute("data-service-key") || "");
+      if (!key) return;
+      if (el.open) state.openServiceKeys.add(key);
+      else state.openServiceKeys.delete(key);
+    });
+  }
+
+  function bindRenderedDeviceEvents(groupsRoot) {
+    groupsRoot.querySelectorAll("[data-agent-edit]").forEach((btn) => {
+      btn.addEventListener("click", () => openEditModal(btn.dataset.agentEdit || ""));
+    });
+    groupsRoot.querySelectorAll("[data-service-edit]").forEach((btn) => {
+      btn.addEventListener("click", () => openServiceEditModal(btn.dataset.serviceEdit || ""));
+    });
+    groupsRoot.querySelectorAll("[data-service-action]").forEach((btn) => {
+      btn.addEventListener("click", () => runServiceAction(btn.dataset.serviceAction || "", btn.dataset.serviceId || "", btn));
+    });
+    groupsRoot.querySelectorAll("[data-create-service]").forEach((btn) => {
+      btn.addEventListener("click", () => openCreateModal({ kind: "service", deviceId: btn.dataset.createService || "" }));
+    });
+    groupsRoot.querySelectorAll("[data-probe-device]").forEach((btn) => {
+      btn.addEventListener("click", probeAllAgents);
+    });
+    groupsRoot.querySelectorAll("details.service-row[data-service-key]").forEach((el) => {
+      el.addEventListener("toggle", () => {
+        const key = String(el.getAttribute("data-service-key") || "");
+        if (!key) return;
+        if (el.open) {
+          state.openServiceKeys.clear();
+          state.openServiceKeys.add(key);
+        } else {
+          state.openServiceKeys.delete(key);
+        }
+        if (!state.modalOpen) renderDevices(state.lastDevices, state.lastAgents);
+      });
+    });
+  }
+
   function renderDevices(devices, allAgents) {
     const groupsRoot = $("cpDevices");
+    captureOpenServiceRows();
     if (!devices.length && !allAgents.length) {
       groupsRoot.innerHTML = '<div class="ops-empty">当前项目暂无 Agent</div>';
       return;
@@ -124,29 +219,31 @@
       for (const [did, rows] of byDev) {
         const filtered = applyLocalFilters(rows);
         if (!filtered.length) continue;
-        const online = filtered.filter(a => ["ONLINE","READY","RUNNING"].includes(String(a.effective_status || a.status || "").toUpperCase())).length;
-        const deviceAgent = pickDeviceAgent(filtered);
-        const serviceRows = filtered.filter((a) => String(a.agent_id || "") !== String((deviceAgent || {}).agent_id || ""));
+        const { deviceAgent, services: serviceRows } = splitDeviceRows(filtered);
+        const onlineServices = serviceRows.filter(a => ["ONLINE","READY","RUNNING"].includes(String(a.effective_status || a.status || a.run_state || "").toUpperCase())).length;
+        const hostIp = String((deviceAgent || {}).host_name || (filtered[0] || {}).host_name || "-");
+        const snapC = (((filtered[0] || {}).device_metrics_snapshot || {}).control) || {};
         html.push(`<section class="agent-device-group">
           <header class="agent-device-head">
-            <div><h4>${esc(did)}</h4><p>在线 ${online}/${filtered.length}</p></div>
+            <div><h4>${esc(did)}</h4><p>IP ${esc(hostIp)} · 在线服务 ${onlineServices}/${serviceRows.length}</p></div>
+            <div class="agent-device-metrics">${renderDeviceMetrics(snapC)}</div>
             <div class="ops-header-actions">
+              ${deviceAgent ? `<button type="button" class="btn" data-agent-edit="${esc(deviceAgent.agent_id || "")}">编辑设备 Agent</button>` : ""}
               <button type="button" class="btn" data-create-service="${esc(did)}">在该设备下新增服务器</button>
+              <button type="button" class="btn ghost" data-probe-device="${esc(did)}">探测设备 Agent</button>
             </div>
           </header>
           <div class="agent-device-wrap">
-            <div class="agent-host-card">${deviceAgent ? renderAgentCard(deviceAgent, true) : '<div class="ops-empty">暂无设备Agent</div>'}</div>
-            <div class="agent-card-grid">${serviceRows.map(a => renderAgentCard(a, false)).join("")}</div>
+            <div class="agent-host-card">${deviceAgent ? renderDeviceAgentCard(deviceAgent, snapC, hostIp, did) : '<div class="ops-empty">暂无设备Agent</div>'}</div>
+            <div class="service-panel">
+              <div class="ops-note service-panel-title">该设备下游戏服务器</div>
+              <div class="service-list">${serviceRows.map(a => renderServiceRow(a)).join("") || '<div class="ops-empty">暂无服务器实例</div>'}</div>
+            </div>
           </div>
         </section>`);
       }
       groupsRoot.innerHTML = html.join("") || '<div class="ops-empty">当前项目暂无 Agent</div>';
-      groupsRoot.querySelectorAll("[data-agent-edit]").forEach(btn => {
-        btn.addEventListener("click", () => openEditModal(btn.dataset.agentEdit || ""));
-      });
-      groupsRoot.querySelectorAll("[data-create-service]").forEach(btn => {
-        btn.addEventListener("click", () => openCreateModal({ kind: "service", deviceId: btn.dataset.createService || "" }));
-      });
+      bindRenderedDeviceEvents(groupsRoot);
       return;
     }
 
@@ -170,38 +267,35 @@
       const updatedAt = snap.updated_at ? String(snap.updated_at) : "-";
       const src = String(snap.source || "missing");
       const srcLabel = (src === "real" || src === "local" || src === "agent") ? "实时" : "实时缺失";
-      const online = Number(g.online || 0);
-      const total = Number(g.total || rows.length);
+      const hostIp = String((rows[0] || {}).host_name || (g.host_ip || g.host_name || "-"));
+      const updatedText = updatedAt === "-" ? "未同步" : updatedAt;
 
-      const deviceAgent = pickDeviceAgent(rows);
-      const serviceRows = rows.filter((a) => String(a.agent_id || "") !== String((deviceAgent || {}).agent_id || ""));
+      const { deviceAgent, services: serviceRows } = splitDeviceRows(rows);
+      const onlineServices = serviceRows.filter(a => ["ONLINE","READY","RUNNING"].includes(String(a.effective_status || a.status || a.run_state || "").toUpperCase())).length;
       return `<section class="agent-device-group">
         <header class="agent-device-head">
           <div>
             <h4>${esc(did)}</h4>
-            <p>在线 ${online}/${total} · 快照更新时间 ${esc(updatedAt)} · ${esc(srcLabel)}</p>
+            <p>IP ${esc(hostIp)} · 在线服务 ${onlineServices}/${serviceRows.length} · 最近心跳 ${esc(updatedText)} · ${esc(srcLabel)}</p>
           </div>
           <div class="agent-device-metrics">
-            <span>业务QPS ${esc(metricValue(snapB, "qps"))}</span>
-            <span>P95 ${esc(metricValue(snapB, "rtt_p95_ms"))}</span>
-            <span>P99 ${esc(metricValue(snapB, "rtt_p99_ms"))}</span>
-            <span>CPU ${esc(metricValue(snapC, "cpu_percent"))}</span>
-            <span>MEM ${esc(metricValue(snapC, "mem_percent"))}</span>
-            <span>DISK ${esc(metricValue(snapC, "disk_percent"))}</span>
+            ${renderDeviceMetrics(snapC)}
           </div>
           <div class="ops-header-actions">
+            ${deviceAgent ? `<button type="button" class="btn" data-agent-edit="${esc(deviceAgent.agent_id || "")}">编辑设备 Agent</button>` : ""}
             <button type="button" class="btn" data-create-service="${esc(did)}">在该设备下新增服务器</button>
+            <button type="button" class="btn ghost" data-probe-device="${esc(did)}">探测设备 Agent</button>
           </div>
         </header>
         <div class="agent-device-wrap">
           <div class="agent-host-card">
             <div class="ops-note" style="margin-bottom:6px">设备 Agent（1 台设备 1 个）</div>
-            ${deviceAgent ? renderAgentCard(deviceAgent, true) : '<div class="ops-empty">暂无设备Agent</div>'}
+            ${deviceAgent ? renderDeviceAgentCard(deviceAgent, snapC, hostIp, did) : '<div class="ops-empty">暂无设备Agent</div>'}
           </div>
-          <div>
-            <div class="ops-note" style="margin-bottom:6px">该设备下游戏服务器</div>
-            <div class="agent-card-grid">
-              ${serviceRows.map((a) => renderAgentCard(a, false)).join("")}
+          <div class="service-panel">
+            <div class="ops-note service-panel-title">该设备下游戏服务器</div>
+            <div class="service-list">
+              ${serviceRows.map((a) => renderServiceRow(a)).join("") || '<div class="ops-empty">暂无服务器实例</div>'}
             </div>
           </div>
         </div>
@@ -212,23 +306,14 @@
       $("agentRefreshHint").textContent = `自动刷新：每 2 秒（已隐藏历史失活 ${hiddenTotal} 个）`;
     }
     groupsRoot.innerHTML = html || '<div class="ops-empty">筛选后无匹配 Agent</div>';
-
-    groupsRoot.querySelectorAll("[data-agent-edit]").forEach((btn) => {
-      btn.addEventListener("click", () => openEditModal(btn.dataset.agentEdit || ""));
-    });
-    groupsRoot.querySelectorAll("[data-create-service]").forEach(btn => {
-      btn.addEventListener("click", () => openCreateModal({ kind: "service", deviceId: btn.dataset.createService || "" }));
-    });
+    bindRenderedDeviceEvents(groupsRoot);
   }
 
-  function renderAgentCard(a, isHostAgent) {
+  function renderDeviceAgentCard(a, deviceMetrics, hostIp, deviceId) {
     const s = statusMeta(a.effective_status || a.status);
-    const isBound = !!a.is_bound;
-    const bindPill = isBound ? '<span class="state-pill state-ok">已绑定</span>' : '<span class="state-pill state-warn">未绑定</span>';
     const age = a.last_seen_age_sec == null ? "-" : `${a.last_seen_age_sec}s`;
     const m = a.metrics || {};
     const mc = m.control || m;
-    const mb = m.business || {};
     const source = String(mc.source || "missing");
     const sourceCls = (source === "real" || source === "local" || source === "agent") ? "real" : "mock";
     const sourceLabel = (source === "real" || source === "local" || source === "agent") ? "实时" : "实时缺失";
@@ -238,29 +323,26 @@
     const probePill = probeStatus === "PASS"
       ? '<span class="state-pill state-ok">探测通过</span>'
       : (probeStatus === "FAIL" ? '<span class="state-pill state-err">探测失败</span>' : '<span class="state-pill state-info">未探测</span>');
-    const remotePort = a.remote_game_server_port || "-";
+    const devMetrics = deviceMetrics || {};
+    const ip = hostIp || a.host_name || "-";
+    const did = deviceId || a.device_id || "-";
 
     return `<article class="agent-card status-${s.cls}">
       <div class="agent-card-top">
         <strong title="${esc(a.display_name || a.agent_id || "-")}">${esc(a.display_name || a.agent_id || "-")}</strong>
         <span class="state-pill state-${s.cls}">${esc(s.label)}</span>
       </div>
-      <div class="agent-card-meta">${isHostAgent ? '<span class="state-pill state-info">设备Agent</span>' : '<span class="state-pill state-info">服务器实例</span>'}${bindPill}${probePill}<span class="agent-card-dot">node: ${esc(a.node_id || "-")}</span></div>
-      <div class="agent-card-kv">agent_id: ${esc(a.agent_id || "-")}</div>
-      <div class="agent-card-kv">device: ${esc(a.device_id || "-")} · ip: ${esc(a.host_name || "-")} · port: ${esc(a.port || "-")}</div>
-      <div class="agent-card-kv">remote_port: ${esc(remotePort)} · probe_rtt: ${esc(probeRtt)}</div>
-      <div class="agent-card-kv">probe_at: ${esc(probeAt)}</div>
-      <div class="agent-card-kv">last_seen_age: ${esc(age)}</div>
+      <div class="agent-card-meta"><span class="state-pill state-info">设备Agent</span>${probePill}</div>
+      <div class="agent-card-kv">设备：${esc(did)} · IP：${esc(ip)}</div>
+      <div class="agent-card-kv">Agent ID：${esc(a.agent_id || "-")}</div>
+      <div class="agent-card-kv">控制端口：${esc(a.port || "-")} · 心跳：${esc(age)}</div>
+      <div class="agent-card-kv">心跳 RTT：${esc(metricValue(mc, "rtt_ms"))} · 探测 RTT：${esc(probeRtt)}</div>
+      <div class="agent-card-kv">版本：${esc(a.version || "-")} · 同步：${esc(probeAt)}</div>
       <div class="agent-card-metrics">
         <span class="metric-src ${sourceCls}">${esc(sourceLabel)}</span>
-        <span>业务QPS ${esc(metricValue(mb, "qps"))}</span>
-        <span>P95 ${esc(metricValue(mb, "rtt_p95_ms"))}</span>
-        <span>P99 ${esc(metricValue(mb, "rtt_p99_ms"))}</span>
-        <span>错误率 ${esc(metricValue(mb, "error_rate"))}</span>
-        <span>连接数 ${esc(metricValue(mb, "conn"))}</span>
-        <span>CPU ${esc(metricValue(mc, "cpu_percent"))}</span>
-        <span>MEM ${esc(metricValue(mc, "mem_percent"))}</span>
-        <span>DISK ${esc(metricValue(mc, "disk_percent"))}</span>
+        <span>CPU ${esc(metricValue(devMetrics, "cpu_percent"))}</span>
+        <span>MEM ${esc(metricValue(devMetrics, "mem_percent"))}</span>
+        <span>DISK ${esc(metricValue(devMetrics, "disk_percent"))}</span>
         <span>任务QPS ${esc(metricValue(mc, "qps"))}</span>
         <span>心跳RTT ${esc(metricValue(mc, "rtt_ms"))}</span>
       </div>
@@ -269,6 +351,69 @@
         <a class="btn ghost" href="/admin/ops-platform/topology?project_id=${encodeURIComponent(state.projectId)}">拓扑定位</a>
       </div>
     </article>`;
+  }
+
+  function renderServiceDetailPanel(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return '<aside class="service-detail-side"><div class="ops-empty">\u9009\u62e9\u670d\u52a1\u5668\u67e5\u770b\u8be6\u60c5</div></aside>';
+    const selected = list.find((a) => state.openServiceKeys.has(serviceKey(a))) || list[0];
+    const m = selected.metrics || {};
+    const mb = m.business || {};
+    const sid = String(selected.service_id || selected.node_id || selected.agent_id || "");
+    const port = selected.service_port || selected.remote_game_server_port || selected.port || "-";
+    const type = selected.service_type || selected.role || "-";
+    const agentId = String(selected.agent_id || "-");
+    return `<aside class="service-detail-side" data-service-detail-key="${esc(serviceKey(selected))}">
+      <div class="service-detail-head">
+        <strong title="${esc(selected.display_name || sid || "-")}">${esc(selected.display_name || sid || "-")}</strong>
+        <span class="state-pill state-info">${esc(type)}</span>
+      </div>
+      <div class="service-detail-grid">
+        <span>??ID?${esc(sid || "-")}</span>
+        <span>?????${esc(selected.node_id || "-")}</span>
+        <span>?????${esc(port)}</span>
+        <span title="?? Agent?${esc(agentId)}">?? Agent?${esc(shortId(agentId, 18))}</span>
+        <span>QPS?${esc(metricValue(mb, "qps"))}</span>
+        <span>P95?${esc(metricValue(mb, "rtt_p95_ms"))}</span>
+        <span>P99?${esc(metricValue(mb, "rtt_p99_ms"))}</span>
+        <span>????${esc(metricValue(mb, "error_rate"))}</span>
+        <span>????${esc(metricValue(mb, "conn"))}</span>
+      </div>
+      <div class="service-actions">
+        <button class="btn success" data-service-action="start" data-service-id="${esc(sid)}">??</button>
+        <button class="btn danger" data-service-action="stop" data-service-id="${esc(sid)}">??</button>
+        <button class="btn" data-service-action="restart" data-service-id="${esc(sid)}">??</button>
+        <button class="btn ghost" data-service-action="status" data-service-id="${esc(sid)}">??</button>
+        <button class="btn ghost" data-service-action="logs" data-service-id="${esc(sid)}">??</button>
+        <button class="btn" data-service-edit="${esc(serviceKey(selected))}">??</button>
+      </div>
+    </aside>`;
+  }
+
+  function renderServiceRow(a) {
+    const s = statusMeta(a.run_state || a.effective_status || a.status);
+    const isBound = !!a.is_bound;
+    const bindPill = isBound ? '<span class="state-pill state-ok">已绑定</span>' : '<span class="state-pill state-warn">未绑定</span>';
+    const m = a.metrics || {};
+    const mb = m.business || {};
+    const sid = String(a.service_id || a.node_id || a.agent_id || "");
+    const port = a.service_port || a.remote_game_server_port || a.port || "-";
+    const type = a.service_type || a.role || "-";
+    const agentId = String(a.agent_id || "-");
+    const key = serviceKey(a);
+    const openAttr = state.openServiceKeys.has(key) ? " open" : "";
+    return `<details class="service-row status-${s.cls}" data-service-key="${esc(key)}"${openAttr}>
+      <summary>
+        <span class="service-name" title="${esc(a.display_name || sid || "-")}">${esc(a.display_name || sid || "-")}</span>
+        <span class="state-pill state-info">${esc(type)}</span>
+        <span class="service-mini">端口 ${esc(port)}</span>
+        <span class="state-pill state-${s.cls}">${esc(agentStatusLabel({ effective_status: a.run_state || a.effective_status || a.status }))}</span>
+        ${bindPill}
+        <span class="service-metric">QPS ${esc(metricValue(mb, "qps"))}</span>
+        <span class="service-metric">P95 ${esc(metricValue(mb, "rtt_p95_ms"))}</span>
+        <span class="service-expand">展开</span>
+      </summary>
+    </details>`;
   }
 
   // 3 个请求独立返回，谁先返回谁渲染
@@ -372,6 +517,42 @@
     $("agentEditModal").setAttribute("aria-hidden", "false");
   }
 
+  function findServiceByKey(key) {
+    const target = String(key || "");
+    return (state.lastAgents || []).find((a) => serviceKey(a) === target) || null;
+  }
+
+  function openServiceEditModal(key) {
+    const hit = findServiceByKey(key);
+    if (!hit) return;
+    state.createMode = false;
+    state.modalOpen = true;
+    state.modalKind = "service";
+    state.editingAgentId = String(hit.agent_id || "");
+    state.editingServiceKey = serviceKey(hit);
+
+    $("agentEditTitle").textContent = "编辑服务实例";
+    $("agentEditHint").textContent = "服务实例只编辑服务器字段，设备信息由所属 Agent 管理";
+    $("editAgentId").value = hit.agent_id || "";
+    $("editAgentId").readOnly = true;
+    $("editDeviceId").value = hit.device_id || "";
+    $("editHostIp").value = hit.host_name || "";
+    $("editServiceId").value = String(hit.service_id || hit.node_id || "");
+    $("editServiceId").readOnly = true;
+    $("editServiceType").value = String(hit.service_type || hit.role || "");
+    $("editDisplayName").value = hit.display_name || hit.service_id || hit.node_id || "";
+    $("editPort").value = hit.port || "";
+    $("editServicePort").value = hit.service_port || "";
+    $("editRemotePort").value = hit.remote_game_server_port || hit.service_port || hit.port || "";
+    $("editNetworkEndpoints").value = "";
+    $("editRunState").value = "";
+    $("editDesc").value = hit.desc || "";
+    toggleFieldMode("service", false);
+
+    $("agentEditModal").classList.remove("hidden");
+    $("agentEditModal").setAttribute("aria-hidden", "false");
+  }
+
   function openCreateModal(opts) {
     const kind = String((opts && opts.kind) || "agent");
     const deviceId = String((opts && opts.deviceId) || "").trim();
@@ -381,8 +562,10 @@
     state.editingAgentId = "";
     let defaultAgentId = "";
     let defaultHostIp = "";
-    if (kind === "service" && deviceId) {
-      const rows = (state.lastAgents || []).filter((x) => String((x || {}).device_id || "") === deviceId);
+    if (kind === "service") {
+      const rows = deviceId
+        ? (state.lastAgents || []).filter((x) => String((x || {}).device_id || "") === deviceId)
+        : (state.lastAgents || []);
       const hostAgent = pickDeviceAgent(rows);
       if (hostAgent) {
         defaultAgentId = String(hostAgent.agent_id || "");
@@ -390,10 +573,11 @@
       }
     }
     $("editAgentId").value = defaultAgentId;
-    $("editAgentId").readOnly = false;
+    $("editAgentId").readOnly = state.modalKind === "service";
     $("editDeviceId").value = deviceId;
     $("editHostIp").value = defaultHostIp;
     $("editServiceId").value = "";
+    $("editServiceId").readOnly = false;
     $("editServiceType").value = "";
     $("editDisplayName").value = "";
     $("editPort").value = "";
@@ -419,6 +603,7 @@
     state.editingAgentId = "";
     state.createMode = false;
     state.modalKind = "agent";
+    state.editingServiceKey = "";
     $("agentEditModal").classList.add("hidden");
     $("agentEditModal").setAttribute("aria-hidden", "true");
     $("agentEditHint").textContent = "编辑保存后 2 秒内会同步到卡片";
@@ -435,9 +620,6 @@
       project_id: state.projectId,
       desc: String($("editDesc").value || "").trim(),
     };
-    const endpointText = String($("editNetworkEndpoints").value || "").trim();
-    if (endpointText) payload.network = { endpoints: endpointText.split(",").map((x) => x.trim()).filter(Boolean) };
-    else payload.network = { endpoints: [] };
     const rs = String($("editRunState").value || "").trim();
     if (rs) payload.run_state = rs;
 
@@ -456,14 +638,21 @@
         payload.agent_id = agentId;
         payload.service_id = serviceId;
         payload.display_name = String($("editDisplayName").value || "").trim() || serviceId;
-        payload.device_id = String($("editDeviceId").value || "").trim();
-        payload.host_name = String($("editHostIp").value || "").trim();
+        const ownerAgent = state.agentsById.get(agentId) || {};
+        payload.device_id = String(ownerAgent.device_id || $("editDeviceId").value || "").trim();
+        payload.host_name = String(ownerAgent.host_name || $("editHostIp").value || "").trim();
         payload.service_type = String($("editServiceType").value || "").trim() || "standard";
         payload.service_port = Number($("editServicePort").value || 0);
         payload.remote_game_server_port = Number($("editRemotePort").value || 0);
+        const servicePort = payload.service_port || payload.remote_game_server_port || 0;
+        const host = payload.host_name || String(ownerAgent.host_ip || "");
+        payload.network = { endpoints: host && servicePort ? [`${host}:${servicePort}`] : [] };
         payload.status = "ONLINE";
         resp = await OpsApi.upsertService(payload);
       } else {
+        const endpointText = String($("editNetworkEndpoints").value || "").trim();
+        if (endpointText) payload.network = { endpoints: endpointText.split(",").map((x) => x.trim()).filter(Boolean) };
+        else payload.network = { endpoints: [] };
         payload.agent_id = agentId;
         payload.display_name = String($("editDisplayName").value || "").trim();
         payload.device_id = String($("editDeviceId").value || "").trim();
@@ -500,17 +689,45 @@
         return;
       }
       const id = el.querySelector("input") ? el.querySelector("input").id : "";
-      if (id === "editAgentId" || id === "editDeviceId" || id === "editHostIp") el.style.display = "";
+      if (id === "editAgentId") el.style.display = "";
       else el.style.display = "none";
     });
+    const endpointsWrap = $("editNetworkEndpoints") ? $("editNetworkEndpoints").closest("label") : null;
+    if (endpointsWrap) endpointsWrap.style.display = "none";
     $("btnProbeAgent").style.display = isService ? "none" : "";
     if (creating && isService) {
-      $("editAgentId").readOnly = false;
+      $("editAgentId").readOnly = true;
       $("editHostIp").readOnly = true;
       $("editDeviceId").readOnly = true;
     } else {
       $("editHostIp").readOnly = false;
       $("editDeviceId").readOnly = false;
+    }
+  }
+
+  async function runServiceAction(action, serviceId, btn) {
+    const sid = String(serviceId || "").trim();
+    const act = String(action || "").trim();
+    if (!sid || !act) return;
+    const old = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "处理中";
+    }
+    try {
+      const resp = await OpsApi.serviceAction({ project_id: state.projectId, service_id: sid, action: act });
+      if (!resp || resp.ok === false) {
+        alert((resp && (resp.message || resp.error_code || resp.error)) || "服务动作执行失败");
+        return;
+      }
+      const trace = resp.trace_id ? ` trace=${resp.trace_id}` : "";
+      alert(`服务动作已提交：${act}${trace}`);
+      loadData();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = old;
+      }
     }
   }
 
@@ -590,7 +807,7 @@
   function bindEvents() {
     $("btnRefreshCp").addEventListener("click", () => loadData());
     $("btnCreateAgent").addEventListener("click", () => openCreateModal({ kind: "agent" }));
-    $("btnCreateServiceTop").addEventListener("click", () => openCreateModal({ kind: "service" }));
+    if ($("btnCreateServiceTop")) $("btnCreateServiceTop").addEventListener("click", () => openCreateModal({ kind: "service" }));
     $("btnProbeAllAgent").addEventListener("click", probeAllAgents);
     if ($("btnProbeRepairAllAgent")) $("btnProbeRepairAllAgent").addEventListener("click", probeRepairAllAgents);
     $("btnCleanupExpired").addEventListener("click", async () => {
@@ -664,14 +881,16 @@
   }
 
   function startPolling() {
-    // prefer SSE, fallback to polling
-    if (typeof EventSource !== "undefined") {
+    // 默认使用 2 秒稳定轮询；SSE 仅在页面显式开启时使用，避免 stream 异常污染控制台。
+    if (state.pollTimer) clearInterval(state.pollTimer);
+    state.pollTimer = setInterval(() => {
+      if (!state.modalOpen) loadData();
+    }, POLL_MS);
+
+    const root = document.querySelector(".ops-page");
+    const sseEnabled = root && root.dataset.agentSse === "true";
+    if (sseEnabled && typeof EventSource !== "undefined") {
       startSSE();
-    } else {
-      if (state.pollTimer) clearInterval(state.pollTimer);
-      state.pollTimer = setInterval(() => {
-        if (!state.modalOpen) loadData();
-      }, POLL_MS);
     }
   }
 
@@ -713,12 +932,6 @@
           state.pollTimer = setInterval(() => {
             if (!state.modalOpen) loadData();
           }, POLL_MS);
-          // 30s 后重试 SSE
-          setTimeout(() => {
-            if (state.pollTimer) clearInterval(state.pollTimer);
-            state.pollTimer = null;
-            startSSE();
-          }, 30000);
         }
       };
 

@@ -1,4 +1,21 @@
-﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260601e">
+<link rel="stylesheet" href="/static/ops_platform.css?v=20260603r">
+<div class="ops-app" data-page="agent">
+<aside class="ops-side">
+  <div class="ops-brand"><span class="ops-ico ico-title">O</span><div><b>运维平台</b><span>GameOps Console</span></div></div>
+  <div class="ops-project-pill">GomeKu 运维工作台</div>
+  <div class="ops-nav-group">工作台</div>
+  <a class="ops-nav-item " href="/admin/ops-platform?project_id={{ project_id }}">总览看板</a>
+  <div class="ops-nav-group">架构编排</div>
+  <a class="ops-nav-item " href="/admin/ops-platform/topology?project_id={{ project_id }}">拓扑编排</a>
+  <a class="ops-nav-item active" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 与服务器</a>
+  <div class="ops-nav-group">执行与诊断</div>
+  <a class="ops-nav-item" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
+  <a class="ops-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a>
+  <div class="ops-nav-group">治理与合规</div>
+  <a class="ops-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
+  <a class="ops-nav-item" href="/admin/approval">审批中心</a>
+</aside>
+<main class="ops-main">
 <section class="ops-page" data-project-id="{{ project_id }}">
   <div class="top">
     <div>
@@ -18,7 +35,6 @@
       <div class="ops-header-actions">
         <button id="btnRefreshCp" class="btn">立即刷新</button>
         <button id="btnCreateAgent" class="btn primary">新建设备 Agent</button>
-        <button id="btnCreateServiceTop" class="btn">新增服务实例</button>
         <button id="btnProbeAllAgent" class="btn">一键联通测试</button>
         <button id="btnProbeRepairAllAgent" class="btn">批量修复并探测</button>
         <button id="btnCleanupExpired" class="btn ghost" title="清理超过1小时未心跳的Agent">清理过期(1h)</button>
@@ -114,7 +130,8 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260601e"></script>
-<script src="/static/ops_platform_agent_control.js?v=20260601e"></script>
 
-
+</main>
+</div>
+<script src="/static/ops_platform_api.js?v=20260603p"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260603r"></script>

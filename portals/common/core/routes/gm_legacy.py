@@ -12,7 +12,7 @@ import hashlib
 import socket
 import threading
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, render_template_string, request, session
 
@@ -2218,10 +2218,15 @@ def ops_platform_agents_stream():
 
     def _generate():
         # 先推一次全量快照
-        with _probe_cache_lock:
-            snap = _build_sse_payload(
-                _probe_cache_agents, _probe_cache
-            ) if _probe_cache_agents else None
+        snap = None
+        try:
+            with _probe_cache_lock:
+                snap = _build_sse_payload(
+                    _probe_cache_agents, _probe_cache
+                ) if _probe_cache_agents else None
+        except Exception as exc:
+            import logging
+            logging.getLogger("ops.agent_stream").warning("build initial SSE payload failed: %s", exc, exc_info=True)
         if snap:
             yield f"event: full\ndata: {json.dumps(snap, ensure_ascii=False)}\n\n"
 
@@ -3272,6 +3277,7 @@ def _validate_ops_request(payload: Dict[str, Any], node: Dict[str, Any]) -> Dict
         "health_check",
         "ready_check",
         "runtime_snapshot",
+        "log_tail",
         "start",
         "stop",
         "restart",
@@ -4125,29 +4131,40 @@ def ops_platform_services_action():
     if not service_hit:
         return jsonify({"ok": False, "error": "service_not_found", "error_code": "OPS_SERVICE_NOT_FOUND"}), 404
 
-    node_id = str(payload.get("node_id") or service_hit.get("node_id") or "").strip()
-    if not node_id:
-        return jsonify({"ok": False, "error": "missing_node_id"}), 400
+    topology_node_id = str(payload.get("node_id") or service_hit.get("node_id") or "").strip()
+    if not topology_node_id:
+        for bound_node_id, bound_service_id in (_load_node_service_bindings() or {}).items():
+            if str(bound_service_id or "").strip() == service_id:
+                topology_node_id = str(bound_node_id or "").strip()
+                break
+    agent_id = str(service_hit.get("agent_id") or payload.get("agent_id") or "").strip()
+    reg = _load_agent_registry_v2()
+    agent_desc = reg.get(agent_id) if agent_id and isinstance(reg.get(agent_id), dict) else {}
+    dispatch_node_id = str((agent_desc or {}).get("node_id") or "").strip()
+    if not dispatch_node_id:
+        dispatch_node_id = topology_node_id
+    if not dispatch_node_id:
+        return jsonify({"ok": False, "error": "missing_dispatch_node_id", "error_code": "OPS_SERVICE_DISPATCH_NODE_MISSING"}), 400
     action_map = {
         "start": "start",
         "stop": "stop",
         "restart": "restart",
         "status": "status",
         "probe": "health_check",
-        "logs": "runtime_snapshot",
+        "logs": "log_tail",
     }
     action_type = action_map.get(action, "")
     if not action_type:
         return jsonify({"ok": False, "error": "unsupported_action"}), 400
 
     nodes = _load_nodes()
-    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
+    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == dispatch_node_id), None)
     if not node:
-        return jsonify({"ok": False, "error": "node_not_found"}), 404
+        return jsonify({"ok": False, "error": "dispatch_node_not_found", "error_code": "OPS_SERVICE_DISPATCH_NODE_MISSING"}), 404
     req = {
-        "node_id": node_id,
+        "node_id": dispatch_node_id,
         "action_type": action_type,
-        "target": node_id,
+        "target": service_id,
         "ticket_id": "OPS-SVC-" + uuid.uuid4().hex[:8],
         "reason": "服务实例标准运维动作",
         "approver": str(session.get("user") or "admin"),
@@ -4157,7 +4174,8 @@ def ops_platform_services_action():
             "run_mode": "agent",
             "desired_role": str(service_hit.get("service_type") or ""),
             "desired_service_id": service_id,
-            "desired_server_id": str(service_hit.get("node_id") or node_id),
+            "desired_server_id": service_id,
+            "topology_node_id": topology_node_id,
             "switch_required": action in ("start", "restart"),
             "launch_visible_console": bool(payload.get("launch_visible_console", True)),
         },
@@ -4170,7 +4188,9 @@ def ops_platform_services_action():
         return jsonify({"ok": False, "error": "OPS_REMOTE_START_FAILED", "error_code": "OPS_REMOTE_START_FAILED", "message": str(result.get("message") or result.get("error") or "service action failed")}), 502
     return jsonify({
         "ok": True,
-        "node_id": node_id,
+        "node_id": topology_node_id,
+        "dispatch_node_id": dispatch_node_id,
+        "agent_id": agent_id,
         "service_id": service_id,
         "action": action,
         "job_id": ((result.get("data") or {}).get("job_id") if isinstance(result.get("data"), dict) else ""),
@@ -4936,6 +4956,207 @@ def ops_platform_topology_node_update():
     return jsonify({"ok": True, "message": "鑺傜偣灞炴€у凡鏇存柊", "topology": saved})
 
 
+def _ops_topology_meta_structured(topo: Dict[str, Any]) -> None:
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    meta["layout_mode"] = "structured"
+    meta["updated_at"] = _now_iso()
+    topo["meta"] = meta
+
+
+def _ops_topology_node_map(topo: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    return {str(n.get("id") or ""): n for n in (topo.get("nodes") or []) if isinstance(n, dict) and str(n.get("id") or "")}
+
+
+def _ops_topology_edge_list(topo: Dict[str, Any]) -> List[Dict[str, Any]]:
+    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    topo["edges"] = edges
+    return edges
+
+
+def _ops_port_max(port: Dict[str, Any]) -> int:
+    try:
+        return max(1, int(port.get("max_links") or 1))
+    except Exception:
+        return 1
+
+
+def _ops_port_link_count(edges: List[Dict[str, Any]], node_id: str, side: str, port_id: str) -> int:
+    if side == "out":
+        return len([e for e in edges if isinstance(e, dict) and str(e.get("from") or "") == node_id and str(e.get("from_port") or "out-1") == port_id])
+    return len([e for e in edges if isinstance(e, dict) and str(e.get("to") or "") == node_id and str(e.get("to_port") or "in-1") == port_id])
+
+
+def _ops_next_port_id(ports: List[Dict[str, Any]], side: str) -> str:
+    prefix = "out" if side == "out" else "in"
+    used = {str(p.get("id") or "") for p in ports if isinstance(p, dict)}
+    idx = 1
+    while f"{prefix}-{idx}" in used:
+        idx += 1
+    return f"{prefix}-{idx}"
+
+
+def _ops_ensure_free_port(topo_node: Dict[str, Any], side: str, edges: List[Dict[str, Any]]) -> str:
+    node_id = str(topo_node.get("id") or "")
+    kind = str(topo_node.get("kind") or _infer_node_kind(str(topo_node.get("role") or "business"), ""))
+    ui = topo_node.get("ui") if isinstance(topo_node.get("ui"), dict) else {}
+    ports_obj = _normalize_ports(kind, ui.get("ports"))
+    rows = ports_obj.get(side) if isinstance(ports_obj.get(side), list) else []
+    for port in rows:
+        pid = str(port.get("id") or "")
+        if pid and _ops_port_link_count(edges, node_id, side, pid) < _ops_port_max(port):
+            ui["ports"] = ports_obj
+            topo_node["ui"] = ui
+            return pid
+    max_ports = 8 if kind in ("entry", "terminal") else 6
+    if len(rows) >= max_ports:
+        return ""
+    pid = _ops_next_port_id(rows, side)
+    rows.append({"id": pid, "label": pid, "kind": side, "max_links": 1, "required": False})
+    ports_obj[side] = rows
+    ui["ports"] = ports_obj
+    topo_node["ui"] = ui
+    return pid
+
+
+def _ops_structured_append_edge(topo: Dict[str, Any], frm: str, to: str) -> Tuple[bool, Dict[str, Any], int]:
+    if not frm or not to or frm == to:
+        return False, {"ok": False, "error": "invalid edge endpoints", "message": "连线起点或终点无效"}, 400
+    node_map = _ops_topology_node_map(topo)
+    edges = _ops_topology_edge_list(topo)
+    fn = node_map.get(frm)
+    tn = node_map.get(to)
+    if not fn or not tn:
+        return False, {"ok": False, "error": "node not found", "message": "节点不存在"}, 404
+    from_node = _resolve_node(node_id=frm) or fn
+    to_node = _resolve_node(node_id=to) or tn
+    if not _can_link_nodes(from_node, to_node):
+        return False, {"ok": False, "error": "invalid_edge_by_role", "error_code": "OPS_EDGE_ROLE_FORBIDDEN", "message": "当前节点角色规则不允许该连线"}, 409
+    fkind = str(fn.get("kind") or _infer_node_kind(str(fn.get("role") or from_node.get("role") or ""), ""))
+    tkind = str(tn.get("kind") or _infer_node_kind(str(tn.get("role") or to_node.get("role") or ""), ""))
+    if fkind == "terminal" or tkind == "entry":
+        return False, {"ok": False, "error": "node_kind_violation", "error_code": "OPS_NODE_KIND_VIOLATION", "message": "节点语义方向不允许该连线"}, 409
+    if any(isinstance(e, dict) and str(e.get("from") or "") == frm and str(e.get("to") or "") == to for e in edges):
+        return False, {"ok": False, "error": "edge_duplicate", "error_code": "OPS_EDGE_DUPLICATE", "message": "两个节点之间已存在连线"}, 409
+    from_port = _ops_ensure_free_port(fn, "out", edges)
+    to_port = _ops_ensure_free_port(tn, "in", edges)
+    if not from_port or not to_port:
+        return False, {"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "节点端口数量已达上限"}, 409
+    edge = {"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": "depends_on", "note": "structured-auto", "ui": {}}
+    edges.append(edge)
+    return True, edge, 200
+
+
+@bp.route("/api/ops-platform/topology/structured/add-existing-target", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_structured_add_existing_target():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    frm = str(payload.get("from_node_id") or payload.get("from") or "").strip()
+    to = str(payload.get("to_node_id") or payload.get("to") or "").strip()
+    topo = _load_topology(_load_nodes())
+    ok, result, status = _ops_structured_append_edge(topo, frm, to)
+    if not ok:
+        return jsonify(result), status
+    _ops_topology_meta_structured(topo)
+    saved = _save_topology(topo)
+    log_audit("ops_platform_structured_add_existing_target", f"{frm}->{to}")
+    return jsonify({"ok": True, "message": "已添加下游连线", "edge": result, "topology": saved})
+
+
+@bp.route("/api/ops-platform/topology/structured/add-new-target", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_structured_add_new_target():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    frm = str(payload.get("from_node_id") or payload.get("from") or "").strip()
+    preset_id = str(payload.get("preset_id") or "").strip()
+    project_id = str(payload.get("project_id") or "").strip()
+    if not frm or not preset_id:
+        return jsonify({"ok": False, "error": "missing_required_fields", "message": "缺少源节点或模板"}), 400
+    preset = None
+    for item in _load_node_presets():
+        if isinstance(item, dict) and str(item.get("preset_id") or "") == preset_id:
+            preset = item
+            break
+    if not preset:
+        return jsonify({"ok": False, "error": "preset_not_found", "message": "节点模板不存在"}), 404
+
+    rows = _load_nodes()
+    src_node = next((x for x in rows if isinstance(x, dict) and str(x.get("id") or "") == frm), None)
+    if not src_node:
+        return jsonify({"ok": False, "error": "node not found", "message": "源节点不存在"}), 404
+    role = str(preset.get("role") or "business")
+    node_kind = _infer_node_kind(role, str(preset.get("kind") or ""))
+    candidate = _normalize_node(
+        {
+            "id": str(payload.get("id") or "").strip() or f"{preset_id}-{uuid.uuid4().hex[:6]}",
+            "name": str(payload.get("name") or preset.get("name") or preset_id),
+            "server_id": "",
+            "project_id": project_id,
+            "owner": str(payload.get("owner") or "ops-admin"),
+            "role": role,
+            "node_category": str(preset.get("category") or ""),
+            "node_type": str(preset.get("node_type") or ""),
+            "description": str(payload.get("description") or preset.get("default_desc") or ""),
+            "biz_status": "normal",
+            "allowed_upstream_roles": list(preset.get("fixed_upstream_roles") or []),
+            "allowed_downstream_roles": list(preset.get("fixed_downstream_roles") or []),
+            "daemon_profile": str(preset.get("daemon_profile") or ""),
+            "enabled": True,
+            "tags": [str(preset.get("category") or ""), role],
+        }
+    )
+    if not _can_link_nodes(src_node, candidate):
+        return jsonify({"ok": False, "error": "invalid_edge_by_role", "error_code": "OPS_EDGE_ROLE_FORBIDDEN", "message": "该模板不能作为当前节点的下游"}), 409
+    new_id = str(candidate.get("id") or "").strip()
+    if any(isinstance(x, dict) and str(x.get("id") or "") == new_id for x in rows):
+        return jsonify({"ok": False, "error": "node_id_exists", "message": f"节点ID已存在: {new_id}"}), 409
+    rows.append(candidate)
+    _save_nodes(rows)
+    _set_daemon_state(new_id, {"status": "ADDED", "last_action": "create", "last_error": "", "pid": 0})
+
+    topo = _load_topology(rows)
+    topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    topo["nodes"] = topo_nodes
+    if not any(isinstance(n, dict) and str(n.get("id") or "") == new_id for n in topo_nodes):
+        topo_nodes.append(
+            {
+                "id": new_id,
+                "role": role,
+                "kind": node_kind,
+                "desc": str(candidate.get("description") or ""),
+                "bizStatus": "normal",
+                "owner": str(candidate.get("owner") or ""),
+                "tags": list(candidate.get("tags") or []),
+                "ui": {"x": 160.0, "y": 160.0, "w": 240, "h": 104, "color": "#0f172a", "ports": _normalize_ports(node_kind, preset.get("default_ports"))},
+            }
+        )
+    ok, result, status = _ops_structured_append_edge(topo, frm, new_id)
+    if not ok:
+        # Roll back the created node if the edge fails validation after persistence.
+        rows = [x for x in _load_nodes() if not (isinstance(x, dict) and str(x.get("id") or "") == new_id)]
+        _save_nodes(rows)
+        return jsonify(result), status
+    _ops_topology_meta_structured(topo)
+    saved = _save_topology(topo)
+    log_audit("ops_platform_structured_add_new_target", f"{frm}->{new_id}; preset={preset_id}")
+    return jsonify({"ok": True, "message": "已添加下游节点", "node": candidate, "edge": result, "topology": saved})
+
+
+@bp.route("/api/ops-platform/topology/structured/delete-node", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_structured_delete_node():
+    return ops_platform_topology_node_delete()
+
+
+@bp.route("/api/ops-platform/topology/structured/delete-edge", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_structured_delete_edge():
+    return ops_platform_topology_edge_delete()
+
+
 @bp.route("/api/ops-platform/topology/edge/upsert", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_topology_edge_upsert():
@@ -4952,13 +5173,20 @@ def ops_platform_topology_edge_upsert():
         return jsonify({"ok": False, "error": "invalid edge endpoints"}), 400
 
     topo = _load_topology(_load_nodes())
+    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    topo["edges"] = edges
     valid = set([str(x.get("id") or "") for x in topo.get("nodes") or [] if isinstance(x, dict)])
     if frm not in valid or to not in valid:
         return jsonify({"ok": False, "error": "node not found"}), 404
     from_node = _resolve_node(node_id=frm) or {}
     to_node = _resolve_node(node_id=to) or {}
     if not _can_link_nodes(from_node, to_node):
-        return jsonify({"ok": False, "error": "invalid_edge_by_role", "message": "Node role relationship is not allowed by preset rules"}), 400
+        return jsonify({
+            "ok": False,
+            "error": "invalid_edge_by_role",
+            "error_code": "OPS_EDGE_ROLE_FORBIDDEN",
+            "message": "当前节点角色规则不允许该连线",
+        }), 409
     topo_nodes = {str(x.get("id") or ""): x for x in (topo.get("nodes") or []) if isinstance(x, dict)}
     fn = topo_nodes.get(frm) or {}
     tn = topo_nodes.get(to) or {}
@@ -4970,13 +5198,13 @@ def ops_platform_topology_edge_upsert():
     tports = _normalize_ports(tkind, ((tn.get("ui") or {}).get("ports") if isinstance(tn.get("ui"), dict) else None))
     if from_port not in [str(p.get("id") or "") for p in fports.get("out", [])] or to_port not in [str(p.get("id") or "") for p in tports.get("in", [])]:
         return jsonify({"ok": False, "error": "port_not_found", "error_code": "OPS_PORT_NOT_FOUND", "message": "Port not found"}), 400
-    for ex in topo.get("edges") or []:
+    for ex in edges:
         if not isinstance(ex, dict):
             continue
         if str(ex.get("from") or "") == frm and str(ex.get("to") or "") == to and str(ex.get("from_port") or "out-1") == from_port and str(ex.get("to_port") or "in-1") == to_port:
             return jsonify({"ok": False, "error": "edge_duplicate", "error_code": "OPS_EDGE_DUPLICATE", "message": "Duplicate edge"}), 409
     incoming_count = 0
-    for ex in topo.get("edges") or []:
+    for ex in edges:
         if isinstance(ex, dict) and str(ex.get("to") or "") == to and str(ex.get("to_port") or "in-1") == to_port:
             incoming_count += 1
     in_max = 1
@@ -4987,7 +5215,7 @@ def ops_platform_topology_edge_upsert():
     if incoming_count >= in_max:
         return jsonify({"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "Input port capacity exceeded"}), 409
     outgoing_count = 0
-    for ex in topo.get("edges") or []:
+    for ex in edges:
         if isinstance(ex, dict) and str(ex.get("from") or "") == frm and str(ex.get("from_port") or "out-1") == from_port:
             outgoing_count += 1
     out_max = 1
@@ -4999,7 +5227,7 @@ def ops_platform_topology_edge_upsert():
         return jsonify({"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "Output port capacity exceeded"}), 409
 
     updated = False
-    for edge in topo.get("edges") or []:
+    for edge in edges:
         if not isinstance(edge, dict):
             continue
         if str(edge.get("from") or "") == frm and str(edge.get("to") or "") == to and str(edge.get("from_port") or "out-1") == from_port and str(edge.get("to_port") or "in-1") == to_port:
@@ -5008,11 +5236,12 @@ def ops_platform_topology_edge_upsert():
             updated = True
             break
     if not updated:
-        (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": etype, "note": note})
+        edges.append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": etype, "note": note})
 
     saved = _save_topology(topo)
     log_audit("ops_platform_topology_edge_upsert", f"{frm}->{to}; type={etype}")
-    return jsonify({"ok": True, "message": "Edge updated", "topology": saved})
+    resp = {"ok": True, "message": "连线已保存", "topology": saved}
+    return jsonify(resp)
 
 
 @bp.route("/api/ops-platform/topology/edge/delete", methods=["POST"])
@@ -5438,15 +5667,20 @@ def ops_platform_add_node_from_preset():
     _save_nodes(rows)
     _set_daemon_state(new_id, {"status": "ADDED", "last_action": "create", "last_error": "", "pid": 0})
 
+    node_kind = _infer_node_kind(str(node.get("role") or "business"), str(preset.get("kind") or ""))
     topo = _load_topology(rows)
-    if not any(isinstance(n, dict) and str(n.get("id") or "") == new_id for n in (topo.get("nodes") or [])):
+    topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    topo_edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    topo["nodes"] = topo_nodes
+    topo["edges"] = topo_edges
+    if not any(isinstance(n, dict) and str(n.get("id") or "") == new_id for n in topo_nodes):
         default_pos = _default_topology_for_nodes(rows).get("nodes") or []
         pos = None
         for n in default_pos:
             if isinstance(n, dict) and str(n.get("id") or "") == new_id:
                 pos = n
                 break
-        (topo.get("nodes") or []).append(
+        topo_nodes.append(
             {
                 "id": new_id,
                 "role": node.get("role") or "business",
@@ -5466,7 +5700,7 @@ def ops_platform_add_node_from_preset():
                 },
             }
         )
-    for exist in (topo.get("nodes") or []):
+    for exist in topo_nodes:
         if not isinstance(exist, dict):
             continue
         eid = str(exist.get("id") or "")
@@ -5476,13 +5710,13 @@ def ops_platform_add_node_from_preset():
         if not src:
             continue
         if _can_link_nodes(src, node):
-            exists = any(isinstance(e, dict) and str(e.get("from") or "") == eid and str(e.get("to") or "") == new_id for e in (topo.get("edges") or []))
+            exists = any(isinstance(e, dict) and str(e.get("from") or "") == eid and str(e.get("to") or "") == new_id for e in topo_edges)
             if not exists:
-                (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": eid, "to": new_id, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
+                topo_edges.append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": eid, "to": new_id, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
         if _can_link_nodes(node, src):
-            exists = any(isinstance(e, dict) and str(e.get("from") or "") == new_id and str(e.get("to") or "") == eid for e in (topo.get("edges") or []))
+            exists = any(isinstance(e, dict) and str(e.get("from") or "") == new_id and str(e.get("to") or "") == eid for e in topo_edges)
             if not exists:
-                (topo.get("edges") or []).append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": new_id, "to": eid, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
+                topo_edges.append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": new_id, "to": eid, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
     saved_topo = _save_topology(topo)
     log_audit("ops_platform_node_add_from_preset", f"node={new_id}; preset={preset_id}")
     return jsonify({"ok": True, "message": "Node added", "node": node, "topology": saved_topo})
