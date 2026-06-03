@@ -49,6 +49,9 @@ portals/common/core/runtime/
 portals/common/core/tmp/
 portals/common/tmp/
 
+# Codex auto-backups (not for commit)
+.codex-backups/
+
 # Optional user-generated local work directories
 # data/workspaces/
 # data/doc_attachments/

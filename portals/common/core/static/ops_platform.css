@@ -1079,3 +1079,160 @@ td{padding:8px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa;back
   .service-panel { grid-template-columns: minmax(520px, 1fr) minmax(280px, 340px) !important; }
   .service-list, .service-detail-side { height: 240px !important; max-height: 240px !important; }
 }
+/* Agent device/service layout final pass 20260603s */
+.agent-device-groups {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(760px, 1fr)) !important;
+  gap: 18px !important;
+  align-items: start !important;
+}
+.agent-device-group-v2 {
+  overflow: hidden !important;
+  max-height: 610px !important;
+}
+.agent-device-head-min {
+  padding: 12px 14px !important;
+  gap: 12px !important;
+}
+.agent-device-head-min h4 { margin: 0 0 4px !important; }
+.agent-device-head-min p { margin: 0 !important; color: #49617f !important; }
+.agent-device-wrap-v2 {
+  display: grid !important;
+  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr) !important;
+  gap: 16px !important;
+  padding: 14px !important;
+  align-items: stretch !important;
+}
+.agent-host-card-v2 {
+  min-width: 0 !important;
+  max-height: 430px !important;
+  overflow: auto !important;
+  border: 1px solid #9cc4ff !important;
+  border-radius: 18px !important;
+  background: linear-gradient(180deg, #fff7f7 0%, #fff 100%) !important;
+  padding: 16px !important;
+  box-shadow: 0 14px 30px rgba(46, 93, 180, 0.08) !important;
+}
+.agent-card-top,
+.agent-card-badges,
+.agent-card-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+.agent-card-top h5 { margin: 0 0 8px !important; font-size: 18px !important; }
+.agent-facts-v2 {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px 10px !important;
+  margin: 12px 0 !important;
+}
+.agent-facts-v2 div {
+  min-width: 0 !important;
+  padding: 8px !important;
+  border-radius: 10px !important;
+  background: rgba(255,255,255,0.72) !important;
+  border: 1px solid #dbeafe !important;
+}
+.agent-facts-v2 span { display:block !important; color:#64748b !important; font-size:12px !important; }
+.agent-facts-v2 strong { display:block !important; overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; color:#0f2444 !important; }
+.agent-device-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+  margin: 12px 0 !important;
+}
+.agent-device-kpis span {
+  border: 1px solid #bfdbfe !important;
+  background: #eff6ff !important;
+  border-radius: 999px !important;
+  padding: 5px 8px !important;
+  font-size: 12px !important;
+  color: #14386f !important;
+}
+.service-panel-v2 {
+  min-width: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(420px, 1fr) minmax(260px, 330px) !important;
+  gap: 12px !important;
+  height: 430px !important;
+  max-height: 430px !important;
+  overflow: hidden !important;
+}
+.service-panel-main,
+.service-detail-side-v2,
+.service-detail-empty {
+  min-width: 0 !important;
+  border: 1px solid #bfdbfe !important;
+  background: rgba(255,255,255,0.82) !important;
+  border-radius: 16px !important;
+  padding: 12px !important;
+  overflow: hidden !important;
+}
+.service-panel-title {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 10px !important;
+}
+.service-panel-title span { color:#64748b !important; font-size:12px !important; }
+.service-list-v2 {
+  height: 360px !important;
+  max-height: 360px !important;
+  overflow-y: auto !important;
+  padding-right: 6px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+.service-line-v2 {
+  border: 1px solid #8ec5ff !important;
+  border-radius: 13px !important;
+  background: #f8fbff !important;
+  overflow: visible !important;
+}
+.service-line-v2.ok { background:#ecfdf5 !important; border-color:#86efac !important; }
+.service-line-v2.bad, .service-line-v2.offline { background:#fff1f2 !important; border-color:#fca5a5 !important; }
+.service-line-v2.warn { background:#fffbeb !important; border-color:#fcd34d !important; }
+.service-line-v2 summary {
+  min-height: 42px !important;
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1.2fr) 90px 88px 92px 86px 70px 74px 60px !important;
+  gap: 8px !important;
+  align-items: center !important;
+  padding: 8px 10px !important;
+  cursor: pointer !important;
+  list-style: none !important;
+}
+.service-line-v2 summary::-webkit-details-marker { display: none !important; }
+.service-line-name { overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; }
+.service-line-more {
+  justify-self: end !important;
+  border: 1px solid #93c5fd !important;
+  border-radius: 999px !important;
+  padding: 3px 9px !important;
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+.service-detail-side-v2,
+.service-detail-empty {
+  max-height: 430px !important;
+  overflow: auto !important;
+}
+.service-detail-title { display:flex !important; justify-content:space-between !important; gap:8px !important; align-items:center !important; margin-bottom:10px !important; }
+.service-detail-grid { display:grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap:8px !important; margin:0 !important; }
+.service-detail-grid div { padding:8px !important; border:1px solid #dbeafe !important; border-radius:10px !important; background:#f8fbff !important; }
+.service-detail-grid dt { font-size:12px !important; color:#64748b !important; }
+.service-detail-grid dd { margin:2px 0 0 !important; font-weight:700 !important; color:#10223f !important; overflow:hidden !important; text-overflow:ellipsis !important; white-space:nowrap !important; }
+.service-detail-actions { display:flex !important; flex-wrap:wrap !important; gap:8px !important; margin-top:12px !important; }
+@media (max-width: 1200px) {
+  .agent-device-groups { grid-template-columns: 1fr !important; }
+  .agent-device-wrap-v2 { grid-template-columns: 1fr !important; }
+  .service-panel-v2 { grid-template-columns: 1fr !important; height: auto !important; max-height: none !important; }
+  .service-list-v2 { height: 280px !important; max-height: 280px !important; }
+  .service-line-v2 summary { grid-template-columns: minmax(120px, 1fr) 80px 80px 80px 64px !important; }
+  .service-line-v2 summary span:nth-of-type(4), .service-line-v2 summary span:nth-of-type(5) { display:none !important; }
+}
