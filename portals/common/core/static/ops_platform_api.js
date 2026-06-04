@@ -1,4 +1,4 @@
-﻿(function(){
+(function(){
   const api = {};
   api.domain = {
     entities: ['Node','Edge','Action','Task','Approval','Event','Trace','Agent','Policy'],

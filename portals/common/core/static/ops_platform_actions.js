@@ -1,4 +1,4 @@
-﻿(function(){
+(function(){
   const $=(id)=>document.getElementById(id);
   const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   const state={projectId:''};
