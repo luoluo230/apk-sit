@@ -1,0 +1,4 @@
+# apk-site 启动时写入，供 jenkins-clone 内脚本 source 使用
+export APK_DIR="E:\apk-site\jenkins-clone\workspace\Android"
+export JENKINS_CLONE="E:\web\apk-site\jenkins-clone"
+export JENKINS_JOB_DIR="E:\web\apk-site\jenkins-clone\jobs\Android\builds"
