@@ -18,6 +18,7 @@ from flask import Blueprint, jsonify, render_template_string, request, session
 
 from models.data import (
     approvals_db,
+    audit_log_db,
     approve_or_reject,
     create_approval,
     get_approved_approval,
@@ -234,6 +235,28 @@ def _render_local_template(template_name: str, **kwargs):
     path = os.path.join(os.path.dirname(__file__), "..", "templates", template_name)
     with open(path, "r", encoding="utf-8") as f:
         return render_template_string(f.read(), **kwargs)
+
+
+def _render_standalone_page(content: str, title: str):
+    return render_template_string(
+        """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="/static/tailwind.css">
+  <style>
+    html,body{margin:0;padding:0;background:#f7f9fc}
+  </style>
+</head>
+<body>{{ content|safe }}</body>
+</html>
+""",
+        title=title,
+        content=content,
+    )
 
 
 @bp.route("/admin/gm-classic")
@@ -2602,7 +2625,7 @@ def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
 
 
 def _services_for_project(project_id: str = "") -> List[Dict[str, Any]]:
-    rows = _agents_v2_for_project(project_id)
+    rows = _logical_agents_for_project(project_id)
     out: List[Dict[str, Any]] = []
     for a in rows:
         if not isinstance(a, dict):
@@ -2659,6 +2682,153 @@ def _services_for_project(project_id: str = "") -> List[Dict[str, Any]]:
                     "source": "agent.compat",
                 }
             )
+    return out
+
+
+def _status_rank(status: str) -> int:
+    value = str(status or "").upper()
+    if value in ("DEGRADED", "ERROR", "FAILED"):
+        return 4
+    if value in ("OFFLINE", "TIMEOUT", "CANCELED"):
+        return 3
+    if value in ("MAINTENANCE", "STOPPED", "STOP"):
+        return 2
+    if value in ("ONLINE", "READY", "RUNNING", "SUCCESS"):
+        return 1
+    return 0
+
+
+def _pick_primary_agent(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not rows:
+        return {}
+    def score(item: Dict[str, Any]) -> tuple:
+        has_services = 1 if isinstance(item.get("services"), list) and item.get("services") else 0
+        no_node = 1 if not str(item.get("node_id") or "").strip() else 0
+        has_host = 1 if str(item.get("host_ip") or item.get("host_name") or "").strip() else 0
+        updated = str(item.get("updated_at") or item.get("last_seen") or "")
+        return (has_services, no_node, has_host, updated)
+    return dict(sorted(rows, key=score, reverse=True)[0])
+
+
+def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
+    rows = _agents_v2_for_project(project_id)
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        group_key = str(item.get("device_id") or item.get("agent_id") or "").strip()
+        if not group_key:
+            continue
+        groups.setdefault(group_key, []).append(item)
+
+    out: List[Dict[str, Any]] = []
+    for device_id, members in groups.items():
+        primary = _pick_primary_agent(members)
+        if not primary:
+            continue
+
+        services: List[Dict[str, Any]] = []
+        service_seen: set = set()
+        node_ids: List[str] = []
+        member_agent_ids: List[str] = []
+        best_status = "UNKNOWN"
+        best_status_rank = -1
+        latest_seen = ""
+
+        for member in members:
+            member_agent_id = str(member.get("agent_id") or "").strip()
+            if member_agent_id and member_agent_id not in member_agent_ids:
+                member_agent_ids.append(member_agent_id)
+
+            member_node_id = str(member.get("node_id") or "").strip()
+            if member_node_id and member_node_id not in node_ids:
+                node_ids.append(member_node_id)
+
+            effective_status = str(member.get("effective_status") or member.get("status") or "UNKNOWN").upper()
+            rank = _status_rank(effective_status)
+            if rank > best_status_rank:
+                best_status_rank = rank
+                best_status = effective_status
+
+            seen_at = str(member.get("last_seen") or "")
+            if seen_at and seen_at > latest_seen:
+                latest_seen = seen_at
+
+            member_services = member.get("services") if isinstance(member.get("services"), list) else []
+            if member_services:
+                for svc in member_services:
+                    if not isinstance(svc, dict):
+                        continue
+                    sid = str(svc.get("service_id") or svc.get("id") or "").strip()
+                    if not sid or sid in service_seen:
+                        continue
+                    service_seen.add(sid)
+                    services.append(
+                        {
+                            "service_id": sid,
+                            "agent_id": member_agent_id,
+                            "node_id": str(svc.get("node_id") or member_node_id or "").strip(),
+                            "device_id": device_id,
+                            "project_id": str(member.get("project_id") or ""),
+                            "display_name": str(svc.get("display_name") or sid),
+                            "service_type": str(svc.get("service_type") or svc.get("type") or member.get("role") or ""),
+                            "service_port": int(svc.get("service_port") or svc.get("port") or member.get("remote_game_server_port") or member.get("port") or 0),
+                            "remote_game_server_port": int(svc.get("remote_game_server_port") or svc.get("service_port") or svc.get("port") or member.get("remote_game_server_port") or member.get("port") or 0),
+                            "run_state": str(svc.get("run_state") or member.get("run_state") or ""),
+                            "status": str(svc.get("status") or member.get("status") or "UNKNOWN"),
+                            "probe_status": str(svc.get("probe_status") or member.get("probe_status") or ""),
+                            "probe_rtt_ms": float(svc.get("probe_rtt_ms") or member.get("probe_rtt_ms") or 0.0),
+                            "metrics": svc.get("metrics") if isinstance(svc.get("metrics"), dict) else (member.get("metrics") if isinstance(member.get("metrics"), dict) else {}),
+                            "endpoints": svc.get("endpoints") if isinstance(svc.get("endpoints"), list) else [],
+                            "updated_at": str(svc.get("updated_at") or member.get("updated_at") or member.get("last_seen") or ""),
+                            "source": "logical.agent.services",
+                        }
+                    )
+            else:
+                sid = str(member.get("service_id") or member.get("node_id") or member.get("agent_id") or "").strip()
+                if sid and sid not in service_seen:
+                    service_seen.add(sid)
+                    m = member.get("metrics") if isinstance(member.get("metrics"), dict) else {}
+                    services.append(
+                        {
+                            "service_id": sid,
+                            "agent_id": member_agent_id,
+                            "node_id": member_node_id,
+                            "device_id": device_id,
+                            "project_id": str(member.get("project_id") or ""),
+                            "display_name": str(member.get("display_name") or sid),
+                            "service_type": str(member.get("role") or member.get("category") or member_node_id or ""),
+                            "service_port": int(member.get("port") or 0),
+                            "remote_game_server_port": int(member.get("remote_game_server_port") or member.get("port") or 0),
+                            "run_state": str(member.get("run_state") or ""),
+                            "status": str(member.get("status") or "UNKNOWN"),
+                            "probe_status": str(member.get("probe_status") or ""),
+                            "probe_rtt_ms": float(member.get("probe_rtt_ms") or 0.0),
+                            "metrics": m.get("business") if isinstance(m.get("business"), dict) else m,
+                            "endpoints": ((member.get("network") or {}).get("endpoints") if isinstance(member.get("network"), dict) else []) or [],
+                            "updated_at": str(member.get("updated_at") or member.get("last_seen") or ""),
+                            "source": "logical.agent.compat",
+                        }
+                    )
+
+        aggregated = dict(primary)
+        aggregated["agent_id"] = str(primary.get("agent_id") or device_id)
+        aggregated["device_id"] = device_id
+        aggregated["display_name"] = (
+            str(device_id)
+            if len(members) > 1 and not any(isinstance(x.get("services"), list) and x.get("services") for x in members)
+            else str(primary.get("display_name") or device_id)
+        )
+        aggregated["effective_status"] = best_status
+        aggregated["last_seen"] = latest_seen or str(primary.get("last_seen") or "")
+        aggregated["node_id"] = str(primary.get("node_id") or node_ids[0] if node_ids else "")
+        aggregated["services"] = services
+        aggregated["member_agent_ids"] = member_agent_ids
+        aggregated["member_node_ids"] = node_ids
+        aggregated["service_count"] = len(services)
+        out.append(aggregated)
+
+    out.sort(key=lambda x: str(x.get("device_id") or x.get("display_name") or x.get("agent_id") or ""))
     return out
 
 
@@ -3128,6 +3298,237 @@ def _find_trace(trace_id: str) -> Optional[Dict[str, Any]]:
         if str(item.get("trace_id") or "").strip() == tid:
             return item
     return None
+
+
+def _value_contains_token(value: Any, token: str) -> bool:
+    needle = str(token or "").strip().lower()
+    if not needle:
+        return False
+    if isinstance(value, dict):
+        for sub_value in value.values():
+            if _value_contains_token(sub_value, needle):
+                return True
+        return False
+    if isinstance(value, list):
+        for sub_value in value:
+            if _value_contains_token(sub_value, needle):
+                return True
+        return False
+    return needle in str(value or "").lower()
+
+
+def _item_matches_agent_scope(item: Dict[str, Any], agent: Dict[str, Any], service_ids: List[str]) -> bool:
+    if not isinstance(item, dict):
+        return False
+    tokens = [
+        str(agent.get("agent_id") or "").strip(),
+        str(agent.get("node_id") or "").strip(),
+        str(agent.get("device_id") or "").strip(),
+        str(agent.get("host_ip") or "").strip(),
+        str(agent.get("host_name") or "").strip(),
+    ] + [str(x or "").strip() for x in (service_ids or [])]
+    tokens = [x for x in tokens if x]
+    if not tokens:
+        return False
+    direct_keys = ("agent_id", "node_id", "device_id", "host_ip", "service_id")
+    for key in direct_keys:
+        value = str(item.get(key) or "").strip()
+        if value and value in tokens:
+            return True
+    for token in tokens:
+        if _value_contains_token(item, token):
+            return True
+    return False
+
+
+def _build_agent_metric_series(agent: Dict[str, Any]) -> Dict[str, Any]:
+    metrics = agent.get("metrics") if isinstance(agent.get("metrics"), dict) else {}
+    control = metrics.get("control") if isinstance(metrics.get("control"), dict) else metrics
+    updated_at = str(control.get("updated_at") or agent.get("updated_at") or agent.get("last_seen") or "")
+    points: List[Dict[str, Any]] = []
+    if updated_at:
+        points.append(
+            {
+                "time": updated_at,
+                "cpu_percent": control.get("cpu_percent"),
+                "mem_percent": control.get("mem_percent"),
+                "disk_percent": control.get("disk_percent"),
+            }
+        )
+    return {
+        "window": "1h",
+        "points": points,
+        "cpu_percent": [{"time": p["time"], "value": p.get("cpu_percent")} for p in points if p.get("cpu_percent") is not None],
+        "mem_percent": [{"time": p["time"], "value": p.get("mem_percent")} for p in points if p.get("mem_percent") is not None],
+        "disk_percent": [{"time": p["time"], "value": p.get("disk_percent")} for p in points if p.get("disk_percent") is not None],
+        "has_history": len(points) > 1,
+    }
+
+
+def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, Any]]:
+    target_agent_id = str(agent_id or "").strip()
+    if not target_agent_id:
+        return None
+    logical_agents = _logical_agents_for_project(project_id)
+    logical_hit = next(
+        (
+            item for item in logical_agents
+            if str(item.get("agent_id") or "").strip() == target_agent_id
+            or target_agent_id in [str(x or "").strip() for x in (item.get("member_agent_ids") or [])]
+        ),
+        None,
+    )
+    if not logical_hit:
+        return None
+    reg = _load_agent_registry_v2()
+    primary_agent_id = str(logical_hit.get("agent_id") or "").strip()
+    hit = reg.get(primary_agent_id) if isinstance(reg.get(primary_agent_id), dict) else {}
+    agent = dict(logical_hit)
+    if project_id and str(agent.get("project_id") or "").strip() and str(agent.get("project_id") or "").strip() != project_id:
+        return None
+
+    with _probe_cache_lock:
+        cached_probe = dict(_probe_cache)
+    cached_pr = cached_probe.get(primary_agent_id)
+    if cached_pr:
+        agent["effective_status"] = cached_pr.get("effective_status", agent.get("status") or "UNKNOWN")
+        agent["probe_status"] = "PASS" if cached_pr.get("ok") else "FAIL"
+        agent["probe_rtt_ms"] = cached_pr.get("rtt_ms", 0.0)
+        agent["probe_at"] = str(cached_pr.get("probe_at") or "")
+        if isinstance(cached_pr.get("metrics"), dict):
+            base_m = agent.get("metrics") if isinstance(agent.get("metrics"), dict) else {}
+            control = base_m.get("control") if isinstance(base_m.get("control"), dict) else base_m
+            business = base_m.get("business") if isinstance(base_m.get("business"), dict) else {}
+            pr_m = cached_pr.get("metrics") or {}
+            merged = dict(control)
+            for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+                if merged.get(key) is None and pr_m.get(key) is not None:
+                    merged[key] = pr_m.get(key)
+            if not merged.get("updated_at"):
+                merged["updated_at"] = str(pr_m.get("updated_at") or "")
+            if not merged.get("source"):
+                merged["source"] = str(pr_m.get("source") or "agent")
+            agent["metrics"] = {"control": merged, "business": business, **merged}
+    else:
+        agent["effective_status"] = str(agent.get("status") or "UNKNOWN").upper()
+
+    services = [dict(s) for s in (logical_hit.get("services") or []) if isinstance(s, dict)]
+    service_ids = [str(s.get("service_id") or "").strip() for s in services if str(s.get("service_id") or "").strip()]
+    member_agent_ids = [str(x or "").strip() for x in (logical_hit.get("member_agent_ids") or []) if str(x or "").strip()]
+    member_node_ids = [str(x or "").strip() for x in (logical_hit.get("member_node_ids") or []) if str(x or "").strip()]
+    node_id = str(agent.get("node_id") or (member_node_ids[0] if member_node_ids else "")).strip()
+    nodes = _load_nodes()
+    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == node_id), None)
+
+    jobs_all = _load_agent_jobs()
+    jobs = []
+    for item in reversed(jobs_all):
+        if not isinstance(item, dict):
+            continue
+        if member_node_ids and str(item.get("node_id") or "").strip() not in member_node_ids:
+            continue
+        jobs.append(item)
+        if len(jobs) >= 30:
+            break
+
+    snapshot = _load_json_config(OPS_ALERT_SNAPSHOT_KEY, {})
+    alerts = snapshot.get("alerts") if isinstance(snapshot, dict) and isinstance(snapshot.get("alerts"), list) else []
+    event_rows = _load_json_config(OPS_EVENT_LOG_KEY, [])
+    events_merged: List[Dict[str, Any]] = []
+    events_merged.extend([x for x in alerts if isinstance(x, dict)])
+    events_merged.extend([x for x in event_rows if isinstance(x, dict)])
+    events_merged.sort(key=lambda x: str(x.get("time") or ""), reverse=True)
+
+    scope_tokens = {
+        str(agent.get("agent_id") or "").strip(),
+        str(agent.get("device_id") or "").strip(),
+        str(agent.get("host_ip") or "").strip(),
+        str(agent.get("host_name") or "").strip(),
+        *member_agent_ids,
+        *member_node_ids,
+        *service_ids,
+    }
+    scope_tokens = {x for x in scope_tokens if x}
+
+    def _matches_logical_scope(item: Dict[str, Any]) -> bool:
+        if not isinstance(item, dict):
+            return False
+        for key in ("agent_id", "node_id", "device_id", "host_ip", "service_id", "target", "desired_service_id", "desired_server_id"):
+            value = str(item.get(key) or "").strip()
+            if value and value in scope_tokens:
+                return True
+        for token in scope_tokens:
+            if _value_contains_token(item, token):
+                return True
+        return False
+
+    events = [x for x in events_merged if _matches_logical_scope(x)][:30]
+
+    traces_raw = _load_json_config(OPS_TRACE_LOG_KEY, [])
+    traces = [x for x in traces_raw if isinstance(x, dict) and _matches_logical_scope(x)][:30]
+
+    audits = []
+    for item in reversed(audit_log_db if isinstance(audit_log_db, list) else []):
+        if not isinstance(item, dict):
+            continue
+        if _matches_logical_scope(item):
+            audits.append(item)
+        if len(audits) >= 40:
+            break
+
+    control_metrics = ((agent.get("metrics") or {}).get("control") if isinstance(agent.get("metrics"), dict) else {}) or {}
+    service_summary = {
+        "total": len(services),
+        "online": len([s for s in services if str(s.get("status") or s.get("run_state") or "").upper() in ("ONLINE", "RUNNING", "READY")]),
+        "abnormal": len([s for s in services if str(s.get("status") or s.get("run_state") or "").upper() in ("DEGRADED", "ERROR", "FAILED", "OFFLINE", "STOPPED")]),
+    }
+    service_summary["stopped"] = max(0, service_summary["total"] - service_summary["online"] - service_summary["abnormal"])
+
+    current_alerts = len([x for x in events if str(x.get("status") or "").lower() not in ("resolved", "closed", "done", "recovered")])
+    healthy_ratio = 100
+    if service_summary["total"]:
+        healthy_ratio = int(round((service_summary["online"] / max(1, service_summary["total"])) * 100))
+    elif str(agent.get("effective_status") or "").upper() not in ("ONLINE", "RUNNING", "READY"):
+        healthy_ratio = 0
+
+    detail = {
+        "agent": agent,
+        "node": node or {},
+        "services": services,
+        "member_agent_ids": member_agent_ids,
+        "member_node_ids": member_node_ids,
+        "service_summary": service_summary,
+        "jobs": jobs,
+        "events": events,
+        "traces": traces,
+        "audits": audits,
+        "metrics_history": _build_agent_metric_series(agent),
+        "config": {
+            "policy": _load_agent_policy(),
+            "transport": hit.get("transport") if isinstance(hit.get("transport"), dict) else {},
+            "network": hit.get("network") if isinstance(hit.get("network"), dict) else {},
+            "capabilities": hit.get("capabilities") if isinstance(hit.get("capabilities"), list) else [],
+            "services": [{"service_id": s.get("service_id"), "service_type": s.get("service_type"), "network": s.get("network"), "endpoints": s.get("endpoints")} for s in services],
+        },
+        "overview": {
+            "status": str(agent.get("effective_status") or agent.get("status") or "UNKNOWN").upper(),
+            "healthy_ratio": healthy_ratio,
+            "cpu_percent": control_metrics.get("cpu_percent"),
+            "mem_percent": control_metrics.get("mem_percent"),
+            "disk_percent": control_metrics.get("disk_percent"),
+            "current_alerts": current_alerts,
+            "resolved_alerts": len([x for x in events if str(x.get("status") or "").lower() in ("resolved", "closed", "done", "recovered")]),
+            "recent_tasks": len(jobs),
+            "audit_count": len(audits),
+        },
+        "actions": {
+            "can_edit": True,
+            "can_probe": True,
+            "can_restart_agent": bool(services),
+            "can_restart_services": bool(services),
+        },
+    }
+    return detail
 
 
 def _approval_target_id(node_id: str, action_type: str, target: str) -> str:
@@ -3712,10 +4113,8 @@ def ops_platform_agents_list():
     host_ip = str(request.args.get("host_ip") or "").strip().lower()
     region = str(request.args.get("region") or "").strip().lower()
     bound = str(request.args.get("bound") or "").strip().lower()
-    if project_id and not bound:
-        bound = "yes"
     bindings = _load_node_agent_bindings()
-    rows = _agents_v2_for_project(project_id)
+    rows = _logical_agents_for_project(project_id)
     rows = [r for r in rows if not r.get("stale")]
     bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
         # 走缓存：不再每次请求都探活，用后台引擎缓存结果
@@ -3734,7 +4133,8 @@ def ops_platform_agents_list():
             continue
         if region and region != str(item.get("region") or "").lower():
             continue
-        is_bound = str(item.get("agent_id") or "") in bound_agent_ids
+        member_agent_ids = [str(x or "").strip() for x in (item.get("member_agent_ids") or []) if str(x or "").strip()]
+        is_bound = any(agent_id in bound_agent_ids for agent_id in member_agent_ids) or str(item.get("agent_id") or "") in bound_agent_ids
         if bound == "yes" and not is_bound:
             continue
         if bound == "no" and is_bound:
@@ -6827,6 +7227,44 @@ def ops_platform_agent_jobs():
     return jsonify({"ok": True, "count": len(out), "jobs": out, "agents": [_normalize_agent_descriptor_v2(x) for x in reg.values() if isinstance(x, dict)], "policy": _load_agent_policy()})
 
 
+@bp.route("/api/ops-platform/agent/detail")
+@admin_required("gm_ops")
+def ops_platform_agent_detail():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    agent_id = str(request.args.get("agent_id") or "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+    detail = _build_agent_detail(project_id, agent_id)
+    if not detail:
+        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+    return jsonify({"ok": True, **detail})
+
+
+@bp.route("/api/ops-platform/agent/audit")
+@admin_required("gm_ops")
+def ops_platform_agent_audit():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    agent_id = str(request.args.get("agent_id") or "").strip()
+    limit = max(1, min(200, int(request.args.get("limit") or 60)))
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+    detail = _build_agent_detail(project_id, agent_id)
+    if not detail:
+        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+    return jsonify(
+        {
+            "ok": True,
+            "count": min(limit, len(detail.get("audits") or [])),
+            "audits": (detail.get("audits") or [])[:limit],
+            "traces": (detail.get("traces") or [])[:limit],
+        }
+    )
+
+
 @bp.route("/api/ops-platform/agent/policy", methods=["GET", "POST"])
 @admin_required("gm_ops")
 def ops_platform_agent_policy():
@@ -6992,7 +7430,7 @@ def ops_platform_diagnostics_page():
 def ops_platform_agent_control_page():
     project_id = str(request.args.get("project_id") or "").strip()
     content = _render_local_template("ops_agent_control_page.html", project_id=project_id)
-    return _render_page(content, "Agent 控制面")
+    return _render_standalone_page(content, "Agent 控制面")
 
 
 @bp.route("/admin/ops-platform/agent-device-local")
@@ -7002,6 +7440,15 @@ def ops_platform_agent_device_local_page():
     device_id = str(request.args.get("device_id") or "").strip()
     content = _render_local_template("ops_agent_device_local_page.html", project_id=project_id, device_id=device_id)
     return _render_page(content, "设备 Agent 组")
+
+
+@bp.route("/admin/ops-platform/agent-detail")
+@admin_required("gm_ops")
+def ops_platform_agent_detail_page():
+    project_id = str(request.args.get("project_id") or "").strip()
+    agent_id = str(request.args.get("agent_id") or "").strip()
+    content = _render_local_template("ops_agent_detail_page.html", project_id=project_id, agent_id=agent_id)
+    return _render_standalone_page(content, "Agent 详情")
 
 
 @bp.route("/admin/ops-platform/change-governance")

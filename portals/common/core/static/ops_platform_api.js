@@ -167,6 +167,19 @@
     if (limit) q.push('limit=' + encodeURIComponent(limit));
     return api.getJSON('/api/ops-platform/agent/jobs' + (q.length ? ('?' + q.join('&')) : ''));
   };
+  api.agentDetail = (projectId, agentId) => {
+    const q = [];
+    if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
+    if (agentId) q.push('agent_id=' + encodeURIComponent(agentId));
+    return api.getJSON('/api/ops-platform/agent/detail' + (q.length ? ('?' + q.join('&')) : ''));
+  };
+  api.agentAudit = (projectId, agentId, limit) => {
+    const q = [];
+    if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
+    if (agentId) q.push('agent_id=' + encodeURIComponent(agentId));
+    if (limit) q.push('limit=' + encodeURIComponent(limit));
+    return api.getJSON('/api/ops-platform/agent/audit' + (q.length ? ('?' + q.join('&')) : ''));
+  };
   api.controlPlaneSummary = () => api.getJSON('/api/ops-platform/control-plane/summary');
   api.changeGovernanceSummary = () => api.getJSON('/api/ops-platform/change-governance/summary');
   api.moduleMap = () => api.getJSON('/api/ops-platform/module-map');
