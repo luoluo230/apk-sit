@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const root = document.querySelector('.agent-detail-page');
   if (!root || !window.OpsApi) return;
 
@@ -41,6 +41,7 @@
   function flash(message, tone) {
     elements.flash.textContent = message || '';
     elements.flash.className = `ops-note detail-flash ${tone || ''}`;
+    elements.flash.classList.toggle('hidden', !message);
   }
 
   function ensureOk(response, fallback) {
@@ -434,7 +435,7 @@
     fillEdit(agent);
     renderAllTabs(response);
     switchTab(state.activeTab);
-    flash('详情数据已同步', 'success');
+    flash('', '');
   }
 
   function bindDynamicActions() {

@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform.css?v=20260604-agent-design-v5">
+﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260604-agent-design-v6">
 <div class="agent-console-shell detail" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
   <aside class="agent-console-sidebar detail">
     <div class="agent-console-logo">
@@ -60,8 +60,8 @@
           <div class="agent-detail-headline">
             <span class="agent-detail-node-icon">G</span>
             <span id="detailAgentName">remote-device-127001</span>
-            <span id="detailStatusPill" class="agent-status-pill online">运行中</span>
-            <button id="detailOpenControl" class="agent-open-btn" type="button" title="返回管控中心"><span class="agent-btn-icon detail small"></span></button>
+            <span id="detailStatusPill" class="agent-status-pill ok">运行中</span>
+            <button id="detailOpenControl" class="agent-open-btn" type="button" title="返回管理中心"><span class="agent-btn-icon detail small"></span></button>
           </div>
           <div id="detailMetaLine" class="agent-detail-meta-row">ID: - ｜ 分组: - ｜ 环境: - ｜ 版本: - ｜ 最近心跳: - ｜ 安装时间: -</div>
         </div>
@@ -91,7 +91,7 @@
         <button class="agent-tab" data-tab="audit">审计日志</button>
       </div>
 
-      <div id="detailFlash" class="ops-note detail-flash"></div>
+      <div id="detailFlash" class="ops-note detail-flash hidden"></div>
       <div id="detailLoading" class="ops-empty">正在加载 Agent 详情...</div>
 
       <div class="agent-tab-panels">
@@ -132,5 +132,5 @@
     </main>
   </section>
 </div>
-<script src="/static/ops_platform_api.js?v=20260604-agent-design-v5"></script>
-<script src="/static/ops_platform_agent_detail.js?v=20260604-agent-design-v5"></script>
+<script src="/static/ops_platform_api.js?v=20260604-agent-design-v6"></script>
+<script src="/static/ops_platform_agent_detail.js?v=20260604-agent-design-v6"></script>

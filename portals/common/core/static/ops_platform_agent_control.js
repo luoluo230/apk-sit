@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const POLL_MS = 2000;
   const root = document.querySelector('.agent-console-shell[data-page="agent-control"]');
   if (!root || !window.OpsApi) return;
@@ -70,7 +70,7 @@
     node.className = `ops-agent-toast ${tone || ''}`;
     node.textContent = message || '';
     clearTimeout(node._timer);
-    node._timer = setTimeout(() => node.remove(), 2400);
+    node._timer = setTimeout(() => node.remove(), 2600);
   }
 
   function ensureOk(response, fallback) {
@@ -99,8 +99,8 @@
       : {};
     const raw = source[key];
     if (raw == null || raw === '') return '--';
-    const num = Number(raw);
-    return Number.isFinite(num) ? `${Math.round(num)}%` : String(raw);
+    const number = Number(raw);
+    return Number.isFinite(number) ? `${Math.round(number)}%` : String(raw);
   }
 
   function heartbeatAgeSeconds(agent) {
@@ -182,12 +182,12 @@
   }
 
   function renderSummary(summaryResponse, agents) {
-    const logicalAgents = Array.isArray(agents) ? agents : [];
+    const list = Array.isArray(agents) ? agents : [];
     const metrics = summaryResponse && summaryResponse.metrics ? summaryResponse.metrics : {};
-    const onlineCount = logicalAgents.filter((item) => ['ONLINE', 'RUNNING', 'READY', 'SUCCESS'].includes(String(item.effective_status || item.status || '').toUpperCase())).length;
+    const onlineCount = list.filter((item) => ['ONLINE', 'RUNNING', 'READY', 'SUCCESS'].includes(String(item.effective_status || item.status || '').toUpperCase())).length;
     const cards = [
       { tone: 'blue', icon: 'device', title: '在线 Agent', value: onlineCount, desc: '实时在线设备数' },
-      { tone: 'green', icon: 'user', title: '注册 Agent', value: logicalAgents.length, desc: '已注册设备总数' },
+      { tone: 'green', icon: 'user', title: '注册 Agent', value: list.length, desc: '已注册设备总数' },
       { tone: 'orange', icon: 'clock', title: '待执行任务', value: metrics.jobs_pending || 0, desc: '等待执行的任务数' },
       { tone: 'violet', icon: 'play', title: '运行任务', value: metrics.jobs_running || 0, desc: '正在运行的任务数' },
     ];
@@ -224,6 +224,7 @@
     const summaryLabel = serviceStatusLabel(summary);
     const selected = state.selectedIds.has(agentId);
     const title = agent.display_name || agent.device_id || agentId;
+    const titleHref = `/admin/ops-platform/agent-detail?project_id=${encodeURIComponent(state.projectId)}&agent_id=${encodeURIComponent(agentId)}`;
     return `
       <article class="agent-mock-card ${selected ? 'selected' : ''} ${status.key === 'warn' ? 'warn' : ''} ${status.key === 'err' ? 'offline' : ''}">
         <div class="agent-card-head">
@@ -251,7 +252,7 @@
               <span class="${esc(summaryLabel.cls)}">${esc(summaryLabel.text)}</span>
             </div>
             <div class="agent-card-actions mock">
-              <a class="agent-card-action-btn" href="/admin/ops-platform/agent-detail?project_id=${encodeURIComponent(state.projectId)}&agent_id=${encodeURIComponent(agentId)}"><span class="agent-action-inline"><span class="agent-btn-icon detail small"></span><span>查看详情</span></span></a>
+              <a class="agent-card-action-btn" href="${titleHref}"><span class="agent-action-inline"><span class="agent-btn-icon detail small"></span><span>查看详情</span></span></a>
               <button class="agent-card-action-btn" type="button" data-edit-agent="${esc(agentId)}"><span class="agent-action-inline"><span class="agent-btn-icon edit small"></span><span>编辑</span></span></button>
               <button class="agent-card-action-btn" type="button" data-probe-agent="${esc(agentId)}"><span class="agent-action-inline"><span class="agent-btn-icon probe small"></span><span>探测</span></span></button>
             </div>

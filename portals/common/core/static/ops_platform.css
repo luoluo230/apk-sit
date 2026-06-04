@@ -3254,3 +3254,177 @@ td{padding:8px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa;back
   .agent-detail-head,
   .agent-list-head{flex-direction:column !important;align-items:stretch !important;}
 }
+
+/* 20260604 agent design v6 final alignment */
+.agent-console-shell[data-page="agent-control"] .agent-console-main,
+.agent-console-shell.detail .agent-console-main.detail{
+  background:linear-gradient(180deg,#f8fbff 0%,#f2f7ff 100%) !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-list-panel{
+  min-height:310px !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-mock-card-grid{
+  align-items:start !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-mock-card{
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:space-between !important;
+  min-height:150px !important;
+  max-width:100% !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-card-main.mock{
+  display:flex !important;
+  flex-direction:column !important;
+  min-height:116px !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-card-actions.mock{
+  margin-top:auto !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-card-service.mock{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-list-head{
+  align-items:center !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-list-head-right{
+  margin-left:auto !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-hero-actions{
+  gap:14px !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-filter-row{
+  align-items:center !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-search-wrap{
+  min-width:0 !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-view-switch{
+  margin-left:auto !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-batch-right{
+  margin-left:auto !important;
+  white-space:nowrap !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-list-footer{
+  align-items:center !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-list-total{
+  color:#667085 !important;
+  font-size:14px !important;
+}
+.agent-console-shell[data-page="agent-control"] .agent-card-more{
+  color:#98a2b3 !important;
+  font-size:20px !important;
+}
+.agent-console-shell.detail .agent-detail-content{
+  background:linear-gradient(180deg,#f8fbff 0%,#f2f7ff 100%) !important;
+}
+.agent-console-shell.detail .detail-flash.hidden{
+  display:none !important;
+}
+.agent-console-shell.detail .agent-detail-topbar{
+  background:linear-gradient(90deg,#202f66 0%,#283a84 100%) !important;
+}
+.agent-console-shell.detail .agent-detail-headline{
+  font-size:18px !important;
+  font-weight:800 !important;
+  color:#101828 !important;
+}
+.agent-console-shell.detail .agent-detail-meta-row{
+  line-height:20px !important;
+}
+.agent-console-shell.detail .agent-detail-tabbar{
+  border-bottom:1px solid #e7edf7 !important;
+}
+.agent-console-shell.detail .agent-tab-panel.active{
+  display:block !important;
+}
+.agent-console-shell.detail .agent-tab-panel{
+  display:none !important;
+}
+.agent-console-shell.detail .agent-detail-summary-grid .agent-detail-mini-card,
+.agent-console-shell.detail .agent-detail-white-card,
+.agent-console-shell.detail .panel{
+  background:#fff !important;
+  border:1px solid #e7edf7 !important;
+  box-shadow:0 10px 30px rgba(37,99,235,.05) !important;
+}
+.agent-console-shell.detail .panel{
+  border-radius:14px !important;
+  overflow:hidden !important;
+}
+.agent-console-shell.detail .panel .hd{
+  padding:14px 16px !important;
+  border-bottom:1px solid #edf2fa !important;
+}
+.agent-console-shell.detail .panel .bd{
+  padding:16px !important;
+}
+.agent-console-shell.detail .agent-detail-table,
+.agent-console-shell.detail .agent-detail-job-table,
+.agent-console-shell.detail .agent-detail-event-table,
+.agent-console-shell.detail .agent-detail-audit-table,
+.agent-console-shell.detail .agent-detail-log-table{
+  width:100% !important;
+  table-layout:fixed !important;
+}
+.agent-console-shell.detail .agent-detail-table th,
+.agent-console-shell.detail .agent-detail-table td,
+.agent-console-shell.detail .agent-detail-job-table th,
+.agent-console-shell.detail .agent-detail-job-table td,
+.agent-console-shell.detail .agent-detail-event-table th,
+.agent-console-shell.detail .agent-detail-event-table td,
+.agent-console-shell.detail .agent-detail-audit-table th,
+.agent-console-shell.detail .agent-detail-audit-table td,
+.agent-console-shell.detail .agent-detail-log-table th,
+.agent-console-shell.detail .agent-detail-log-table td{
+  font-size:13px !important;
+  color:#344054 !important;
+  vertical-align:middle !important;
+}
+.agent-console-shell.detail .agent-detail-table td:nth-child(3),
+.agent-console-shell.detail .agent-detail-table td:nth-child(4),
+.agent-console-shell.detail .agent-detail-table td:nth-child(5),
+.agent-console-shell.detail .agent-detail-table td:nth-child(6),
+.agent-console-shell.detail .agent-detail-job-table td:nth-child(3),
+.agent-console-shell.detail .agent-detail-event-table td:nth-child(3),
+.agent-console-shell.detail .agent-detail-log-table td:nth-child(3){
+  font-variant-numeric:tabular-nums !important;
+}
+.agent-console-shell.detail .mini-chart{
+  height:148px !important;
+  border:1px solid #e9eef7 !important;
+  border-radius:14px !important;
+  padding:16px !important;
+  background:#fff !important;
+}
+.agent-console-shell.detail .mini-chart-empty{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  height:86px !important;
+  border:1px dashed #cdddff !important;
+  border-radius:12px !important;
+  color:#98a2b3 !important;
+  font-size:13px !important;
+}
+.agent-console-shell.detail .detail-config-list div{
+  display:grid !important;
+  grid-template-columns:110px 1fr !important;
+  gap:10px !important;
+  padding:10px 0 !important;
+  border-bottom:1px solid #edf2fa !important;
+}
+.agent-console-shell.detail .detail-config-list div:last-child{
+  border-bottom:0 !important;
+}
+.agent-console-shell.detail .agent-detail-system-footer{
+  min-height:56px !important;
+  padding:0 16px !important;
+  background:#fff !important;
+  border:1px solid #e7edf7 !important;
+  border-radius:14px !important;
+}
