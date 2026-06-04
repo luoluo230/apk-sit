@@ -220,6 +220,8 @@
         const filtered = applyLocalFilters(rows);
         if (!filtered.length) continue;
         const { deviceAgent, services: serviceRows } = splitDeviceRows(filtered);
+        const rawSplit = splitDeviceRows(rows);
+        const visibleServiceRows = rawSplit.services.length ? rawSplit.services : serviceRows;
         const onlineServices = serviceRows.filter(a => ["ONLINE","READY","RUNNING"].includes(String(a.effective_status || a.status || a.run_state || "").toUpperCase())).length;
         const hostIp = String((deviceAgent || {}).host_name || (filtered[0] || {}).host_name || "-");
         const snapC = (((filtered[0] || {}).device_metrics_snapshot || {}).control) || {};
@@ -237,7 +239,7 @@
             <div class="agent-host-card">${deviceAgent ? renderDeviceAgentCard(deviceAgent, snapC, hostIp, did) : '<div class="ops-empty">暂无设备Agent</div>'}</div>
             <div class="service-panel">
               <div class="ops-note service-panel-title">该设备下游戏服务器</div>
-              <div class="service-list">${serviceRows.map(a => renderServiceRow(a)).join("") || '<div class="ops-empty">暂无服务器实例</div>'}</div>
+              <div class="service-list">${visibleServiceRows.map(a => renderServiceRow(a)).join("") || '<div class="ops-empty">暂无服务器实例</div>'}</div>
             </div>
           </div>
         </section>`);
@@ -271,6 +273,8 @@
       const updatedText = updatedAt === "-" ? "未同步" : updatedAt;
 
       const { deviceAgent, services: serviceRows } = splitDeviceRows(rows);
+      const rawSplit = splitDeviceRows(rawRows);
+      const visibleServiceRows = rawSplit.services.length ? rawSplit.services : serviceRows;
       const onlineServices = serviceRows.filter(a => ["ONLINE","READY","RUNNING"].includes(String(a.effective_status || a.status || a.run_state || "").toUpperCase())).length;
       return `<section class="agent-device-group">
         <header class="agent-device-head">
@@ -295,7 +299,7 @@
           <div class="service-panel">
             <div class="ops-note service-panel-title">该设备下游戏服务器</div>
             <div class="service-list">
-              ${serviceRows.map((a) => renderServiceRow(a)).join("") || '<div class="ops-empty">暂无服务器实例</div>'}
+              ${visibleServiceRows.map((a) => renderServiceRow(a)).join("") || '<div class="ops-empty">暂无服务器实例</div>'}
             </div>
           </div>
         </div>
@@ -393,7 +397,7 @@
   function renderServiceRow(a) {
     const s = statusMeta(a.run_state || a.effective_status || a.status);
     const isBound = !!a.is_bound;
-    const bindPill = isBound ? '<span class="state-pill state-ok">已绑定</span>' : '<span class="state-pill state-warn">未绑定</span>';
+    const bindPill = isBound ? '<span class="state-pill state-ok">\u5df2\u7ed1\u5b9a</span>' : '<span class="state-pill state-warn">\u672a\u7ed1\u5b9a</span>';
     const m = a.metrics || {};
     const mb = m.business || {};
     const sid = String(a.service_id || a.node_id || a.agent_id || "");
@@ -402,17 +406,38 @@
     const agentId = String(a.agent_id || "-");
     const key = serviceKey(a);
     const openAttr = state.openServiceKeys.has(key) ? " open" : "";
+    const name = a.display_name || sid || "-";
     return `<details class="service-row status-${s.cls}" data-service-key="${esc(key)}"${openAttr}>
       <summary>
-        <span class="service-name" title="${esc(a.display_name || sid || "-")}">${esc(a.display_name || sid || "-")}</span>
+        <span class="service-name" title="${esc(name)}">${esc(name)}</span>
         <span class="state-pill state-info">${esc(type)}</span>
-        <span class="service-mini">端口 ${esc(port)}</span>
+        <span class="service-mini">\u7aef\u53e3 ${esc(port)}</span>
         <span class="state-pill state-${s.cls}">${esc(agentStatusLabel({ effective_status: a.run_state || a.effective_status || a.status }))}</span>
         ${bindPill}
         <span class="service-metric">QPS ${esc(metricValue(mb, "qps"))}</span>
         <span class="service-metric">P95 ${esc(metricValue(mb, "rtt_p95_ms"))}</span>
-        <span class="service-expand">展开</span>
+        <span class="service-expand">${state.openServiceKeys.has(key) ? "\u6536\u8d77" : "\u5c55\u5f00"}</span>
       </summary>
+      <div class="service-row-detail">
+        <div class="service-detail-grid">
+          <span>\u670d\u52a1ID\uff1a${esc(sid || "-")}</span>
+          <span>\u7ed1\u5b9a\u8282\u70b9\uff1a${esc(a.node_id || "-")}</span>
+          <span>\u670d\u52a1\u7c7b\u578b\uff1a${esc(type)}</span>
+          <span>\u670d\u52a1\u7aef\u53e3\uff1a${esc(port)}</span>
+          <span title="Agent: ${esc(agentId)}">Agent\uff1a${esc(shortId(agentId, 22))}</span>
+          <span>P99\uff1a${esc(metricValue(mb, "rtt_p99_ms"))}</span>
+          <span>\u9519\u8bef\u7387\uff1a${esc(metricValue(mb, "error_rate"))}</span>
+          <span>\u8fde\u63a5\u6570\uff1a${esc(metricValue(mb, "conn"))}</span>
+        </div>
+        <div class="service-actions">
+          <button class="btn success" data-service-action="start" data-service-id="${esc(sid)}">\u542f\u52a8</button>
+          <button class="btn danger" data-service-action="stop" data-service-id="${esc(sid)}">\u505c\u6b62</button>
+          <button class="btn" data-service-action="restart" data-service-id="${esc(sid)}">\u91cd\u542f</button>
+          <button class="btn ghost" data-service-action="status" data-service-id="${esc(sid)}">\u72b6\u6001</button>
+          <button class="btn ghost" data-service-action="logs" data-service-id="${esc(sid)}">\u65e5\u5fd7</button>
+          <button class="btn" data-service-edit="${esc(key)}">\u7f16\u8f91</button>
+        </div>
+      </div>
     </details>`;
   }
 

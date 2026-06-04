@@ -1236,3 +1236,46 @@ td{padding:8px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa;back
   .service-line-v2 summary { grid-template-columns: minmax(120px, 1fr) 80px 80px 80px 64px !important; }
   .service-line-v2 summary span:nth-of-type(4), .service-line-v2 summary span:nth-of-type(5) { display:none !important; }
 }
+
+/* 20260604a: restore inline service details in Agent control service list. */
+.service-row[open] .service-row-detail {
+  display: block !important;
+  max-height: 160px !important;
+  overflow: auto !important;
+  padding: 8px 10px !important;
+  border-top: 1px solid #dbeafe !important;
+  background: rgba(255,255,255,.78) !important;
+}
+.service-row:not([open]) .service-row-detail { display: none !important; }
+.service-row[open] .service-expand { background:#dbeafe !important; color:#1d4ed8 !important; }
+
+/* 20260604b: keep Agent service rows compact, complete and expandable. */
+.service-panel .service-list {
+  max-height: 240px !important;
+  overflow-y: auto !important;
+  padding-right: 6px !important;
+}
+.service-panel .service-row summary {
+  grid-template-columns: minmax(120px, 1.25fr) 76px 76px 92px 80px 64px 64px 56px !important;
+}
+.service-panel .service-expand {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 44px !important;
+}
+.service-panel .service-row[open] .service-row-detail {
+  display: block !important;
+}
+.service-panel .service-row-detail .service-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+.service-panel .service-row-detail .service-detail-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px 10px !important;
+  font-size: 12px !important;
+}
