@@ -1,8 +1,8 @@
-﻿<link rel="stylesheet" href="/static/ops_platform.css?v=20260604-agent-design-v4">
+<link rel="stylesheet" href="/static/ops_platform.css?v=20260604-agent-design-v5">
 <div class="agent-console-shell detail" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
   <aside class="agent-console-sidebar detail">
     <div class="agent-console-logo">
-      <div class="agent-console-logo-icon mini">◔</div>
+      <div class="agent-console-logo-icon mini">G</div>
       <div>
         <div class="agent-console-logo-title cn">运维平台</div>
         <div class="agent-console-logo-sub">GameOps Console</div>
@@ -11,41 +11,42 @@
 
     <nav class="agent-console-nav">
       <div class="agent-console-nav-group">
-        <a class="agent-console-nav-item" href="/admin/ops-platform?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>工作台</span></a>
-        <a class="agent-console-nav-item" href="/admin/ops-platform?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>总览看板</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform?project_id={{ project_id }}"><span class="agent-nav-icon home"></span><span>工作台</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform?project_id={{ project_id }}"><span class="agent-nav-icon board"></span><span>总览看板</span></a>
       </div>
 
       <div class="agent-console-nav-divider"></div>
       <div class="agent-console-nav-title">架构编排</div>
       <div class="agent-console-nav-group">
-        <a class="agent-console-nav-item" href="/admin/ops-platform/topology?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>拓扑编排</span></a>
-        <a class="agent-console-nav-item active" href="/admin/ops-platform/agent-control?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>Agent 管理</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform/topology?project_id={{ project_id }}"><span class="agent-nav-icon topology"></span><span>拓扑编排</span></a>
+        <a class="agent-console-nav-item active" href="/admin/ops-platform/agent-control?project_id={{ project_id }}"><span class="agent-nav-icon agent"></span><span>Agent 管理</span></a>
       </div>
 
       <div class="agent-console-nav-divider"></div>
       <div class="agent-console-nav-title">执行与诊断</div>
       <div class="agent-console-nav-group">
-        <a class="agent-console-nav-item" href="/admin/ops-platform/actions?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>动作执行</span></a>
-        <a class="agent-console-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>任务诊断</span></a>
-        <a class="agent-console-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>节点诊断</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform/actions?project_id={{ project_id }}"><span class="agent-nav-icon play"></span><span>动作执行</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><span class="agent-nav-icon heartbeat"></span><span>任务诊断</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><span class="agent-nav-icon heartbeat"></span><span>节点诊断</span></a>
       </div>
 
       <div class="agent-console-nav-divider"></div>
       <div class="agent-console-nav-title">治理与合规</div>
       <div class="agent-console-nav-group">
-        <a class="agent-console-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}"><span class="agent-nav-dot"></span><span>变更治理</span></a>
-        <a class="agent-console-nav-item" href="/admin/approval"><span class="agent-nav-dot"></span><span>审批中心</span></a>
+        <a class="agent-console-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}"><span class="agent-nav-icon change"></span><span>变更治理</span></a>
+        <a class="agent-console-nav-item" href="/admin/approval"><span class="agent-nav-icon audit"></span><span>审批中心</span></a>
       </div>
     </nav>
 
-    <div class="agent-console-sidebar-footer"><span class="agent-nav-dot"></span><span>收起菜单</span></div>
+    <div class="agent-console-sidebar-footer"><span class="agent-nav-icon collapse"></span><span>收起菜单</span></div>
   </aside>
 
   <section class="agent-console-main detail">
     <header class="agent-detail-topbar">
+      <div class="agent-detail-topbar-left"></div>
       <div class="agent-detail-topbar-right">
-        <span>帮助中心</span>
-        <span class="agent-notice-badge-wrap"><span>🔔</span><i>12</i></span>
+        <span class="agent-top-link"><span class="agent-top-icon help"></span><span>帮助中心</span></span>
+        <span class="agent-notice-badge-wrap"><span class="agent-top-icon bell"></span><i>12</i></span>
         <span class="agent-console-avatar">运</span>
         <span class="agent-console-user">运维管理员</span>
       </div>
@@ -53,16 +54,18 @@
 
     <main class="agent-detail-content agent-detail-page" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
       <div class="agent-detail-crumb">Agent 管理 <span>/</span> <b>Agent 详情</b></div>
-      <div class="agent-detail-head">
+
+      <section class="agent-detail-head">
         <div>
           <div class="agent-detail-headline">
             <span class="agent-detail-node-icon">G</span>
-            <span id="detailAgentName">remote-device</span>
+            <span id="detailAgentName">remote-device-127001</span>
             <span id="detailStatusPill" class="agent-status-pill online">运行中</span>
-            <button id="detailOpenControl" class="agent-open-btn" type="button" title="打开控制台">↗</button>
+            <button id="detailOpenControl" class="agent-open-btn" type="button" title="返回管控中心"><span class="agent-btn-icon detail small"></span></button>
           </div>
           <div id="detailMetaLine" class="agent-detail-meta-row">ID: - ｜ 分组: - ｜ 环境: - ｜ 版本: - ｜ 最近心跳: - ｜ 安装时间: -</div>
         </div>
+
         <div class="agent-detail-head-actions">
           <button id="detailEditBtn" class="agent-outline-btn" type="button">编辑</button>
           <button id="detailRestartBtn" class="agent-outline-btn" type="button">重启 Agent</button>
@@ -74,7 +77,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       <div id="detailTabs" class="agent-detail-tabbar">
         <button class="agent-tab active" data-tab="overview">概览</button>
@@ -129,6 +132,5 @@
     </main>
   </section>
 </div>
-<script src="/static/ops_platform_api.js?v=20260604-agent-design-v4"></script>
-<script src="/static/ops_platform_agent_detail.js?v=20260604-agent-design-v4"></script>
-
+<script src="/static/ops_platform_api.js?v=20260604-agent-design-v5"></script>
+<script src="/static/ops_platform_agent_detail.js?v=20260604-agent-design-v5"></script>
