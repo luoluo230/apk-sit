@@ -1,114 +1,121 @@
-﻿# Design Faithful UI Rule
+# Design Faithful UI Rule
 
-## 用途
+## Purpose
 
-- 这是“按设计图实现任意模块”的唯一设计图规则入口。
-- 当用户给出设计图、截图、视觉稿，并要求严格按图实现时，必须遵守本规则。
-- 当用户点名 `design-faithful-ui` skill 时，本规则自动启用，无需再次确认。
+- This is the single design-rule entrypoint for any module implemented from a design image.
+- When the user names `design-faithful-ui`, this rule is automatically active.
+- This rule exists to prevent "close enough" delivery and force rendered-result validation.
 
-## 自动配合关系
+## Automatic companions
 
-- 本 rule 默认配合以下文件一起执行：
+- This rule runs together with:
   - `AGENTS.md`
   - `.cursor/rules/safe-change-workflow.md`
   - `docs/design_specs/README.md`
   - `docs/design_specs/_design-module-spec-template.md`
   - `docs/design_assets/README.md`
-- 如果当前模块已有 `docs/design_specs/*.md` 文档，必须优先读取该模块文档。
-- 如果当前模块没有设计文档，必须先创建，再开始写代码。
+- If a matching module spec already exists in `docs/design_specs/*.md`, it must be read first.
+- If no module spec exists, it must be created before code changes.
 
-## 统一要求
+## Hard requirements
 
-- 设计图是硬标准，不是参考方向。
-- 先检查或创建 `docs/design_specs/` 下的模块设计文档。
-- 再按设计图一比一实现布局、交互、功能细节、状态反馈与响应式行为。
-- 当前模块重写时，不保留不需要的旧逻辑。
-- 不允许乱码，不允许语法错误，不允许旧壳误命中。
-- 不允许把“视觉接近”当成“按图完成”。
-- 不允许在未做截图级对比前宣称“已按设计图实现”。
-- 不允许用占位 emoji、系统默认符号、临时图标替代设计稿中的正式图标风格。
-- 不允许在设计稿主态为“有数据”时，只交付“空态页面”作为完成结果。
-- 不允许只改辅助函数、聚合函数或内部 builder，却不核对真正给页面供数的运行时入口。
-- 不允许在未完成“修改前基线提交并推远端”时直接进入新一轮改动，除非已明确说明阻塞原因。
+- The design is a hard acceptance target, not inspiration.
+- The implementation must be accepted against the rendered page, not only against source code.
+- The implementation must not be called complete until rendered-result differences are cleared or explicitly listed as blocking differences.
+- It is not acceptable to stop at:
+  - matching only the outer shell
+  - matching only high-level layout
+  - matching only data behavior
+  - matching only code structure
+- It is not acceptable to ignore obvious visual mismatches that are visible in a browser screenshot.
 
-## 必须执行的流程
+## Required pre-implementation design analysis
 
-- 先读取并遵守仓库根目录 `AGENTS.md`。
-- 先检查 `docs/design_specs/` 是否已有对应模块文档。
-- 如果没有，先创建设计实现文档，再开始写代码。
-- 先检查 `docs/design_assets/` 是否已有设计图文件或预留命名。
-- 开发前先看 `git status`，然后必须：
-  - 先做当前内容的基线提交
-  - 再推送到远端当前分支
-  - 若推送失败，明确报告阻塞，不得默默跳过
-- 如果旧页面结构与设计图冲突，优先重写，不为旧壳兼容保留无用逻辑。
-- 如果本轮修改涉及列表来源、详情来源、路由入口、模板切换、聚合口径、缓存版本号中的任一项，必须在实现后核对：
-  - 页面实际请求的接口
-  - 控制器实际走到的入口
-  - 页面运行进程是否已经重启到新代码
-  - 浏览器资源版本号是否已经更新
-- 实现前，必须先把设计图拆成可核对的对比维度，至少包括：
-  - 页面外壳与宽度占比
-  - 顶部栏 / 面包屑 / 标题区
-  - 左侧导航宽度、分组标题、激活态
-  - 主按钮区尺寸、图标、间距、顺序
-  - KPI 卡片数量、尺寸、图标风格、数字层级
-  - 筛选栏顺序、控件高度、视图切换位置
-  - 批量操作栏结构与文案
-  - 主内容主态（卡片列表 / 表格 / 图表）与空态
-  - 分页器结构、按钮样式、位置
-  - 表格列宽、数字对齐、状态标签
-- 如果设计稿展示的是“有数据的主态”，而真实接口当前为空，必须先补一个可用于视觉核对的方案，再继续验收，允许方式仅限：
-  - 本地开发数据
-  - 明确隔离的 demo fixture
-  - 只用于视觉验收的 mock 数据层
-- 不允许因为接口当前无数据，就直接用空态替代设计稿主态进行 1:1 验收。
-- 开发完成后，必须做一次“实现截图 vs 设计图”的逐项差异审计，至少输出以下结论：
-  - 完全一致项
-  - 仍有差异项
-  - 每个差异项对应的具体区域
-  - 是否阻塞“按图完成”结论
-- 开发完成后，必须做一次“代码改动点 vs 真实运行入口”的逐项核对，至少覆盖：
-  - 改动的函数是否真的是页面使用的入口
-  - 页面使用的接口是否已切到新口径
-  - 运行进程是否已加载新代码
-  - 缓存是否已经穿透
-- 页面实现完成后，必须检查：
-  - JS 语法
-  - Python 编译
-  - 页面无横向溢出
-  - 页面未命中旧模板、旧服务、旧壳
-  - 视觉与设计图逐项核对后可证明为 1:1，或明确列出未完成差异
+- Before coding, convert the design into a checklist and place it in the module spec.
+- That checklist must include at least:
+  - page shell width and alignment
+  - left navigation width, grouping, active state, icons
+  - top toolbar / breadcrumb / title area
+  - primary and secondary button size, order, spacing, icon treatment
+  - KPI card count, size, icon style, typography hierarchy
+  - filters, search, view switch, and batch toolbar layout
+  - main content primary state
+  - card layout, card content, card actions, borders, hover states
+  - tables, charts, tabs, and summary cards
+  - empty, loading, error, hover, active, disabled, selected states
+- If this checklist does not exist yet, do not start implementation.
 
-## 1:1 视觉验收硬门槛
+## Required implementation flow
 
-- 以下任一项不满足，都不能称为“按设计图完成”：
-  - 页面主态与设计图主态不同，例如设计稿是列表主态，实际交付是空态主态
-  - 顶部按钮缺图标、缺层级、缺间距或顺序不一致
-  - KPI 卡片的图标风格、配色、排版层级与设计稿不一致
-  - 左侧导航的宽度、留白、激活态样式不一致
-  - 筛选栏顺序、控件高度、按钮位置与设计稿不一致
-  - 主卡片区的数量、列数、卡片边框色、状态标签、底部操作按钮样式不一致
-  - 分页器的位置、按钮尺寸、当前页样式不一致
-  - 详情页的五张摘要卡高度不一致
-  - 详情页标签栏的间距、下划线、激活态不一致
-  - 表格列宽、数字对齐、状态色、操作列样式不一致
+- Read `AGENTS.md`.
+- Read this rule.
+- Read or create the module design spec.
+- Inspect `git status`.
+- Create a baseline commit and push it to the current remote branch before starting the new implementation pass.
+- If the push fails, stop and report the block.
+- Decide whether the page needs a rewrite; if the old shell conflicts with the design, rewrite rather than patch around it.
+- If the change touches any of these, verify the real runtime entrypoint before claiming a fix:
+  - routes
+  - template selection
+  - aggregation
+  - controller/view-model
+  - cache-busting version
+  - service process
 
-## 本次任务暴露出的高频偏差，后续默认强制规避
+## Browser validation gate
 
-- 不能只把页面骨架做出来，核心业务卡片区也必须进入与设计图一致的主态。
-- 不能在设计稿使用正式图标系统时，用文本字符、emoji、几何符号临时代替。
-- 不能只对齐容器和留白，而忽略按钮图标、卡片图标、状态标签、分页器这些细部。
-- 不能让“真实空数据”直接掩盖视觉实现偏差；视觉验收要有可对比的数据场景。
-- 不能在未做截图对比复盘前就输出“已按设计图完成”。
-- 不能只修改数据聚合 helper，却忘记把真正暴露给前端的列表 / 详情接口入口一起切换。
-- 不能只在本地代码里完成修改，却没有确认运行中的服务进程、资源版本号和浏览器缓存已经同步到新版本。
-- 不能跳过“修改前提交并推远端”的基线保护步骤。
+- If Chrome automation or Browser automation is available, it must be used after major UI changes.
+- The rendered local page must be inspected in the browser before the task can be called complete.
+- Source inspection alone is not sufficient.
+- If the browser result differs from the design in obvious ways, keep working; do not report completion.
 
-## 代码约束
+## Required post-implementation comparison
 
-- 不把所有逻辑堆到一个脚本。
-- 模板、样式、脚本、路由、服务按职责拆分。
-- 命名保持清晰、简洁、可继续扩展。
-- 不做与当前模块无关的顺手重构。
-- 不让当前模块的样式和脚本污染其他模块。
+- After implementation, produce a mental or written diff between:
+  - current rendered result
+  - target design
+- That comparison must explicitly cover:
+  - left navigation
+  - top bar
+  - hero/title block
+  - button groups
+  - KPI cards
+  - filters and toolbars
+  - primary content state
+  - pagination
+  - detail summary cards
+  - tabs
+  - tables
+  - charts
+- If any one of those still obviously differs, "1:1 complete" is not allowed.
+
+## Hard blockers for claiming completion
+
+- Any of the following blocks a "done" claim:
+  - wrong primary state versus design
+  - wrong navigation structure or icon treatment
+  - wrong button order, size, or spacing
+  - wrong KPI visual hierarchy
+  - wrong card density or card composition
+  - wrong tab spacing / underline / active state
+  - wrong table widths / alignment / action buttons
+  - obvious browser-visible mismatch that would be clear to a human without code inspection
+  - unverified runtime process, route, or cache version
+  - skipped baseline commit/push
+
+## Lessons from this task, now mandatory
+
+- Do not change only helper functions while forgetting the actual page-facing endpoint.
+- Do not treat "rendered something similar" as success.
+- Do not rely on code inspection to decide whether a design is matched.
+- Do not skip browser-based self-verification when automation is available.
+- Do not wait for the user to point out obvious mismatches that should have been caught during inspection.
+- Do not stop after data-model correctness if the design is still clearly wrong.
+
+## Code constraints
+
+- Do not put all page logic into one script.
+- Keep templates, styles, scripts, routes, and services separated by responsibility.
+- Use clean names and shallow functions.
+- Do not leak styles or scripts into unrelated modules.
+- Do not ship visible encoding issues.

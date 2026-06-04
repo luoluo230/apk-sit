@@ -1,111 +1,121 @@
-﻿---
+---
 name: design-faithful-ui
 description: 用于任何“用户给了设计图、截图、视觉稿，需要严格按图实现页面和交互”的开发任务。适用于所有模块。执行时自动同时启用仓库规则、设计图规则、安全改动流程和设计文档流程；若模块文档不存在则直接创建，无需再次询问用户。
 ---
 
 # Design Faithful UI
 
-## 唯一入口说明
+## Single entry
 
-- 以后只要用户点名这个 skill，就默认同时启用本模块所需的规则、文档和开发流程。
-- 不需要用户再额外点名 rule，也不需要再次确认“要不要使用文档 / rule”。
-- 如果用户明确给了设计图，这个 skill 自动进入“设计图硬约束模式”。
+- If the user names this skill, use it as the only workflow entrypoint.
+- Do not ask again whether to use rules, specs, design docs, or validation steps.
+- This skill automatically activates:
+  - `AGENTS.md`
+  - `.cursor/rules/design-faithful-ui-rule.md`
+  - `.cursor/rules/safe-change-workflow.md`
+  - the relevant module spec in `docs/design_specs/`
 
-## 执行时必须同时使用的文件
+## Files that must be used
 
-### 规则文件
+### Rules
 
 - `AGENTS.md`
 - `.cursor/rules/design-faithful-ui-rule.md`
 - `.cursor/rules/safe-change-workflow.md`
 
-### 文档文件
+### Documentation
 
 - `docs/design_specs/README.md`
 - `docs/design_specs/_design-module-spec-template.md`
 - `docs/design_assets/README.md`
+- the current module spec under `docs/design_specs/*.md`
 
-### 模块文档规则
+## Non-negotiable mindset
 
-- 如果 `docs/design_specs/` 下已经存在当前模块的设计实现文档，必须先读取该文档，再开始写代码。
-- 如果不存在，必须先创建模块设计实现文档，再开始写代码。
-- 创建文档时，不需要再次询问用户“要不要先写文档”，直接执行。
+- The design is the acceptance target.
+- Matching code structure is not enough.
+- Matching the outer shell is not enough.
+- Matching runtime data is not enough.
+- The rendered browser result must match the design.
+- If obvious differences remain, the task is not complete.
 
-## 自动执行约束
+## Mandatory execution order
 
-- 只要调用这个 skill，就默认已经启用：
-  - `design-faithful-ui-rule`
-  - `safe-change-workflow`
-  - 仓库根规则 `AGENTS.md`
-- 不再把这些选择回抛给用户。
-- 不再反复询问是否需要合并、是否需要启用、是否需要继续收敛。
-
-## 核心原则
-
-- 设计图是硬性标准，不是参考方向。
-- 页面必须尽量按图 1:1 实现：
-  - 页面骨架
-  - 布局与留白
-  - 卡片、表格、按钮、标签页
-  - 空态、加载态、错误态
-  - 交互入口、批量操作、反馈提示
-- 交付前必须做“实现截图 vs 设计图”的差异审计，未审计不能宣称完成。
-- 如果设计图主态为“有数据”，则必须准备可视化验收数据，不能只拿空态页面对标。
-
-## 执行顺序
-
-1. 先读取：
+1. Read:
    - `AGENTS.md`
    - `.cursor/rules/design-faithful-ui-rule.md`
    - `.cursor/rules/safe-change-workflow.md`
-2. 检查 `docs/design_specs/` 是否已有当前模块设计实现文档。
-3. 如果没有，基于设计图和现有功能直接创建文档。
-4. 检查 `docs/design_assets/` 是否已有设计图文件或预留命名。
-5. 检查 `git status`，然后先做当前内容的基线提交并推送到远端当前分支。
-6. 如果基线推送失败，先报告阻塞，不得跳过该步骤继续开发。
-7. 判断当前模块是否应该重写而不是兼容旧结构。
-8. 按职责拆分模板、样式、脚本、路由、服务层。
-9. 如果本轮涉及接口、聚合、路由、模板入口、缓存版本号中的任一项，必须核对真正的运行时入口，而不是只改内部 helper。
-10. 完成后验证：
-   - JS 语法
-   - Python 编译
-   - 页面无旧壳、无横向溢出、无明显适配错误
-   - 页面主态、按钮、卡片、表格、分页、图标与设计图逐项对比
-   - 页面真实使用的接口 / 控制器 / 服务进程 / 资源缓存是否都已切到新版本
+2. Open the module spec under `docs/design_specs/`.
+3. If the module spec does not exist, create it immediately.
+4. Before coding, write or update the module spec with a design-analysis checklist that includes:
+   - shell width and alignment
+   - left navigation
+   - top bar / breadcrumb / title area
+   - button groups
+   - KPI cards
+   - filters / search / batch tools
+   - main content primary state
+   - tabs / tables / charts / pagination
+   - empty / loading / error / hover / active / disabled / selected states
+5. Check `git status`.
+6. Create a baseline commit for the current state and push it to the remote branch before starting the new implementation pass.
+7. If the baseline push fails, stop and report the block.
+8. Decide whether to rewrite or extend; if the design conflicts with the old shell, rewrite.
+9. Implement with clear separation between template, style, script, route, and data shaping.
+10. If the change touches route, controller, aggregation, template selection, process, or cache version:
+   - verify the real runtime entrypoint
+   - verify the real process is serving the code
+   - verify cache-busting versions are updated
+11. After coding, run syntax and compile checks.
+12. After coding, use browser automation to inspect the rendered local page when the tool is available.
+13. Compare the rendered page against the design section by section.
+14. Only if differences are cleared may the task be called complete.
 
-## 硬约束
+## Browser self-verification
 
-- 不允许出现乱码。
-- 不允许为了省事继续套旧页面壳。
-- 不允许保留不需要的旧逻辑分支。
-- 不允许把大量页面逻辑堆到一个脚本里。
-- 不允许未经检查就宣称“已按设计图完成”。
-- 不允许未经“基线提交并推远端”就开始新一轮修改，除非已明确说明为什么被阻塞。
-- 不允许只修改内部数据函数却不核对页面真实入口是否已经切换。
-- 不允许把流程选择题再次抛给用户。
-- 不允许因为流程没收口而反复追问“要不要合并 / 要不要启用 / 要不要继续收敛”。
+- If Chrome automation is available, use it.
+- If Browser automation is available, use it.
+- Do not rely only on source files when a browser automation tool is present.
+- Use the browser check to catch:
+  - wrong spacing
+  - wrong widths
+  - wrong button placement
+  - wrong card count or density
+  - wrong icon treatment
+  - wrong table alignment
+  - overflow or stale shell issues
 
-## 文档要求
+## Required acceptance checklist
 
-如果需要创建新模块设计文档，至少包含：
+Before claiming completion, verify:
 
-- 模块名称
-- 设计图来源
-- 页面结构
-- 核心交互
-- 状态清单
-- 接口/字段映射
-- 响应式约束
-- 重写策略
-- 验证清单
+- The rendered page uses the intended route and template.
+- The intended service process is serving the updated code.
+- Static resource cache versions were bumped when needed.
+- The rendered page has no obvious visual mismatch against the design.
+- The primary state matches the design primary state.
+- The navigation, buttons, KPI cards, filters, content area, pagination, tabs, tables, and charts match the design.
+- Changed JS passes syntax checks.
+- Changed Python passes compile checks.
+- Changed files are free of visible encoding issues.
 
-## 交付要求
+## Forbidden shortcuts
 
-- 说明用的是哪个设计文档。
-- 说明设计图文件或线程截图来源。
-- 说明本次默认执行了哪些规则文件。
-- 说明本轮修改前是否已完成基线提交和远端推送；若没有，必须写明阻塞原因。
-- 说明这次实际核对过哪些运行时入口、服务进程和资源缓存版本。
-- 说明“实现截图 vs 设计图”的主要差异是否已清零；如未清零，必须明确列出。
-- 列出改动文件。
-- 列出验证命令和结果。
+- Do not stop at "close enough".
+- Do not stop at "the data is correct now".
+- Do not stop at "the template looks right in code".
+- Do not skip browser verification when the tool is available.
+- Do not skip the design-analysis checklist.
+- Do not skip the baseline commit and push.
+- Do not say "done" while obvious differences remain.
+- Do not wait for the user to point out mismatches that should have been caught in your own review.
+
+## Delivery requirements
+
+- State which design spec governed the implementation.
+- State which design images or thread screenshots were used.
+- State that baseline commit and remote push happened before the implementation pass, or report the blocker.
+- State which runtime entrypoints, process ids, and cache versions were checked.
+- State whether browser verification was performed.
+- State whether differences were fully cleared.
+- If any difference remains, list it explicitly and do not claim 1:1 completion.

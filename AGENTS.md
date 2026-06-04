@@ -24,6 +24,18 @@ These rules apply to the entire repository.
   - the required interactions and empty/loading/error states
 - Treat the design spec and the provided design images as the source of truth for the module.
 - If local copies of the design images do not yet exist, reserve them under `docs/design_assets/` and record the expected filenames in the matching spec.
+- Before writing code, extract the design into an implementation checklist that covers:
+  - page shell and width behavior
+  - left navigation structure and active states
+  - top bar / breadcrumb / title area
+  - primary and secondary button groups
+  - KPI cards
+  - filters / search / batch toolbar
+  - main content area and primary data state
+  - pagination
+  - tables / charts / summary cards
+  - empty, loading, success, error, hover, active, disabled states
+- Record that checklist in the module spec or update the existing module spec before implementation.
 - If the running page does not match the edited template, verify the actual serving process, route, cache-busting query strings, and stale service instances before continuing visual tweaks.
 - When backend aggregation, view-model shape, or routing are changed, verify the real runtime entrypoint that feeds the page, not only helper functions or internal builders.
 - If there are multiple possible data entrypoints, verify the exact endpoint used by the browser page before declaring a fix complete.
@@ -31,7 +43,7 @@ These rules apply to the entire repository.
 ## Implementation constraints
 
 - Prefer clean rewrites over patching old UI when the old structure conflicts with the new design.
-- During a rewrite, remove obsolete logic instead of carrying old branches “just in case”.
+- During a rewrite, remove obsolete logic instead of carrying old branches "just in case".
 - Keep modules split by responsibility. Avoid pushing all page behavior into one script.
 - Keep code easy for AI and humans to extend: short functions, clear names, low nesting, minimal coupling.
 - Avoid unrelated refactors while implementing a design-driven module.
@@ -43,6 +55,8 @@ These rules apply to the entire repository.
 - Run Python compile validation on every changed Python route/controller file.
 - Check changed files for visible encoding problems before declaring work done.
 - Check the rendered module for stale shells, width bugs, overflow, and responsive breakpoints before declaring visual work done.
+- When Chrome or Browser automation is available, use it to inspect the rendered local page after major UI changes instead of relying on source inspection alone.
+- For design-driven pages, validate the real rendered page against the design in the browser before declaring the task complete.
 - If the user reports visual mismatch, re-check runtime serving/caching assumptions before making more speculative style edits.
 
 ## Git workflow
@@ -69,6 +83,10 @@ These rules apply to the entire repository.
 - Confirm the runtime is serving the newest route/template version.
 - Confirm the exact runtime endpoint / controller / data entrypoint that the page is consuming.
 - For UI work, inspect the running page after major changes and compare the rendered result to the design, not only the source code.
+- For design-driven UI work, explicitly list:
+  - what matched the design
+  - what still differed
+  - whether any remaining difference blocks a "1:1 complete" claim
 - Validate changed JS and Python files.
 - Summarize:
   - changed files
