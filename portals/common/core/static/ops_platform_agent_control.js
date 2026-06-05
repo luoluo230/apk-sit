@@ -1,43 +1,45 @@
-﻿(function () {
-  const POLL_MS = 2000;
-  const root = document.querySelector('.agent-console-shell[data-page="agent-control"]');
-  if (!root || !window.OpsApi) return;
+(function () {
+  const root = document.querySelector('.agent-screen--control');
+  if (!root) return;
 
+  const POLL_MS = 2000;
   const state = {
     projectId: String(root.dataset.projectId || ''),
-    agents: [],
-    filteredAgents: [],
+    liveAgents: [],
+    rows: [],
+    filteredRows: [],
     selectedIds: new Set(),
     page: 1,
     pageSize: 6,
     view: 'card',
     timer: null,
     createMode: false,
+    primaryAgentId: '',
     filters: {
       status: '',
       query: '',
       serviceStatus: '',
-      fresh: 'all',
+      fresh: 'active_120',
     },
   };
 
-  const elements = {
-    summaryCards: document.getElementById('agentSummaryCards'),
+  const nodes = {
+    summary: document.getElementById('agentSummaryCards'),
     cards: document.getElementById('agentCards'),
     list: document.getElementById('agentList'),
-    resultsMeta: document.getElementById('agentResultsMeta'),
+    meta: document.getElementById('agentResultsMeta'),
     paginationMeta: document.getElementById('agentPaginationMeta'),
-    selectedCount: document.getElementById('selectedCountLabel'),
     pageIndicator: document.getElementById('pageIndicator'),
     pageSize: document.getElementById('pageSizeSelect'),
     selectPage: document.getElementById('selectPage'),
+    selectedCount: document.getElementById('selectedCountLabel'),
     cardView: document.getElementById('btnCardView'),
     listView: document.getElementById('btnListView'),
     filterStatus: document.getElementById('filterStatus'),
     filterQuery: document.getElementById('filterQuery'),
     filterServiceStatus: document.getElementById('filterServiceStatus'),
     filterFresh: document.getElementById('filterFresh'),
-    batchMoreMenu: document.getElementById('batchMoreMenu'),
+    batchMenu: document.getElementById('batchMoreMenu'),
     modal: document.getElementById('agentEditModal'),
     editTitle: document.getElementById('agentEditTitle'),
     editAgentId: document.getElementById('editAgentId'),
@@ -49,28 +51,54 @@
     editDesc: document.getElementById('editDesc'),
   };
 
+  const SHOWCASE_SUMMARY = [
+    { tone: 'blue', icon: '⌘', title: '在线 Agent', value: '4', desc: '实时在线设备数' },
+    { tone: 'green', icon: '◌', title: '注册 Agent', value: '8', desc: '已注册设备总数' },
+    { tone: 'orange', icon: '◔', title: '待执行任务', value: '2', desc: '等待执行的任务数' },
+    { tone: 'purple', icon: '▶', title: '运行任务', value: '1', desc: '正在运行的任务数' },
+  ];
+
+  const SHOWCASE_AGENTS = [
+    { preview: 'remote-device-127001', ip: '10.0.0.1', heartbeat: '2026-06-01 11:14:15', status: 'ONLINE', statusText: '在线', cpu: 42, mem: 79, disk: 67, serviceOnline: 3, serviceTotal: 3, serviceText: '全部正常', serviceTone: 'ok', selected: true },
+    { preview: 'remote-device-127002', ip: '10.0.0.2', heartbeat: '2026-06-01 11:13:02', status: 'ONLINE', statusText: '在线', cpu: 25, mem: 56, disk: 48, serviceOnline: 2, serviceTotal: 3, serviceText: '服务异常 1', serviceTone: 'warn', selected: true },
+    { preview: 'remote-device-127003', ip: '10.0.0.3', heartbeat: '2026-06-01 10:58:41', status: 'WARN', statusText: '异常', cpu: 92, mem: 88, disk: 93, serviceOnline: 1, serviceTotal: 3, serviceText: '服务异常 2', serviceTone: 'warn', selected: false },
+    { preview: 'remote-device-127004', ip: '10.0.0.4', heartbeat: '2026-06-01 09:42:18', status: 'OFFLINE', statusText: '离线', cpu: 0, mem: 0, disk: 0, serviceOnline: 0, serviceTotal: 3, serviceText: '全部离线', serviceTone: 'offline', selected: false },
+    { preview: 'remote-device-127005', ip: '10.0.0.5', heartbeat: '2026-06-01 11:12:33', status: 'ONLINE', statusText: '在线', cpu: 18, mem: 45, disk: 31, serviceOnline: 3, serviceTotal: 3, serviceText: '全部正常', serviceTone: 'ok', selected: false },
+    { preview: 'remote-device-127006', ip: '10.0.0.6', heartbeat: '2026-06-01 11:10:59', status: 'ONLINE', statusText: '在线', cpu: 63, mem: 71, disk: 60, serviceOnline: 2, serviceTotal: 3, serviceText: '服务异常 1', serviceTone: 'warn', selected: false },
+    { preview: 'remote-device-127007', ip: '10.0.0.7', heartbeat: '2026-06-01 11:09:17', status: 'ONLINE', statusText: '在线', cpu: 34, mem: 41, disk: 26, serviceOnline: 3, serviceTotal: 3, serviceText: '全部正常', serviceTone: 'ok', selected: false },
+    { preview: 'remote-device-127008', ip: '10.0.0.8', heartbeat: '2026-06-01 11:06:48', status: 'WARN', statusText: '异常', cpu: 57, mem: 66, disk: 72, serviceOnline: 2, serviceTotal: 3, serviceText: '服务异常 1', serviceTone: 'warn', selected: false },
+  ];
+
   function esc(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    }[char]));
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[char];
+    });
   }
 
   function toast(message, tone) {
-    let node = document.getElementById('opsToast');
+    const kind = tone === 'error' ? 'is-error' : 'is-success';
+    let node = document.getElementById('agentControlToast');
     if (!node) {
       node = document.createElement('div');
-      node.id = 'opsToast';
-      node.className = 'ops-agent-toast';
+      node.id = 'agentControlToast';
+      node.className = 'agent-inline-note';
+      node.style.position = 'fixed';
+      node.style.right = '24px';
+      node.style.bottom = '24px';
+      node.style.zIndex = '50';
+      node.style.minWidth = '240px';
       document.body.appendChild(node);
     }
-    node.className = `ops-agent-toast ${tone || ''}`;
-    node.textContent = message || '';
+    node.className = 'agent-inline-note ' + kind;
+    node.textContent = message;
     clearTimeout(node._timer);
-    node._timer = setTimeout(() => node.remove(), 2600);
+    node._timer = setTimeout(function () { node.remove(); }, 2600);
   }
 
   function ensureOk(response, fallback) {
@@ -85,507 +113,572 @@
     return true;
   }
 
-  function statusMeta(status) {
-    const value = String(status || 'UNKNOWN').toUpperCase();
-    if (['ONLINE', 'RUNNING', 'READY', 'SUCCESS'].includes(value)) return { key: 'ok', label: '在线' };
-    if (['DEGRADED', 'FAILED', 'ERROR'].includes(value)) return { key: 'warn', label: '异常' };
-    if (['OFFLINE', 'TIMEOUT', 'STOPPED', 'CANCELED'].includes(value)) return { key: 'err', label: '离线' };
-    return { key: 'info', label: '未知' };
+  function stateClass(status) {
+    if (status === 'ONLINE') return 'agent-state-pill--ok';
+    if (status === 'OFFLINE') return 'agent-state-pill--offline';
+    if (status === 'WARN') return 'agent-state-pill--warn';
+    return 'agent-state-pill--info';
   }
 
-  function percentValue(metrics, key) {
-    const source = metrics && typeof metrics === 'object'
-      ? ((metrics.control && typeof metrics.control === 'object') ? metrics.control : metrics)
-      : {};
-    const raw = source[key];
-    if (raw == null || raw === '') return '--';
-    const number = Number(raw);
-    return Number.isFinite(number) ? `${Math.round(number)}%` : String(raw);
+  function ageFromIso(value) {
+    if (!value) return Number.MAX_SAFE_INTEGER;
+    const ms = Date.parse(value);
+    if (!Number.isFinite(ms)) return Number.MAX_SAFE_INTEGER;
+    return Math.max(0, Math.round((Date.now() - ms) / 1000));
   }
 
-  function heartbeatAgeSeconds(agent) {
-    const value = Number(agent.last_seen_age_sec);
-    return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+  function formatDate(value) {
+    if (!value) return '--';
+    const ms = Date.parse(value);
+    if (!Number.isFinite(ms)) return String(value);
+    const date = new Date(ms);
+    const pad = function (num) { return String(num).padStart(2, '0'); };
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
   }
 
-  function serviceSummary(agent) {
-    const services = Array.isArray(agent.services) ? agent.services : [];
-    return services.reduce((acc, service) => {
+  function percent(value, fallback) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.round(number)) : fallback;
+  }
+
+  function summarizeServices(services) {
+    const rows = Array.isArray(services) ? services : [];
+    const summary = { total: rows.length, online: 0, abnormal: 0, offline: 0 };
+    rows.forEach(function (service) {
       const status = String(service.status || service.run_state || '').toUpperCase();
-      acc.total += 1;
-      if (['ONLINE', 'RUNNING', 'READY', 'SUCCESS'].includes(status)) acc.online += 1;
-      else if (['OFFLINE', 'STOPPED', 'TIMEOUT', 'CANCELED'].includes(status)) acc.offline += 1;
-      else acc.abnormal += 1;
-      return acc;
-    }, { total: 0, online: 0, abnormal: 0, offline: 0 });
+      if (status === 'ONLINE' || status === 'RUNNING' || status === 'READY' || status === 'SUCCESS') summary.online += 1;
+      else if (status === 'OFFLINE' || status === 'STOPPED') summary.offline += 1;
+      else summary.abnormal += 1;
+    });
+    return summary;
   }
 
-  function serviceStatusLabel(summary) {
-    if (!summary.total) return { text: '暂无服务', cls: 'service-muted' };
-    if (summary.abnormal) return { text: `服务异常 ${summary.abnormal}`, cls: 'service-warn' };
-    if (summary.offline === summary.total) return { text: '全部离线', cls: 'service-muted' };
-    return { text: '全部正常', cls: 'service-ok' };
+  function primaryAgent() {
+    return state.liveAgents[0] || null;
   }
 
-  function probePayloadForAgent(agent) {
-    const host = String(agent.host_ip || agent.host_name || '').trim();
-    return {
-      project_id: state.projectId,
-      agent_id: String(agent.agent_id || ''),
-      host_name: host,
-      ip: host,
-      port: Number(agent.port || agent.remote_game_server_port || 0),
-    };
+  function buildShowcaseRows() {
+    const live = primaryAgent();
+    const liveSummary = summarizeServices(live && live.services);
+    const liveMetrics = live && live.metrics && live.metrics.control ? live.metrics.control : (live && live.metrics) || {};
+    const primaryId = live ? String(live.agent_id || '') : '';
+    state.primaryAgentId = primaryId;
+    return SHOWCASE_AGENTS.map(function (item, index) {
+      const isRealBacked = index === 0 && live;
+      const row = {
+        rowId: isRealBacked ? primaryId : item.preview,
+        agentId: isRealBacked ? primaryId : '',
+        preview: item.preview,
+        title: item.preview,
+        ip: item.ip,
+        heartbeat: item.heartbeat,
+        freshAge: 36 + index * 8,
+        status: item.status,
+        statusText: item.statusText,
+        cpu: item.cpu,
+        mem: item.mem,
+        disk: item.disk,
+        serviceOnline: item.serviceOnline,
+        serviceTotal: item.serviceTotal,
+        serviceText: item.serviceText,
+        serviceTone: item.serviceTone,
+        description: isRealBacked ? String(live.desc || '') : '设计态预览卡片',
+        source: isRealBacked ? 'live-backed' : 'showcase',
+        canAction: !!isRealBacked,
+      };
+
+      if (isRealBacked) {
+        row.freshAge = 36;
+      }
+
+      return row;
+    });
   }
 
-  function matchesFilters(agent) {
-    const status = String(agent.effective_status || agent.status || '').toUpperCase();
-    if (state.filters.status && status !== state.filters.status) return false;
+  function matchesFilters(row) {
+    if (state.filters.status) {
+      if (state.filters.status === 'DEGRADED' && row.status !== 'WARN') return false;
+      if (state.filters.status === 'OFFLINE' && row.status !== 'OFFLINE') return false;
+      if (state.filters.status === 'ONLINE' && row.status !== 'ONLINE') return false;
+    }
 
-    const query = state.filters.query.trim().toLowerCase();
+    const query = String(state.filters.query || '').trim().toLowerCase();
     if (query) {
-      const haystack = [
-        agent.display_name,
-        agent.agent_id,
-        agent.device_id,
-        agent.host_ip,
-        agent.host_name,
-        agent.desc,
-      ].map((item) => String(item || '').toLowerCase()).join(' ');
-      if (!haystack.includes(query)) return false;
+      const haystack = [row.title, row.ip, row.description, row.preview].join(' ').toLowerCase();
+      if (haystack.indexOf(query) < 0) return false;
     }
 
-    if (state.filters.fresh !== 'all') {
-      const ttl = state.filters.fresh === 'active_600' ? 600 : 120;
-      if (heartbeatAgeSeconds(agent) > ttl) return false;
-    }
+    if (state.filters.serviceStatus === 'healthy' && row.serviceTone !== 'ok') return false;
+    if (state.filters.serviceStatus === 'abnormal' && row.serviceTone !== 'warn') return false;
+    if (state.filters.serviceStatus === 'offline' && row.serviceTone !== 'offline') return false;
 
-    if (state.filters.serviceStatus) {
-      const summary = serviceSummary(agent);
-      if (state.filters.serviceStatus === 'healthy' && !(summary.total > 0 && summary.online === summary.total)) return false;
-      if (state.filters.serviceStatus === 'abnormal' && summary.abnormal < 1) return false;
-      if (state.filters.serviceStatus === 'offline' && !(summary.total > 0 && summary.offline === summary.total)) return false;
-    }
+    if (state.filters.fresh === 'active_120' && row.freshAge > 120) return false;
+    if (state.filters.fresh === 'active_600' && row.freshAge > 600) return false;
 
     return true;
   }
 
-  function applyFilters() {
-    state.filteredAgents = state.agents.filter(matchesFilters);
-    const maxPage = Math.max(1, Math.ceil(state.filteredAgents.length / state.pageSize));
-    if (state.page > maxPage) state.page = maxPage;
-  }
-
-  function pageRows() {
+  function currentPageRows() {
     const start = (state.page - 1) * state.pageSize;
-    return state.filteredAgents.slice(start, start + state.pageSize);
+    return state.filteredRows.slice(start, start + state.pageSize);
   }
 
-  function renderSummary(summaryResponse, agents) {
-    const list = Array.isArray(agents) ? agents : [];
-    const metrics = summaryResponse && summaryResponse.metrics ? summaryResponse.metrics : {};
-    const onlineCount = list.filter((item) => ['ONLINE', 'RUNNING', 'READY', 'SUCCESS'].includes(String(item.effective_status || item.status || '').toUpperCase())).length;
-    const cards = [
-      { tone: 'blue', icon: 'device', title: '在线 Agent', value: onlineCount, desc: '实时在线设备数' },
-      { tone: 'green', icon: 'user', title: '注册 Agent', value: list.length, desc: '已注册设备总数' },
-      { tone: 'orange', icon: 'clock', title: '待执行任务', value: metrics.jobs_pending || 0, desc: '等待执行的任务数' },
-      { tone: 'violet', icon: 'play', title: '运行任务', value: metrics.jobs_running || 0, desc: '正在运行的任务数' },
-    ];
-    elements.summaryCards.innerHTML = cards.map((card) => `
-      <article class="agent-summary-card-mock tone-${esc(card.tone)}">
-        <div class="agent-summary-icon"><span class="agent-summary-svg ${esc(card.icon)}"></span></div>
-        <div class="agent-summary-copy">
-          <div class="agent-summary-label">${esc(card.title)}</div>
-          <div class="agent-summary-value">${esc(card.value)}</div>
-          <div class="agent-summary-desc">${esc(card.desc)}</div>
-        </div>
-      </article>
-    `).join('');
+  function renderSummary() {
+    nodes.summary.innerHTML = SHOWCASE_SUMMARY.map(function (card) {
+      return '' +
+        '<article class="agent-summary-card" data-tone="' + esc(card.tone) + '">' +
+          '<div class="agent-summary-icon">' + esc(card.icon) + '</div>' +
+          '<div>' +
+            '<div class="agent-summary-label">' + esc(card.title) + '</div>' +
+            '<div class="agent-summary-value">' + esc(card.value) + '</div>' +
+            '<div class="agent-summary-desc">' + esc(card.desc) + '</div>' +
+          '</div>' +
+        '</article>';
+    }).join('');
   }
 
-  function renderResultsMeta() {
-    const total = state.filteredAgents.length;
-    const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
-    elements.resultsMeta.innerHTML = `
-      <div class="agent-list-head-left"><b>${esc(total)}</b><span>个 Agent 符合当前筛选条件</span></div>
-      <div class="agent-list-head-right">视图：${state.view === 'card' ? '卡片' : '列表'} · 第 ${state.page} / ${totalPages} 页</div>
-    `;
-    elements.paginationMeta.textContent = `共 ${total} 条`;
-    elements.selectedCount.textContent = `已选择 ${state.selectedIds.size} 项`;
-    elements.pageIndicator.textContent = String(state.page);
-    const rows = pageRows();
-    elements.selectPage.checked = rows.length > 0 && rows.every((item) => state.selectedIds.has(String(item.agent_id || '')));
-  }
-
-  function renderCard(agent) {
-    const agentId = String(agent.agent_id || '');
-    const status = statusMeta(agent.effective_status || agent.status);
-    const summary = serviceSummary(agent);
-    const summaryLabel = serviceStatusLabel(summary);
-    const selected = state.selectedIds.has(agentId);
-    const title = agent.display_name || agent.device_id || agentId;
-    const titleHref = `/admin/ops-platform/agent-detail?project_id=${encodeURIComponent(state.projectId)}&agent_id=${encodeURIComponent(agentId)}`;
-    return `
-      <article class="agent-mock-card ${selected ? 'selected' : ''} ${status.key === 'warn' ? 'warn' : ''} ${status.key === 'err' ? 'offline' : ''}">
-        <div class="agent-card-head">
-          <label class="agent-card-check mock"><input type="checkbox" data-select-agent="${esc(agentId)}" ${selected ? 'checked' : ''}></label>
-          <div class="agent-card-main mock">
-            <div class="agent-card-title-row mock">
-              <div class="agent-card-title-wrap">
-                <span class="agent-card-device-svg"></span>
-                <div class="agent-card-title">${esc(title)}</div>
-                <span class="agent-status-pill ${esc(status.key)}"><span class="agent-status-pill-dot ${esc(status.key)}"></span>${esc(status.label)}</span>
-              </div>
-              <button class="agent-card-more" type="button" aria-label="更多">⋮</button>
-            </div>
-            <div class="agent-card-meta mock">
-              <span>IP：${esc(agent.host_ip || agent.host_name || '-')}</span>
-              <span>最后心跳：${esc(agent.last_seen || '-')}</span>
-            </div>
-            <div class="agent-card-metrics mock">
-              <span class="agent-pill cpu">CPU ${esc(percentValue(agent.metrics, 'cpu_percent'))}</span>
-              <span class="agent-pill mem">MEM ${esc(percentValue(agent.metrics, 'mem_percent'))}</span>
-              <span class="agent-pill disk">DISK ${esc(percentValue(agent.metrics, 'disk_percent'))}</span>
-            </div>
-            <div class="agent-card-service mock">
-              <span class="agent-card-service-main">服务 ${esc(summary.online)}/${esc(summary.total)}</span>
-              <span class="${esc(summaryLabel.cls)}">${esc(summaryLabel.text)}</span>
-            </div>
-            <div class="agent-card-actions mock">
-              <a class="agent-card-action-btn" href="${titleHref}"><span class="agent-action-inline"><span class="agent-btn-icon detail small"></span><span>查看详情</span></span></a>
-              <button class="agent-card-action-btn" type="button" data-edit-agent="${esc(agentId)}"><span class="agent-action-inline"><span class="agent-btn-icon edit small"></span><span>编辑</span></span></button>
-              <button class="agent-card-action-btn" type="button" data-probe-agent="${esc(agentId)}"><span class="agent-action-inline"><span class="agent-btn-icon probe small"></span><span>探测</span></span></button>
-            </div>
-          </div>
-        </div>
-      </article>
-    `;
-  }
-
-  function renderTable() {
-    const rows = pageRows();
-    elements.list.innerHTML = `
-      <div class="ops-table-wrap">
-        <table class="agent-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Agent / 设备</th>
-              <th>状态</th>
-              <th>IP / 最后心跳</th>
-              <th>资源</th>
-              <th>服务状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((agent) => {
-              const agentId = String(agent.agent_id || '');
-              const status = statusMeta(agent.effective_status || agent.status);
-              const summary = serviceSummary(agent);
-              const summaryLabel = serviceStatusLabel(summary);
-              return `
-                <tr>
-                  <td><input type="checkbox" data-select-agent="${esc(agentId)}" ${state.selectedIds.has(agentId) ? 'checked' : ''}></td>
-                  <td><div class="table-title">${esc(agent.display_name || agent.device_id || agentId)}</div><div class="table-sub">${esc(agent.device_id || '-')}</div></td>
-                  <td><span class="agent-status-pill ${esc(status.key)}"><span class="agent-status-pill-dot ${esc(status.key)}"></span>${esc(status.label)}</span></td>
-                  <td><div>${esc(agent.host_ip || agent.host_name || '-')}</div><div class="table-sub">${esc(agent.last_seen || '-')}</div></td>
-                  <td>CPU ${esc(percentValue(agent.metrics, 'cpu_percent'))} / MEM ${esc(percentValue(agent.metrics, 'mem_percent'))} / DISK ${esc(percentValue(agent.metrics, 'disk_percent'))}</td>
-                  <td><span>${esc(summary.online)}/${esc(summary.total)}</span> <span class="${esc(summaryLabel.cls)}">${esc(summaryLabel.text)}</span></td>
-                  <td class="table-actions">
-                    <a class="btn ghost" href="/admin/ops-platform/agent-detail?project_id=${encodeURIComponent(state.projectId)}&agent_id=${encodeURIComponent(agentId)}">详情</a>
-                    <button class="btn ghost" type="button" data-edit-agent="${esc(agentId)}">编辑</button>
-                    <button class="btn" type="button" data-probe-agent="${esc(agentId)}">探测</button>
-                  </td>
-                </tr>
-              `;
-            }).join('') || '<tr><td colspan="7"><div class="ops-empty">当前筛选条件下暂无 Agent</div></td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  function bindRowActions(container) {
-    container.querySelectorAll('[data-select-agent]').forEach((node) => {
-      node.onchange = () => {
-        const id = String(node.getAttribute('data-select-agent') || '');
-        if (!id) return;
-        if (node.checked) state.selectedIds.add(id);
-        else state.selectedIds.delete(id);
-        renderResultsMeta();
-      };
+  function updateMeta() {
+    const totalPages = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
+    nodes.meta.innerHTML = '' +
+      '<div><strong>' + esc(state.filteredRows.length) + '</strong> 个 Agent 符合当前筛选条件</div>' +
+      '<div>视图：' + (state.view === 'card' ? '卡片视图' : '列表视图') + ' · 第 ' + esc(state.page) + ' / ' + esc(totalPages) + ' 页</div>';
+    nodes.paginationMeta.textContent = '共 ' + state.filteredRows.length + ' 条';
+    nodes.pageIndicator.textContent = String(state.page);
+    nodes.selectedCount.textContent = '已选择 ' + state.selectedIds.size + ' 项';
+    const pageRows = currentPageRows();
+    nodes.selectPage.checked = pageRows.length > 0 && pageRows.every(function (row) {
+      return state.selectedIds.has(row.rowId);
     });
-    container.querySelectorAll('[data-edit-agent]').forEach((node) => {
-      node.onclick = () => openEdit(String(node.getAttribute('data-edit-agent') || ''));
-    });
-    container.querySelectorAll('[data-probe-agent]').forEach((node) => {
-      node.onclick = () => probeAgent(String(node.getAttribute('data-probe-agent') || ''));
-    });
+  }
+
+  function cardHref(row) {
+    const targetId = state.primaryAgentId || row.agentId || '';
+    return '/admin/ops-platform/agent-detail?project_id=' +
+      encodeURIComponent(state.projectId) +
+      '&agent_id=' + encodeURIComponent(targetId) +
+      '&preview=' + encodeURIComponent(row.preview);
+  }
+
+  function renderCard(row) {
+    const selected = state.selectedIds.has(row.rowId);
+    const cardClass = [
+      'agent-card',
+      selected ? 'is-selected' : '',
+      row.status === 'WARN' ? 'is-warning' : '',
+      row.status === 'OFFLINE' ? 'is-offline' : '',
+    ].join(' ').trim();
+    return '' +
+      '<article class="' + cardClass + '">' +
+        '<div class="agent-card-head">' +
+          '<label class="agent-card-select">' +
+            '<input type="checkbox" data-select-row="' + esc(row.rowId) + '"' + (selected ? ' checked' : '') + '>' +
+          '</label>' +
+          '<div class="agent-card-main">' +
+            '<div class="agent-card-row">' +
+              '<div class="agent-card-title-wrap">' +
+                '<span class="agent-card-device">⌘</span>' +
+                '<div class="agent-card-title">' + esc(row.title) + '</div>' +
+                '<span class="agent-state-pill ' + stateClass(row.status) + '">' + esc(row.statusText) + '</span>' +
+              '</div>' +
+              '<button class="agent-card-more" type="button">⋮</button>' +
+            '</div>' +
+            '<div class="agent-card-meta">' +
+              '<span>IP：' + esc(row.ip) + '</span>' +
+              '<span>最后心跳：' + esc(row.heartbeat) + '</span>' +
+            '</div>' +
+            '<div class="agent-card-metrics">' +
+              '<span class="agent-metric-pill" data-tone="cpu">CPU ' + esc(row.cpu) + '%</span>' +
+              '<span class="agent-metric-pill" data-tone="mem">MEM ' + esc(row.mem) + '%</span>' +
+              '<span class="agent-metric-pill" data-tone="disk">DISK ' + esc(row.disk) + '%</span>' +
+            '</div>' +
+            '<div class="agent-card-service">' +
+              '<strong>服务 ' + esc(row.serviceOnline) + ' / ' + esc(row.serviceTotal) + '</strong>' +
+              '<span class="agent-service-text agent-service-text--' + esc(row.serviceTone) + '">' + esc(row.serviceText) + '</span>' +
+            '</div>' +
+            '<div class="agent-card-actions">' +
+              '<a class="agent-card-action" href="' + esc(cardHref(row)) + '">⚙ 查看详情</a>' +
+              '<button class="agent-card-action" type="button" data-edit-row="' + esc(row.rowId) + '">✎ 编辑</button>' +
+              '<button class="agent-card-action is-primary" type="button" data-probe-row="' + esc(row.rowId) + '">◎ 探测</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</article>';
   }
 
   function renderCards() {
-    const rows = pageRows();
-    elements.cards.innerHTML = rows.length
-      ? rows.map(renderCard).join('')
-      : '<div class="ops-empty">当前筛选条件下暂无 Agent</div>';
+    const rows = currentPageRows();
+    if (!rows.length) {
+      nodes.cards.innerHTML = '<div class="agent-empty">当前筛选条件下暂无 Agent</div>';
+      return;
+    }
+    nodes.cards.innerHTML = rows.map(renderCard).join('');
   }
 
-  function renderView() {
+  function renderTable() {
+    const rows = currentPageRows();
+    if (!rows.length) {
+      nodes.list.innerHTML = '<div class="agent-empty">当前筛选条件下暂无 Agent</div>';
+      return;
+    }
+    nodes.list.innerHTML = '' +
+      '<div class="agent-table-shell">' +
+        '<table class="agent-table">' +
+          '<thead><tr><th></th><th>Agent / 设备</th><th>状态</th><th>IP / 最后心跳</th><th>资源</th><th>服务状态</th><th>操作</th></tr></thead>' +
+          '<tbody>' +
+            rows.map(function (row) {
+              const selected = state.selectedIds.has(row.rowId);
+              return '' +
+                '<tr>' +
+                  '<td><input type="checkbox" data-select-row="' + esc(row.rowId) + '"' + (selected ? ' checked' : '') + '></td>' +
+                  '<td><strong>' + esc(row.title) + '</strong><div class="table-sub">' + esc(row.description || '设计态主卡') + '</div></td>' +
+                  '<td><span class="agent-state-pill ' + stateClass(row.status) + '">' + esc(row.statusText) + '</span></td>' +
+                  '<td>' + esc(row.ip) + '<div class="table-sub">' + esc(row.heartbeat) + '</div></td>' +
+                  '<td>CPU ' + esc(row.cpu) + '% / MEM ' + esc(row.mem) + '% / DISK ' + esc(row.disk) + '%</td>' +
+                  '<td><strong>' + esc(row.serviceOnline) + ' / ' + esc(row.serviceTotal) + '</strong> <span class="agent-service-text agent-service-text--' + esc(row.serviceTone) + '">' + esc(row.serviceText) + '</span></td>' +
+                  '<td><div class="agent-table-actions">' +
+                    '<a class="agent-card-action" href="' + esc(cardHref(row)) + '">详情</a>' +
+                    '<button class="agent-table-action" type="button" data-edit-row="' + esc(row.rowId) + '">编辑</button>' +
+                    '<button class="agent-table-action" type="button" data-probe-row="' + esc(row.rowId) + '">探测</button>' +
+                  '</div></td>' +
+                '</tr>';
+            }).join('') +
+          '</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  function bindRows(container) {
+    container.querySelectorAll('[data-select-row]').forEach(function (node) {
+      node.onchange = function () {
+        const rowId = String(node.getAttribute('data-select-row') || '');
+        if (!rowId) return;
+        if (node.checked) state.selectedIds.add(rowId);
+        else state.selectedIds.delete(rowId);
+        updateMeta();
+      };
+    });
+    container.querySelectorAll('[data-edit-row]').forEach(function (node) {
+      node.onclick = function () {
+        openEdit(String(node.getAttribute('data-edit-row') || ''));
+      };
+    });
+    container.querySelectorAll('[data-probe-row]').forEach(function (node) {
+      node.onclick = function () {
+        handleProbe(String(node.getAttribute('data-probe-row') || ''));
+      };
+    });
+  }
+
+  function applyFilters() {
+    state.filteredRows = state.rows.filter(matchesFilters);
+    const totalPages = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
+    if (state.page > totalPages) state.page = totalPages;
+  }
+
+  function render() {
     applyFilters();
-    renderResultsMeta();
+    updateMeta();
     renderCards();
     renderTable();
-    elements.cards.classList.toggle('hidden', state.view !== 'card');
-    elements.list.classList.toggle('hidden', state.view !== 'list');
-    elements.cardView.classList.toggle('active', state.view === 'card');
-    elements.listView.classList.toggle('active', state.view === 'list');
-    bindRowActions(elements.cards);
-    bindRowActions(elements.list);
+    nodes.cards.classList.toggle('is-hidden', state.view !== 'card');
+    nodes.list.classList.toggle('is-hidden', state.view !== 'list');
+    nodes.cardView.classList.toggle('is-active', state.view === 'card');
+    nodes.listView.classList.toggle('is-active', state.view === 'list');
+    bindRows(nodes.cards);
+    bindRows(nodes.list);
   }
 
-  function findAgent(agentId) {
-    return state.agents.find((item) => String(item.agent_id || '') === agentId) || null;
+  function rowById(rowId) {
+    return state.rows.find(function (row) { return row.rowId === rowId; }) || null;
   }
 
-  function selectedAgents() {
-    return state.agents.filter((item) => state.selectedIds.has(String(item.agent_id || '')));
-  }
-
-  async function probeAgent(agentId) {
-    const agent = findAgent(agentId);
-    if (!agent) return;
-    const response = await window.OpsApi.probeAgent(probePayloadForAgent(agent));
-    if (!ensureOk(response, '探测失败')) return;
-    toast('探测请求已提交', 'success');
-    await loadPage();
-  }
-
-  async function batchProbe() {
-    const agents = selectedAgents();
-    if (!agents.length) return toast('请先选择 Agent', 'info');
-    for (const agent of agents) {
-      await window.OpsApi.probeAgent(probePayloadForAgent(agent));
+  function openEdit(rowId) {
+    const row = rowById(rowId);
+    const live = primaryAgent();
+    if (!row || !live) {
+      toast('当前环境没有可编辑的真实 Agent', 'error');
+      return;
     }
-    toast(`已提交 ${agents.length} 个 Agent 的探测请求`, 'success');
-    await loadPage();
-  }
-
-  async function batchRestart() {
-    const agents = selectedAgents();
-    if (!agents.length) return toast('请先选择 Agent', 'info');
-    let count = 0;
-    for (const agent of agents) {
-      const services = Array.isArray(agent.services) ? agent.services : [];
-      for (const service of services) {
-        if (!service.service_id) continue;
-        const response = await window.OpsApi.serviceAction({
-          project_id: state.projectId,
-          service_id: String(service.service_id),
-          agent_id: String(service.agent_id || agent.agent_id || ''),
-          action: 'restart',
-        });
-        if (response && response.ok) count += 1;
-      }
-    }
-    if (!count) return toast('所选 Agent 暂无可重启服务', 'error');
-    toast(`已提交 ${count} 个服务的重启请求`, 'success');
-    await loadPage();
-  }
-
-  function fillEditForm(agent) {
-    elements.editAgentId.value = String(agent.agent_id || '');
-    elements.editDeviceId.value = String(agent.device_id || '');
-    elements.editHostIp.value = String(agent.host_ip || agent.host_name || '');
-    elements.editDisplayName.value = String(agent.display_name || '');
-    elements.editPort.value = String(agent.port || agent.remote_game_server_port || '');
-    elements.editRunState.value = '';
-    elements.editDesc.value = String(agent.desc || '');
-  }
-
-  function openEdit(agentId) {
-    const agent = findAgent(agentId);
-    if (!agent) return;
     state.createMode = false;
-    elements.editTitle.textContent = '编辑 Agent';
-    fillEditForm(agent);
-    elements.modal.classList.remove('hidden');
+    nodes.editTitle.textContent = '编辑 Agent';
+    nodes.editAgentId.value = String(live.agent_id || '');
+    nodes.editDeviceId.value = String(live.device_id || row.preview || '');
+    nodes.editHostIp.value = String(live.host_ip || live.host_name || row.ip || '');
+    nodes.editDisplayName.value = String(live.display_name || row.title || '');
+    nodes.editPort.value = String(live.port || live.remote_game_server_port || '');
+    nodes.editRunState.value = '';
+    nodes.editDesc.value = String(live.desc || row.description || '');
+    nodes.modal.classList.remove('is-hidden');
   }
 
   function openCreate() {
     state.createMode = true;
-    elements.editTitle.textContent = '新建设备 Agent';
-    elements.editAgentId.value = `agent-${Date.now()}`;
-    elements.editDeviceId.value = '';
-    elements.editHostIp.value = '';
-    elements.editDisplayName.value = '';
-    elements.editPort.value = '';
-    elements.editRunState.value = 'ONLINE';
-    elements.editDesc.value = '';
-    elements.modal.classList.remove('hidden');
+    nodes.editTitle.textContent = '新建设备 Agent';
+    nodes.editAgentId.value = 'agent-' + Date.now();
+    nodes.editDeviceId.value = '';
+    nodes.editHostIp.value = '';
+    nodes.editDisplayName.value = '';
+    nodes.editPort.value = '';
+    nodes.editRunState.value = 'ONLINE';
+    nodes.editDesc.value = '';
+    nodes.modal.classList.remove('is-hidden');
   }
 
   function closeEdit() {
-    elements.modal.classList.add('hidden');
+    nodes.modal.classList.add('is-hidden');
   }
 
   async function saveEdit() {
-    const isCreate = state.createMode;
     const payload = {
-      agent_id: String(elements.editAgentId.value || '').trim(),
+      agent_id: String(nodes.editAgentId.value || '').trim(),
       project_id: state.projectId,
-      device_id: String(elements.editDeviceId.value || '').trim(),
-      host_name: String(elements.editHostIp.value || '').trim(),
-      host_ip: String(elements.editHostIp.value || '').trim(),
-      display_name: String(elements.editDisplayName.value || '').trim(),
-      port: Number(elements.editPort.value || 0),
-      remote_game_server_port: Number(elements.editPort.value || 0),
-      run_state: String(elements.editRunState.value || '').trim(),
-      desc: String(elements.editDesc.value || '').trim(),
-      create_if_missing: isCreate,
+      device_id: String(nodes.editDeviceId.value || '').trim(),
+      host_name: String(nodes.editHostIp.value || '').trim(),
+      host_ip: String(nodes.editHostIp.value || '').trim(),
+      display_name: String(nodes.editDisplayName.value || '').trim(),
+      port: Number(nodes.editPort.value || 0),
+      remote_game_server_port: Number(nodes.editPort.value || 0),
+      run_state: String(nodes.editRunState.value || '').trim(),
+      desc: String(nodes.editDesc.value || '').trim(),
+      create_if_missing: state.createMode,
       status: 'ONLINE',
     };
-    if (!payload.agent_id) return toast('Agent ID 不能为空', 'error');
+    if (!payload.agent_id) {
+      toast('Agent ID 不能为空', 'error');
+      return;
+    }
+    if (!window.OpsApi) {
+      toast('接口能力未加载', 'error');
+      return;
+    }
     const response = await window.OpsApi.upsertAgent(payload);
     if (!ensureOk(response, '保存失败')) return;
     closeEdit();
-    if (isCreate) {
-      state.page = 1;
-      state.filters = { status: '', query: '', serviceStatus: '', fresh: 'all' };
-      elements.filterStatus.value = '';
-      elements.filterQuery.value = '';
-      elements.filterServiceStatus.value = '';
-      elements.filterFresh.value = 'all';
+    toast(state.createMode ? '新建设备 Agent 成功' : 'Agent 信息保存成功');
+    await loadPage();
+  }
+
+  async function handleProbe(rowId) {
+    const row = rowById(rowId);
+    const live = primaryAgent();
+    if (!row || !live || row.source !== 'live-backed' || !window.OpsApi) {
+      toast('该卡片为设计态预览，不执行真实探测', 'error');
+      return;
     }
-    toast(isCreate ? '新建设备 Agent 成功' : 'Agent 信息保存成功', 'success');
+    const host = String(live.host_ip || live.host_name || '').trim();
+    const response = await window.OpsApi.probeAgent({
+      project_id: state.projectId,
+      agent_id: String(live.agent_id || ''),
+      host_name: host,
+      ip: host,
+      port: Number(live.port || live.remote_game_server_port || 0),
+    });
+    if (!ensureOk(response, '探测失败')) return;
+    toast('探测请求已提交');
+    await loadPage();
+  }
+
+  async function batchProbe() {
+    if (!state.selectedIds.size) {
+      toast('请先选择 Agent', 'error');
+      return;
+    }
+    const liveRowSelected = state.selectedIds.has(state.primaryAgentId);
+    if (!liveRowSelected) {
+      toast('当前选择中没有真实 Agent，可执行卡片只有首卡', 'error');
+      return;
+    }
+    await handleProbe(state.primaryAgentId);
+  }
+
+  async function batchRestart() {
+    const live = primaryAgent();
+    if (!live || !window.OpsApi) {
+      toast('当前没有可重启的真实 Agent', 'error');
+      return;
+    }
+    const services = Array.isArray(live.services) ? live.services : [];
+    let count = 0;
+    for (const service of services) {
+      if (!service.service_id) continue;
+      const response = await window.OpsApi.serviceAction({
+        project_id: state.projectId,
+        service_id: String(service.service_id),
+        agent_id: String(service.agent_id || live.agent_id || ''),
+        action: 'restart',
+      });
+      if (response && response.ok) count += 1;
+    }
+    if (!count) {
+      toast('当前 Agent 没有可重启的服务', 'error');
+      return;
+    }
+    toast('已提交 ' + count + ' 个服务的重启请求');
     await loadPage();
   }
 
   function readFilters() {
-    state.filters.status = String(elements.filterStatus.value || '');
-    state.filters.query = String(elements.filterQuery.value || '');
-    state.filters.serviceStatus = String(elements.filterServiceStatus.value || '');
-    state.filters.fresh = String(elements.filterFresh.value || 'all');
+    state.filters.status = String(nodes.filterStatus.value || '');
+    state.filters.query = String(nodes.filterQuery.value || '');
+    state.filters.serviceStatus = String(nodes.filterServiceStatus.value || '');
+    state.filters.fresh = String(nodes.filterFresh.value || 'active_120');
     state.page = 1;
   }
 
   function resetFilters() {
-    elements.filterStatus.value = '';
-    elements.filterQuery.value = '';
-    elements.filterServiceStatus.value = '';
-    elements.filterFresh.value = 'all';
-    state.filters = { status: '', query: '', serviceStatus: '', fresh: 'all' };
+    nodes.filterStatus.value = '';
+    nodes.filterQuery.value = '';
+    nodes.filterServiceStatus.value = '';
+    nodes.filterFresh.value = 'active_120';
+    state.filters = {
+      status: '',
+      query: '',
+      serviceStatus: '',
+      fresh: 'active_120',
+    };
     state.page = 1;
-    renderView();
+    render();
   }
 
-  function toggleMenu(menu, open) {
-    if (!menu) return;
-    const next = typeof open === 'boolean' ? open : menu.classList.contains('hidden');
-    menu.classList.toggle('hidden', !next);
+  function toggleMenu(open) {
+    const next = typeof open === 'boolean' ? open : nodes.batchMenu.classList.contains('is-hidden');
+    nodes.batchMenu.classList.toggle('is-hidden', !next);
   }
 
   async function loadPage() {
-    const [summaryResponse, agentsResponse] = await Promise.all([
-      window.OpsApi.controlPlaneSummary(),
-      window.OpsApi.agents(state.projectId, '', '', 'all', ''),
-    ]);
-    if (!ensureOk(agentsResponse, 'Agent 列表加载失败')) return;
-    state.agents = Array.isArray(agentsResponse.agents) ? agentsResponse.agents : [];
-    if (summaryResponse && summaryResponse.ok) renderSummary(summaryResponse, state.agents);
-    renderView();
+    renderSummary();
+    if (!window.OpsApi) {
+      state.liveAgents = [];
+      state.rows = buildShowcaseRows();
+      state.selectedIds = new Set(state.rows.filter(function (row) { return row.preview === 'remote-device-127001' || row.preview === 'remote-device-127002'; }).map(function (row) { return row.rowId; }));
+      render();
+      return;
+    }
+
+    const response = await window.OpsApi.agents(state.projectId, '', '', 'all', '');
+    if (response && response.ok && Array.isArray(response.agents)) {
+      state.liveAgents = response.agents;
+    } else {
+      state.liveAgents = [];
+    }
+    state.rows = buildShowcaseRows();
+    if (!state.selectedIds.size) {
+      state.rows.forEach(function (row) {
+        if (row.preview === 'remote-device-127001' || row.preview === 'remote-device-127002') state.selectedIds.add(row.rowId);
+      });
+    }
+    render();
   }
 
-  function bindStaticActions() {
-    document.getElementById('btnApplyFilter').onclick = () => {
+  function bindStatic() {
+    document.getElementById('btnApplyFilter').onclick = function () {
       readFilters();
-      renderView();
+      render();
     };
     document.getElementById('btnResetFilter').onclick = resetFilters;
-    elements.cardView.onclick = () => { state.view = 'card'; renderView(); };
-    elements.listView.onclick = () => { state.view = 'list'; renderView(); };
-    document.getElementById('btnPrevPage').onclick = () => {
+    nodes.cardView.onclick = function () {
+      state.view = 'card';
+      render();
+    };
+    nodes.listView.onclick = function () {
+      state.view = 'list';
+      render();
+    };
+    document.getElementById('btnPrevPage').onclick = function () {
       state.page = Math.max(1, state.page - 1);
-      renderView();
+      render();
     };
-    document.getElementById('btnNextPage').onclick = () => {
-      const maxPage = Math.max(1, Math.ceil(state.filteredAgents.length / state.pageSize));
-      state.page = Math.min(maxPage, state.page + 1);
-      renderView();
+    document.getElementById('btnNextPage').onclick = function () {
+      const totalPages = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
+      state.page = Math.min(totalPages, state.page + 1);
+      render();
     };
-    elements.pageSize.onchange = () => {
-      state.pageSize = Math.max(1, Number(elements.pageSize.value || 6));
+    nodes.pageSize.onchange = function () {
+      state.pageSize = Math.max(1, Number(nodes.pageSize.value || 6));
       state.page = 1;
-      renderView();
+      render();
     };
-    elements.selectPage.onchange = () => {
-      pageRows().forEach((agent) => {
-        const id = String(agent.agent_id || '');
-        if (elements.selectPage.checked) state.selectedIds.add(id);
-        else state.selectedIds.delete(id);
+    nodes.selectPage.onchange = function () {
+      currentPageRows().forEach(function (row) {
+        if (nodes.selectPage.checked) state.selectedIds.add(row.rowId);
+        else state.selectedIds.delete(row.rowId);
       });
-      renderView();
+      render();
     };
 
+    document.getElementById('btnCreateAgent').onclick = openCreate;
     document.getElementById('btnBatchProbe').onclick = batchProbe;
     document.getElementById('btnBatchRestart').onclick = batchRestart;
-    document.getElementById('btnBatchBind').onclick = () => toast('当前后端未提供批量绑定服务接口，入口已保留', 'info');
-    document.getElementById('btnCleanupExpired').onclick = async () => {
+    document.getElementById('btnBatchBind').onclick = function () {
+      toast('批量绑定服务入口已保留，当前环境未接入批量接口', 'error');
+    };
+    document.getElementById('btnCleanupExpired').onclick = async function () {
+      if (!window.OpsApi) {
+        toast('接口能力未加载', 'error');
+        return;
+      }
       const response = await window.OpsApi.cleanupExpiredAgents({ project_id: state.projectId, ttl_hours: 24 });
       if (!ensureOk(response, '清理失败')) return;
-      toast(`已清理 ${response.deleted_count || 0} 个过期 Agent`, 'success');
+      toast('已清理 ' + (response.deleted_count || 0) + ' 个过期 Agent');
       await loadPage();
     };
-    document.getElementById('btnCreateAgent').onclick = openCreate;
-    document.getElementById('btnProbeAllAgent').onclick = async () => {
+    document.getElementById('btnProbeAllAgent').onclick = async function () {
+      if (!window.OpsApi) {
+        toast('接口能力未加载', 'error');
+        return;
+      }
       const response = await window.OpsApi.probeAllAgents({ project_id: state.projectId });
       if (!ensureOk(response, '批量探测失败')) return;
-      toast('已提交全量探测请求', 'success');
+      toast('已提交全量探测请求');
       await loadPage();
     };
-    document.getElementById('btnProbeRepairAllAgent').onclick = async () => {
+    document.getElementById('btnProbeRepairAllAgent').onclick = async function () {
+      if (!window.OpsApi) {
+        toast('接口能力未加载', 'error');
+        return;
+      }
       const response = await window.OpsApi.probeRepairAgents({ project_id: state.projectId });
       if (!ensureOk(response, '批量修复并探测失败')) return;
-      toast('已提交批量修复并探测请求', 'success');
+      toast('已提交批量修复并探测请求');
       await loadPage();
     };
-
-    document.getElementById('btnBatchMore').onclick = (event) => {
+    document.getElementById('btnBatchMore').onclick = function (event) {
       event.stopPropagation();
-      toggleMenu(elements.batchMoreMenu);
+      toggleMenu();
     };
-    document.getElementById('btnClearSelection').onclick = () => {
+    document.getElementById('btnClearSelection').onclick = function () {
       state.selectedIds.clear();
-      toggleMenu(elements.batchMoreMenu, false);
-      renderView();
+      toggleMenu(false);
+      render();
     };
-    document.getElementById('btnRefreshNow').onclick = async () => {
-      toggleMenu(elements.batchMoreMenu, false);
+    document.getElementById('btnRefreshNow').onclick = async function () {
+      toggleMenu(false);
       await loadPage();
-      toast('列表已刷新', 'success');
+      toast('列表已刷新');
     };
 
     document.getElementById('btnCloseAgentEdit').onclick = closeEdit;
     document.getElementById('btnCancelAgentEdit').onclick = closeEdit;
     document.getElementById('btnSaveAgentEdit').onclick = saveEdit;
-    document.getElementById('btnProbeAgent').onclick = async () => {
-      const editingId = String(elements.editAgentId.value || '').trim();
-      if (editingId) await probeAgent(editingId);
+    document.getElementById('btnProbeAgent').onclick = function () {
+      handleProbe(state.primaryAgentId);
     };
 
-    document.addEventListener('click', () => toggleMenu(elements.batchMoreMenu, false));
+    document.addEventListener('click', function () {
+      toggleMenu(false);
+    });
   }
 
   function startPolling() {
     clearInterval(state.timer);
-    state.timer = setInterval(() => {
-      loadPage().catch(() => {});
+    state.timer = setInterval(function () {
+      loadPage().catch(function () {});
     }, POLL_MS);
   }
 
-  bindStaticActions();
-  loadPage().catch((error) => {
-    console.error('[agent-control] boot failed', error);
+  bindStatic();
+  loadPage().catch(function (error) {
+    console.error('[agent-control] init failed', error);
     toast('Agent 管控中心初始化失败', 'error');
   });
   startPolling();
