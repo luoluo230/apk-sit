@@ -8819,7 +8819,7 @@ def ops_platform_topology_page():
     env_key = _normalize_env_key(request.args.get("env_key") or "")
     topology_id = str(request.args.get("topology_id") or "").strip()
     content = _render_local_template("ops_topology_workbench.html", project_id=project_id, env_key=env_key, topology_id=topology_id)
-    return _render_page(content, "拓扑与配置编排")
+    return _render_standalone_page(content, "拓扑与配置编排")
 
 
 @bp.route("/admin/ops-platform/diagnostics")
