@@ -614,28 +614,20 @@
   }
 
   async function restartAgentRow(row) {
-    if (!window.confirm("确认重启该 Agent 管理的所有服务吗？")) return;
-    const serviceIds = row.services.map(function (service) { return service.service_id; }).filter(Boolean);
-    if (!serviceIds.length) {
-      toast("当前 Agent 没有可重启的服务", "error");
+    if (!window.confirm("确认仅重启当前 Agent 进程，并在远端拉起 Agent 控制台窗口吗？")) return;
+    if (!row || !row.agentId) {
+      toast("当前 Agent 缺少可执行的目标标识", "error");
       return;
     }
-    let successCount = 0;
-    for (let index = 0; index < serviceIds.length; index += 1) {
-      const serviceId = serviceIds[index];
-      const response = await window.OpsApi.serviceAction({
-        project_id: state.projectId,
-        service_id: serviceId,
-        agent_id: row.agentId,
-        action: "restart",
-      });
-      if (response && response.ok) successCount += 1;
-    }
-    if (!successCount) {
-      toast("未成功提交任何重启任务", "error");
+    const response = await window.OpsApi.restartAgent({
+      project_id: state.projectId,
+      agent_id: row.agentId,
+      launch_visible_console: true,
+    });
+    if (!ensureOk(response, "Agent 重启失败")) {
       return;
     }
-    toast("已提交 " + successCount + " 个服务的重启请求", "success");
+    toast("Agent 重启任务已提交", "success");
     await loadAll();
   }
 

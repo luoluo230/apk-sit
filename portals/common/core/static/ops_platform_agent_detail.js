@@ -80,22 +80,51 @@
     return true;
   }
 
+  function statusMeta(value, kind, item) {
+    const raw = String(value || "").trim();
+    const status = raw.toUpperCase();
+    const severity = String((item && (item.severity || item.level)) || "").trim().toUpperCase();
+
+    if (kind === "job") {
+      if (["SUCCESS", "DONE", "COMPLETED"].includes(status)) return { tone: "ok", text: "成功" };
+      if (["RUNNING", "IN_PROGRESS", "PROCESSING"].includes(status)) return { tone: "info", text: "执行中" };
+      if (["PENDING", "QUEUED", "LEASED", "CREATED"].includes(status)) return { tone: "warn", text: "等待中" };
+      if (["FAILED", "ERROR"].includes(status)) return { tone: "offline", text: "失败" };
+      if (["TIMEOUT"].includes(status)) return { tone: "offline", text: "超时" };
+      if (["CANCELED", "CANCELLED"].includes(status)) return { tone: "info", text: "已取消" };
+      return { tone: "info", text: "未知" };
+    }
+
+    if (kind === "event") {
+      if (["RESOLVED", "RECOVERED", "CLOSED", "DONE", "SUCCESS"].includes(status)) return { tone: "ok", text: "已恢复" };
+      if (["RUNNING", "IN_PROGRESS", "PROCESSING"].includes(status)) return { tone: "info", text: "处理中" };
+      if (["OPEN", "NEW", "ACTIVE", "PENDING"].includes(status)) {
+        return { tone: ["CRITICAL", "ERROR"].includes(severity) ? "offline" : "warn", text: "未恢复" };
+      }
+      if (["FAILED", "ERROR"].includes(status)) return { tone: "offline", text: "失败" };
+      if (["WARNING", "WARN"].includes(status)) return { tone: "warn", text: "告警中" };
+      return { tone: ["CRITICAL", "ERROR"].includes(severity) ? "offline" : "info", text: "未知" };
+    }
+
+    if (["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) return { tone: "ok", text: "运行中" };
+    if (["OFFLINE", "STOPPED"].includes(status)) return { tone: "offline", text: "已停止" };
+    if (["DEGRADED", "ERROR", "FAILED", "WARN", "WARNING", "TIMEOUT"].includes(status)) return { tone: "warn", text: "异常" };
+    if (["PENDING", "QUEUED", "STARTING", "STOPPING", "RESTARTING"].includes(status)) return { tone: "info", text: "处理中" };
+    return { tone: "info", text: "未知" };
+  }
+
   function normalizeStatus(value) {
-    const status = String(value || "").toUpperCase();
-    if (["ONLINE", "READY", "RUNNING", "SUCCESS"].indexOf(status) >= 0) return "ONLINE";
-    if (["OFFLINE", "STOPPED", "TIMEOUT", "CANCELED"].indexOf(status) >= 0) return "OFFLINE";
-    if (["DEGRADED", "ERROR", "FAILED", "WARN", "WARNING"].indexOf(status) >= 0) return "WARN";
-    return "UNKNOWN";
+    return statusMeta(value, "agent").tone;
   }
 
   function statusText(status) {
-    if (status === "ONLINE") return "运行中";
-    if (status === "OFFLINE") return "已停止";
-    if (status === "WARN") return "异常";
-    return "未知";
+    return statusMeta(status, "agent").text;
   }
 
   function pillClass(status) {
+    if (status === "ok") return "agent-state-pill--ok";
+    if (status === "offline") return "agent-state-pill--offline";
+    if (status === "warn") return "agent-state-pill--warn";
     if (status === "ONLINE") return "agent-state-pill--ok";
     if (status === "OFFLINE") return "agent-state-pill--offline";
     if (status === "WARN") return "agent-state-pill--warn";
@@ -146,7 +175,7 @@
 
   function agentStatus() {
     const detail = state.detail || {};
-    return normalizeStatus((detail.overview || {}).status || (detail.agent || {}).effective_status || (detail.agent || {}).status);
+    return String((detail.overview || {}).status || (detail.agent || {}).effective_status || (detail.agent || {}).status || "UNKNOWN").toUpperCase();
   }
 
   function summaryNumbers() {
@@ -229,9 +258,9 @@
       "</div>";
   }
 
-  function renderStatusPill(status) {
-    const normalized = normalizeStatus(status);
-    return '<span class="agent-state-pill ' + pillClass(normalized) + '">' + esc(statusText(normalized)) + "</span>";
+  function renderStatusPill(status, kind, item) {
+    const meta = statusMeta(status, kind || "agent", item || null);
+    return '<span class="agent-state-pill ' + pillClass(meta.tone) + '">' + esc(meta.text) + "</span>";
   }
 
   function tableMarkup(headers, rows, mode) {
@@ -245,12 +274,12 @@
   }
 
   function serviceActionButtons(service) {
-    const status = normalizeStatus(service.status || service.run_state);
+    const status = statusMeta(service.status || service.run_state, "service", service).tone;
     const serviceId = String(service.service_id || "");
     const buttons = [
       '<button class="agent-table-action agent-table-action--view" type="button" data-service-action="status" data-service-id="' + esc(serviceId) + '">查看状态</button>',
     ];
-    if (status === "ONLINE") {
+    if (status === "ok") {
       buttons.push('<button class="agent-table-action agent-table-action--stop" type="button" data-service-action="stop" data-service-id="' + esc(serviceId) + '">停止</button>');
       buttons.push('<button class="agent-table-action agent-table-action--restart" type="button" data-service-action="restart" data-service-id="' + esc(serviceId) + '">重启</button>');
     } else {
@@ -265,7 +294,6 @@
     return serviceRows().map(function (service) {
       const serviceId = String(service.service_id || "");
       const selected = state.selectedServiceIds.has(serviceId);
-      const status = normalizeStatus(service.status || service.run_state);
       const metrics = service.metrics && typeof service.metrics === "object" ? service.metrics : {};
       const cpu = Number(metrics.cpu_percent);
       const memMb = Number(metrics.service_memory_mb);
@@ -273,7 +301,7 @@
         "<tr>" +
           '<td><input type="checkbox" data-service-select="' + esc(serviceId) + '"' + (selected ? " checked" : "") + "></td>" +
           "<td><strong>" + esc(service.display_name || serviceId) + "</strong><div class=\"table-sub\">" + esc(serviceId) + "</div></td>" +
-          "<td>" + renderStatusPill(status) + "</td>" +
+          "<td>" + renderStatusPill(service.status || service.run_state, "service", service) + "</td>" +
           "<td>" + esc(service.remote_game_server_port || service.service_port || "--") + "</td>" +
           "<td>" + esc(formatDate(service.updated_at)) + "</td>" +
           "<td>" + esc(Number.isFinite(cpu) ? (Math.round(cpu) + "%") : "--") + "</td>" +
@@ -310,14 +338,13 @@
       return ['<tr><td colspan="4">暂无任务记录</td></tr>'];
     }
     return jobs.slice(0, 10).map(function (item) {
-      const status = normalizeStatus(item.status || item.state || item.result);
-      const name = item.title || item.action || item.target || item.ticket_id || "任务";
+      const name = item.title || item.action || item.action_type || item.target || item.ticket_id || "任务";
       return "" +
         "<tr>" +
           "<td>" + esc(name) + "</td>" +
-          "<td>" + renderStatusPill(status) + "</td>" +
+          "<td>" + renderStatusPill(item.status || item.state || item.result, "job", item) + "</td>" +
           "<td>" + esc(formatDate(item.updated_at || item.created_at || item.time || item.timestamp)) + "</td>" +
-          "<td>" + esc(item.user || item.operator || item.approver || "系统") + "</td>" +
+          "<td>" + esc(item.user || item.operator || item.requested_by || item.approver || "系统") + "</td>" +
         "</tr>";
     });
   }
@@ -328,9 +355,29 @@
     return /\uFFFD/.test(text) || /[À-ÿ]{3,}/.test(text) || /[鏂鍛鐘绗璇鎺屾惧垎缁悊缃戠姸鑺]/.test(text);
   }
 
+  function extractActionFromEvent(item) {
+    const explicit = String(item.action_type || item.action || "").trim().toLowerCase();
+    if (explicit) return explicit;
+    const title = String(item.title || "");
+    const message = String(item.message || item.details || "");
+    const titleMatch = title.match(/:\s*([a-z_]+)\s*$/i);
+    if (titleMatch) return String(titleMatch[1] || "").toLowerCase();
+    const messageMatch = message.match(/action(?:_type)?=([a-z_]+)/i);
+    if (messageMatch) return String(messageMatch[1] || "").toLowerCase();
+    return "";
+  }
+
+  function extractTargetFromEvent(item) {
+    const explicit = String(item.target || item.desired_service_id || item.service_id || item.node_id || "").trim();
+    if (explicit) return explicit;
+    const message = String(item.message || item.details || "");
+    const targetMatch = message.match(/target=([^;]+)/i) || message.match(/service(?:_id)?=([^;]+)/i) || message.match(/node=([^;]+)/i);
+    return targetMatch ? String(targetMatch[1] || "").trim() : "";
+  }
+
   function humanizeEvent(item) {
-    const action = String(item.action_type || item.action || "").toLowerCase();
-    const target = String(item.target || item.desired_service_id || item.service_id || item.node_id || "").trim();
+    const action = extractActionFromEvent(item);
+    const target = extractTargetFromEvent(item);
     if (action === "log_tail" || action === "logs") return "服务日志拉取任务" + (target ? "：" + target : "");
     if (action === "status") return "服务状态检查任务" + (target ? "：" + target : "");
     if (action === "health_check" || action === "probe") return "服务探测任务" + (target ? "：" + target : "");
@@ -351,15 +398,15 @@
       return ['<tr><td colspan="4">暂无告警事件</td></tr>'];
     }
     return events.slice(0, 10).map(function (item) {
-      const severity = String(item.severity || item.level || "提示");
-      const status = String(item.status || item.state || "open");
+      const severityMap = { critical: "严重", error: "严重", warning: "警告", warn: "警告", info: "提示" };
+      const severity = String(item.severity || item.level || "info").toLowerCase();
       const content = humanizeEvent(item);
       return "" +
         "<tr>" +
-          "<td>" + esc(severity) + "</td>" +
+          "<td>" + esc(severityMap[severity] || "提示") + "</td>" +
           "<td>" + esc(content) + "</td>" +
           "<td>" + esc(formatDate(item.time || item.updated_at || item.timestamp)) + "</td>" +
-          "<td>" + renderStatusPill(status) + "</td>" +
+          "<td>" + renderStatusPill(item.status || item.state || "open", "event", item) + "</td>" +
         "</tr>";
     });
   }
@@ -575,9 +622,10 @@
     const detail = state.detail || {};
     const agent = detail.agent || {};
     const status = agentStatus();
+    const statusView = statusMeta(status, "agent", agent);
     nodes.name.textContent = agent.device_id || agent.display_name || agent.agent_id || state.agentId;
-    nodes.status.className = "agent-state-pill " + pillClass(status);
-    nodes.status.textContent = statusText(status);
+    nodes.status.className = "agent-state-pill " + pillClass(statusView.tone);
+    nodes.status.textContent = statusView.text;
     nodes.meta.textContent = [
       "ID: " + String(agent.agent_id || state.agentId || "-"),
       "分组: " + String(agent.region || "-"),
@@ -723,28 +771,21 @@
   }
 
   async function restartAgent() {
-    const services = serviceRows();
-    if (!services.length) {
-      flash("当前 Agent 没有可重启的服务", "error");
+    const agentId = primaryMemberAgentId();
+    if (!agentId) {
+      flash("当前 Agent 缺少可执行的目标标识", "error");
       return;
     }
-    openConfirm("重启 Agent", "确认重启该 Agent 管理的所有服务吗？", async function () {
-      let count = 0;
-      for (let index = 0; index < services.length; index += 1) {
-        const service = services[index];
-        const response = await window.OpsApi.serviceAction({
-          project_id: state.projectId,
-          service_id: String(service.service_id || ""),
-          agent_id: String(service.agent_id || primaryMemberAgentId()),
-          action: "restart",
-        });
-        if (response && response.ok) count += 1;
-      }
-      if (!count) {
-        flash("未成功提交任何重启任务", "error");
+    openConfirm("重启 Agent", "确认仅重启当前 Agent 进程，并在远端拉起 Agent 控制台窗口吗？", async function () {
+      const response = await window.OpsApi.restartAgent({
+        project_id: state.projectId,
+        agent_id: agentId,
+        launch_visible_console: true,
+      });
+      if (!ensureOk(response, "Agent 重启失败")) {
         return;
       }
-      flash("已提交 " + count + " 个服务的重启请求", "success");
+      flash("Agent 重启任务已提交", "success");
       await load();
     });
   }

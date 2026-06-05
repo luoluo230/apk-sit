@@ -150,6 +150,7 @@
   api.upsertAgent = (payload) => api.postJSON('/api/ops-platform/agents/upsert', payload);
   api.cleanupExpiredAgents = (payload) => api.postJSON('/api/ops-platform/agents/cleanup-expired', payload || {});
   api.probeAgent = (payload) => api.postJSON('/api/ops-platform/agents/probe', payload || {});
+  api.restartAgent = (payload) => api.postJSON('/api/ops-platform/agents/restart', payload || {});
   api.probeAllAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-all', payload || {});
   api.probeRepairAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-repair', payload || {});
   api.startRemoteNode = (payload) => api.postJSON('/api/ops-platform/topology/node/start-remote', payload || {});

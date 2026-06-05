@@ -3524,7 +3524,7 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
         "actions": {
             "can_edit": True,
             "can_probe": True,
-            "can_restart_agent": bool(services),
+            "can_restart_agent": bool(primary_agent_id or member_agent_ids or member_node_ids),
             "can_restart_services": bool(services),
         },
     }
@@ -3557,10 +3557,11 @@ def _build_alerts_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "id": f"alert-{n.get('id')}-{status}",
                 "time": _now_iso(),
                 "severity": "critical" if status == "OFFLINE" else "warning",
-                "title": f"鑺傜偣鐘舵€佸紓甯? {node_name}",
-                "message": f"鐘舵€?{status}; serverId={n.get('server_id') or '-'}",
+                "title": f"节点状态异常：{node_name}",
+                "message": f"状态={status}; serverId={n.get('server_id') or '-'}",
                 "status": "open",
                 "node_id": n.get("id"),
+                "target": n.get("id"),
             })
         p99 = n.get("p99_ms")
         if isinstance(p99, (int, float)) and p99 >= 200:
@@ -3568,10 +3569,11 @@ def _build_alerts_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "id": f"alert-{n.get('id')}-p99",
                 "time": _now_iso(),
                 "severity": "warning",
-                "title": f"寤惰繜鍋忛珮: {node_name}",
+                "title": f"延迟偏高：{node_name}",
                 "message": f"P99={p99:.1f}ms",
                 "status": "open",
                 "node_id": n.get("id"),
+                "target": n.get("id"),
             })
     return alerts
 
@@ -3758,10 +3760,14 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
                 "time": _now_iso(),
                 "severity": "info",
                 "status": "open",
-                "title": f"Agent 浠诲姟鍏ラ槦: {action_type}",
+                "title": f"Agent 任务入队：{action_type}",
                 "message": f"node={node.get('id')}; job={queued.get('job_id')}; target={target}",
                 "trace_id": trace_id,
                 "node_id": node.get("id"),
+                "agent_id": str(body_payload.get("desired_agent_id") or payload.get("agent_id") or ""),
+                "action_type": action_type,
+                "target": target,
+                "job_id": queued.get("job_id"),
             }
         )
         log_audit("ops_platform_action_enqueue_agent", f"action={action_type}; node={node.get('id')}; job={queued.get('job_id')}")
@@ -3837,10 +3843,13 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
             "time": _now_iso(),
             "severity": "info" if success else "critical",
             "status": "open" if not success else "resolved",
-            "title": f"鍔ㄤ綔鎵ц{'鎴愬姛' if success else '澶辫触'}: {action_type}",
+            "title": f"动作执行{'成功' if success else '失败'}：{action_type}",
             "message": f"node={node.get('id')}; target={target}; traceId={trace_id}; msg={message}",
             "trace_id": trace_id,
             "node_id": node.get("id"),
+            "agent_id": str(body_payload.get("desired_agent_id") or payload.get("agent_id") or ""),
+            "action_type": action_type,
+            "target": target,
         }
     )
 
@@ -3848,7 +3857,7 @@ def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation
 
     return {
         "ok": success,
-        "message": message or ("鎵ц鎴愬姛" if success else "鎵ц澶辫触"),
+        "message": message or ("执行成功" if success else "执行失败"),
         "trace_id": trace_id,
         "data": result.get("data") if isinstance(result.get("data"), dict) else result.get("data"),
         "result": result,
@@ -4657,7 +4666,7 @@ def ops_platform_services_action():
             "desired_server_id": service_id,
             "topology_node_id": topology_node_id,
             "switch_required": action in ("start", "restart"),
-            "launch_visible_console": bool(payload.get("launch_visible_console", True)),
+            "launch_visible_console": bool(payload.get("launch_visible_console", action == "start")),
         },
     }
     validation = _validate_ops_request(req, node)
@@ -4726,6 +4735,79 @@ def ops_platform_agents_probe():
     return jsonify(
         {
             **out
+        }
+    )
+
+
+@bp.route("/api/ops-platform/agents/restart", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_agents_restart():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+
+    detail = _build_agent_detail(project_id, agent_id)
+    if not detail:
+        return jsonify({"ok": False, "error": "agent_not_found", "error_code": "OPS_AGENT_NOT_FOUND"}), 404
+
+    agent = detail.get("agent") if isinstance(detail.get("agent"), dict) else {}
+    member_node_ids = [str(x or "").strip() for x in (detail.get("member_node_ids") or []) if str(x or "").strip()]
+    dispatch_node_id = str(agent.get("node_id") or (member_node_ids[0] if member_node_ids else "")).strip()
+    if not dispatch_node_id:
+        return jsonify({"ok": False, "error": "missing_dispatch_node_id", "error_code": "OPS_AGENT_DISPATCH_NODE_MISSING"}), 400
+
+    nodes = _load_nodes()
+    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == dispatch_node_id), None)
+    if not node:
+        return jsonify({"ok": False, "error": "dispatch_node_not_found", "error_code": "OPS_AGENT_DISPATCH_NODE_MISSING"}), 404
+
+    primary_agent_id = str(agent.get("agent_id") or agent_id).strip()
+    req = {
+        "node_id": dispatch_node_id,
+        "action_type": "restart",
+        "target": primary_agent_id or dispatch_node_id,
+        "ticket_id": "OPS-AGENT-" + uuid.uuid4().hex[:8],
+        "reason": "Agent 进程重启",
+        "approver": str(session.get("user") or "admin"),
+        "run_mode": "agent",
+        "via_agent": True,
+        "agent_id": primary_agent_id,
+        "payload": {
+            "run_mode": "agent",
+            "desired_role": "agent",
+            "desired_agent_id": primary_agent_id,
+            "desired_service_id": "",
+            "desired_server_id": "",
+            "restart_current_agent": True,
+            "launch_visible_console": bool(payload.get("launch_visible_console", True)),
+        },
+    }
+    validation = _validate_ops_request(req, node)
+    if not validation.get("ok"):
+        return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing") or []}), 400
+
+    result = _execute_validated(req, node, validation)
+    if not result.get("ok"):
+        return jsonify(
+            {
+                "ok": False,
+                "error": "OPS_AGENT_RESTART_FAILED",
+                "error_code": "OPS_AGENT_RESTART_FAILED",
+                "message": str(result.get("message") or result.get("error") or "agent restart failed"),
+            }
+        ), 502
+    return jsonify(
+        {
+            "ok": True,
+            "agent_id": primary_agent_id,
+            "node_id": dispatch_node_id,
+            "job_id": ((result.get("data") or {}).get("job_id") if isinstance(result.get("data"), dict) else ""),
+            "trace_id": str(result.get("trace_id") or ""),
+            "launch_visible_console": bool(payload.get("launch_visible_console", True)),
         }
     )
 
@@ -7274,10 +7356,14 @@ def ops_platform_agent_report():
             "time": _now_iso(),
             "severity": "info" if status in ("SUCCESS", "RUNNING") else "critical",
             "status": "resolved" if _agent_status_terminal(status) and status == "SUCCESS" else "open",
-            "title": f"Agent 浠诲姟{status}: {hit.get('action_type')}",
-            "message": f"node={node_id}; job={job_id}; agent={agent_id}",
+            "title": f"Agent 任务状态更新：{hit.get('action_type')}",
+            "message": f"node={node_id}; job={job_id}; agent={agent_id}; status={status}",
             "trace_id": "",
             "node_id": node_id,
+            "agent_id": agent_id,
+            "action_type": str(hit.get("action_type") or ""),
+            "target": str(hit.get("target") or ""),
+            "job_id": job_id,
         }
     )
     return jsonify({"ok": True, "job_id": job_id, "status": status})
