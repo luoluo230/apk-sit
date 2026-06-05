@@ -1,7 +1,7 @@
 (function(){
   const $=(id)=>document.getElementById(id);
   const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
-  const state={projectId:''};
+  const state={projectId:'', jobStatus:''};
   const GROUP_ZH={
     observe:'观测巡检',
     lifecycle:'生命周期',
@@ -152,6 +152,7 @@
 
   async function boot(){
     state.projectId=(document.querySelector('.ops-page')||{}).dataset?.projectId||'';
+    state.jobStatus=(new URLSearchParams(window.location.search).get('job_status')||'').trim().toUpperCase();
     $('btnValidate').onclick=()=>run('validate');
     $('btnExecute').onclick=()=>run('execute');
     $('btnRefreshPolicy').onclick=loadPolicy;
@@ -159,9 +160,18 @@
     $('btnRefreshAgents').onclick=loadAgentRegistryAndQueue;
     $('btnRefreshQueue').onclick=loadAgentRegistryAndQueue;
     $('qStatus').onchange=loadAgentRegistryAndQueue;
+    if(state.jobStatus && $('qStatus')){
+      $('qStatus').value=state.jobStatus;
+    }
     await loadBasics();
     await loadPolicy();
     await loadAgentRegistryAndQueue();
+    if(window.location.hash==='#queue'){
+      const queueWrap=$('queueTableWrap');
+      if(queueWrap && typeof queueWrap.scrollIntoView==='function'){
+        queueWrap.scrollIntoView({behavior:'smooth', block:'start'});
+      }
+    }
   }
   boot();
 })();

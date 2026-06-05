@@ -377,6 +377,17 @@ button {
   box-shadow: var(--agent-card-shadow);
 }
 
+.agent-summary-card.is-clickable {
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.agent-summary-card.is-clickable:hover {
+  transform: translateY(-1px);
+  border-color: #cddcff;
+  box-shadow: 0 14px 28px rgba(47, 107, 255, 0.08);
+}
+
 .agent-summary-icon {
   width: 62px;
   height: 62px;
@@ -637,7 +648,7 @@ button {
 }
 
 .agent-card-title {
-  font-size: 18px;
+  font-size: 20px;
   color: #17233b;
   font-weight: 800;
   white-space: nowrap;
@@ -666,7 +677,7 @@ button {
   gap: 6px;
   padding: 0 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -705,7 +716,7 @@ button {
   flex-wrap: wrap;
   margin-top: 10px;
   color: #667085;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .agent-card-meta span + span {
@@ -745,7 +756,7 @@ button {
 
 .agent-card-service-panel-title {
   color: #344054;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -770,7 +781,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #1d2939;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -782,7 +793,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -864,7 +875,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .agent-card-service strong {
@@ -895,12 +906,12 @@ button {
 }
 
 .agent-card-action {
-  min-height: 30px;
+  min-height: 34px;
   border: 1px solid #dbe3f1;
   border-radius: 8px;
   background: #fff;
   color: #344054;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;

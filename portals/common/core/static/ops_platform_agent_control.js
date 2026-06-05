@@ -265,17 +265,24 @@
     return state.filteredRows.slice(start, start + state.pageSize);
   }
 
+  function queueHref(status) {
+    let href = "/admin/ops-platform/actions?project_id=" + encodeURIComponent(state.projectId);
+    if (status) href += "&job_status=" + encodeURIComponent(status);
+    href += "#queue";
+    return href;
+  }
+
   function renderSummary() {
     const online = state.rows.filter(function (row) { return row.status === "ONLINE"; }).length;
     const cards = [
-      { tone: "blue", icon: "⌘", title: "在线 Agent", value: online, desc: "实时在线设备数" },
-      { tone: "green", icon: "◌", title: "注册 Agent", value: state.rows.length, desc: "已注册设备总数" },
-      { tone: "orange", icon: "◔", title: "待执行任务", value: state.summaryExtra.pending, desc: "等待执行的任务数" },
-      { tone: "purple", icon: "▶", title: "运行任务", value: state.summaryExtra.running, desc: "正在运行的任务数" },
+      { tone: "blue", icon: "⌘", title: "在线 Agent", value: online, desc: "实时在线设备数", href: "" },
+      { tone: "green", icon: "◌", title: "注册 Agent", value: state.rows.length, desc: "已注册设备总数", href: "" },
+      { tone: "orange", icon: "◔", title: "待执行任务", value: state.summaryExtra.pending, desc: "等待执行的任务数", href: queueHref("PENDING") },
+      { tone: "purple", icon: "▶", title: "运行任务", value: state.summaryExtra.running, desc: "正在运行的任务数", href: queueHref("RUNNING") },
     ];
     nodes.summary.innerHTML = cards.map(function (card) {
       return "" +
-        '<article class="agent-summary-card" data-tone="' + esc(card.tone) + '">' +
+        '<article class="agent-summary-card' + (card.href ? " is-clickable" : "") + '" data-tone="' + esc(card.tone) + '"' + (card.href ? (' data-summary-href="' + esc(card.href) + '"') : "") + '>' +
           '<div class="agent-summary-icon">' + esc(card.icon) + "</div>" +
           "<div>" +
             '<div class="agent-summary-label">' + esc(card.title) + "</div>" +
@@ -284,6 +291,16 @@
           "</div>" +
         "</article>";
     }).join("");
+  }
+
+  function bindSummaryCards() {
+    nodes.summary.querySelectorAll("[data-summary-href]").forEach(function (node) {
+      node.onclick = function () {
+        const href = String(node.getAttribute("data-summary-href") || "");
+        if (!href) return;
+        window.location.href = href;
+      };
+    });
   }
 
   function renderServiceList(row) {
@@ -451,6 +468,7 @@
     nodes.list.classList.toggle("is-hidden", state.view !== "list");
     nodes.cardView.classList.toggle("is-active", state.view === "card");
     nodes.listView.classList.toggle("is-active", state.view === "list");
+    bindSummaryCards();
     bindRows(nodes.cards);
     bindRows(nodes.list);
   }
