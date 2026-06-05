@@ -637,7 +637,7 @@ button {
 }
 
 .agent-card-title {
-  font-size: 16px;
+  font-size: 18px;
   color: #17233b;
   font-weight: 800;
   white-space: nowrap;
@@ -703,9 +703,9 @@ button {
   display: flex;
   gap: 18px;
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: 10px;
   color: #667085;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .agent-card-meta span + span {
@@ -724,10 +724,10 @@ button {
 }
 
 .agent-card-body-split {
-  margin-top: 12px;
+  margin-top: 14px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 248px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 266px;
+  gap: 18px;
   align-items: start;
 }
 
@@ -736,16 +736,16 @@ button {
 }
 
 .agent-card-service-panel {
-  min-height: 116px;
+  min-height: 126px;
   border: 1px solid #edf1f7;
   border-radius: 12px;
   background: linear-gradient(180deg, #fbfcff 0%, #f8fbff 100%);
-  padding: 12px 12px 10px;
+  padding: 13px 13px 12px;
 }
 
 .agent-card-service-panel-title {
   color: #344054;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -770,7 +770,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #1d2939;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -808,8 +808,22 @@ button {
 
 .agent-card-service-more,
 .agent-card-service-empty {
-  color: #98a2b3;
-  font-size: 12px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.agent-card-service-more {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-weight: 700;
+  color: var(--agent-blue-strong);
+  cursor: pointer;
+}
+
+.agent-card-service-more:hover {
+  text-decoration: underline;
 }
 
 .agent-card-metrics {
@@ -850,7 +864,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .agent-card-service strong {
@@ -900,7 +914,15 @@ button {
 }
 
 .agent-card-action.is-primary {
+  border-color: #9bb6ff;
+  background: #f4f8ff;
   color: var(--agent-blue-strong);
+}
+
+.agent-card-action.is-edit {
+  border-color: #d9e2f2;
+  background: #f8fafc;
+  color: #344054;
 }
 
 .agent-empty,
@@ -977,6 +999,42 @@ button {
 .agent-table-action:hover {
   border-color: #9ab9ff;
   color: var(--agent-blue-strong);
+}
+
+.agent-table-action--neutral {
+  border-color: #dbe3f1;
+  background: #fff;
+  color: #344054;
+}
+
+.agent-table-action--view {
+  border-color: #d8e3f8;
+  background: #f8fbff;
+  color: #335caa;
+}
+
+.agent-table-action--start {
+  border-color: #b7e7cd;
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.agent-table-action--restart {
+  border-color: #bfd3ff;
+  background: #eef4ff;
+  color: #2f6bff;
+}
+
+.agent-table-action--stop {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.agent-table-action--edit {
+  border-color: #d9e2f2;
+  background: #f8fafc;
+  color: #475467;
 }
 
 .agent-table-actions--wide {
@@ -1107,6 +1165,25 @@ button {
 .agent-form-grid textarea {
   min-height: 96px;
   resize: vertical;
+}
+
+.agent-form-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agent-checkbox-line--compact {
+  min-height: 22px;
+  padding-right: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agent-form-conditional.is-hidden {
+  display: none;
 }
 
 .agent-form-grid-wide {

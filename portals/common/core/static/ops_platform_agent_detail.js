@@ -37,6 +37,8 @@
     serviceDisplayName: document.getElementById("serviceFormDisplayName"),
     serviceType: document.getElementById("serviceFormType"),
     servicePort: document.getElementById("serviceFormPort"),
+    serviceAdvancedPortToggle: document.getElementById("serviceFormAdvancedPortToggle"),
+    serviceRemotePortField: document.getElementById("serviceRemotePortField"),
     serviceRemotePort: document.getElementById("serviceFormRemotePort"),
     serviceNodeId: document.getElementById("serviceFormNodeId"),
     serviceDesc: document.getElementById("serviceFormDesc"),
@@ -246,16 +248,16 @@
     const status = normalizeStatus(service.status || service.run_state);
     const serviceId = String(service.service_id || "");
     const buttons = [
-      '<button class="agent-table-action" type="button" data-service-action="status" data-service-id="' + esc(serviceId) + '">查看状态</button>',
+      '<button class="agent-table-action agent-table-action--view" type="button" data-service-action="status" data-service-id="' + esc(serviceId) + '">查看状态</button>',
     ];
     if (status === "ONLINE") {
-      buttons.push('<button class="agent-table-action" type="button" data-service-action="stop" data-service-id="' + esc(serviceId) + '">停止</button>');
-      buttons.push('<button class="agent-table-action" type="button" data-service-action="restart" data-service-id="' + esc(serviceId) + '">重启</button>');
+      buttons.push('<button class="agent-table-action agent-table-action--stop" type="button" data-service-action="stop" data-service-id="' + esc(serviceId) + '">停止</button>');
+      buttons.push('<button class="agent-table-action agent-table-action--restart" type="button" data-service-action="restart" data-service-id="' + esc(serviceId) + '">重启</button>');
     } else {
-      buttons.push('<button class="agent-table-action" type="button" data-service-action="start" data-service-id="' + esc(serviceId) + '">启动</button>');
+      buttons.push('<button class="agent-table-action agent-table-action--start" type="button" data-service-action="start" data-service-id="' + esc(serviceId) + '">启动</button>');
     }
-    buttons.push('<button class="agent-table-action" type="button" data-service-action="edit" data-service-id="' + esc(serviceId) + '">编辑</button>');
-    buttons.push('<button class="agent-table-action" type="button" data-service-action="logs" data-service-id="' + esc(serviceId) + '">查看日志</button>');
+    buttons.push('<button class="agent-table-action agent-table-action--edit" type="button" data-service-action="edit" data-service-id="' + esc(serviceId) + '">编辑</button>');
+    buttons.push('<button class="agent-table-action agent-table-action--neutral" type="button" data-service-action="logs" data-service-id="' + esc(serviceId) + '">查看日志</button>');
     return buttons.join("");
   }
 
@@ -320,6 +322,29 @@
     });
   }
 
+  function looksMojibake(value) {
+    const text = String(value || "");
+    if (!text) return false;
+    return /\uFFFD/.test(text) || /[À-ÿ]{3,}/.test(text) || /[鏂鍛鐘绗璇鎺屾惧垎缁悊缃戠姸鑺]/.test(text);
+  }
+
+  function humanizeEvent(item) {
+    const action = String(item.action_type || item.action || "").toLowerCase();
+    const target = String(item.target || item.desired_service_id || item.service_id || item.node_id || "").trim();
+    if (action === "log_tail" || action === "logs") return "服务日志拉取任务" + (target ? "：" + target : "");
+    if (action === "status") return "服务状态检查任务" + (target ? "：" + target : "");
+    if (action === "health_check" || action === "probe") return "服务探测任务" + (target ? "：" + target : "");
+    if (action === "start") return "服务启动任务" + (target ? "：" + target : "");
+    if (action === "stop") return "服务停止任务" + (target ? "：" + target : "");
+    if (action === "restart") return "服务重启任务" + (target ? "：" + target : "");
+    const title = String(item.title || "").trim();
+    const message = String(item.message || item.details || "").trim();
+    if (title && !looksMojibake(title)) return title;
+    if (message && !looksMojibake(message)) return message;
+    if (target) return "告警事件：" + target;
+    return "告警事件";
+  }
+
   function eventRows() {
     const events = Array.isArray((state.detail || {}).events) ? state.detail.events : [];
     if (!events.length) {
@@ -328,10 +353,11 @@
     return events.slice(0, 10).map(function (item) {
       const severity = String(item.severity || item.level || "提示");
       const status = String(item.status || item.state || "open");
+      const content = humanizeEvent(item);
       return "" +
         "<tr>" +
           "<td>" + esc(severity) + "</td>" +
-          "<td>" + esc(item.title || item.message || item.details || "-") + "</td>" +
+          "<td>" + esc(content) + "</td>" +
           "<td>" + esc(formatDate(item.time || item.updated_at || item.timestamp)) + "</td>" +
           "<td>" + renderStatusPill(status) + "</td>" +
         "</tr>";
@@ -615,9 +641,11 @@
     nodes.serviceDisplayName.value = service ? String(service.display_name || "") : "";
     nodes.serviceType.value = service ? String(service.service_type || "") : "";
     nodes.servicePort.value = service ? String(service.service_port || service.remote_game_server_port || "") : "";
+    nodes.serviceAdvancedPortToggle.checked = !!(service && service.remote_game_server_port && String(service.remote_game_server_port) !== String(service.service_port || service.remote_game_server_port));
     nodes.serviceRemotePort.value = service ? String(service.remote_game_server_port || service.service_port || "") : "";
     nodes.serviceNodeId.value = service ? String(service.node_id || "") : "";
     nodes.serviceDesc.value = service ? String(service.desc || "") : "";
+    syncServicePortUI();
     nodes.serviceModal.classList.remove("is-hidden");
   }
 
@@ -722,14 +750,16 @@
   }
 
   async function saveServiceEdit() {
+    const servicePort = Number(nodes.servicePort.value || 0);
+    const remotePort = nodes.serviceAdvancedPortToggle.checked ? Number(nodes.serviceRemotePort.value || 0) : servicePort;
     const payload = {
       project_id: state.projectId,
       agent_id: state.serviceFormAgentId || primaryMemberAgentId(),
       service_id: String(nodes.serviceId.value || "").trim(),
       display_name: String(nodes.serviceDisplayName.value || "").trim(),
       service_type: String(nodes.serviceType.value || "").trim(),
-      service_port: Number(nodes.servicePort.value || 0),
-      remote_game_server_port: Number(nodes.serviceRemotePort.value || 0),
+      service_port: servicePort,
+      remote_game_server_port: remotePort,
       node_id: String(nodes.serviceNodeId.value || "").trim(),
       desc: String(nodes.serviceDesc.value || "").trim(),
     };
@@ -746,6 +776,14 @@
     closeServiceModal();
     flash(state.serviceFormMode === "edit" ? "服务已更新" : "服务已新增", "success");
     await load();
+  }
+
+  function syncServicePortUI() {
+    const advanced = !!nodes.serviceAdvancedPortToggle.checked;
+    nodes.serviceRemotePortField.classList.toggle("is-hidden", !advanced);
+    if (!advanced) {
+      nodes.serviceRemotePort.value = String(nodes.servicePort.value || "");
+    }
   }
 
   async function runServiceAction(service, action) {
@@ -934,6 +972,12 @@
     document.getElementById("serviceCloseEdit").onclick = closeServiceModal;
     document.getElementById("serviceCancelEdit").onclick = closeServiceModal;
     document.getElementById("serviceSaveEdit").onclick = saveServiceEdit;
+    nodes.serviceAdvancedPortToggle.onchange = syncServicePortUI;
+    nodes.servicePort.oninput = function () {
+      if (!nodes.serviceAdvancedPortToggle.checked) {
+        nodes.serviceRemotePort.value = String(nodes.servicePort.value || "");
+      }
+    };
 
     document.getElementById("serviceConfirmClose").onclick = closeConfirm;
     document.getElementById("serviceConfirmCancel").onclick = closeConfirm;

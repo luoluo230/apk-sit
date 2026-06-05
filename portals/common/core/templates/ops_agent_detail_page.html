@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260605-agent-real-ops-v2">
+<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260605-agent-ui-fixes-v3">
 <div class="agent-screen agent-screen--detail" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
   <aside class="agent-shell-sidebar agent-shell-sidebar--detail">
     <div class="agent-shell-brand agent-shell-brand--detail">
@@ -185,7 +185,16 @@
             <label><span>显示名称</span><input id="serviceFormDisplayName" type="text"></label>
             <label><span>服务类型</span><input id="serviceFormType" type="text" placeholder="gateway / game / chat"></label>
             <label><span>服务端口</span><input id="serviceFormPort" type="number" min="0" max="65535"></label>
-            <label><span>远端游戏服端口</span><input id="serviceFormRemotePort" type="number" min="0" max="65535"></label>
+            <label class="agent-form-grid-wide">
+              <span class="agent-form-inline">
+                <span>端口策略</span>
+                <label class="agent-checkbox-line agent-checkbox-line--compact">
+                  <input id="serviceFormAdvancedPortToggle" type="checkbox">
+                  <span>高级设置：单独设置远端端口</span>
+                </label>
+              </span>
+            </label>
+            <label id="serviceRemotePortField" class="agent-form-grid-wide agent-form-conditional is-hidden"><span>远端游戏服端口</span><input id="serviceFormRemotePort" type="number" min="0" max="65535"></label>
             <label><span>节点 ID</span><input id="serviceFormNodeId" type="text"></label>
             <label class="agent-form-grid-wide"><span>备注</span><textarea id="serviceFormDesc" rows="3"></textarea></label>
           </div>
@@ -223,5 +232,5 @@
     </main>
   </section>
 </div>
-<script src="/static/ops_platform_api.js?v=20260605-agent-real-ops-v2"></script>
-<script src="/static/ops_platform_agent_detail.js?v=20260605-agent-real-ops-v2"></script>
+<script src="/static/ops_platform_api.js?v=20260605-agent-ui-fixes-v3"></script>
+<script src="/static/ops_platform_agent_detail.js?v=20260605-agent-ui-fixes-v3"></script>

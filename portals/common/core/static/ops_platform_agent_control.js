@@ -16,6 +16,7 @@
     summaryExtra: { pending: 0, running: 0 },
     createMode: false,
     menuRowId: "",
+    expandedServiceRowIds: new Set(),
     filters: {
       status: "",
       query: "",
@@ -286,11 +287,13 @@
   }
 
   function renderServiceList(row) {
-    const services = row.services.slice(0, 4);
-    if (!services.length) {
+    const allServices = Array.isArray(row.services) ? row.services : [];
+    const expanded = state.expandedServiceRowIds.has(row.rowId);
+    const visibleServices = expanded ? allServices : allServices.slice(0, 4);
+    if (!visibleServices.length) {
       return '<div class="agent-card-service-empty">暂无已管理服务器</div>';
     }
-    const items = services.map(function (service) {
+    const items = visibleServices.map(function (service) {
       const status = normalizeStatus(service.status || service.run_state);
       const label = statusText(status);
       const text = service.display_name || service.service_id || "-";
@@ -300,8 +303,10 @@
           '<span class="agent-card-service-badge agent-card-service-badge--' + esc(status.toLowerCase()) + '">' + esc(label) + "</span>" +
         "</li>";
     }).join("");
-    const more = row.services.length > 4
-      ? '<li class="agent-card-service-more">更多 ' + esc(row.services.length - 4) + " 项</li>"
+    const more = allServices.length > 4
+      ? '<li><button class="agent-card-service-more" type="button" data-toggle-services="' + esc(row.rowId) + '">' +
+          (expanded ? "收起服务器列表" : ("更多 " + esc(allServices.length - 4) + " 项")) +
+        "</button></li>"
       : "";
     return '<ul class="agent-card-service-list">' + items + more + "</ul>";
   }
@@ -363,7 +368,7 @@
             "</div>" +
             '<div class="agent-card-actions">' +
               '<a class="agent-card-action" href="' + esc(cardHref(row)) + '">查看详情</a>' +
-              '<button class="agent-card-action" type="button" data-edit-row="' + esc(row.rowId) + '">编辑</button>' +
+              '<button class="agent-card-action is-edit" type="button" data-edit-row="' + esc(row.rowId) + '">编辑</button>' +
               '<button class="agent-card-action is-primary" type="button" data-probe-row="' + esc(row.rowId) + '">探测</button>' +
             "</div>" +
           "</div>" +
@@ -493,6 +498,15 @@
         const action = String(node.getAttribute("data-menu-action") || "");
         setMenu("");
         handleMenuAction(rowId, action);
+      };
+    });
+    container.querySelectorAll("[data-toggle-services]").forEach(function (node) {
+      node.onclick = function () {
+        const rowId = String(node.getAttribute("data-toggle-services") || "");
+        if (!rowId) return;
+        if (state.expandedServiceRowIds.has(rowId)) state.expandedServiceRowIds.delete(rowId);
+        else state.expandedServiceRowIds.add(rowId);
+        render();
       };
     });
   }
