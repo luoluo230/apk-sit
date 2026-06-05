@@ -21,20 +21,23 @@
 ## 使用顺序
 
 1. 先看有没有现成文档
-2. 没有就基于设计图新建
-3. 开发前先读文档，再读代码
+2. 没有就基于 `_design-module-spec-template.md` 新建
+3. **填完 token 表 / 尺寸表 / 图标清单 / 文案清单 / 11 维对照表** 再写代码
 4. 同模块继续开发时，先更新文档，再改代码
 
-## 强制要求
+## 强制要求（零容差）
 
-- 文档里必须先有“设计拆解清单”，再开始实现
-- 如果有浏览器验收条件，必须写进文档
-- 如果设计稿主态是有数据，文档里必须说明视觉验收数据来源
-- 交付前必须补“实现截图对比清单”
+- **四张表 + 11 维对照未填完 → 禁止写 UI 代码**
+- 设计图必须归档在 `docs/design_assets/` 并在 spec 中引用
+- 交付前必须填「**专业验收判定表**」，**全部 PASS 且报告结论为「通过验收」**才可向用户交付成品
+- 差一点都不可声称 1:1 或「可以验收」
+- 工作流：`.cursor/skills/design-faithful-ui/SKILL.md`（**Phase A0 读图 → Phase A 填表 → Phase B 实现 → Phase C 验收+立即修复**）
+- 规则：`.cursor/rules/design-faithful-ui-rule.md`
 
 ## 推荐配套
 
-- 设计图放在 `docs/design_assets/`
-- 规则放在 `.cursor/rules/`
-- 技能放在 `.cursor/skills/`
-- 仓库级长期规则放在 `AGENTS.md`
+- 设计图：`docs/design_assets/`
+- 模板：`docs/design_specs/_design-module-spec-template.md`
+- 规则：`.cursor/rules/design-faithful-ui-rule.md`
+- 技能：`.cursor/skills/design-faithful-ui/SKILL.md`
+- 仓库级：`AGENTS.md`

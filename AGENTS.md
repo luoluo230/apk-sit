@@ -9,8 +9,9 @@ These rules apply to the entire repository.
 
 ## Non-negotiables
 
-- When the user provides a design image, implementation must match the design as closely as possible in layout, spacing, hierarchy, states, interactions, and visible text.
-- Design-faithful delivery is a hard requirement, not a best effort.
+- When the user provides a design image, implementation must match the design **pixel-level in all visible dimensions**: layout, spacing, typography (family/size/weight/line-height), colors, icons, borders, shadows, radius, copy text, and interaction feedback states — **not** merely "close enough" in structure.
+- **Do not deliver any version to the user as a finished product until browser-rendered result passes side-by-side comparison against archived design images in `docs/design_assets/`. Even small visible differences block completion.**
+- Design-faithful delivery is a hard requirement, not a best effort. Follow `.cursor/skills/design-faithful-ui/SKILL.md` and `.cursor/rules/design-faithful-ui-rule.md` for all design-driven work.
 - Do not replace a concrete design with a generic admin layout or a reused shell just because it is faster.
 - If a page is being rewritten to match a design, do not keep legacy UI structure or compatibility code unless the user explicitly requires backward compatibility.
 - Do not leave mojibake, broken encoding, corrupted Chinese text, or mixed-language garbage in templates, scripts, styles, or docs.
@@ -29,20 +30,28 @@ These rules apply to the entire repository.
   - the required interactions and empty/loading/error states
 - Treat the design spec and the provided design images as the source of truth for the module.
 - If local copies of the design images do not yet exist, reserve them under `docs/design_assets/` and record the expected filenames in the matching spec.
-- Before writing code, extract the design into an implementation checklist that covers:
+- Before writing code, extract the design into an implementation checklist that covers **all 11 visual dimensions** (see design-faithful-ui skill):
+  - layout and column proportions
+  - spacing (padding / margin / gap)
+  - font family, weight, line-height, letter-spacing
+  - font size hierarchy per region
+  - typography alignment and wrapping
+  - colors, gradients, borders, radius, shadows, semantic state colors
+  - icons (every icon slot filled; source documented if using open-source substitutes)
+  - responsive behavior at spec-defined breakpoints
+  - hover / active / selected / disabled visual effects
+  - loading / empty / error / success feedback copy and style
+  - all visible text matching the design exactly
+- Also cover in the checklist:
   - page shell and width behavior
   - left navigation structure and active states
   - top bar / breadcrumb / title area
   - primary and secondary button groups
-  - KPI cards
-  - filters / search / batch toolbar
-  - main content area and primary data state
-  - pagination
-  - tables / charts / summary cards
+  - KPI cards, filters / search / batch toolbar
+  - main content primary state, pagination, tables / charts / summary cards
   - which visible actions are real, what backend flow each one triggers, and how success/failure is surfaced
-  - which values are realtime, where the live samples come from, and how often the page refreshes them
-  - how status, risk, severity, and action types are visually distinguished without breaking the page style
-  - empty, loading, success, error, hover, active, disabled states
+  - which values are realtime, where live samples come from, and refresh cadence
+  - how status, risk, severity, and action types are visually distinguished
 - Record that checklist in the module spec or update the existing module spec before implementation.
 - If the running page does not match the edited template, verify the actual serving process, route, cache-busting query strings, and stale service instances before continuing visual tweaks.
 - When backend aggregation, view-model shape, or routing are changed, verify the real runtime entrypoint that feeds the page, not only helper functions or internal builders.
@@ -68,7 +77,8 @@ These rules apply to the entire repository.
 - Check changed files for visible encoding problems before declaring work done.
 - Check the rendered module for stale shells, width bugs, overflow, and responsive breakpoints before declaring visual work done.
 - When Chrome or Browser automation is available, use it to inspect the rendered local page after major UI changes instead of relying on source inspection alone.
-- For design-driven pages, validate the real rendered page against the design in the browser before declaring the task complete.
+- For design-driven pages, validate the real rendered page against the design in the browser before declaring the task complete. **Fill the screenshot comparison checklist in the module spec; any FAIL item blocks "done".**
+- Do not use completion language ("基本完成", "差不多", "骨架完成", "约 xx%") for design-driven work unless every checklist item is PASS.
 - For interaction-driven pages, verify that visible in-scope actions actually work end to end, not only that the matching endpoints exist.
 - Verify that frontend behavior and backend business logic are aligned for the implemented scope.
 - Verify that status- and action-based color differentiation is present where needed and remains consistent with the overall page style.

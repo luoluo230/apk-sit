@@ -1,21 +1,610 @@
 ---
 name: design-faithful-ui
-description: 用于任何“用户给了设计图、截图、视觉稿，要求严格按图实现页面和交互”的开发任务。适用于所有模块。执行时自动同时启用仓库规则、设计图规则、安全改动流程和设计文档流程；若模块文档不存在则直接创建，无需再次询问用户。
+description: 用于任何“用户给了设计图、截图、视觉稿，要求严格按图实现页面和交互”的开发任务。零容差：Phase A0 深度读图建档 → 实现 → Phase C 全屏验收；任一 FAIL 进入 C-fix 闭环，直到全部效果图 PASS 才可结束任务。
 ---
 
-# Design Faithful UI
+# Design Faithful UI — 零容差设计还原
 
-## Single entry
+## 文档层级（避免 AI 误读）
 
-- If the user names this skill, use it as the only workflow entrypoint.
-- Do not ask again whether to use rules, specs, design docs, or validation steps.
-- This skill automatically activates:
+| 文件 | 角色 | AI 应如何使用 |
+|------|------|----------------|
+| **本 skill** | **唯一详表**：Phase A–C、专业验收 Step 1–6、判定表、报告模板 | 设计图任务的**完整执行手册** |
+| **design-faithful-ui-rule** | **硬门槛摘要**：零容差、禁止替代验收、Hard Gate 勾选 | 始终生效的**门禁提醒**，不重复详表 |
+| **AGENTS.md** | 仓库级交付规则 | 与本 skill 冲突时，**本 skill 的设计验收条款优先** |
+| **safe-change-workflow §13** | 设计任务对通用 workflow 的覆盖 | 仅补充「设计任务覆盖最小补丁」；验收细节**以本 skill 为准** |
+
+**禁止 AI 错觉：** 不得因 rule 较短而跳过 skill 中的 Phase C 专业验收；不得因多处都提「零容差」而认为只读 rule 就够。
+
+**禁止流程幻觉：** 不得因本 skill / rule **文件已存在**就认为流程已执行；**写了规则 ≠ 做了验收**。
+
+---
+
+## 执行到位的强制门禁（Meta · 最高优先级）
+
+> **核心教训：** 拓扑编排等模块曾出现「skill/rule 已完善，但 Agent 仍只验一屏、未读 design_assets、未跑浏览器、仍向用户汇报增量」——这是**流程违规**，不是视觉小偏差。
+
+### 三类执行失败（与视觉 FAIL 不同，但同样不得结束任务）
+
+| 类型 | 典型表现 | 处置 |
+|------|----------|------|
+| **未执行验收** | 改完代码直接总结「已对齐 / 可验收」；未 Read 全部效果图；未 Browser 并排 | **流程 FAIL** → 必须先跑 Phase C，不得回复完成态 |
+| **部分执行验收** | 只验工具态；未切模式/节点/弹窗；未点 in-scope 交互 | **流程 FAIL** → 补全全部主态后再判 PASS/FAIL |
+| **替代执行验收** | 只 `py_compile` / 只看源码 / 只 API curl；推断「应该对了」 | **流程 FAIL** → 必须以浏览器渲染为准 |
+
+### 用户质问 = 强制重新开验
+
+用户发送「对上了吗」「效果图看不到吗」「又犯错误了」等质问时：
+
+1. **禁止**用段落解释、禁止重复 FAIL 列表当交付物
+2. **必须**立即 Read `docs/design_assets/` **全部**原图 + Browser 打开真实 URL
+3. **必须**填写「屏级 PASS 表」+「交互抽检表」
+4. **未 ALL PASS** → 进入 C-fix，不得结束回合
+
+---
+
+## Agent 开工门禁（写代码前 · 全部满足）
+
+| # | 门禁项 | 验证方式 |
+|---|--------|----------|
+| G1 | 已 Read **每一张** `docs/design_assets/` 效果图 | 工具 Read 原图，非只看 spec 文字 |
+| G2 | spec 已有 A0 建档 + 文案/图标/token 表 | 打开 spec 确认章节存在 |
+| G3 | 已列出**全部主态**切换路径（如 工具/模式/节点 + 弹窗） | 写入 spec 或回合内清单 |
+| G4 | 已确认运行时 URL、template、cache 版本策略 | 记录于 spec 验收记录 |
+| G5 | baseline commit 已完成或阻塞已报告 | git 状态 |
+
+**任一未满足 → 禁止写 HTML/CSS/JS。**
+
+---
+
+## Agent 回合门禁（每次回复用户前 · 必须自检）
+
+在向用户发送**任何**暗示进度的内容前，Agent **必须**内心勾选（未全勾 → 不得用完成态话术）：
+
+| # | 自检项 |
+|---|--------|
+| R1 | 我是否 Read 了**全部** design_assets 原图（不是 thread 缩略描述）？ |
+| R2 | 我是否在 Browser 中切换了**每一个**设计主态（左栏 Tab / 模式 / 弹窗）？ |
+| R3 | 我是否对**画布/节点/连线**并排对照过设计图（不是只看 DOM 结构）？ |
+| R4 | 我是否点击验证了 spec 交互清单中的 in-scope 按钮？ |
+| R5 | 我是否填写了「屏级 PASS 表」且 ALL PASS？ |
+| R6 | 若仍 FAIL，我是否在本回合继续 C-fix（而非只报 FAIL 结束）？ |
+
+**禁止在未勾 R5 的情况下使用：** 已完成、可验收、1:1、基本对齐、主要对了、除 XX 外。
+
+---
+
+## Agent 完工门禁（结束任务前 · 全部勾选）
+
+与 rule《浏览器验收 Hard Gate》一致，**额外**强制：
+
+| # | 完工项 |
+|---|--------|
+| F1 | 「屏级 PASS 表」**每一行**均为 PASS |
+| F2 | 「交互抽检表」in-scope 项均已 Browser 点击验证 |
+| F3 | 「同屏多态门禁」全部主态已切换验收 |
+| F4 | 「画布专项」节点数/连线 label/节点卡样式已与 design 并排 |
+| F5 | cache 已 bump 且 Browser Network 确认加载新版本 JS/CSS |
+| F6 | 数据链路：normalize/upgrade 后浏览器所见与后端 seed 一致 |
+| F7 | spec 验收记录已写入结论「通过验收」 |
+
+**F1–F7 任一未勾 → 不得结束任务。**
+
+---
+
+## 唯一入口
+
+- 用户 @ 本 skill、提供设计图、或要求「按设计图 / 1:1 / 严格还原」时，**必须**以本 skill 为唯一工作流，不得自行简化。
+- **禁止**再问「要不要按设计图」「要不要写 spec」「要不要浏览器验收」——全部默认必须做。
+- 自动激活：
   - `AGENTS.md`
   - `.cursor/rules/design-faithful-ui-rule.md`
   - `.cursor/rules/safe-change-workflow.md`
-  - the relevant module spec in `docs/design_specs/`
+  - `docs/design_specs/` 下对应模块 spec
+  - `docs/design_assets/` 下对应设计图
 
-## Files that must be used
+## 零容差交付政策（最高优先级）
+
+> **设计图 = 验收标准。差一点都不算完成，不能作为成品交给用户。**
+
+| 允许 | 禁止 |
+|------|------|
+| 明确列出 FAIL 项（设计 vs 实际），继续迭代 | 用「基本完成 / 约 90% / 骨架对了 / 功能可用」代替视觉完成 |
+| 缺图标素材时说明**阻塞**（非完成），并给出拟选替代方案 | 用通用 admin 壳、Ant Design 默认样式、深色全局按钮顶替设计 |
+| 用户**书面**同意保留的差异（须在 spec 记录） | 未获用户书面同意就声称 1:1 或「可验收」 |
+| — | 以「真实环境数据少」交付比设计稿稀疏的界面（design 为 demo 态则须用同等 demo 密度还原） |
+
+**以下措辞一律禁止用于宣告完成：** 基本完成、差不多、大体一致、骨架完成、主要功能有了、后续再微调、视觉上还可以、接近设计稿。
+
+**唯一允许的完成宣告：** 专业验收报告结论为「通过验收」（见《专业验收机制》），且 FAIL 项为空。
+
+---
+
+## 禁止替代验收（零授权 · 写死）
+
+以下**任何一条都不构成**「按设计图完成」，**用户从未授权**用它们代替视觉 PASS，skill/rule 也**从未允许**：
+
+| 禁止当作完成的理由 | 说明 |
+|-------------------|------|
+| 「结构对了」 | 分区名、tab 名、按钮数量与 design 相同，但间距/字号/颜色/图标任一不对 → **FAIL** |
+| 「数据对了」 | API 有 N 个节点、字段齐全、中文不乱码，但画布/侧栏/弹窗视觉未对照 design → **FAIL** |
+| 「能点开」 | 页面可访问、接口 200、按钮有响应，但未与设计图并排截图验收 → **FAIL** |
+| 「差不多」 | 目测「像」但未逐区填专业验收判定表 → **FAIL** |
+| 「后端/demo 数据」 | 用 seed 数据凑齐节点数，但布局密度、节点卡片、连线样式与 design 不一致 → **FAIL** |
+
+**真实开发与本次任务相同：** 设计图 = 验收标准；产品经理/设计稿签字 PASS 之前，开发不得自行宣告 UI 完成。
+
+**Agent 若未做浏览器并排对照 design_assets 中设计图，禁止对用户说：** 已完成、可验收、1:1、按图实现、基本对齐。
+
+---
+
+## 专业验收机制（Mandatory · 独立验收员）
+
+> **验收不是开发自检，是第三方专业 UI 验收。** 实现者与验收者不得是同一种口吻：开发可以迭代，验收只能判 PASS / FAIL。
+
+### 验收员角色（写死）
+
+进入 **Phase C** 时，Agent **必须**以「独立 UI 验收员」身份执行，遵守：
+
+| 必须 | 禁止 |
+|------|------|
+| 只认 `docs/design_assets/` 中效果图，不认代码、不认意图 | 替实现者解释「为什么没做出来」 |
+| 对每个可见区块给出 **PASS 或 FAIL**，无中间态 | 用「基本完成 / 除 XX 外 / 约 XX%」 |
+| FAIL 时只写**客观差异**（设计是什么、实际是什么） | 写原因归因（后端、数据、时间、缓存、历史债） |
+| 有 FAIL → 结论只能是 **未通过验收，继续修改** | 把未做项称为「遗留 / 待优化 / 后续微调」 |
+| 全部 PASS 且差异清单为空 → 才可写 **通过验收** | 徇私放水、降低标准、「差不多算了」 |
+
+**未通过 = 还没做好。** 不许把「还没做好」包装成「已完成但有遗留」。
+
+### 验收唯一结论（二选一）
+
+```
+通过验收：与效果图 1:1 对齐，差异清单为空。
+未通过验收：存在 N 项 FAIL，继续修改。（N≥1 即未通过，无例外）
+```
+
+**禁止的第三种结论：** 有条件通过、基本通过、主流程通过、视觉除 X 外通过。
+
+### 验收基准锁定（开验前必做）
+
+1. 列出本模块全部效果图路径（例：`docs/design_assets/xxx-tools-mode-reference.png`）
+2. 记录基准视口（默认 1440×900，与设计导出一致；spec 另有规定从其规定）
+3. 记录 cache 版本、运行时 URL、验收时间
+4. 以上写入 spec「验收记录」— **未锁定基准不得开验**
+
+### 专业验收流程（逐步执行，不得跳步）
+
+**Step 1 — 并排取证**
+
+- 浏览器打开真实页面，切到 spec 规定的**主态**（有数据 / 空态 / 弹窗打开态等，以设计图为准）
+- 对**每一张**效果图：截取实现屏 + 读取 design 原图，**同屏或同表并排**
+- 不得只看源码、不得只看 API、不得只看 DOM 结构
+
+**Step 2 — 逐区逐维对照**
+
+- 按 spec「11 维 × 区块对照表」与下表，**每个单元格**仅填 `PASS` 或 `FAIL`
+- FAIL 单元格附加一行客观描述，格式：`设计：[具体可见特征]；实际：[具体可见特征]`
+- **禁止**在 FAIL 描述中出现：因为、由于、后端、数据、遗留、后续、已知问题
+
+**Step 3 — 文案零偏差**
+
+- 对照 spec「文案清单」，逐字核对可见中文/英文/placeholder
+- 错一字 → 对应区块 **FAIL**
+
+**Step 4 — 图标逐位核对**
+
+- 对照 spec「图标清单」，设计有图标位而实现缺失/用错/线宽明显不符 → **FAIL**
+
+**Step 5 — 交互抽检（in-scope）**
+
+- 设计稿上可见且 spec 标注为真的控件：点击 → 必须有真实反馈
+- 假按钮、无反馈 → 对应区块 **FAIL**
+
+**Step 6 — 出具验收报告**
+
+- 使用下方「专业验收报告模板」完整填写
+- **全部 PASS** → 结论：`通过验收`
+- **任一 FAIL** → 结论：`未通过验收` → **立即 Phase C-fix 修复** → 再完整 Step 1–6（不得只汇报不修）
+
+### 专业验收判定表（交付前必填）
+
+| 效果图文件 | 验收区块 | 11维结论 | 文案 | 图标 | 交互 | 区块结论 |
+|------------|----------|----------|------|------|------|----------|
+| xxx.png | 侧栏 | PASS/FAIL | PASS/FAIL | PASS/FAIL | PASS/FAIL | PASS/FAIL |
+| xxx.png | 顶栏 | | | | | |
+| … | … | | | | | |
+
+**区块结论规则：** 该行任一子项 FAIL → 区块结论 **FAIL**。  
+**模块结论规则：** 任一区块 FAIL → 模块 **未通过验收**。
+
+### 专业验收报告模板（对用户/ spec 必用）
+
+```markdown
+## UI 验收报告
+
+- 模块：
+- 验收员角色：独立 UI 验收（非开发自检）
+- 验收基准图：[design_assets 文件名列表]
+- 验收 URL：
+- 视口：
+- cache 版本：
+- 验收时间：
+
+### 结论
+
+**[ ] 通过验收** — 与效果图 1:1 对齐，差异清单为空。  
+**[ ] 未通过验收** — 下列 FAIL 项未清零，模块尚未完成。
+
+（二选一，禁止都选，禁止都不选）
+
+### FAIL 项（客观差异，仅描述「设计 vs 实际」）
+
+| # | 区块 | 设计 | 实际 |
+|---|------|------|------|
+| 1 | | | |
+
+（无 FAIL 时写「无」，且仅当结论为「通过验收」时允许）
+
+### 禁止出现在本报告中的内容
+
+- 原因解释（后端、数据、编码、缓存、历史债、时间不足）
+- 遗留清单、待办、后续微调、已知问题
+- 完成度百分比、差不多、基本、除 XX 外
+- 对 FAIL 项的开发建议（验收员只判对错，不改需求）
+```
+
+### 对用户回复时的验收话术（写死）
+
+**修复进行中（本回合 Phase C-fix）：** 默认**不**向用户发送「未通过验收」就停；修完并再验后再回复。
+
+**本回合已停且仍 FAIL 时，只允许：**
+
+> 未通过验收。FAIL：[区块] — 设计：[…]；实际：[…]。继续修改。
+
+**通过时，只允许：**
+
+> 已通过验收。对照 `[效果图文件名]` 1:1 对齐，专业验收报告见 spec。
+
+**禁止对用户说：**
+
+- 「基本完成，还剩…」
+- 「因为后端/数据所以…」
+- 「遗留项如下…」
+- 「除 XX 外已对齐…」
+- 「你可以先看看，后面再调…」
+
+### 验收失败后的动作（写死 · 立即修复闭环）
+
+**未通过 ≠ 停手汇报。** 检出 FAIL 后，默认动作是**立刻修**，不是把 FAIL 清单交给用户。
+
+```
+Step 6 结论 = 未通过验收
+    ↓
+Phase C-fix（本回合内立即执行，不得跳过）
+    ↓
+按 FAIL 清单逐条改代码 → 受影响区块 mini 复验
+    ↓
+Phase C 完整 Step 1–6 再跑一轮
+    ↓
+仍 FAIL → 重复（同一回合内尽可能多轮，直到通过或触达停止条件）
+```
+
+| 必须 | 禁止 |
+|------|------|
+| FAIL 一出清单，**同一任务内**马上进入 Phase C-fix 改代码 | 只输出 FAIL 报告就结束回合 |
+| 按 FAIL **优先级**修：文案 → 布局/尺寸 → 颜色/字体 → 图标 → 交互 | 修一条就宣称「差不多了」 |
+| 每修完一批 FAIL，对**受影响区块**做 mini 并排复验 | 未复验就删 FAIL 项 |
+| 2 轮完整验收仍多区 FAIL → baseline 整页重写后再验 | 第 3 轮在同文件叠补丁 |
+| 全部 FAIL 清零 → 结论才可改为「通过验收」 | 带着 FAIL 对用户说可验收 |
+
+**FAIL 修复优先级（写死）：**
+
+1. 缺整块 / 错 Tab / 错面板（结构 FAIL）
+2. 可见文案、按钮数量与 label（文案 FAIL）
+3. 列宽、间距、字号、颜色 hex（视觉 FAIL）
+4. 图标位、节点卡/连线/demo 密度（组件 FAIL）
+5. 假按钮、无反馈（交互 FAIL）
+
+**何时才可以只报告不修（唯一停止条件）：**
+
+- 用户明确说「先别改 / 只验收 / 只要报告」
+- 当前环境**确实无法**改代码（无写权限、无服务、无 Browser 且 FAIL 全为视觉类）— 结论仍为 **未通过验收**，只报 FAIL，**禁止**改称遗留
+
+**对用户的话术（修复进行中 vs 修复停住）：**
+
+- **本回合仍在修：** 不必每修一条都打扰用户；整轮修复+复验结束后再回复。
+- **本回合已停且仍 FAIL：** 仅允许 —— `未通过验收。FAIL：[区块] — 设计：[…]；实际：[…]。继续修改。`
+- **禁止：** 把 FAIL 包装成「建议」「后续」「你可以先看看」
+
+**与 safe-change-workflow §13 的关系：** 设计图任务的「验收 FAIL → 立即修复」**覆盖**非设计任务里的「2 次失败停手等用户」。
+
+---
+
+## Phase C 验收闭环（Mandatory Loop · 任务不得提前结束）
+
+> **写死规则：** 设计图任务只有两种状态——**「全部效果图 PASS」** 或 **「未通过验收，Agent 仍在修」**。  
+> **不存在**「改了一版先交给用户看看」「FAIL 清单当交付物」「问用户要不要继续」。
+
+### 闭环状态机
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Phase C：对 design_assets 中每一张效果图执行 Step 1–6   │
+└───────────────────────────┬─────────────────────────────┘
+                            ↓
+              ┌─────────────────────────────┐
+              │ 汇总：是否 ALL PASS？         │
+              │ （任一屏 FAIL = 模块 FAIL）   │
+              └─────────────┬───────────────┘
+                    否    │    是
+         ┌────────────────┴────────────────┐
+         ↓                                 ↓
+  Phase C-fix                      写入 spec 验收记录
+  （本任务内立即改代码）            结论：通过验收
+         ↓                                 ↓
+  bump cache → 浏览器复验                  允许结束任务
+         ↓                                 允许对用户宣告完成
+  回到 Phase C 顶部（完整 Step 1–6）
+         │
+         └── 循环，直到 ALL PASS 或触发「唯一停手条件」
+```
+
+### 每轮循环必做（不得省略）
+
+| 步骤 | 动作 |
+|------|------|
+| L1 | 列出模块**全部**效果图路径，建立「屏级 PASS/FAIL 表」 |
+| L2 | 对**每一张**图执行 Step 1–6；一张 FAIL → 整模块 FAIL |
+| L3 | FAIL → 按优先级修（结构 → 文案 → 布局 → 颜色 → 图标 → 交互） |
+| L4 | 改 HTML/CSS/JS/后端 demo → bump `?v=` cache |
+| L5 | 浏览器硬刷新，对**本轮回修区块**并排 mini 复验 |
+| L6 | **完整**再跑 Step 1–6（不得只复验「刚改的那块」就宣告 PASS） |
+| L7 | 仍 FAIL → 回到 L3；**2 轮完整验收仍多区 FAIL → baseline 整页重写** |
+| L8 | **全部 PASS** → 才可结束任务、才可对用户发完成宣告 |
+
+### 屏级 PASS 表（每轮必填 · 写入 spec 或回合内自检）
+
+```markdown
+| 效果图 | 侧栏 | 顶栏 | 左栏 | 画布 | 右栏 | 底栏 | 弹窗 | 屏结论 |
+|--------|------|------|------|------|------|------|------|--------|
+| tools-mode.png | | | | | | | — | PASS/FAIL |
+| nodes-mode.png | | | | | | | — | PASS/FAIL |
+| test-mode.png | | | | | | | — | PASS/FAIL |
+| modal.png | — | — | — | — | — | — | | PASS/FAIL |
+| **模块** | | | | | | | | **ALL PASS 才可结束** |
+```
+
+**模块结论：** 任一行 FAIL → **不得结束任务**。
+
+### 禁止的「假结束」模式（写死 · 再犯 = 流程违规）
+
+| 禁止 | 说明 |
+|------|------|
+| FAIL 清单 +「下一步建议」 | FAIL 不是交付物；必须 C-fix |
+| 「需要我继续吗？」 | 默认继续，不问用户 |
+| 「你可以先看看 / 硬刷新试试」 | 未 PASS 不得让用户代验收 |
+| 「基本完成 / 主要对了 / 除 XX 外」 | 任一 FAIL = 未完成 |
+| 只验 1 屏就停 | 多屏必须全验 |
+| spec 写「仍 FAIL」然后停手 | FAIL 后同任务内继续修 |
+| 改了一整夜仍 FAIL 却总结「已做增量」 | 增量不等于完成 |
+| 用后端/demo/接口当 PASS 理由 | 见《禁止替代验收》 |
+
+### 同屏多态（工具/节点/测试）额外门禁
+
+读图建档（A0-7）若记录「右栏 / 顶栏 / 左栏 / 日志 Tab **随模式变化**」，验收时必须**分别切到各自主态**再判 PASS：
+
+- [ ] 工具态右栏 = Inspector（基础 Tab 字段顺序与设计一致，含 Agent 内联块）
+- [ ] 节点态右栏 = Inspector（2 列网格 + 所有权 + 说明；Tab4 = 输入输出端口）
+- [ ] 测试态右栏 = 运行状态卡（非 Inspector 表单）
+- [ ] 顶栏选择器随左栏 Tab 切换（如 当前拓扑 vs 三层选择器）
+- [ ] 日志 Tab 名随左栏 Tab 切换
+
+**任一主态 FAIL → 模块 FAIL → 继续 C-fix。**
+
+### 多屏必验动作清单（有左栏 Tab / 弹窗的模块 · 不得省略）
+
+> 下列动作必须在 Browser **逐项执行并截图/记录**，不得用「代码里有」代替。
+
+| 设计图 | 必做动作（示例：拓扑编排） |
+|--------|---------------------------|
+| tools-mode | 左栏「工具」→ 选中设计指定节点（如 Game）→ 验 Inspector 字段顺序 + Agent 内联块 + 底栏 5 按钮 → 数画布 **5 节点 6 连线** + 边 label → 数模式日志 **6 行** |
+| nodes-mode | 左栏「节点」→ 验四宫格模板 + 节点表行数 → 验顶栏三层选择器 → 验 Inspector 2 列网格 + Tab4 输入输出端口 → 底栏保存/复制/禁用/删除 |
+| test-mode | 左栏「模式」→ 切「测试模式」→ 验右栏**运行状态卡**（非 Inspector）→ 63% / run_id → 验模式日志 **7 行** → 验路径高亮 |
+| manager-modal | 点「管理拓扑图」→ 验表格 **4 行** demo + 创建 Tab 双列表单 |
+
+**模块定制动作写入 spec「验收动作清单」；开验前从 spec 读取，开验时逐项打勾。**
+
+### 画布 / 节点 / 连线专项门禁
+
+| 验收项 | 设计 vs 实际判 FAIL 条件 |
+|--------|-------------------------|
+| 节点数量 | design demo N 个，画布多/少任一可见节点 |
+| 节点卡片 | 角色色、标题/副标题/ID/状态 pill、选中 glow 任一不符 |
+| 连线 | 条数、走向、端口 label（如 http:80 / tcp:9512）任一不符 |
+| 画布控件 | 设计有的 mini-map/缩放条必须有；设计无的浮动控件不得出现 |
+
+### 交互抽检表（in-scope · 每轮必填）
+
+```markdown
+| 控件 | 设计位置 | 已点击 | 有真实反馈 | 结论 |
+|------|----------|--------|------------|------|
+| 保存拓扑 | 顶栏 | | | PASS/FAIL |
+| 管理拓扑图 | 顶栏 → 弹窗 | | | PASS/FAIL |
+| … | | | | |
+```
+
+**任一 in-scope 控件「无反馈」→ 交互 FAIL → C-fix。**
+
+### 数据链路与运行时门禁（防止「后端改了浏览器仍旧」）
+
+| 门禁 | 要求 |
+|------|------|
+| normalize 保字段 | JS `normalize*` 不得剥掉 `ui.list_only / remote / network` 等设计依赖字段 |
+| demo 升级生效 | 后端 `design_reference` 升级后须 reload 拓扑并在 Browser 验证 desc/边 label/节点数 |
+| cache 真生效 | bump `?v=` 后 Browser Network 确认新 JS/CSS，非 304 旧版 |
+| entrypoint 一致 | 验收 URL = 用户 URL；改 helper 不够，须验 template 渲染结果 |
+| 服务存活 | 验收前确认端口健康；Connection refused = 不得判 PASS |
+
+### 实现反模式速查（与 rule《历史事故清单》同步）
+
+| 反模式 | 处置 |
+|--------|------|
+| tools/nodes 共用一套 Inspector HTML | 分态重写 + `data-inspector-layout` |
+| CSS 2800 行叠 vN 补丁仍 FAIL | 回 baseline 整页重写 |
+| 语义类型/按钮文案/demo 行数错 | 文案清单 FAIL → 优先修 |
+| 改 JS 不 bump cache | 用户看到旧 UI = 验收无效 |
+| 只 py_compile 不 Browser | 不得结论 PASS |
+| normalize 剥字段导致 UI 与 seed 不一致 | normalize 须保留设计字段；Browser 复验 |
+| 后端 vN 升级但浏览器仍旧数据 | reload + 验 API/渲染双重确认 |
+| 写了 skill/rule 但未跑 Phase C | **流程 FAIL**，与用户质问等效 |
+
+### 唯一允许停手不修的条件
+
+1. 用户**明确**说：「只验收 / 先别改 / 停 / 只要报告」
+2. 环境**确实**无法写代码或开 Browser（结论仍为 **未通过验收**）
+
+**除此以外，Agent 不得主动结束设计图任务。**
+
+---
+
+## 设计图深度读图（Phase A0 · 写代码前必做）
+
+> **问题根因：** 只填 token 表、不逐图像素读图 → 实现时「结构像」但间距/文案/图标/ demo 态全错。  
+> **Phase A0 目标：** 把设计图变成**可执行的施工图纸**，而不是扫一眼就开始写 HTML。
+
+**顺序：** Phase A0（读图建档）→ Phase A（填表）→ Phase B（实现）。**跳过 A0 禁止写代码。**
+
+### A0-1 设计图清点（每张必做）
+
+对 `docs/design_assets/` 中**每一张**效果图建立档案：
+
+| 字段 | 填什么 |
+|------|--------|
+| 文件名 | 如 `xxx-tools-mode-reference.png` |
+| 屏幕名称 | 如「工具态主视图」 |
+| 主态说明 | 哪个 Tab 选中、哪个弹窗打开、哪条数据选中 |
+| 基准视口 | 默认 1440×900（与设计导出一致） |
+| 与同模块其它图的关系 | 共用顶栏？右栏切换？ |
+
+### A0-2 分区标注（单屏 · 自上而下）
+
+用**固定分区名**划区（全模块统一用语，写入 spec）：
+
+`侧栏 | 顶栏 | 规则条 | 工具条 | 左控制台 | 画布 | 右面板 | 底栏日志 | 弹窗`
+
+对每个分区记录（**来自设计图像素，不是来自现有代码**）：
+
+1. **占屏比例** — 宽约 % 或 px（如左栏 200px、右栏 360px）
+2. **可见子元素清单** — 逐项列出：Tab 名、按钮文案、表头、表单项 label、KPI 数字
+3. **元素计数** — 按钮几个、Tab 几个、表格列几列、节点几个（design 为 demo 态则**记录 demo 数量**）
+4. **主/次/危险按钮** — 哪个是 primary、哪个是 outline/danger
+5. **选中/激活态** — 哪个 Tab/行/卡片有高亮、描边色
+6. **滚动区** — 哪块独立滚动
+
+### A0-3 可见文案抽取（OCR 级 · 不得 paraphrase）
+
+- 逐区抄写设计图上**所有**可见中文/英文/数字/placeholder
+- 写入 spec「文案清单」— 错一字即后续验收 FAIL
+- 含：按钮、Tab、表头、提示条、节点 ID、日志 demo 行、badge 数字
+
+### A0-4 图标与控件位图
+
+- 每个图标位：位置 + 视觉描述（线框/实心、约 px）+ 计划选用的 icon
+- 无图标处**不得**在实现里加图标；有图标处**不得**留空
+
+### A0-5 颜色与字阶抽样
+
+从设计图**目视 + 必要时取色**写入 token 表（至少）：
+
+- 页面背景、卡片背景、主色、边框色、成功/警告/危险色
+- 标题 / 正文 / 辅助 三档字号+字重
+- 圆角、阴影有无
+- 节点/标签/环境 tag 等**语义色**（逐类记录 hex）
+
+### A0-6 组件级细目（易漏项 · 必查）
+
+读图时**专门扫一遍**下表，在 spec 打勾或记 FAIL 风险：
+
+| 易漏项 | 读图时要回答 |
+|--------|----------------|
+| 顶栏按钮文案 | 是「创建拓扑图」还是「+ 新建拓扑」？ |
+| 右栏随 Tab/模式变化 | 工具态 Inspector vs 测试态运行卡？**工具态 vs 节点态 Inspector 字段是否不同？** |
+| 右栏基础 Tab 字段顺序 | 工具态是否**无**节点名称/ID/所有权块，而有 **Agent 内联块**？节点态是否 2 列网格 + 说明？ |
+| 右栏 Tab4 随模式变化 | 工具态 Tab4=监控指标 vs 节点态 Tab4=输入输出端口？ |
+| 左栏三态差异 | 工具/模式/节点 左栏内容是否完全不同？ |
+| 画布 demo | 几个节点、几条边、边 label 文案、选中哪节点 |
+| 日志区 Tab 名 | 模式日志 vs 模板日志 是否随左栏变化 |
+| 弹窗 | 打开态、表格列、底部分页、表单双列布局 |
+| 空态 vs demo 态 | 设计图是有数据 demo — 实现必须用同等密度 |
+
+### A0-7 跨屏一致性对照
+
+多屏模块（如 4 张拓扑图）必做：
+
+| 检查项 | 要求 |
+|--------|------|
+| 顶栏/侧栏 | 四屏是否同一套结构、文案一致 |
+| 共用组件 | 按钮/输入框/Tab 样式是否一致 |
+| 仅差异部分 | 明确列出「仅本屏不同」的区块（如右栏、左栏） |
+| 实现顺序建议 | 先共用壳 → 再逐屏差异（写入 spec） |
+
+### A0-8 产出：设计图读图建档表（spec 必含）
+
+```markdown
+## 设计图读图建档
+
+### 屏 1：[文件名]
+- 主态：
+- 分区尺寸（px/%）：
+- 本屏独有 vs 共用：
+
+| 分区 | 子元素清单 | 计数 | 选中态 |
+|------|------------|------|--------|
+| 顶栏 | … | 按钮 3 | — |
+
+### 屏 1 文案抽取（逐字）
+| 位置 | 设计稿原文 |
+|------|------------|
+
+### 屏 1 → 实现核对点
+- [ ] 右栏是 Inspector 不是运行卡
+- [ ] 画布 5 节点 + 6 边
+- …
+```
+
+**Phase A 填表（token/尺寸/图标/11维/交互）必须引用 A0 建档，不得与 A0 矛盾。**
+
+### 读图工具要求
+
+- **必须**打开/读取 `docs/design_assets/` 原图（Read 工具或 Browser 并排）
+- **禁止**只读旧 spec、旧代码、旧实现来「推测」设计图长什么样
+- **禁止**未读完全部效果图就开始 Phase B
+
+---
+
+## 设计图是唯一真相（11 维必盯 · 验收维度）
+
+> 11 维用于 **Phase C 判定**；**Phase A0** 负责把设计图读成可施工清单，本节不替代读图。
+
+实现与验收必须逐维对照设计图，**全部一致**才可交付：
+
+1. **布局** — 分区结构、列宽比例、对齐方式、是否单卡片/嵌套、滚动区域
+2. **间距** — padding / margin / gap；组件之间、组内、组间距离
+3. **字体格式** — 字体族、字重、行高、字间距、是否大写/数字等宽
+4. **字号层级** — 标题 / 副标题 / 正文 / 辅助 / 表格 / 标签 各级字号
+5. **排版** — 换行、截断、单行/多行、表单 label 与控件对齐（上下/左右）
+6. **风格与颜色** — 背景、边框、主色、渐变、圆角、阴影、状态色（成功/警告/危险/信息）
+7. **小图标** — 位置、尺寸、线宽、颜色；设计稿有图标处**必须有可视觉匹配的图标**（可从开源 icon 库选取近似款，并在 spec 记录来源，不得留空或用纯文字凑合）
+8. **适配** — 设计稿基准宽度下的表现；若 spec 定义断点，各断点不得撑破/重叠/错位
+9. **视觉效果** — 描边粗细、hover/active 变化、选中高亮、分割线、badge、chip、进度条样式
+10. **反馈** — loading / empty / error / success / disabled / toast / 确认框 的文案与样式
+11. **描述与文案** — 可见中文/英文与 design 完全一致（含 placeholder、按钮、tab、表头、提示条）
+
+**「结构像」不等于完成。** 仅列宽、按钮数量、tab 名称正确，但间距/字号/颜色/图标任一不对 → **未完成**。
+
+---
+
+## 强制文件
 
 ### Rules
 
@@ -23,123 +612,158 @@ description: 用于任何“用户给了设计图、截图、视觉稿，要求�
 - `.cursor/rules/design-faithful-ui-rule.md`
 - `.cursor/rules/safe-change-workflow.md`
 
-### Documentation
+### Docs
 
 - `docs/design_specs/README.md`
 - `docs/design_specs/_design-module-spec-template.md`
 - `docs/design_assets/README.md`
-- the current module spec under `docs/design_specs/*.md`
+- 当前模块 `docs/design_specs/<模块>.md`
 
-## Non-negotiable mindset
+---
 
-- The design is the acceptance target.
-- Matching code structure is not enough.
-- Matching the outer shell is not enough.
-- Matching runtime data is not enough.
-- Matching only the interface is not enough.
-- Any claimed feature must be real, interactive, and wired end to end.
-- Do not ship demo-only buttons, fake KPI cards, fake action menus, or dead sections unless the user explicitly approves a placeholder.
-- Frontend behavior and backend business capability must stay aligned; do not leave a page with controls that have no real effect, and do not leave backend-only features with no usable UI when they are in scope.
-- Buttons, functional cards, alerts, status areas, and action partitions should use semantic color differences based on status and risk, but those colors must still fit the page's overall visual language.
-- Any realtime value, monitoring card, progress indicator, or trend chart must be driven by live runtime sampling or in-memory state, not by persisted snapshots or visual filler data.
-- Do not fake curves by repeating one value, and do not fake progress by replaying disk-restored state.
-- The rendered browser result must match the design.
-- If obvious differences remain, the task is not complete.
+## 强制执行顺序（不得跳步）
 
-## Mandatory execution order
+### Phase A0 — 设计图深度读图（未做完不得填表、不得写代码）
 
-1. Read:
-   - `AGENTS.md`
-   - `.cursor/rules/design-faithful-ui-rule.md`
-   - `.cursor/rules/safe-change-workflow.md`
-2. Open the module spec under `docs/design_specs/`.
-3. If the module spec does not exist, create it immediately.
-4. Before coding, write or update the module spec with a design-analysis checklist that includes:
-   - shell width and alignment
-   - left navigation
-   - top bar / breadcrumb / title area
-   - button groups
-   - KPI cards
-   - filters / search / batch tools
-   - main content primary state
-   - tabs / tables / charts / pagination
-   - which actions are real and what backend business flow each one triggers
-   - what success, failure, empty, loading, disabled, and permission-limited feedback the user sees
-   - status/function/risk color semantics that still match the page style
-   - empty / loading / error / hover / active / disabled / selected states
-5. Check `git status`.
-6. Create a baseline commit for the current state and push it to the remote branch before starting the new implementation pass.
-7. If the baseline push fails, stop and report the block.
-8. Decide whether to rewrite or extend; if the design conflicts with the old shell, rewrite.
-9. Implement with clear separation between template, style, script, route, and data shaping.
-10. If the change touches route, controller, aggregation, template selection, process, or cache version:
-   - verify the real runtime entrypoint
-   - verify the real process is serving the code
-   - verify cache-busting versions are updated
-11. After coding, run syntax and compile checks.
-12. After coding, use browser automation to inspect the rendered local page when the tool is available.
-13. Compare the rendered page against the design section by section.
-14. Verify every implemented feature is real end to end, not only visually present.
-15. Only if differences are cleared may the task be called complete.
+1. 打开 `docs/design_assets/` **全部**效果图（Read 原图或 Browser 并排）
+2. 按上文 **《设计图深度读图》A0-1～A0-8** 逐屏建档，写入 spec「设计图读图建档」
+3. 完成 **A0-6 易漏项** 核对与 **A0-7 跨屏一致性** 对照
+4. **禁止**跳过 A0 直接填 token 表或写 HTML/CSS
 
-## Browser self-verification
+### Phase A — 读规与填表（A0 完成后）
 
-- If Chrome automation is available, use it.
-- If Browser automation is available, use it.
-- Do not rely only on source files when a browser automation tool is present.
-- Use the browser check to catch:
-  - wrong spacing
-  - wrong widths
-  - wrong button placement
-  - wrong card count or density
-  - wrong icon treatment
-  - wrong table alignment
-  - dead clicks or fake actions
-  - frontend/backend behavior mismatches
-  - status colors that are missing, misleading, or visually off-style
-  - overflow or stale shell issues
+5. 读 `AGENTS.md`、本 skill、design-faithful-ui-rule、`safe-change-workflow.md`
+6. 打开/更新模块 spec；**不存在则先创建**
+7. 无线程图则归档到 `docs/design_assets/` 并在 spec 记录文件名
+8. **设计拆解填表（必做，且须与 A0 一致）**：
+   - **设计 token 表**、**分区尺寸表**、**图标清单**、**文案清单**（来自 A0-3，不得 paraphrase）
+   - **11 维 × 区块对照表**、**交互清单**
+9. `git status` → baseline commit + push（push 失败则**停止**并报告，不得继续改 UI）
 
-## Required acceptance checklist
+### Phase B — 实现（冲突则重写，禁止叠补丁）
 
-Before claiming completion, verify:
+10. 旧壳与设计冲突 → **整页重写** HTML/CSS，不在旧 CSS 上叠「fidelity-vN」补丁
+11. 样式 **scoped** 到模块根 class，必须隔离全局 CSS 污染
+12. 模板 / 样式 / 脚本 / 路由 / 数据分层；**禁止**同一 CSS 多轮 fidelity 叠补丁
+13. 改静态资源 → bump cache 版本 → 确认浏览器加载新版本
 
-- The rendered page uses the intended route and template.
-- The intended service process is serving the updated code.
-- Static resource cache versions were bumped when needed.
-- The rendered page has no obvious visual mismatch against the design.
-- The primary state matches the design primary state.
-- The navigation, buttons, KPI cards, filters, content area, pagination, tabs, tables, and charts match the design.
-- Every visible in-scope action, button, menu item, KPI card jump target, and functional section is real and interactive, not decorative only.
-- Frontend and backend business flows are aligned for the implemented scope.
-- Success, error, disabled, empty, and in-progress feedback are real and visible where needed.
-- Status-, risk-, and function-based color differentiation exists where the design or behavior calls for it, and still fits the overall interface style.
-- Changed JS passes syntax checks.
-- Changed Python passes compile checks.
-- Changed files are free of visible encoding issues.
+### Phase C — 专业验收 + 验收闭环（未 ALL PASS 不得结束任务）
 
-## Forbidden shortcuts
+14. **Agent 回合门禁 R1–R6 自检**（见上文《Agent 回合门禁》）
+15. JS `node --check`；Python `python -m py_compile`
+16. 确认服务健康；打开真实页面 URL
+17. Read **全部** design_assets 原图（G1）
+18. **独立 UI 验收员** 对 **每一张** 效果图执行 Step 1–6 + **多屏必验动作清单** + **交互抽检表**
+19. 填写「屏级 PASS 表」+「画布专项」+「数据链路门禁」
+20. **若任一项 FAIL** → **不得结束任务** → Phase C-fix → bump cache → 完整再验（L1–L8）
+21. **仅当 Agent 完工门禁 F1–F7 全部勾选** → 写入 spec → 才可对用户宣告完成
 
-- Do not stop at "close enough".
-- Do not stop at "the data is correct now".
-- Do not stop at "the template looks right in code".
-- Do not skip browser verification when the tool is available.
-- Do not skip the design-analysis checklist.
-- Do not skip the baseline commit and push.
-- Do not say "done" while obvious differences remain.
-- Do not wire only the API without the corresponding UI behavior.
-- Do not wire only the UI shell without the corresponding backend effect.
-- Do not leave buttons, menus, cards, tabs, or sections clickable in appearance but non-functional in reality.
-- Do not use one undifferentiated button style for actions that have clearly different meaning, state, or risk.
-- Do not wait for the user to point out mismatches that should have been caught in your own review.
+**禁止在 Step 20 与 21 之间结束回合。禁止跳过 Step 17（Read 原图）。**
 
-## Delivery requirements
+---
 
-- State which design spec governed the implementation.
-- State which design images or thread screenshots were used.
-- State that baseline commit and remote push happened before the implementation pass, or report the blocker.
-- State which runtime entrypoints, process ids, and cache versions were checked.
-- State whether browser verification was performed.
-- State whether the implemented actions were verified as real end-to-end behavior.
-- State whether frontend and backend scope were aligned.
-- State whether differences were fully cleared.
-- If any difference remains, list it explicitly and do not claim 1:1 completion.
+## 设计拆解最小产出（spec 里必须有）
+
+```markdown
+### 设计 token
+| token | 值 | 用于 |
+| --primary | #2563eb | 主按钮 |
+| --text-title | 17px/800 | 页面标题 |
+...
+
+### 分区尺寸（px）
+| 区域 | 宽 | 高 | 备注 |
+| 左栏 | 196 | 100vh | |
+...
+
+### 图标清单
+| 位置 | 设计描述 | 选用 | 来源 |
+| 顶栏帮助 | 圆形 ? | heroicons question-mark-circle | ...
+
+### 文案清单（与设计图一致）
+| 元素 | 文案 |
+| 主按钮 | 创建新拓扑 |
+...
+```
+
+缺 **A0 建档 + 四表 + 11 维** → **不得开始编码**。
+
+---
+
+## 浏览器验收门禁
+
+> 本节只列**常见问题类型**。**判定表与报告模板唯一来源**是上文《专业验收机制》— 不得另填第二套表格。
+
+**Browser / Chrome MCP 可用时：** 必须执行 Step 1 并排取证。  
+**不可用时：** 不得结论为「通过验收」；只能输出「未通过验收（未完成浏览器并排对照）」+ 已能做的静态检查项。
+
+必须捕获的问题类型：
+
+- 间距偏大/偏小（哪怕 4px）
+- 列宽比例错误
+- 按钮高度、圆角、颜色与 global `.btn` 污染
+- 多一行/少一行按钮
+- tab 下划线 / active 色不对
+- 图标缺失或用错
+- 字体偏大偏小、字重不对
+- 假点击、无反馈
+- 旧壳 / 旧 CSS 缓存
+- overflow、错位、盒中盒
+
+**填写与结论：** 使用《专业验收机制》中的「专业验收判定表」与「专业验收报告模板」。任一 FAIL → **未通过验收**，不得交付。
+
+---
+
+## 图标策略
+
+- 设计稿中每一个图标位都要有对应渲染结果
+- 优先：项目已有 icon / SVG sprite
+- 次选：开源库（Heroicons、Lucide、Phosphor、Iconify 等）选**视觉最接近**款
+- 在 spec「图标清单」记录选用与来源
+- **禁止**：用纯文字、emoji、空白 div 长期替代设计稿图标（临时调试须在本轮结束前替换）
+
+---
+
+## CSS / 实现反模式（禁止）
+
+- ❌ 在同一 CSS 文件连续叠 v3/v4/v5「fidelity pass」
+- ❌ 未 scoped 的样式导致全局 `.btn` / `.panel` 串页
+- ❌ 只改 JS 数据结构不改渲染样式就声称对齐设计
+- ❌ 只改 template 不 bump 静态资源版本
+- ❌ 用「用户环境数据少」解释节点数/表格行数差异，但**组件样式**仍必须 1:1
+- ❌ 连续 2 轮视觉修复仍明显不对 → **必须回 baseline 重写**，不得第 3 轮叠补丁（见 safe-change-workflow §6）
+
+---
+
+## 交付报告（必须包含）
+
+> **交付报告 = 专业验收报告。** 未通过验收时，Agent **不得结束任务**（除非用户明确要求停手）；报告只用于 spec 记录，不能代替继续开发。
+
+对用户回复中**必须**写清：
+
+1. governing spec 与设计图文件名（**全部**效果图列表）
+2. baseline commit / push 是否完成（或阻塞原因）
+3. 运行时 URL、进程、cache 版本
+4. **屏级 PASS 表** + **专业验收报告**（结论：通过验收 / 未通过验收）
+5. **FAIL 项**（仅「设计 vs 实际」；**禁止**原因解释与遗留清单）
+6. 已验证的真实交互列表（**仅当 ALL PASS**）
+7. 改动文件与校验命令
+
+**ALL PASS 前禁止向用户发送：** 回合总结、增量说明、下一步建议、询问是否继续。
+
+**未通过验收时，禁止在交付报告中出现：** 遗留、待办、后续、因为、由于、已知问题、完成度。
+
+---
+
+## 与功能真实性的关系
+
+- 视觉 1:1 与功能真实 **同时** 满足才可交付成品
+- 不允许：视觉假完成（像设计但不能点）
+- 不允许：功能真完成但视觉未对齐设计仍交差
+- 实时指标必须来自 live/runtime，不得假曲线（见 AGENTS.md）
+
+---
+
+## 一句话原则
+
+**用户花钱买的是设计图上的界面。流程必须执行到位：先 Read 全部效果图 → A0 建档 → 实现 → 全屏全主态 Browser 验收 → FAIL 则 C-fix 直到 F1–F7 全勾 —— 没有写规则代替执行、没有部分验收、没有差不多。**

@@ -1,5 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform.css?v=20260605-topology-fidelity-v2">
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260605-topology-fidelity-v2">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite3">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -18,84 +17,67 @@
     <nav class="topology-nav-tree">
       <div class="topology-nav-group">
         <span>工作台</span>
-        <a href="/admin/ops-platform?project_id={{ project_id }}">工作台</a>
-        <a href="/admin/ops-platform?project_id={{ project_id }}">总览看板</a>
+        <a href="/admin/ops-platform?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9.5z"/></svg>工作台</a>
+        <a href="/admin/ops-platform?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h16v2H4v-2z"/></svg>总览看板</a>
       </div>
       <div class="topology-nav-group">
         <span>架构与编排</span>
-        <a class="active" href="/admin/ops-platform/topology?project_id={{ project_id }}&env_key={{ env_key }}&topology_id={{ topology_id }}">拓扑编排</a>
-        <a href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 与服务器编排</a>
+        <a class="active" href="/admin/ops-platform/topology?project_id={{ project_id }}&env_key={{ env_key }}&topology_id={{ topology_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M6 6h5v5H6V6zm7 0h5v5h-5V6zM6 13h5v5H6v-5zm7 3h5v2h-5v-2z"/></svg>拓扑编排</a>
+        <a href="/admin/ops-platform/agent-control?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a3 3 0 100 6 3 3 0 000-6zM5 20v-2a4 4 0 014-4h6a4 4 0 014 4v2H5z"/></svg>Agent 与服务器编排</a>
       </div>
       <div class="topology-nav-group">
         <span>执行与诊断</span>
-        <a href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
-        <a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点运维</a>
-        <a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">拓扑诊断</a>
+        <a href="/admin/ops-platform/actions?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg>动作执行</a>
+        <a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v5l4 2-.9 1.5L11 13V7h2z"/></svg>节点运维</a>
+        <a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 6h16v2H4V6zm2 4h12v2H6v-2zm2 4h8v2H8v-2z"/></svg>拓扑诊断</a>
       </div>
       <div class="topology-nav-group">
         <span>治理与合规</span>
-        <a href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
-        <a href="/admin/approval">审批中心</a>
+        <a href="/admin/ops-platform/change-governance?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg>变更治理</a>
+        <a href="/admin/approval"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 11l2 2 4-4 2 2-6 6-4-4 2-2zM5 3h14a2 2 0 012 2v14l-7-3-7 3V5a2 2 0 012-2z"/></svg>审批中心</a>
       </div>
     </nav>
 
     <div class="topology-nav-footer">
-      <button class="topology-collapse-btn" type="button">收起菜单</button>
+      <button class="topology-collapse-btn" type="button"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>收起菜单</button>
     </div>
   </aside>
 
   <main class="topology-shell-main">
     <section class="topology-page-header">
-      <div class="topology-page-title">
-        <span class="topology-page-icon">✦</span>
-        <div>
+      <div class="topology-header-row">
+        <div class="topology-page-title">
+          <span class="topology-page-icon"><svg viewBox="0 0 24 24"><path d="M6 6h5v5H6V6zm7 0h5v5h-5V6zM6 13h5v5H6v-5zm7 3h5v2h-5v-2z"/></svg></span>
           <div class="topology-page-heading">拓扑编排工作区</div>
-          <div class="topology-page-subtitle">项目 / 环境 / 拓扑三层管理，节点与 Agent / 服务实例真实绑定，运行与测试状态实时回流。</div>
         </div>
-      </div>
-
-      <div class="topology-header-actions">
-        <div class="topology-header-selects">
-          <label class="topology-header-select">
-            <span>项目</span>
-            <select id="projectSelector" class="sel">
-              <option value="{{ project_id }}">{{ project_id }}</option>
-            </select>
-          </label>
-          <label class="topology-header-select">
-            <span>环境</span>
-            <select id="envSelector" class="sel"></select>
-          </label>
-          <label class="topology-header-select topology-header-select-wide">
-            <span>拓扑</span>
-            <select id="topologySelector" class="sel"></select>
-          </label>
-        </div>
-
-        <div class="topology-header-search">
-          <input id="globalTopologySearch" class="inp" placeholder="搜索 Agent、节点、拓扑">
-        </div>
-
-        <div class="topology-header-buttons">
-          <button id="btnCreateTopologyHeader" class="btn primary" type="button">新建拓扑</button>
+        <div class="topology-header-controls">
+          <label class="topology-header-select-inline"><span>项目</span><select id="projectSelector" class="sel topology-header-sel"></select></label>
+          <label class="topology-header-select-inline"><span class="topology-header-env-label">环境</span><select id="envSelector" class="sel topology-header-sel"></select></label>
+          <label class="topology-header-select-inline topology-header-select-wide"><span>当前拓扑</span><select id="topologySelector" class="sel topology-header-sel"></select></label>
+          <button id="btnCreateTopologyHeader" class="btn primary" type="button">创建拓扑图</button>
           <button id="btnManageTopologyHeader" class="btn" type="button">管理拓扑图</button>
-          <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回总览</a>
+          <div class="topology-header-search"><input id="globalTopologySearch" class="inp" placeholder="搜索 Agent、节点、拓扑"></div>
+          <div class="topology-header-utilities">
+            <button id="btnTopologyHelp" class="topology-util-btn" type="button" title="帮助"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 014.5 1.5c0 2-2.5 2-2.5 4M12 17h.01"/></svg></button>
+            <button id="btnTopologyNotify" class="topology-util-btn" type="button" title="通知"><svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 00-5 5v3l-2 2v1h14v-1l-2-2V8a5 5 0 00-5-5zM10 19a2 2 0 004 0"/></svg><span class="topology-notify-badge">12</span></button>
+            <span class="topology-user-avatar">运</span>
+            <span class="topology-user-name">运维管理员</span>
+            <span class="topology-user-arrow">▾</span>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="topology-rule-banner">
-      <span class="rule-dot">i</span>
-      <span>规则提示：节点右侧的 + 可添加合法下游；选中节点或连线后可删除；系统会保护关键链路，不允许非法结构保存。</span>
-    </section>
-
-    <section class="topology-toolbar-row">
-      <div class="topology-toolbar-group topology-toolbar-group-history">
-        <button id="toolUndo" class="btn" type="button">撤销</button>
-        <button id="toolRedo" class="btn" type="button">重做</button>
-        <button id="toolReset" class="btn" type="button">重置视图</button>
+    <section class="topology-rule-toolbar">
+      <div class="topology-rule-banner">
+        <span class="rule-dot"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16h.01"/></svg></span>
+        <span class="topology-rule-text">规则提示：节点右侧 + 可添加合法下游；选中节点或连线后可删除；系统会保护关键链路。</span>
       </div>
-      <div class="topology-toolbar-group">
+      <div class="topology-canvas-toolbar">
+        <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回总览</a>
+        <button id="toolUndo" class="btn tw-hidden" type="button">撤销</button>
+        <button id="toolRedo" class="btn tw-hidden" type="button">重做</button>
+        <button id="toolReset" class="btn tw-hidden" type="button">重置视图</button>
         <button id="toolAuto" class="btn" type="button">自动布局</button>
         <button id="btnValidateTopology" class="btn" type="button">检查连接</button>
         <button id="btnTopologyMore" class="btn" type="button">更多操作</button>
@@ -103,456 +85,363 @@
       </div>
     </section>
 
-    <section class="topology-main-grid">
-      <aside class="topology-left-panel">
-        <div class="topology-left-tabs">
-          <button class="topology-left-tab active" type="button" data-topology-left-tab="tools">工具</button>
-          <button class="topology-left-tab" type="button" data-topology-left-tab="mode">模式</button>
-          <button class="topology-left-tab" type="button" data-topology-left-tab="nodes">节点</button>
-        </div>
+    <section class="topology-workspace-shell">
+      <section class="topology-main-grid">
+        <aside class="topology-left-panel">
+          <div class="topology-left-tabs">
+            <button class="topology-left-tab active" type="button" data-topology-left-tab="tools">工具</button>
+            <button class="topology-left-tab" type="button" data-topology-left-tab="mode">模式</button>
+            <button class="topology-left-tab" type="button" data-topology-left-tab="nodes">节点</button>
+          </div>
 
-        <div class="topology-left-pane" data-left-panel="tools">
-          <div class="topology-card">
-            <div class="topology-card-title">工具</div>
+          <!-- 工具 -->
+          <div class="topology-left-pane" data-left-panel="tools">
             <div class="topology-tool-list">
-              <button id="toolSelect" class="topology-tool-btn is-active" type="button">选择</button>
-              <button id="toolConnect" class="topology-tool-btn" type="button">重新布局</button>
-              <button id="toolUndoInline" class="topology-tool-btn" type="button">撤销</button>
-              <button id="toolRedoInline" class="topology-tool-btn" type="button">重做</button>
-              <button id="toolResetInline" class="topology-tool-btn" type="button">重置视图</button>
-              <button id="toolSaveInline" class="topology-tool-btn" type="button">保存</button>
-              <button id="btnApplyBlueprint" class="topology-tool-btn" type="button">蓝图模板</button>
-              <button id="btnAutoBindAgents" class="topology-tool-btn" type="button">自动绑定</button>
+              <button id="toolSelect" class="topology-tool-btn is-active" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M4 4l7 7-7 7V4zm9 0h7v14h-7V4z"/></svg></span><span class="tool-label">选择</span></button>
+              <button id="toolConnect" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"/></svg></span><span class="tool-label">重新布局</span></button>
+              <button id="toolUndoInline" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M7 7h8a4 4 0 010 8H9"/><path d="M7 11l-3-3 3-3"/></svg></span><span class="tool-label">撤销</span><kbd>Ctrl+Z</kbd></button>
+              <button id="toolRedoInline" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M17 7H9a4 4 0 000 8h6"/><path d="M17 11l3-3-3-3"/></svg></span><span class="tool-label">重做</span><kbd>Ctrl+Y</kbd></button>
+              <button id="toolResetInline" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M12 5V2l4 4-4 4V7a5 5 0 100 10"/></svg></span><span class="tool-label">重置视图</span></button>
+              <button id="toolSaveInline" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v13a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M7 3v5h8V3M7 13h10v6H7v-6z"/></svg></span><span class="tool-label">保存</span><kbd>Ctrl+S</kbd></button>
+              <button id="btnApplyBlueprint" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 3h7v4h-7v-4z"/></svg></span><span class="tool-label">蓝图模板</span></button>
+              <button id="btnAutoBindAgents" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M8 12h8M12 8v8M5 5l14 14"/></svg></span><span class="tool-label">自动绑定</span></button>
             </div>
+            <select id="flowBlueprintSelect" class="sel tw-hidden"><option value="">请选择流程模板</option></select>
+            <button id="toolReset2" class="btn tw-hidden" type="button">重置视图</button>
+            <button id="btnDeleteEdgeInline" class="btn tw-hidden" type="button">删除连线</button>
+            <span id="edgeSelectionHint" class="tw-hidden">未选中连线</span>
+            <span id="zoomLabel" class="zoom-pill tw-hidden">100%</span>
           </div>
 
-          <div class="topology-card">
-            <div class="topology-card-title">流程工具</div>
-            <select id="flowBlueprintSelect" class="sel">
-              <option value="">请选择流程模板</option>
-            </select>
-            <div class="topology-inline-actions">
-              <button id="toolReset2" class="btn" type="button">重置视图</button>
-              <button id="btnDeleteEdgeInline" class="btn" type="button">删除连线</button>
-            </div>
-            <div class="topology-inline-meta">
-              <span id="edgeSelectionHint" class="state-pill state-info">未选中连线</span>
-              <span id="zoomLabel" class="zoom-pill">100%</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="topology-left-pane is-hidden" data-left-panel="mode">
-          <div class="topology-card">
-            <div class="topology-card-title">运行模式</div>
+          <!-- 模式 -->
+          <div class="topology-left-pane is-hidden" data-left-panel="mode">
             <div class="topology-mode-switcher">
               <button class="mode-btn" data-mode-value="edit" type="button">编辑模式</button>
               <button class="mode-btn" data-mode-value="run" type="button">运行模式</button>
               <button class="mode-btn" data-mode-value="test" type="button">测试模式</button>
             </div>
             <div class="topology-mode-lock">
-              <span>模式锁定</span>
+              <span class="mode-lock-label">模式锁定</span>
               <span id="modeLockStatus" class="mode-lock-status">已解锁</span>
-              <label class="mode-lock-switch">
-                <input id="modeLockSwitch" type="checkbox">
-                <i></i>
-              </label>
-              <button id="modeLockBtn" class="btn topology-hidden-select" type="button">锁定</button>
-              <button id="modeUnlockBtn" class="btn topology-hidden-select" type="button" style="display:none">解锁</button>
+              <label class="mode-lock-switch"><input id="modeLockSwitch" type="checkbox"><i></i></label>
+              <button id="modeLockBtn" class="btn tw-hidden" type="button">锁定</button>
+              <button id="modeUnlockBtn" class="btn tw-hidden" type="button">解锁</button>
             </div>
-            <select id="modeSelect" class="sel topology-hidden-select">
+            <select id="modeSelect" class="sel tw-hidden">
               <option value="edit">编辑模式</option>
               <option value="run">运行模式</option>
               <option value="test">测试模式</option>
             </select>
             <div id="modeHint" class="topology-mode-hint">当前处于编辑模式，可调整拓扑结构、节点属性和绑定信息。</div>
-          </div>
-
-          <div class="topology-card" id="runBar" style="display:none">
-            <div class="topology-card-title">运行模式</div>
-            <div class="topology-inline-actions vertical">
-              <button id="btnRunStartAll" class="btn primary" type="button">一键启动全流程</button>
-              <button id="btnRunStopAll" class="btn danger" type="button">一键停止全流程</button>
+            <div class="topology-inline-actions vertical" id="runBar" style="display:none">
+              <button id="btnRunStartAll" class="btn btn-outline-primary" type="button">一键启动全流程</button>
+              <button id="btnRunStopAll" class="btn btn-outline-danger" type="button">一键停止全流程</button>
             </div>
-          </div>
-
-          <div class="topology-card" id="testBar" style="display:none">
-            <div class="topology-card-title">测试模式</div>
-            <label class="topology-field-label">测试范围</label>
-            <select id="testScope" class="sel">
-              <option value="full">完整架构</option>
-              <option value="segment">中间链路段</option>
-            </select>
-            <label class="topology-field-label">起点节点</label>
-            <select id="testStartNode" class="sel"></select>
-            <label class="topology-field-label">终点节点</label>
-            <select id="testEndNode" class="sel"></select>
-            <div class="topology-inline-actions">
-              <button id="btnTestSmoke" class="btn primary" type="button">单元测试</button>
-              <button id="btnTestStress" class="btn" type="button">压力测试</button>
+            <div id="testBar" style="display:none">
+              <div class="topology-field-label">测试范围</div>
+              <div class="topology-radio-group" id="testScopeGroup">
+                <label class="topology-radio"><input type="radio" name="testScope" value="full" checked> 完整架构</label>
+                <label class="topology-radio"><input type="radio" name="testScope" value="segment"> 中间链路段</label>
+              </div>
+              <label class="topology-field-label">起点节点</label>
+              <select id="testStartNode" class="sel"></select>
+              <label class="topology-field-label">终点节点</label>
+              <select id="testEndNode" class="sel"></select>
+              <div class="topology-inline-actions">
+                <button id="btnTestSmoke" class="btn primary" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg>单元测试</button>
+                <button id="btnTestStress" class="btn" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M4 18h16M6 14l3-4 3 3 4-6 2 3"/></svg>压力测试</button>
+              </div>
             </div>
+            <div class="topology-mode-footer-tip"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16h.01"/></svg>提示：测试将遵循节点依赖顺序逐级执行。</div>
           </div>
-        </div>
 
-        <div class="topology-left-pane is-hidden" data-left-panel="nodes">
-          <div class="topology-card">
-            <div class="topology-card-title">节点</div>
+          <!-- 节点 -->
+          <div class="topology-left-pane is-hidden" data-left-panel="nodes">
             <input id="presetSearch" class="inp" placeholder="搜索节点模板（如：Gateway、DB）">
-            <div id="presetQuickBar" class="topology-chip-row"></div>
-            <select id="presetCategoryFilter" class="sel">
-              <option value="">全部分类</option>
-            </select>
+            <div id="presetCategoryChips" class="topology-chip-row">
+              <button type="button" class="topology-chip active" data-category="">全部</button>
+              <button type="button" class="topology-chip" data-category="网关与入口">网络</button>
+              <button type="button" class="topology-chip" data-category="业务服务">服务</button>
+              <button type="button" class="topology-chip" data-category="中间件">中间件</button>
+              <button type="button" class="topology-chip" data-category="运维基础">基础</button>
+              <button type="button" class="topology-chip" data-category="其他">其他</button>
+            </div>
+            <select id="presetCategoryFilter" class="sel tw-hidden"><option value="">全部分类</option></select>
+            <div id="presetQuickBar" class="topology-quick-templates"></div>
+            <div class="topology-section-title">节点模板库</div>
             <div id="presetList" class="topology-preset-list"></div>
+            <div class="topology-section-title">当前拓扑节点</div>
+            <div class="topology-node-table-wrap">
+              <table class="topology-node-table">
+                <thead><tr><th>节点名称</th><th>类型</th><th>绑定状态</th><th>运行状态</th><th></th></tr></thead>
+                <tbody id="runtimeNodeList"><tr><td colspan="5" class="topology-table-empty">暂无节点</td></tr></tbody>
+              </table>
+            </div>
           </div>
+        </aside>
 
-          <div class="topology-card">
-            <div class="topology-card-title">当前拓扑节点</div>
-            <div id="runtimeNodeList" class="runtime-node-list"></div>
-          </div>
-        </div>
-      </aside>
-
-      <section class="topology-center-panel">
-        <div class="topology-canvas-topline">
+        <section class="topology-center-panel">
           <div id="topologyLoadHint" class="topology-load-hint loading">正在加载拓扑核心数据...</div>
-          <div class="topology-canvas-actions">
-            <button id="canvasViewGrid" class="btn" type="button">网格</button>
-            <button id="canvasViewAlign" class="btn" type="button">对齐</button>
-            <button id="btnManageTopologyInline" class="btn" type="button">管理拓扑图</button>
+          <div class="topology-canvas-topbar">
+            <button id="canvasQuickUndo" class="topology-canvas-icon-btn" type="button" title="撤销"><svg viewBox="0 0 24 24"><path d="M7 7h8a4 4 0 010 8H9M7 11l-3-3 3-3"/></svg></button>
+            <button id="canvasQuickRedo" class="topology-canvas-icon-btn" type="button" title="重做"><svg viewBox="0 0 24 24"><path d="M17 7H9a4 4 0 000 8h6M17 11l3-3-3-3"/></svg></button>
+            <button id="canvasQuickFocus" class="topology-canvas-icon-btn" type="button" title="适应画布"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+            <select id="canvasZoomSelect" class="sel topology-zoom-select"><option value="100">100%</option><option value="75">75%</option><option value="50">50%</option><option value="125">125%</option></select>
+            <button id="canvasViewGrid" class="topology-canvas-float-btn" type="button">网格</button>
+            <button id="canvasViewAlign" class="topology-canvas-float-btn" type="button">对齐</button>
           </div>
-        </div>
-
-        <div class="topology-canvas-wrap">
-          <div id="canvasShell" class="ops-canvas topology-pro-canvas">
-            <div class="ops-grid-bg"></div>
-            <div class="topology-canvas-mini-toolbar">
-              <button id="canvasQuickUndo" class="btn" type="button">↶</button>
-              <button id="canvasQuickRedo" class="btn" type="button">↷</button>
-              <button id="canvasQuickFocus" class="btn" type="button">⛶</button>
-              <button id="canvasQuickFit" class="btn" type="button">100%</button>
+          <div class="topology-canvas-wrap">
+            <div id="canvasShell" class="topology-pro-canvas">
+              <div class="ops-grid-bg"></div>
+              <div class="topology-canvas-zoombar">
+                <button id="zoomInBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+                <button id="zoomOutBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+                <button id="zoomResetBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+                <button id="zoomLockBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0110 0v3M6 11h12v9H6v-9z"/></svg></button>
+              </div>
+              <div id="scene" class="scene">
+                <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
+                <div id="nodeLayer" class="nodes"></div>
+              </div>
+              <div id="marquee" class="topology-marquee"></div>
+              <div class="topology-mini-map-card"><canvas id="topologyMiniMap" width="160" height="100"></canvas></div>
             </div>
-            <div class="topology-canvas-zoombar">
-              <button id="zoomInBtn" class="btn" type="button">＋</button>
-              <button id="zoomOutBtn" class="btn" type="button">－</button>
-              <button id="zoomResetBtn" class="btn" type="button">◎</button>
-              <button id="zoomLockBtn" class="btn" type="button">◈</button>
-            </div>
-            <div id="scene" class="scene">
-              <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
-              <div id="nodeLayer" class="nodes"></div>
-            </div>
-            <div id="marquee" style="position:absolute;border:1px dashed #2563eb;background:rgba(37,99,235,.12);display:none"></div>
-            <div class="topology-mini-map-card">
-              <div class="topology-mini-map-box">
-                <div class="topology-mini-map-placeholder"></div>
+          </div>
+          <div class="topology-log-card">
+            <div class="topology-log-head">
+              <div class="topology-log-tabs" data-log-set="default">
+                <button class="topology-log-tab active" type="button" data-log-tab="modeLogPane">模式日志</button>
+                <button class="topology-log-tab" type="button" data-log-tab="modeLogDetailsPane">校验日志</button>
+                <button class="topology-log-tab" type="button" data-log-tab="deploymentLogPane">部署日志</button>
+              </div>
+              <div class="topology-log-tabs is-hidden" data-log-set="nodes">
+                <span class="topology-log-center-title">日志中心</span>
+                <button class="topology-log-tab active" type="button" data-log-tab="modeLogPane">模板日志</button>
+                <button class="topology-log-tab" type="button" data-log-tab="modeLogDetailsPane">节点日志</button>
+                <button class="topology-log-tab" type="button" data-log-tab="deploymentLogPane">资源日志</button>
+              </div>
+              <div class="topology-log-actions">
+                <button id="btnClearModeLogs" class="btn btn-ghost" type="button"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>清空日志</button>
+                <button id="btnExportLogs" class="btn btn-ghost" type="button"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>导出日志</button>
+                <button id="btnLogSettings" class="btn btn-ghost btn-icon-only" type="button" title="设置"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
+                <button id="btnLogFullscreen" class="btn btn-ghost btn-icon-only" type="button" title="全屏"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
               </div>
             </div>
+            <div id="modeLogPane" class="topology-log-pane active"><div id="modeLog" class="mode-log"></div></div>
+            <div id="modeLogDetailsPane" class="topology-log-pane"><div id="modeLogDetails" class="mode-log-details"></div></div>
+            <div id="deploymentLogPane" class="topology-log-pane"><div id="deploymentLogMirror" class="mode-log-details"></div></div>
           </div>
-        </div>
+        </section>
 
-        <div class="topology-log-card">
-          <div class="topology-log-tabs">
-            <button class="topology-log-tab active" type="button" data-log-tab="modeLogPane">模式日志</button>
-            <button class="topology-log-tab" type="button" data-log-tab="modeLogDetailsPane">校验日志</button>
-            <button class="topology-log-tab" type="button" data-log-tab="deploymentLogPane">部署日志</button>
+        <aside class="topology-right-panel">
+          <div id="nodeInspectorCard" class="topology-inspector-card is-empty" data-inspector-layout="tools">
+            <div class="topology-inspector-header">
+              <div class="topology-inspector-header-main">
+                <div class="topology-inspector-avatar" id="inspectorNodeBadge">拓</div>
+                <div class="topology-inspector-head-text">
+                  <div class="topology-inspector-title-row">
+                    <div class="topology-inspector-title" id="inspectorTitle">节点属性</div>
+                    <span id="inspectorStatusPill" class="state-pill state-ok">未选中</span>
+                  </div>
+                  <div class="topology-inspector-idline" id="inspectorNodeIdLine">未选中节点</div>
+                  <div class="topology-inspector-sub" id="inspectorSubline">点击画布节点查看详情</div>
+                </div>
+              </div>
+            </div>
+            <div id="inspectorTabBar" class="topology-inspector-tabs">
+              <button class="topology-inspector-tab active" type="button" data-inspector-tab="basicInfoPanel">基础信息</button>
+              <button class="topology-inspector-tab" type="button" data-inspector-tab="portsPanel" data-tab-tools="端口与连线" data-tab-nodes="端口与连接">端口与连线</button>
+              <button class="topology-inspector-tab" type="button" data-inspector-tab="agentPanel">Agent 与部署</button>
+              <button class="topology-inspector-tab" type="button" data-inspector-tab="monitorPanel" data-tab-tools="监控指标" data-tab-nodes="输入输出端口">监控指标</button>
+            </div>
+            <div id="inspectorEmptyState" class="topology-inspector-empty">
+              <div class="topology-inspector-empty-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></div>
+              <p>点击画布中的节点后，可在右侧查看基础信息、连接关系与 Agent 绑定状态。</p>
+            </div>
+            <div id="inspectorBody" class="topology-inspector-body">
+              <div id="basicInfoPanel" class="topology-inspector-pane active">
+                <div class="topology-field-grid topology-basic-grid">
+                  <label class="topology-field" data-layout="nodes"><span>节点名称</span><input id="insNodeName" class="inp" placeholder="未选中节点"></label>
+                  <label class="topology-field" data-field="role"><span class="topology-field-label">角色</span><select id="insNodeRole" class="sel"></select></label>
+                  <label class="topology-field" data-layout="nodes"><span>节点 ID</span><input id="insNodeId" class="inp" readonly></label>
+                  <label class="topology-field" data-field="status"><span>状态</span><select id="insNodeBizStatus" class="sel"></select></label>
+                  <label class="topology-field" data-layout="nodes"><span>所属分组</span><input id="insNodeOwner" class="inp" placeholder="游戏服务"></label>
+                  <label class="topology-field" data-field="color"><span>颜色</span><div class="topology-color-field"><span id="insNodeColorSwatch" class="topology-color-swatch"></span><input id="insNodeColor" class="inp" placeholder="#722ed1"></div></label>
+                </div>
+                <label class="topology-field" data-layout="tools"><span>语义类型</span><input id="insNodeKindDisplay" class="inp" readonly placeholder="game"></label>
+                <select id="insNodeKind" class="sel is-hidden" aria-hidden="true"><option value="standard">standard</option><option value="entry">entry</option><option value="terminal">terminal</option><option value="game">game</option></select>
+                <label class="topology-field"><span>描述</span><textarea id="insNodeDesc" class="txt" rows="3" placeholder="请输入节点说明"></textarea></label>
+                <div class="topology-bind-section" data-layout="nodes">
+                  <div class="topology-section-title sm">所有权与绑定</div>
+                  <div class="topology-field-grid">
+                    <label class="topology-field"><span>所有者</span><input id="insNodeOwnerDisplay" class="inp" readonly placeholder="运维团队"></label>
+                    <label class="topology-field"><span>绑定状态</span><input id="insNodeBindStatusDisplay" class="inp" readonly placeholder="未绑定"></label>
+                    <label class="topology-field topology-field-agent-bind"><span>绑定 Agent</span><div class="topology-field-inline"><input id="insNodeAgentDisplay" class="inp" readonly placeholder="未绑定"><span id="insNodeAgentOnlinePillNodes" class="state-pill state-ok is-hidden">在线</span></div></label>
+                    <label class="topology-field"><span>部署环境</span><input id="insNodeDeployEnvDisplay" class="inp" readonly></label>
+                  </div>
+                </div>
+                <label class="topology-field"><span>标签</span><div class="topology-tag-field"><div id="insNodeTagChips" class="topology-tag-chips"></div><button id="btnAddNodeTag" class="topology-tag-add" type="button">+ 添加标签</button><input id="insNodeTags" type="hidden" value=""></div></label>
+                <div class="topology-tools-agent-inline" data-layout="tools">
+                  <label class="topology-field"><span>主 Agent</span><div class="topology-field-inline"><select id="insNodePrimaryAgentBasic" class="sel"><option value="">未绑定</option></select><span id="insNodeAgentOnlinePill" class="state-pill state-ok is-hidden">在线</span></div></label>
+                  <label class="topology-field"><span>服务实例</span><div class="topology-field-inline"><input id="insNodeServiceSummary" class="inp" readonly placeholder="0 个实例"><button id="btnInsServiceDetail" class="topology-link-btn" type="button">查看详情</button></div></label>
+                  <label class="topology-field"><span>部署版本</span><div class="topology-field-inline"><input id="insNodeDeployVersionBasic" class="inp" readonly placeholder="-"><button id="btnInsDeployHistory" class="topology-link-btn" type="button">查看历史</button></div></label>
+                  <label class="topology-field"><span>远端启动端口</span><input id="insNodeRemotePortBasic" class="inp" type="number" min="1" max="65535"></label>
+                  <label class="topology-field"><span>节点通信地址</span><div class="topology-copy-field"><input id="insNodeEndpointsBasic" class="inp" placeholder="10.0.1.15:9501"><button id="btnCopyEndpointBasic" class="btn btn-icon-only" type="button" title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V6a2 2 0 012-2h10"/></svg></button></div></label>
+                </div>
+                <label class="topology-field" data-layout="nodes"><span>说明</span><textarea id="insNodeNotes" class="txt" rows="2" placeholder="补充说明"></textarea></label>
+              </div>
+              <div id="portsPanel" class="topology-inspector-pane">
+                <label class="topology-field"><span>端口摘要</span><input id="insNodePortsSummary" class="inp" readonly></label>
+                <div class="topology-io-columns">
+                  <div><div class="topology-io-title">输入端口</div><div id="inPortList" class="topology-port-list"></div></div>
+                  <div><div class="topology-io-title">输出端口</div><div id="outPortList" class="topology-port-list"></div></div>
+                </div>
+                <div class="topology-port-actions">
+                  <button id="btnPortInAdd" class="btn" type="button">新增输入端口</button>
+                  <button id="btnPortInRemove" class="btn" type="button">删除输入端口</button>
+                  <button id="btnPortOutAdd" class="btn" type="button">新增输出端口</button>
+                  <button id="btnPortOutRemove" class="btn" type="button">删除输出端口</button>
+                </div>
+                <button id="btnDeleteEdge" class="btn" type="button">删除当前选中连线</button>
+                <button id="btnDeleteSelectedPort" class="btn" type="button">删除选中端口</button>
+              </div>
+              <div id="agentPanel" class="topology-inspector-pane">
+                <div class="topology-field-grid">
+                  <label class="topology-field"><span>绑定状态</span><input id="insNodeBindStatus" class="inp" readonly placeholder="未绑定"></label>
+                  <label class="topology-field"><span>主 Agent</span><select id="insNodePrimaryAgent" class="sel"><option value="">未绑定</option></select></label>
+                  <label class="topology-field"><span>服务实例</span><select id="insNodeService" class="sel"><option value="">请先选择 Agent</option></select></label>
+                  <label class="topology-field"><span>Agent 状态</span><input id="insNodeAgentMeta" class="inp" readonly placeholder="设备 / 端口 / 心跳"></label>
+                  <label class="topology-field"><span>部署环境</span><input id="insNodeDeployEnv" class="inp" readonly></label>
+                  <label class="topology-field"><span>部署版本</span><input id="insNodeDeployVersion" class="inp" readonly placeholder="-"></label>
+                  <label class="topology-field"><span>服务实例数</span><input id="insNodeServiceCount" class="inp" readonly placeholder="0"></label>
+                  <label class="topology-field"><span>远端启动端口</span><input id="insNodeRemotePort" class="inp" type="number" min="1" max="65535"></label>
+                  <label class="topology-field"><span>节点通信地址</span><div class="topology-copy-field"><input id="insNodeEndpoints" class="inp" placeholder="10.0.1.15:9501"><button id="btnCopyEndpoint" class="btn btn-icon-only" type="button" title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V6a2 2 0 012-2h10"/></svg></button></div></label>
+                </div>
+                <label class="topology-field topology-field-check"><input id="insNodeVisibleConsole" type="checkbox" checked><span>远端启动时显示黑窗口</span></label>
+              </div>
+              <div id="ioPortsPanel" class="topology-inspector-pane">
+                <div class="topology-io-columns">
+                  <div><div class="topology-io-title">输入端口</div><div id="inPortListIo" class="topology-port-list"></div></div>
+                  <div><div class="topology-io-title">输出端口</div><div id="outPortListIo" class="topology-port-list"></div></div>
+                </div>
+              </div>
+              <div id="monitorPanel" class="topology-inspector-pane">
+                <div id="insNodeMonitorEmpty" class="topology-monitor-empty">选中节点后，此处展示来自运行态的实时指标；无采样时显示空态。</div>
+                <div id="insNodeMonitorBody" class="topology-monitor-body"></div>
+              </div>
+            </div>
+            <div class="topology-inspector-actions topology-inspector-actions-tools">
+              <button id="btnStartRemoteNode" class="btn primary" type="button">启动服务</button>
+              <button id="btnRestartNode" class="btn" type="button">重启服务</button>
+              <button id="btnViewNodeLogs" class="btn" type="button">查看日志</button>
+              <button id="btnProbeNode" class="btn" type="button">探测节点</button>
+              <button id="btnDeleteNode" class="btn btn-outline-danger" type="button">删除节点</button>
+            </div>
+            <div class="topology-inspector-actions topology-inspector-actions-nodes is-hidden">
+              <button id="btnSaveNode" class="btn primary" type="button">保存节点</button>
+              <button id="btnCopyNode" class="btn" type="button">复制节点</button>
+              <button id="btnDisableNode" class="btn" type="button">禁用节点</button>
+              <button id="btnDeleteNodeNodes" class="btn btn-outline-danger" type="button">删除节点</button>
+            </div>
           </div>
-          <div class="topology-log-actions">
-            <button id="btnClearModeLogs" class="btn" type="button">清空日志</button>
+
+          <div id="runtimeSummaryCard" class="topology-runtime-card is-hidden">
+            <div class="topology-runtime-head">
+              <div class="topology-runtime-title">运行状态</div>
+              <span class="state-pill state-ok" id="runtimeStatusPill">运行中</span>
+            </div>
+            <div class="topology-runtime-meta">
+              <div><span>run_id</span><b id="runtimeRunIdValue">-</b></div>
+              <div><span>开始时间</span><b id="runtimeStartedAtValue">-</b></div>
+              <div><span>运行时长</span><b id="runtimeDurationValue">-</b></div>
+            </div>
+            <div class="topology-runtime-progress">
+              <div class="topology-runtime-progress-label"><span>总体进度</span><b id="runtimeProgressValue">0%</b></div>
+              <div class="topology-progress-bar"><i id="runtimeProgressBar"></i></div>
+            </div>
+            <div class="topology-runtime-stats">
+              <div><span class="dot dot-run"></span>运行中<b id="runtimeRunningCount">0</b></div>
+              <div><span class="dot dot-ok"></span>成功<b id="runtimeSuccessCount">0</b></div>
+              <div><span class="dot dot-warn"></span>警告<b id="runtimeWarnCount">0</b></div>
+              <div><span class="dot dot-err"></span>失败<b id="runtimeFailedCount">0</b></div>
+            </div>
+            <a class="topology-runtime-link" href="#" id="btnRuntimeDetails">查看运行详情 &gt;</a>
+            <details class="topology-topology-info">
+              <summary>拓扑信息</summary>
+              <div id="runtimeTopologyInfo" class="topology-topology-info-body">-</div>
+            </details>
           </div>
-          <div id="modeLogPane" class="topology-log-pane active">
-            <div id="modeLog" class="mode-log"></div>
-          </div>
-          <div id="modeLogDetailsPane" class="topology-log-pane">
-            <div id="modeLogDetails" class="mode-log-details"></div>
-          </div>
-          <div id="deploymentLogPane" class="topology-log-pane">
-            <div id="deploymentLogMirror" class="mode-log-details"></div>
-          </div>
-        </div>
+        </aside>
       </section>
-
-      <aside class="topology-right-panel">
-        <div id="nodeInspectorCard" class="topology-inspector-card">
-          <div class="topology-inspector-header">
-            <div class="topology-inspector-header-main">
-              <div class="topology-inspector-avatar" id="inspectorNodeBadge">拓</div>
-              <div>
-                <div class="topology-inspector-title" id="inspectorTitle">节点属性</div>
-                <div class="topology-inspector-idline" id="inspectorNodeIdLine">未选中节点</div>
-                <div class="topology-inspector-sub" id="inspectorSubline">点击画布中的节点后，可在右侧查看基础信息、连接关系与 Agent 绑定状态。</div>
-              </div>
-            </div>
-            <span id="inspectorStatusPill" class="state-pill state-info">未选中节点</span>
-          </div>
-
-          <div id="inspectorTabBar" class="topology-inspector-tabs">
-            <button class="topology-inspector-tab active" type="button" data-inspector-tab="basicInfoPanel">基础信息</button>
-            <button class="topology-inspector-tab" type="button" data-inspector-tab="portsPanel">端口与连接</button>
-            <button class="topology-inspector-tab" type="button" data-inspector-tab="agentPanel">Agent 与部署</button>
-            <button class="topology-inspector-tab" type="button" data-inspector-tab="ioPanel">输入输出端口</button>
-          </div>
-
-          <div class="topology-inspector-body">
-            <div id="basicInfoPanel" class="topology-inspector-pane active">
-              <div class="topology-field-grid">
-                <label class="topology-field">
-                  <span>节点名称</span>
-                  <input id="insNodeName" class="inp" placeholder="未选中节点">
-                </label>
-                <label class="topology-field">
-                  <span>节点类型</span>
-                  <select id="insNodeRole" class="sel"></select>
-                </label>
-                <label class="topology-field">
-                  <span>节点 ID</span>
-                  <input id="insNodeId" class="inp" readonly>
-                </label>
-                <label class="topology-field">
-                  <span>状态</span>
-                  <select id="insNodeBizStatus" class="sel"></select>
-                </label>
-                <label class="topology-field">
-                  <span>所属分组</span>
-                  <input id="insNodeOwner" class="inp" placeholder="运维团队">
-                </label>
-                <label class="topology-field">
-                  <span>颜色</span>
-                  <input id="insNodeColor" class="inp" placeholder="#722ed1">
-                </label>
-              </div>
-
-              <label class="topology-field">
-                <span>语义类型</span>
-                <select id="insNodeKind" class="sel">
-                  <option value="standard">standard</option>
-                  <option value="entry">entry</option>
-                  <option value="terminal">terminal</option>
-                </select>
-              </label>
-
-              <label class="topology-field">
-                <span>描述</span>
-                <textarea id="insNodeDesc" class="txt" rows="4" placeholder="请输入节点说明"></textarea>
-              </label>
-
-              <label class="topology-field">
-                <span>标签</span>
-                <input id="insNodeTags" class="inp" placeholder="business,core">
-              </label>
-            </div>
-
-            <div id="portsPanel" class="topology-inspector-pane">
-              <label class="topology-field">
-                <span>端口摘要</span>
-                <input id="insNodePortsSummary" class="inp" readonly>
-              </label>
-              <div class="topology-port-actions">
-                <button id="btnPortInAdd" class="btn" type="button">新增输入端口</button>
-                <button id="btnPortInRemove" class="btn" type="button">删除输入端口</button>
-                <button id="btnPortOutAdd" class="btn" type="button">新增输出端口</button>
-                <button id="btnPortOutRemove" class="btn" type="button">删除输出端口</button>
-              </div>
-              <button id="btnDeleteEdge" class="btn" type="button">删除当前选中连线</button>
-            </div>
-
-            <div id="agentPanel" class="topology-inspector-pane">
-              <div class="topology-field-grid">
-                <label class="topology-field">
-                  <span>主 Agent</span>
-                  <select id="insNodePrimaryAgent" class="sel">
-                    <option value="">未绑定</option>
-                  </select>
-                </label>
-                <label class="topology-field">
-                  <span>Agent 状态</span>
-                  <input id="insNodeAgentMeta" class="inp" readonly placeholder="设备 / 端口 / 心跳">
-                </label>
-                <label class="topology-field">
-                  <span>远程启动端口</span>
-                  <input id="insNodeRemotePort" class="inp" type="number" min="1" max="65535">
-                </label>
-                <label class="topology-field">
-                  <span>节点通信地址</span>
-                  <input id="insNodeEndpoints" class="inp" placeholder="10.0.0.1:9501,10.0.0.2:9501">
-                </label>
-              </div>
-              <label class="topology-field topology-field-check">
-                <input id="insNodeVisibleConsole" type="checkbox" checked>
-                <span>远端启动时显示黑窗口</span>
-              </label>
-            </div>
-
-            <div id="ioPanel" class="topology-inspector-pane">
-              <div class="topology-io-columns">
-                <div>
-                  <div class="topology-io-title">输入端口</div>
-                  <div id="inPortList" class="topology-port-list"></div>
-                </div>
-                <div>
-                  <div class="topology-io-title">输出端口</div>
-                  <div id="outPortList" class="topology-port-list"></div>
-                </div>
-              </div>
-              <button id="btnDeleteSelectedPort" class="btn" type="button">删除选中端口</button>
-            </div>
-          </div>
-
-          <div class="topology-inspector-actions">
-            <button id="btnSaveNode" class="btn primary" type="button">保存节点</button>
-            <button id="btnCopyNode" class="btn" type="button">复制节点</button>
-            <button id="btnDisableNode" class="btn" type="button">禁用节点</button>
-            <button id="btnDeleteNode" class="btn danger" type="button">删除节点</button>
-            <button id="btnStartRemoteNode" class="btn success" type="button">启动服务</button>
-            <button id="btnRestartNode" class="btn" type="button">重启服务</button>
-            <button id="btnViewNodeLogs" class="btn" type="button">查看日志</button>
-            <button id="btnProbeNode" class="btn" type="button">探测节点</button>
-          </div>
-        </div>
-
-        <div id="runtimeSummaryCard" class="topology-runtime-card is-hidden">
-          <div class="topology-runtime-title">运行状态</div>
-          <div class="topology-runtime-meta">
-            <div><span>run_id</span><b id="runtimeRunIdValue">-</b></div>
-            <div><span>开始时间</span><b id="runtimeStartedAtValue">-</b></div>
-            <div><span>运行时长</span><b id="runtimeDurationValue">-</b></div>
-          </div>
-          <div class="topology-runtime-progress">
-            <div class="topology-runtime-progress-label">
-              <span>总体进度</span>
-              <b id="runtimeProgressValue">0%</b>
-            </div>
-            <div class="topology-progress-bar"><i id="runtimeProgressBar"></i></div>
-          </div>
-          <div class="topology-runtime-stats">
-            <div><span>运行中</span><b id="runtimeRunningCount">0</b></div>
-            <div><span>成功</span><b id="runtimeSuccessCount">0</b></div>
-            <div><span>警告</span><b id="runtimeWarnCount">0</b></div>
-            <div><span>失败</span><b id="runtimeFailedCount">0</b></div>
-          </div>
-        </div>
-      </aside>
     </section>
   </main>
 </div>
 
 <div id="structuredAddModal" class="topology-modal hidden">
-  <div class="topology-modal-card topology-modal-medium">
+  <div class="topology-modal-card">
     <div class="topology-modal-header">
-      <div>
-        <div class="topology-modal-title" id="structuredAddTitle">添加下游节点</div>
-        <div class="topology-modal-sub">系统会按照角色和语义规则过滤合法下游。</div>
-      </div>
-      <button id="structuredAddClose" class="btn" type="button">关闭</button>
+      <div><div class="topology-modal-title" id="structuredAddTitle">添加下游节点</div><div class="topology-modal-sub">系统会按照角色和语义规则过滤合法下游。</div></div>
+      <button id="structuredAddClose" class="topology-modal-close" type="button">×</button>
     </div>
     <div class="topology-modal-grid">
-      <div>
-        <div class="topology-modal-section-title">添加已有节点为下游</div>
-        <div id="structuredExistingList" class="topology-menu-list"></div>
-      </div>
-      <div>
-        <div class="topology-modal-section-title">基于模板创建新下游</div>
-        <div id="structuredPresetList" class="topology-menu-list"></div>
-      </div>
+      <div><div class="topology-modal-section-title">添加已有节点为下游</div><div id="structuredExistingList" class="topology-menu-list"></div></div>
+      <div><div class="topology-modal-section-title">基于模板创建新下游</div><div id="structuredPresetList" class="topology-menu-list"></div></div>
     </div>
   </div>
 </div>
 
 <div id="topologyManagerModal" class="topology-modal hidden">
-  <div class="topology-modal-card topology-modal-large">
+  <div class="topology-modal-card topology-modal-xl">
     <div class="topology-modal-header">
-      <div>
-        <div class="topology-modal-title">拓扑图管理</div>
-        <div class="topology-modal-sub">统一管理当前项目下各环境拓扑，支持创建、复制、设为默认和删除。</div>
-      </div>
-      <button id="btnCloseTopologyManager" class="btn" type="button">关闭</button>
+      <div><div class="topology-modal-title">拓扑图管理</div></div>
+      <button id="btnCloseTopologyManager" class="topology-modal-close" type="button">×</button>
     </div>
-
     <div class="topology-manager-tabs">
       <button class="topology-manager-tab active" type="button" data-topology-manager-tab="topologyManagerListPane">拓扑图列表</button>
       <button class="topology-manager-tab" type="button" data-topology-manager-tab="topologyManagerCreatePane">创建拓扑图</button>
+      <button id="btnCreateTopologyFromModal" class="btn primary topology-manager-create-top" type="button">创建拓扑图</button>
     </div>
-
     <div id="topologyManagerListPane" class="topology-manager-pane active">
-      <div class="topology-manager-actions">
-        <button id="btnCreateTopologyFromModal" class="btn primary" type="button">创建拓扑图</button>
-      </div>
       <div class="topology-manager-table-wrap">
         <table class="topology-manager-table">
-          <thead>
-            <tr>
-              <th>拓扑名称</th>
-              <th>所属环境</th>
-              <th>状态</th>
-              <th>版本</th>
-              <th>最近更新</th>
-              <th>负责人</th>
-              <th>节点数</th>
-              <th>连线数</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="topologyRegistryRows">
-            <tr><td colspan="9">正在加载拓扑列表...</td></tr>
-          </tbody>
+          <thead><tr><th>拓扑名称</th><th>所属环境</th><th>状态</th><th>版本</th><th>最近更新</th><th>负责人</th><th>节点数</th><th>连线数</th><th>操作</th></tr></thead>
+          <tbody id="topologyRegistryRows"><tr><td colspan="9">正在加载拓扑列表...</td></tr></tbody>
         </table>
       </div>
+      <div class="topology-manager-pagination">
+        <span id="topologyManagerPageInfo">共 0 条</span>
+        <div class="topology-manager-page-btns">
+          <button id="topologyManagerPrev" class="btn btn-ghost" type="button">上一页</button>
+          <span id="topologyManagerPageNum">1</span>
+          <button id="topologyManagerNext" class="btn btn-ghost" type="button">下一页</button>
+          <select id="topologyManagerPageSize" class="sel"><option value="10">10 条/页</option><option value="20">20 条/页</option></select>
+        </div>
+      </div>
     </div>
-
     <div id="topologyManagerCreatePane" class="topology-manager-pane">
       <div class="topology-form-grid">
-        <label class="topology-field">
-          <span>项目名称</span>
-          <input id="topologyCreateProjectName" class="inp" value="{{ project_id }}" readonly>
-        </label>
-        <label class="topology-field">
-          <span>拓扑名称</span>
-          <input id="topologyCreateName" class="inp" maxlength="50" placeholder="请输入拓扑名称">
-        </label>
-        <label class="topology-field">
-          <span>环境类型</span>
-          <select id="topologyCreateEnv" class="sel"></select>
-        </label>
-        <label class="topology-field">
-          <span>从蓝图创建</span>
-          <select id="topologyCreateBlueprint" class="sel">
-            <option value="">请选择蓝图（可选）</option>
-          </select>
-        </label>
-        <label class="topology-field">
-          <span>复制现有拓扑</span>
-          <select id="topologyCopySource" class="sel">
-            <option value="">请选择要复制的拓扑（可选）</option>
-          </select>
-        </label>
-        <label class="topology-field">
-          <span>负责人</span>
-          <input id="topologyCreateOwner" class="inp" placeholder="运维管理员">
-        </label>
+        <label class="topology-field"><span>项目名称</span><input id="topologyCreateProjectName" class="inp" value="{{ project_id }}" readonly></label>
+        <label class="topology-field required"><span>拓扑名称</span><input id="topologyCreateName" class="inp" maxlength="50" placeholder="请输入拓扑名称"><span id="topologyCreateNameCount" class="topology-char-count">0/50</span></label>
+        <label class="topology-field required"><span>环境类型</span><select id="topologyCreateEnv" class="sel"></select></label>
+        <label class="topology-field"><span>从蓝图创建</span><div class="topology-field-inline"><select id="topologyCreateBlueprint" class="sel"><option value="">请选择蓝图（可选）</option></select><button id="btnManageBlueprints" class="btn btn-link" type="button">管理蓝图</button></div></label>
+        <label class="topology-field"><span>复制现有拓扑</span><select id="topologyCopySource" class="sel"><option value="">请选择要复制的拓扑（可选）</option></select></label>
+        <label class="topology-field"><span>负责人</span><input id="topologyCreateOwner" class="inp" placeholder="运维管理员"></label>
       </div>
-      <label class="topology-field">
-        <span>说明</span>
-        <textarea id="topologyCreateDesc" class="txt" rows="4" maxlength="200" placeholder="请输入说明（选填）"></textarea>
-      </label>
-      <div class="topology-modal-footer">
-        <button id="btnCancelCreateTopology" class="btn" type="button">取消</button>
-        <button id="btnSubmitCreateTopology" class="btn primary" type="button">创建</button>
-      </div>
+      <label class="topology-field"><span>说明</span><textarea id="topologyCreateDesc" class="txt" rows="3" maxlength="200" placeholder="请输入说明（选填）"></textarea><span id="topologyCreateDescCount" class="topology-char-count">0/200</span></label>
+      <div class="topology-modal-footer"><button id="btnCancelCreateTopology" class="btn" type="button">取消</button><button id="btnSubmitCreateTopology" class="btn primary" type="button">创建</button></div>
     </div>
   </div>
 </div>
 
 <div id="nodeLogModal" class="topology-modal hidden">
-  <div class="topology-modal-card topology-modal-medium">
+  <div class="topology-modal-card">
     <div class="topology-modal-header">
-      <div>
-        <div class="topology-modal-title">节点日志</div>
-        <div class="topology-modal-sub" id="nodeLogModalSub">显示最近一次节点日志请求结果。</div>
-      </div>
-      <button id="btnCloseNodeLogModal" class="btn" type="button">关闭</button>
+      <div><div class="topology-modal-title">节点日志</div><div class="topology-modal-sub" id="nodeLogModalSub">显示最近一次节点日志请求结果。</div></div>
+      <button id="btnCloseNodeLogModal" class="topology-modal-close" type="button">×</button>
     </div>
     <pre id="nodeLogModalBody" class="topology-log-preview">暂无日志</pre>
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260605-topology-fidelity-v2"></script>
-<script src="/static/ops_platform_workbench.js?v=20260605-topology-fidelity-v2"></script>
+<script src="/static/ops_platform_api.js?v=20260606-topology-api-fix1"></script>
+<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite9"></script>

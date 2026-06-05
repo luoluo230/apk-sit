@@ -78,12 +78,22 @@
               _http_status:r.status || 404
             };
           }
+          if(r.status >= 500){
+            return {
+              ok:false,
+              error:'server_error',
+              error_code:'OPS_SERVER_ERROR',
+              level:'error',
+              message:'服务异常，请稍后重试',
+              _http_status:r.status || 500
+            };
+          }
           return {
             ok:false,
             error:'auth_redirect',
             error_code:'OPS_AUTH_REQUIRED',
-            level:r.status >= 500 ? 'error' : 'warn',
-            message:r.status >= 500 ? '服务异常，请稍后重试' : '接口返回了非 JSON 页面响应',
+            level:'warn',
+            message:'接口返回了非 JSON 页面响应',
             _http_status:r.status || 200
           };
         }
@@ -123,6 +133,7 @@
     return base + (q.length ? ('?' + q.join('&')) : '');
   }
   api.loadOverview = (projectId) => api.getJSON('/api/ops-platform/overview' + (projectId ? ('?project_id='+encodeURIComponent(projectId)) : ''));
+  api.loadProjects = (status) => api.getJSON('/api/projects' + (status ? ('?status=' + encodeURIComponent(status)) : ''));
   api.loadTopologies = (scope) => api.getJSON(withScope('/api/ops-platform/topologies', scope));
   api.loadTopologyDetail = (scope) => api.getJSON(withScope('/api/ops-platform/topologies/detail', scope));
   api.createTopology = (payload) => api.postJSON('/api/ops-platform/topologies/create', payload || {});

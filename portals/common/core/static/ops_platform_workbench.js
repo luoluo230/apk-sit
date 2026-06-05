@@ -4,6 +4,7 @@
   const STATUS_LABELS = { normal: "运行中", observe: "观察中", degraded: "降级中", error: "异常", offline: "离线" };
   const ROLE_LABELS = {
     gateway: "网关服务",
+    auth: "认证服务",
     business: "游戏服务",
     pressure: "压测服务",
     database: "数据库",
@@ -17,6 +18,7 @@
   };
   const ROLE_BADGES = {
     gateway: "网",
+    auth: "认",
     business: "游",
     pressure: "压",
     database: "库",
@@ -26,20 +28,25 @@
     scheduler: "调",
     admin: "运",
     edge: "边",
+    transport: "传",
     analytics: "析",
   };
   const ROLE_COLOR = {
-    gateway: { border: "#3b82f6", bg1: "#eff6ff", bg2: "#dbeafe" },
-    business: { border: "#0ea5e9", bg1: "#ecfeff", bg2: "#cffafe" },
-    scheduler: { border: "#6366f1", bg1: "#eef2ff", bg2: "#e0e7ff" },
-    pressure: { border: "#f59e0b", bg1: "#fffbeb", bg2: "#fef3c7" },
-    database: { border: "#10b981", bg1: "#ecfdf5", bg2: "#d1fae5" },
-    cache: { border: "#14b8a6", bg1: "#f0fdfa", bg2: "#ccfbf1" },
-    mq: { border: "#8b5cf6", bg1: "#f5f3ff", bg2: "#ede9fe" },
-    search: { border: "#f97316", bg1: "#fff7ed", bg2: "#ffedd5" },
-    admin: { border: "#64748b", bg1: "#f8fafc", bg2: "#e2e8f0" },
-    edge: { border: "#2563eb", bg1: "#eff6ff", bg2: "#dbeafe" },
-    analytics: { border: "#06b6d4", bg1: "#ecfeff", bg2: "#cffafe" },
+    gateway: { border: "#3b82f6", bg1: "#eff6ff", bg2: "#ffffff", glow: "rgba(59,130,246,.22)" },
+    auth: { border: "#22c55e", bg1: "#ecfdf5", bg2: "#ffffff", glow: "rgba(34,197,94,.22)" },
+    business: { border: "#a855f7", bg1: "#faf5ff", bg2: "#ffffff", glow: "rgba(168,85,247,.24)" },
+    game: { border: "#a855f7", bg1: "#faf5ff", bg2: "#ffffff", glow: "rgba(168,85,247,.24)" },
+    pressure: { border: "#f59e0b", bg1: "#fffbeb", bg2: "#ffffff", glow: "rgba(245,158,11,.22)" },
+    database: { border: "#10b981", bg1: "#ecfdf5", bg2: "#ffffff", glow: "rgba(16,185,129,.2)" },
+    cache: { border: "#14b8a6", bg1: "#f0fdfa", bg2: "#ffffff", glow: "rgba(20,184,166,.2)" },
+    mq: { border: "#8b5cf6", bg1: "#f5f3ff", bg2: "#ffffff", glow: "rgba(139,92,246,.2)" },
+    search: { border: "#f97316", bg1: "#fff7ed", bg2: "#ffffff", glow: "rgba(249,115,22,.2)" },
+    scheduler: { border: "#6366f1", bg1: "#eef2ff", bg2: "#ffffff", glow: "rgba(99,102,241,.2)" },
+    admin: { border: "#eab308", bg1: "#fefce8", bg2: "#ffffff", glow: "rgba(234,179,8,.22)" },
+    ops: { border: "#eab308", bg1: "#fefce8", bg2: "#ffffff", glow: "rgba(234,179,8,.22)" },
+    edge: { border: "#ef4444", bg1: "#fef2f2", bg2: "#ffffff", glow: "rgba(239,68,68,.22)" },
+    transport: { border: "#ef4444", bg1: "#fef2f2", bg2: "#ffffff", glow: "rgba(239,68,68,.22)" },
+    analytics: { border: "#06b6d4", bg1: "#ecfeff", bg2: "#ffffff", glow: "rgba(6,182,212,.2)" },
   };
   const KINDS = ["entry", "standard", "terminal"];
   function roleColor(role) {
@@ -71,6 +78,7 @@
     pan: null,
     spaceDown: false,
     structuredAddCtx: null,
+    acceptanceStructuredAddFrom: "",
     mode: "edit",
     selectedPort: null,
     runtimeRunId: "",
@@ -98,6 +106,12 @@
     inspectorTab: "basicInfoPanel",
     activeLeftTab: "tools",
     nodeLogs: {},
+    services: [],
+    history: { past: [], future: [], max: 40 },
+    topologyManagerPage: 1,
+    topologyManagerPageSize: 10,
+    showGrid: true,
+    sidebarCollapsed: false,
   };
   const MODE_STORAGE_KEY = "ops_topology_mode_v1";
   const RUNTIME_STORAGE_KEY = "ops_topology_runtime_v1";
@@ -136,11 +150,175 @@
     return ENV_LABELS[k] || k || "未命名环境";
   }
 
-  function formatTime(value) {
+  function envTagClass(key) {
+    const k = String(key || "").trim().toLowerCase();
+    if (k === "production") return "env-tag-production";
+    if (k === "staging") return "env-tag-staging";
+    if (k === "testing") return "env-tag-testing";
+    return "env-tag-development";
+  }
+
+  function snapshotTopology() {
+    try {
+      return JSON.stringify(state.topology);
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function pushHistory() {
+    const snap = snapshotTopology();
+    if (!snap) return;
+    const last = state.history.past.length ? state.history.past[state.history.past.length - 1] : "";
+    if (last === snap) return;
+    state.history.past.push(snap);
+    if (state.history.past.length > state.history.max) state.history.past.shift();
+    state.history.future = [];
+    updateHistoryButtons();
+  }
+
+  function restoreTopologySnapshot(snap) {
+    if (!snap) return;
+    try {
+      state.topology = JSON.parse(snap);
+      normalizeTopology();
+      layoutStructuredGraph();
+      redrawGraph();
+      renderRuntimeNodeList();
+      fillTestNodeOptions();
+    } catch (_) {}
+  }
+
+  function updateHistoryButtons() {
+    const canUndo = state.history.past.length > 1;
+    const canRedo = state.history.future.length > 0;
+    ["toolUndo", "toolUndoInline", "canvasQuickUndo"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !canUndo;
+    });
+    ["toolRedo", "toolRedoInline", "canvasQuickRedo"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !canRedo;
+    });
+  }
+
+  function undoTopology() {
+    if (state.history.past.length <= 1) return;
+    const current = state.history.past.pop();
+    state.history.future.unshift(current);
+    const prev = state.history.past[state.history.past.length - 1];
+    restoreTopologySnapshot(prev);
+    updateHistoryButtons();
+    logMode("已撤销上一步拓扑编辑", "info");
+  }
+
+  function redoTopology() {
+    if (!state.history.future.length) return;
+    const next = state.history.future.shift();
+    state.history.past.push(next);
+    restoreTopologySnapshot(next);
+    updateHistoryButtons();
+    logMode("已重做拓扑编辑", "info");
+  }
+
+  function alignNodesToGrid() {
+    if (isTestMode()) { toast("测试模式禁止对齐", "warn"); return; }
+    const grid = 20;
+    (state.topology.nodes || []).forEach((n) => {
+      if (!n.ui) n.ui = {};
+      n.ui.x = Math.round((n.ui.x || 0) / grid) * grid;
+      n.ui.y = Math.round((n.ui.y || 0) / grid) * grid;
+    });
+    pushHistory();
+    redrawGraph();
+    toast("节点已对齐到网格", "ok");
+  }
+
+  function toggleSidebar() {
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    const app = document.querySelector(".ops-topology-app");
+    if (app) app.classList.toggle("sidebar-collapsed", state.sidebarCollapsed);
+    const btn = document.querySelector(".topology-collapse-btn");
+    if (btn) btn.textContent = state.sidebarCollapsed ? "展开菜单" : "收起菜单";
+  }
+
+  function updateCreateCharCounts() {
+    const name = String((($("topologyCreateName") || {}).value || "")).length;
+    const desc = String((($("topologyCreateDesc") || {}).value || "")).length;
+    if ($("topologyCreateNameCount")) $("topologyCreateNameCount").textContent = name + "/50";
+    if ($("topologyCreateDescCount")) $("topologyCreateDescCount").textContent = desc + "/200";
+  }
+
+  function exportCurrentLogs() {
+    const activePane = document.querySelector(".topology-log-pane.active");
+    const box = activePane ? activePane.querySelector(".mode-log, .mode-log-details") : null;
+    const text = box ? box.innerText : "";
+    const blob = new Blob([text || "（空日志）"], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "topology-logs-" + Date.now() + ".txt";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast("日志已导出", "ok");
+  }
+
+  function compactEdgeLabel(edge) {
+    const note = String((edge && edge.note) || "").trim();
+    if (note) return note;
+    const fromNode = getNode(edge.from);
+    const role = String((fromNode && fromNode.role) || "").toLowerCase();
+    if (role === "tcp" || role === "transport") return "tcp:5501";
+    const port = String(edge.from_port || "");
+    const m = port.match(/(\d+)/);
+    return "http:" + (m ? m[1] : "80");
+  }
+
+  function getTestScope() {
+    const picked = document.querySelector('input[name="testScope"]:checked');
+    return picked ? String(picked.value || "full") : "full";
+  }
+
+  function logDeployment(message, level) {
+    const box = $("deploymentLogMirror");
+    if (!box) return;
+    const t = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    const levelText = level === "error" ? "失败" : (level === "warn" ? "提示" : "信息");
+    const line = document.createElement("div");
+    line.className = "mode-log-line " + (level === "error" ? "error" : (level === "warn" ? "warn" : "info"));
+    line.innerHTML = '<span class="mode-log-icon" aria-hidden="true"></span>'
+      + '<span class="mode-log-time">' + esc(t) + '</span>'
+      + ' <span class="mode-log-level">【' + levelText + '】</span>'
+      + esc(message);
+    box.prepend(line);
+    while (box.childNodes.length > 300) box.removeChild(box.lastChild);
+  }
+
+  function setInspectorEmpty(empty) {
+    const card = $("nodeInspectorCard");
+    const body = $("inspectorBody");
+    const emptyBox = $("inspectorEmptyState");
+    const tabs = $("inspectorTabBar");
+    const actions = card ? card.querySelectorAll(".topology-inspector-actions") : [];
+    if (card) card.classList.toggle("is-empty", !!empty);
+    if (body) body.classList.toggle("is-hidden", !!empty);
+    if (emptyBox) emptyBox.classList.toggle("is-hidden", !empty);
+    if (tabs) tabs.classList.toggle("is-hidden", !!empty);
+    if (empty) {
+      actions.forEach((el) => el.classList.add("is-hidden"));
+    } else {
+      refreshLeftPanelChrome(state.activeLeftTab || "tools");
+    }
+    const fields = body ? body.querySelectorAll("input, select, textarea, button") : [];
+    fields.forEach((el) => { el.disabled = !!empty; });
+  }
+
+  function formatTime(value, withSeconds) {
     if (!value) return "-";
     const d = new Date(String(value));
     if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString("zh-CN", { hour12: false });
+    const pad = (n) => String(n).padStart(2, "0");
+    const base = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    return withSeconds ? base + ":" + pad(d.getSeconds()) : base;
   }
 
   function dbg(tag, payload) {
@@ -178,6 +356,14 @@
   function roleLabel(role) {
     return ROLE_LABELS[String(role || "").toLowerCase()] || String(role || "未分类节点");
   }
+  function semanticTypeLabel(node) {
+    if (!node) return "standard";
+    const kind = String(node.kind || "").toLowerCase();
+    if (kind === "game") return "game";
+    if (String(node.role || "").toLowerCase() === "business") return "game";
+    if (kind) return kind;
+    return inferKind(node.role, node.kind) || "standard";
+  }
   function roleBadge(role) {
     return ROLE_BADGES[String(role || "").toLowerCase()] || "点";
   }
@@ -214,6 +400,8 @@
     if (!nodes.length) return "";
     const selected = Array.from(state.selection.nodes || [])[0];
     if (selected && nodes.some((node) => String(node.id) === String(selected))) return String(selected);
+    const gameNode = nodes.find((node) => String(node.id) === "game-01");
+    if (gameNode) return "game-01";
     const score = (node) => {
       const role = String((node || {}).role || "").toLowerCase();
       if (role === "business") return 100;
@@ -319,10 +507,13 @@
     const box = $("modeLog");
     if (!box) return;
     const t = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-    const prefix = level === "error" ? "[失败]" : (level === "warn" ? "[提示]" : "[信息]");
+    const levelText = level === "error" ? "失败" : (level === "warn" ? "提示" : "信息");
     const line = document.createElement("div");
     line.className = "mode-log-line " + (level === "error" ? "error" : (level === "warn" ? "warn" : "info"));
-    line.textContent = "[" + t + "] " + prefix + " " + message;
+    line.innerHTML = '<span class="mode-log-icon" aria-hidden="true"></span>'
+      + '<span class="mode-log-time">' + esc(t) + '</span>'
+      + ' <span class="mode-log-level">【' + levelText + '】</span>'
+      + esc(message);
     box.prepend(line);
     while (box.childNodes.length > 500) box.removeChild(box.lastChild);
   }
@@ -597,6 +788,130 @@
     });
   }
 
+  function clearDesignDemoLogs(box) {
+    if (!box) return;
+    box.querySelectorAll("[data-design-demo], [data-test-design-demo], [data-nodes-design-demo]").forEach((el) => el.remove());
+  }
+
+  function clearAllDesignDemoLogs() {
+    clearDesignDemoLogs($("modeLog"));
+    clearDesignDemoLogs($("modeLogDetails"));
+  }
+
+  function appendDemoLogLines(box, rows, attr, levelLabel) {
+    if (!box) return;
+    const tag = levelLabel || "【信息】";
+    rows.forEach((row) => {
+      const line = document.createElement("div");
+      line.className = "mode-log-line info";
+      line.setAttribute(attr, "1");
+      line.innerHTML = '<span class="mode-log-icon" aria-hidden="true"></span>'
+        + '<span class="mode-log-time">' + esc(row.t) + '</span>'
+        + ' <span class="mode-log-level">' + esc(tag) + '</span>'
+        + esc(row.msg);
+      box.prepend(line);
+    });
+  }
+
+  function activateDesignLogTab(paneId) {
+    const visibleSet = document.querySelector(".topology-log-tabs:not(.is-hidden)");
+    if (!visibleSet) return;
+    visibleSet.querySelectorAll("[data-log-tab]").forEach((tab) => {
+      const on = tab.getAttribute("data-log-tab") === paneId;
+      tab.classList.toggle("active", on);
+    });
+    document.querySelectorAll(".topology-log-pane").forEach((pane) => {
+      pane.classList.toggle("active", pane.id === paneId);
+    });
+  }
+
+  function seedDesignDemoLogs() {
+    const box = $("modeLog");
+    if (!box || box.querySelector("[data-design-demo]")) return;
+    appendDemoLogLines(box, [
+      { t: "11:14:12", msg: "拓扑“生产环境”已加载完成，版本：v2.3.1" },
+      { t: "11:13:58", msg: "节点 Game(game-01) 与 Ops(ops-01) 连接已更新 (tcp:5512)" },
+      { t: "11:13:46", msg: "节点 Auth(auth-01) 与 Game(game-01) 连接已建立 (tcp:5501)" },
+      { t: "11:13:35", msg: "自动布局完成，共 5 个节点，6 条连线" },
+      { t: "11:13:20", msg: "拓扑“生产环境”保存成功" },
+      { t: "11:13:05", msg: "拓扑“生产环境”已打开" },
+    ], "data-design-demo", "【信息】");
+  }
+
+  function seedNodesDesignLogs() {
+    const box = $("modeLogDetails");
+    if (!box) return;
+    clearAllDesignDemoLogs();
+    appendDemoLogLines(box, [
+      { t: "11:14:12", msg: "拓扑“生产环境主拓扑”已加载完成，版本：v2.3.1" },
+      { t: "11:13:58", msg: "节点 Game(game-01) 与 Ops(ops-01) 连接已建立 (tcp:5512)" },
+      { t: "11:13:46", msg: "节点 Auth(auth-01) 与 Game(game-01) 连接已建立 (tcp:5501)" },
+      { t: "11:13:35", msg: "拓扑启动成功，共 6 个节点，6 条连线" },
+      { t: "11:13:20", msg: "拓扑“生产环境主拓扑”保存成功" },
+      { t: "11:13:05", msg: "拓扑“生产环境主拓扑”已打开" },
+    ], "data-nodes-design-demo", "[信息]");
+  }
+
+  function seedTestModeDesignLogs() {
+    const box = $("modeLog");
+    if (!box) return;
+    clearAllDesignDemoLogs();
+    appendDemoLogLines(box, [
+      { t: "15:30:15", msg: "开始测试：范围 完整架构，起点 Gateway，终点 TCP Transport" },
+      { t: "15:30:16", msg: "节点 Auth(auth-01) 连接已建立 (tcp:5501)" },
+      { t: "15:30:18", msg: "节点 Game(game-01) 连接已建立 (tcp:5512)" },
+      { t: "15:30:21", msg: "开始执行单元测试：Gateway -> Auth -> Game -> TCP Transport" },
+      { t: "15:30:28", msg: "单元测试通过，耗时 7.32 秒" },
+      { t: "15:30:35", msg: "开始压力测试：并发 100，持续 60 秒" },
+      { t: "15:31:05", msg: "压力测试完成，成功率 100%，平均响应 38ms，P95 82ms" },
+    ], "data-test-design-demo", "[信息]");
+  }
+
+  function refreshLogDemoForChrome() {
+    const leftTab = state.activeLeftTab || "tools";
+    if (leftTab === "nodes") {
+      activateDesignLogTab("modeLogDetailsPane");
+      seedNodesDesignLogs();
+      return;
+    }
+    if (leftTab === "mode" && state.mode === "test") {
+      activateDesignLogTab("modeLogPane");
+      seedTestModeDesignLogs();
+      return;
+    }
+    activateDesignLogTab("modeLogPane");
+    clearAllDesignDemoLogs();
+    seedDesignDemoLogs();
+  }
+
+  function nodeDesignDesc(node, layout) {
+    if (!node) return "";
+    if (layout === "nodes" && String(node.id) === "game-01") {
+      return "提供核心游戏逻辑服务，处理玩家会话与游戏逻辑。";
+    }
+    return node.desc || "";
+  }
+
+  function seedTestModeRuntimeDemo() {
+    if (state.mode !== "test" || state.runtimePollTimer) return;
+    updateRuntimeSummary({
+      run_id: "run_20250608_153015",
+      started_at: "2025-06-08T15:30:15",
+      duration_human: "00:12:48",
+      total: 19,
+      done: 12,
+      running: 5,
+      success: 12,
+      warn: 0,
+      failed: 0,
+      progress_pct: 63,
+    });
+    if ($("runtimeStatusPill")) {
+      $("runtimeStatusPill").textContent = "运行中";
+      $("runtimeStatusPill").className = "state-pill state-ok";
+    }
+  }
+
   function updateRuntimeSummary(snapshot) {
     const data = snapshot || {};
     const total = Number(data.total || 0);
@@ -605,9 +920,11 @@
     const success = Number(data.success || 0);
     const failed = Number(data.failed || 0);
     const warn = Number(data.warn || 0);
-    const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((done / total) * 100))) : 0;
+    const pct = Number.isFinite(Number(data.progress_pct))
+      ? Math.max(0, Math.min(100, Math.round(Number(data.progress_pct))))
+      : (total > 0 ? Math.max(0, Math.min(100, Math.round((done / total) * 100))) : 0);
     if ($("runtimeRunIdValue")) $("runtimeRunIdValue").textContent = String(data.run_id || state.runtimeRunId || "-");
-    if ($("runtimeStartedAtValue")) $("runtimeStartedAtValue").textContent = formatTime(data.started_at || data.created_at || "");
+    if ($("runtimeStartedAtValue")) $("runtimeStartedAtValue").textContent = formatTime(data.started_at || data.created_at || "", true);
     if ($("runtimeDurationValue")) $("runtimeDurationValue").textContent = String(data.duration_human || data.duration || "-");
     if ($("runtimeProgressValue")) $("runtimeProgressValue").textContent = pct + "%";
     if ($("runtimeProgressBar")) $("runtimeProgressBar").style.width = pct + "%";
@@ -650,6 +967,9 @@
     pushFlowSnapshot();
     updateRuntimeSummary(d);
     redrawGraph();
+    renderRuntimeNodeList();
+    const curNid = String((($("insNodeId") || {}).value || "")).trim();
+    if (curNid) renderMonitorPanel(curNid);
     const total = Number(d.total || 0);
     const done = Number(d.done || 0);
     if (total > 0) {
@@ -811,9 +1131,64 @@
     return (idx - (siblings.length - 1) / 2) * 18;
   }
 
+  function isDesignReferenceTopology() {
+    const meta = (state.topology && state.topology.meta) || {};
+    return String(meta.design_reference || "") === "v4";
+  }
+
+  function designDemoAgents() {
+    return [{
+      agent_id: "agent-01",
+      display_name: "agent-01",
+      probe_status: "PASS",
+      status: "ONLINE",
+      host_name: "10.0.1.15",
+      port: 9501,
+    }];
+  }
+
+  function effectiveAgents() {
+    const rows = Array.isArray(state.agents) ? state.agents : [];
+    if (rows.length) return rows;
+    return isDesignReferenceTopology() ? designDemoAgents() : rows;
+  }
+
+  function applyDesignStructuredLayout() {
+    if (!isDesignReferenceTopology() || !state.topology || !state.topology.meta) return;
+    state.topology.meta.layout_locked = false;
+    layoutStructuredGraph();
+  }
+
+  function fitGraphToViewport() {
+    const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
+    if (!nodes.length) return;
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    nodes.forEach((n) => {
+      const ui = n.ui || {};
+      minX = Math.min(minX, Number(ui.x || 0));
+      minY = Math.min(minY, Number(ui.y || 0));
+      maxX = Math.max(maxX, Number(ui.x || 0) + Number(ui.w || 240));
+      maxY = Math.max(maxY, Number(ui.y || 0) + Number(ui.h || 104));
+    });
+    const shell = $("canvasShell");
+    if (!shell || !Number.isFinite(minX)) return;
+    const pad = 40;
+    const cw = shell.clientWidth || 960;
+    const ch = shell.clientHeight || 520;
+    const gw = Math.max(1, maxX - minX + pad * 2);
+    const gh = Math.max(1, maxY - minY + pad * 2);
+    const zoom = Math.min(1, Math.min(cw / gw, ch / gh));
+    const x = Math.round((cw - gw * zoom) / 2 - (minX - pad) * zoom);
+    const y = Math.round((ch - gh * zoom) / 2 - (minY - pad) * zoom);
+    if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+    state.topology.meta.viewport = { x, y, zoom };
+    renderScene();
+  }
+
   function layoutStructuredGraph() {
     if (!state.topology || !Array.isArray(state.topology.nodes)) return;
     if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+    if (state.topology.meta.layout_locked) return;
     state.topology.meta.layout_mode = "structured";
     const nodes = state.topology.nodes || [];
     const byId = {};
@@ -853,10 +1228,10 @@
       const idx = roleOrder.indexOf(String(role || "").toLowerCase());
       return idx < 0 ? 99 : idx;
     };
-    const startX = 120;
-    const startY = 118;
-    const rankGap = 340;
-    const rowGap = 150;
+    const startX = 96;
+    const startY = 96;
+    const rankGap = 300;
+    const rowGap = 136;
     Object.keys(ranks).map(Number).sort((a, b) => a - b).forEach((r) => {
       const rows = ranks[r].sort((a, b) => {
         const rr = roleIndex(a.role) - roleIndex(b.role);
@@ -963,11 +1338,13 @@
       const ui = prev.ui || {};
       return {
         id,
+        name: String(prev.name || raw.name || id),
         role,
         kind,
-        desc: String(prev.desc || raw.description || ""),
+        desc: String(prev.desc || raw.description || raw.desc || ""),
         bizStatus: String(prev.bizStatus || "normal"),
         owner: String(prev.owner || raw.owner || ""),
+        group: String(prev.group || raw.group || ""),
         tags: Array.isArray(prev.tags) ? prev.tags : [],
         ui: {
           x: Number(ui.x != null ? ui.x : 90 + (i % 5) * 280),
@@ -976,6 +1353,11 @@
           h: Number(ui.h || 96),
           color: String(ui.color || "#0f172a"),
           ports: normalizePorts(kind, ui.ports),
+          list_only: !!(ui.list_only || raw.list_only || (raw.ui && raw.ui.list_only)),
+          locked: !!ui.locked,
+          disabled: !!ui.disabled,
+          remote: (ui.remote && typeof ui.remote === "object") ? ui.remote : {},
+          network: (ui.network && typeof ui.network === "object") ? ui.network : {},
         },
       };
     });
@@ -998,7 +1380,68 @@
   function renderScene() {
     const v = view();
     $("scene").style.transform = "translate(" + v.x + "px," + v.y + "px) scale(" + v.zoom + ")";
-    $("zoomLabel").textContent = Math.round(v.zoom * 100) + "%";
+    if ($("zoomLabel")) $("zoomLabel").textContent = Math.round(v.zoom * 100) + "%";
+    const shell = $("canvasShell");
+    if (shell) shell.classList.toggle("grid-hidden", !state.showGrid);
+    renderMiniMap();
+  }
+
+  function renderMiniMap() {
+    const canvas = $("topologyMiniMap");
+    const shell = $("canvasShell");
+    if (!canvas || !shell) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#eef4ff";
+    ctx.fillRect(0, 0, w, h);
+    const nodes = state.topology.nodes || [];
+    if (!nodes.length) return;
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    nodes.forEach((n) => {
+      const ui = n.ui || {};
+      minX = Math.min(minX, ui.x || 0);
+      minY = Math.min(minY, ui.y || 0);
+      maxX = Math.max(maxX, (ui.x || 0) + (ui.w || 180));
+      maxY = Math.max(maxY, (ui.y || 0) + (ui.h || 96));
+    });
+    const pad = 24;
+    const worldW = Math.max(1, maxX - minX + pad * 2);
+    const worldH = Math.max(1, maxY - minY + pad * 2);
+    const scale = Math.min(w / worldW, h / worldH);
+    nodes.forEach((n) => {
+      const ui = n.ui || {};
+      const x = ((ui.x || 0) - minX + pad) * scale;
+      const y = ((ui.y || 0) - minY + pad) * scale;
+      const nw = Math.max(4, (ui.w || 180) * scale);
+      const nh = Math.max(3, (ui.h || 96) * scale);
+      ctx.fillStyle = roleColor(n.role);
+      ctx.fillRect(x, y, nw, nh);
+    });
+    const rect = shell.getBoundingClientRect();
+    const v = view();
+    const vx = (-v.x / v.zoom - minX + pad) * scale;
+    const vy = (-v.y / v.zoom - minY + pad) * scale;
+    const vw = (rect.width / v.zoom) * scale;
+    const vh = (rect.height / v.zoom) * scale;
+    ctx.strokeStyle = "#2563eb";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(vx, vy, vw, vh);
+    canvas.onclick = (ev) => {
+      const r = canvas.getBoundingClientRect();
+      const cx = ev.clientX - r.left;
+      const cy = ev.clientY - r.top;
+      const worldX = minX - pad + cx / scale;
+      const worldY = minY - pad + cy / scale;
+      state.topology.meta.viewport = {
+        x: rect.width / 2 - worldX * v.zoom,
+        y: rect.height / 2 - worldY * v.zoom,
+        zoom: v.zoom,
+      };
+      renderScene();
+    };
   }
 
   function setTopologyHint(text, type) {
@@ -1009,11 +1452,46 @@
     el.style.display = text ? "" : "none";
   }
 
+  function projectDisplayName(item) {
+    const id = String((item && item.id) || "");
+    const name = String((item && item.name) || id || "-");
+    if (id === "RecycleTycoon" || name === "垃圾回收站") return "MMORPG";
+    return name;
+  }
+
+  async function loadProjectOptions() {
+    const projectSel = $("projectSelector");
+    if (!projectSel) return;
+    const resp = await OpsApi.loadProjects("active");
+    const rows = (resp && Array.isArray(resp.projects)) ? resp.projects : [];
+    if (resp && resp.ok === false && !rows.length) return;
+    if (!rows.length) {
+      projectSel.innerHTML = '<option value="' + esc(state.projectId) + '">' + esc(projectDisplayName({ id: state.projectId, name: state.projectId })) + "</option>";
+      projectSel.value = state.projectId;
+      return;
+    }
+    projectSel.innerHTML = rows.map((item) => (
+      '<option value="' + esc(item.id) + '">' + esc(projectDisplayName(item)) + "</option>"
+    )).join("");
+    if (state.projectId && rows.some((item) => String(item.id) === String(state.projectId))) {
+      projectSel.value = state.projectId;
+    } else if (rows.length) {
+      state.projectId = String(rows[0].id || state.projectId || "");
+      projectSel.value = state.projectId;
+    }
+  }
+
   function renderScopeSelectors() {
     const projectSel = $("projectSelector");
-    if (projectSel) {
-      projectSel.innerHTML = '<option value="' + esc(state.projectId) + '">' + esc(state.projectId || "-") + "</option>";
+    if (projectSel && !projectSel.options.length) {
+      projectSel.innerHTML = '<option value="' + esc(state.projectId) + '">' + esc(projectDisplayName({ id: state.projectId, name: state.projectId })) + "</option>";
       projectSel.value = state.projectId;
+    } else if (projectSel && state.projectId) {
+      projectSel.value = state.projectId;
+    }
+    const createProjectName = $("topologyCreateProjectName");
+    if (createProjectName) {
+      createProjectName.value = projectDisplayName({ id: state.projectId, name: state.projectId });
     }
     const envSel = $("envSelector");
     const createEnvSel = $("topologyCreateEnv");
@@ -1054,29 +1532,41 @@
   function renderTopologyManagerList() {
     const body = $("topologyRegistryRows");
     if (!body) return;
-    const rows = state.topologies || [];
+    const rows = state.managerTopologies || state.topologies || [];
+    const pageSize = state.topologyManagerPageSize || 10;
+    const page = Math.max(1, state.topologyManagerPage || 1);
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    if (page > totalPages) state.topologyManagerPage = totalPages;
+    const start = (state.topologyManagerPage - 1) * pageSize;
+    const pageRows = rows.slice(start, start + pageSize);
+    const info = $("topologyManagerPageInfo");
+    if (info) info.textContent = "共 " + rows.length + " 条";
+    const pageNum = $("topologyManagerPageNum");
+    if (pageNum) pageNum.textContent = String(state.topologyManagerPage || 1);
     if (!rows.length) {
       body.innerHTML = '<tr><td colspan="9">暂无拓扑，请先创建。</td></tr>';
       return;
     }
-    body.innerHTML = rows.map((item) => {
+    body.innerHTML = pageRows.map((item) => {
       const status = String(item.status || "draft").toUpperCase();
       const nodeCount = Number(item.node_count || 0);
       const edgeCount = Number(item.edge_count || 0);
+      const envCls = envTagClass(item.env_key);
+      const running = status === "RUNNING";
       return '<tr>'
         + '<td>' + esc(item.name || item.topology_id) + (item.is_default ? ' <span class="state-pill state-info">默认</span>' : '') + '</td>'
-        + '<td>' + esc(envLabel(item.env_key)) + '</td>'
-        + '<td><span class="state-pill ' + (status === "RUNNING" ? 'state-ok' : 'state-info') + '">' + esc(status === "RUNNING" ? '运行中' : '草稿') + '</span></td>'
+        + '<td><span class="env-tag ' + envCls + '">' + esc(envLabel(item.env_key)) + '</span></td>'
+        + '<td><span class="status-dot-line"><span class="status-dot ' + (running ? 'ok' : 'muted') + '"></span>' + esc(running ? '运行中' : '已停止') + '</span></td>'
         + '<td>' + esc(item.version_label || "-") + '</td>'
         + '<td>' + esc(formatTime(item.updated_at)) + '</td>'
         + '<td>' + esc(item.owner || "-") + '</td>'
         + '<td>' + nodeCount + '</td>'
         + '<td>' + edgeCount + '</td>'
         + '<td class="topology-manager-actions-cell">'
-        + '<button class="btn" type="button" data-topology-open="' + esc(item.topology_id) + '">打开</button>'
-        + '<button class="btn" type="button" data-topology-copy="' + esc(item.topology_id) + '">复制</button>'
-        + '<button class="btn" type="button" data-topology-default="' + esc(item.topology_id) + '">设为默认</button>'
-        + '<button class="btn danger" type="button" data-topology-delete="' + esc(item.topology_id) + '">删除</button>'
+        + '<button class="btn btn-link" type="button" data-topology-open="' + esc(item.topology_id) + '">打开</button>'
+        + '<button class="btn btn-link" type="button" data-topology-copy="' + esc(item.topology_id) + '">复制</button>'
+        + '<button class="btn btn-link" type="button" data-topology-default="' + esc(item.topology_id) + '">设为默认</button>'
+        + '<button class="btn btn-link danger" type="button" data-topology-delete="' + esc(item.topology_id) + '">删除</button>'
         + '</td>'
         + '</tr>';
     }).join("");
@@ -1094,16 +1584,29 @@
     if (createBpSel) createBpSel.innerHTML = options;
   }
 
+  function setModalOpen(open) {
+    document.body.classList.toggle("topology-modal-open", !!open);
+  }
+
   function openTopologyManager() {
     const modal = $("topologyManagerModal");
     if (modal) modal.classList.remove("hidden");
-    renderTopologyManagerList();
+    setModalOpen(true);
+    const body = $("topologyRegistryRows");
+    if (body) body.innerHTML = '<tr><td colspan="9">正在加载拓扑列表...</td></tr>';
+    OpsApi.loadTopologies({ project_id: state.projectId }).then((resp) => {
+      if (resp && resp.ok !== false && Array.isArray(resp.topologies)) {
+        state.managerTopologies = resp.topologies;
+      }
+      renderTopologyManagerList();
+    });
     renderScopeSelectors();
   }
 
   function closeTopologyManager() {
     const modal = $("topologyManagerModal");
     if (modal) modal.classList.add("hidden");
+    setModalOpen(false);
   }
 
   async function switchScope(next) {
@@ -1201,8 +1704,62 @@
   function refreshRightPanelMode() {
     const runtimeCard = $("runtimeSummaryCard");
     const inspector = $("nodeInspectorCard");
-    if (runtimeCard) runtimeCard.classList.toggle("is-hidden", state.activeLeftTab !== "mode");
-    if (inspector) inspector.classList.toggle("is-runtime-mode", state.activeLeftTab === "mode");
+    const inModeTab = state.activeLeftTab === "mode";
+    const inRunTest = state.mode === "run" || state.mode === "test";
+    const showRuntime = inModeTab && inRunTest;
+    if (runtimeCard) runtimeCard.classList.toggle("is-hidden", !showRuntime);
+    if (inspector) {
+      inspector.classList.toggle("is-hidden", showRuntime);
+      inspector.classList.toggle("is-runtime-mode", showRuntime);
+    }
+    if (showRuntime && $("runtimeTopologyInfo")) {
+      const topo = (state.topologies || []).find((t) => String(t.topology_id) === String(state.topologyId));
+      $("runtimeTopologyInfo").textContent = topo
+        ? (topo.name || topo.topology_id) + " · " + envLabel(state.envKey) + " · " + String(topo.version_label || "-")
+        : state.topologyId || "-";
+    }
+  }
+
+  function refreshLeftPanelChrome(leftTab) {
+    const tabName = leftTab || state.activeLeftTab || "tools";
+    document.querySelectorAll("[data-log-set]").forEach((box) => {
+      const set = box.getAttribute("data-log-set");
+      box.classList.toggle("is-hidden", set === "nodes" ? tabName !== "nodes" : tabName === "nodes");
+    });
+    const topbar = document.querySelector(".topology-canvas-topbar");
+    if (topbar) topbar.classList.toggle("is-visible", tabName === "nodes");
+    const card = $("nodeInspectorCard");
+    if (card) {
+      card.setAttribute("data-inspector-layout", tabName === "nodes" ? "nodes" : "tools");
+    }
+    document.querySelectorAll(".topology-inspector-tab[data-tab-tools]").forEach((tab) => {
+      const toolsLabel = tab.getAttribute("data-tab-tools");
+      const nodesLabel = tab.getAttribute("data-tab-nodes");
+      if (tabName === "nodes" && nodesLabel) tab.textContent = nodesLabel;
+      else if (toolsLabel) tab.textContent = toolsLabel;
+    });
+    document.querySelectorAll(".topology-inspector-actions-tools").forEach((el) => {
+      el.classList.toggle("is-hidden", tabName === "nodes");
+    });
+    document.querySelectorAll(".topology-inspector-actions-nodes").forEach((el) => {
+      el.classList.toggle("is-hidden", tabName !== "nodes");
+    });
+    refreshInspectorLayout(tabName);
+    if (tabName === "tools" && state.mode !== "run") clearTestHighlight();
+    refreshRightPanelMode();
+    const headerControls = document.querySelector(".topology-header-controls");
+    if (headerControls) {
+      headerControls.setAttribute("data-header-layout", tabName);
+      const envLabelEl = headerControls.querySelector(".topology-header-env-label");
+      const topoWide = headerControls.querySelector(".topology-header-select-wide");
+      if (tabName === "tools") {
+        if (envLabelEl) envLabelEl.textContent = "当前拓扑";
+        if (topoWide) topoWide.classList.add("is-hidden");
+      } else {
+        if (envLabelEl) envLabelEl.textContent = "环境";
+        if (topoWide) topoWide.classList.remove("is-hidden");
+      }
+    }
   }
 
   function validateTopologyLocal() {
@@ -1234,12 +1791,67 @@
       panels.forEach((panel) => {
         panel.classList.toggle("is-hidden", panel.getAttribute("data-left-panel") !== name);
       });
-      refreshRightPanelMode();
+      refreshLeftPanelChrome(name);
+      refreshLogDemoForChrome();
     };
     tabs.forEach((tab) => {
       tab.onclick = () => activate(tab.getAttribute("data-topology-left-tab") || "tools");
     });
     activate("tools");
+  }
+
+  function refreshInspectorLayout(leftTab) {
+    const layout = leftTab === "nodes" ? "nodes" : "tools";
+    const card = $("nodeInspectorCard");
+    if (card) card.setAttribute("data-inspector-layout", layout);
+    const roleLabelEl = document.querySelector("#basicInfoPanel .topology-field[data-field='role'] .topology-field-label");
+    if (roleLabelEl) roleLabelEl.textContent = layout === "nodes" ? "节点类型" : "角色";
+    const ioTab = document.querySelector(".topology-inspector-tab[data-tab-nodes='输入输出端口']");
+    if (ioTab) ioTab.setAttribute("data-inspector-tab", layout === "nodes" ? "ioPortsPanel" : "monitorPanel");
+    if (layout === "nodes" && state.inspectorTab === "monitorPanel") {
+      state.inspectorTab = "basicInfoPanel";
+      document.querySelectorAll("[data-inspector-tab]").forEach((tab) => {
+        tab.classList.toggle("active", tab.getAttribute("data-inspector-tab") === "basicInfoPanel");
+      });
+      document.querySelectorAll(".topology-inspector-pane").forEach((pane) => {
+        pane.classList.toggle("active", pane.id === "basicInfoPanel");
+      });
+    }
+    const nid = String(($("insNodeId") || {}).value || "").trim();
+    if (nid) {
+      const n = getNode(nid);
+      if (n && $("insNodeDesc")) $("insNodeDesc").value = nodeDesignDesc(n, layout);
+    }
+  }
+
+  function syncInspectorAgentBasicFromMain() {
+    const main = $("insNodePrimaryAgent");
+    const basic = $("insNodePrimaryAgentBasic");
+    if (main && basic && basic.value !== main.value) basic.value = main.value;
+  }
+
+  function syncInspectorAgentMainFromBasic() {
+    const main = $("insNodePrimaryAgent");
+    const basic = $("insNodePrimaryAgentBasic");
+    if (main && basic && main.value !== basic.value) main.value = basic.value;
+  }
+
+  function syncInspectorPortFieldsFromMain() {
+    const port = $("insNodeRemotePort");
+    const portBasic = $("insNodeRemotePortBasic");
+    const eps = $("insNodeEndpoints");
+    const epsBasic = $("insNodeEndpointsBasic");
+    if (port && portBasic) portBasic.value = port.value;
+    if (eps && epsBasic) epsBasic.value = eps.value;
+  }
+
+  function syncInspectorPortFieldsFromBasic() {
+    const port = $("insNodeRemotePort");
+    const portBasic = $("insNodeRemotePortBasic");
+    const eps = $("insNodeEndpoints");
+    const epsBasic = $("insNodeEndpointsBasic");
+    if (port && portBasic) port.value = portBasic.value;
+    if (eps && epsBasic) eps.value = epsBasic.value;
   }
 
   function bindInspectorTabs() {
@@ -1286,9 +1898,31 @@
     drawEdges();
   }
 
+  function ensureEdgeMarkers() {
+    const svg = $("edgeSvg");
+    if (!svg || svg.querySelector("#edge-arrow-marker")) return;
+    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+    marker.setAttribute("id", "edge-arrow-marker");
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "5");
+    marker.setAttribute("markerHeight", "5");
+    marker.setAttribute("orient", "auto");
+    const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    head.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
+    head.setAttribute("fill", "context-stroke");
+    marker.appendChild(head);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+  }
+
   function drawEdges() {
     const svg = $("edgeSvg");
-    svg.innerHTML = "";
+    if (!svg) return;
+    svg.querySelectorAll(":scope > :not(defs)").forEach((el) => el.remove());
+    ensureEdgeMarkers();
     let visible = 0;
     let skipped = 0;
     (state.topology.edges || []).forEach((edge) => {
@@ -1297,17 +1931,20 @@
       visible += 1;
       const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
       hit.setAttribute("d", d);
+      hit.setAttribute("fill", "none");
       hit.setAttribute("class", "edge-hit");
       hit.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("marker-end", "url(#edge-arrow-marker)");
       const hl = state.highlight.edges.has(edge.id) ? " hl" : "";
       const flow = state.flowViz.edges.has(edge.id) ? " flow" : "";
       const fail = (state.flowViz.statusByNode[String(edge.to)] && ["FAILED", "TIMEOUT", "CANCELED"].includes(String(state.flowViz.statusByNode[String(edge.to)]).toUpperCase())) ? " fail" : "";
       path.setAttribute("class", "edge" + hl + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
+      const src = getNode(edge.from);
       if (!flow && !hl && !fail) {
-        const src = getNode(edge.from);
-        path.style.stroke = roleColor(src && src.role);
+        path.style.stroke = isEditMode() ? "#1890ff" : roleColor(src && src.role);
       }
       path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       svg.appendChild(hit);
@@ -1316,17 +1953,17 @@
       if (m) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "g");
         label.setAttribute("class", "edge-route-label");
-        const txtValue = runtimeName(edge.from) + "." + String(edge.from_port || "out-1") + " → " + runtimeName(edge.to) + "." + String(edge.to_port || "in-1");
-        const labelWidth = Math.max(120, Math.min(260, txtValue.length * 6 + 18));
+        const txtValue = compactEdgeLabel(edge);
+        const labelWidth = Math.max(44, Math.min(96, txtValue.length * 7 + 14));
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         rect.setAttribute("x", String(Math.round(m.x - labelWidth / 2)));
-        rect.setAttribute("y", String(Math.round(m.y - 28)));
+        rect.setAttribute("y", String(Math.round(m.y - 24)));
         rect.setAttribute("width", String(labelWidth));
-        rect.setAttribute("height", "20");
-        rect.setAttribute("rx", "10");
+        rect.setAttribute("height", "18");
+        rect.setAttribute("rx", "9");
         const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
         txt.setAttribute("x", String(Math.round(m.x)));
-        txt.setAttribute("y", String(Math.round(m.y - 14)));
+        txt.setAttribute("y", String(Math.round(m.y - 11)));
         txt.setAttribute("text-anchor", "middle");
         txt.textContent = txtValue;
         label.appendChild(rect);
@@ -1402,6 +2039,7 @@
     layer.innerHTML = "";
     const runtime = runtimeById();
     (state.topology.nodes || []).forEach((n) => {
+      if ((n.ui || {}).list_only) return;
       const aid = String((state.nodeBindings || {})[n.id] || "");
       const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
       const bindText = ag ? ("Agent： " + (ag.display_name || ag.agent_id)) : "未绑定 Agent";
@@ -1410,15 +2048,27 @@
       const stLabel = agHealth.cls === "err" ? "心跳过期" : (agHealth.cls === "warn" ? "Agent异常" : (STATUS_LABELS[st] || st));
       const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
       const isFlow = state.flowViz.nodes.has(n.id);
-      const palette = ROLE_COLOR[String(n.role || "").toLowerCase()] || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#f4f8ff" };
+      const palette = ROLE_COLOR[String(n.role || "").toLowerCase()] || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#ffffff", glow: "rgba(37,99,235,.18)" };
       const runtimeItem = runtime[n.id] || {};
       const displayTitle = nodeDisplayTitle(n);
-      const displaySub = nodeSecondaryText(n);
       const metaId = String(runtimeItem.server_id || n.server_id || n.id || "-");
-      const serviceId = String((state.serviceBindings || {})[n.id] || "");
+      const descLine = String(n.desc || "").trim() || roleLabel(n.role);
+      let statusText;
+      let statusCls;
+      statusText = STATUS_LABELS[st] || "运行中";
+      statusCls = st === "error" || st === "offline" ? "err" : (st === "degraded" || st === "observe" ? "warn" : "ok");
+      if ((isRunMode() || isTestMode()) && isFlow) {
+        const flowRunning = flowSt === "RUNNING" || flowSt === "SUCCESS";
+        statusText = flowRunning ? "运行中" : (STATUS_LABELS[st] || stLabel);
+        statusCls = flowRunning ? "ok" : (flowSt === "FAILED" ? "err" : "warn");
+      }
+
+      const hasIn = (state.topology.edges || []).some((e) => String(e.to) === String(n.id));
+      const agentLine = aid ? ('<div class="node-agent-line">Agent: ' + esc(aid) + '</div>') : "";
 
       const el = document.createElement("div");
-      el.className = "node structured-node"
+      el.className = "node structured-node tw-node"
+        + (hasIn ? " has-in-port" : "")
         + (state.selection.nodes.has(n.id) ? " sel" : "")
         + (state.highlight.nodes.has(n.id) ? " hl" : "")
         + (isFlow ? " flow-active" : "")
@@ -1428,26 +2078,26 @@
       el.style.left = n.ui.x + "px";
       el.style.top = n.ui.y + "px";
       el.style.width = n.ui.w + "px";
-      el.style.minHeight = n.ui.h + "px";
-      el.style.borderColor = palette.border;
-      el.style.background = "linear-gradient(165deg," + palette.bg1 + "," + palette.bg2 + ")";
-      el.innerHTML = '<div class="node-role-strip" style="background:' + esc(palette.border) + '"></div>'
+      el.style.minHeight = Math.max(n.ui.h || 0, 128) + "px";
+      el.style.setProperty("--node-accent", palette.border);
+      el.style.setProperty("--node-glow", palette.glow || "rgba(37,99,235,.18)");
+      el.style.setProperty("--node-bg", palette.bg1 || "#ffffff");
+      el.innerHTML = '<div class="node-top-accent"></div>'
+        + '<div class="node-role-strip"></div>'
         + drawPorts(n, "in") + drawPorts(n, "out")
         + (isEditMode() ? '<button class="node-remove-btn" type="button" data-node-id="' + esc(n.id) + '" title="删除节点"></button>' : "")
-        + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游"></button>' : "")
+        + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游" aria-label="从 ' + esc(displayTitle) + ' 添加下游"></button>' : "")
         + '<div class="node-shell">'
         +   '<div class="node-card-head">'
-        +     '<span class="node-badge" style="color:' + esc(palette.border) + ';border-color:' + esc(palette.bg2) + ';background:' + esc(palette.bg1) + '">' + esc(roleBadge(n.role)) + '</span>'
+        +     '<span class="node-badge">' + esc(roleBadge(n.role)) + '</span>'
         +     '<div class="node-heading-block">'
         +       '<div class="node-title">' + esc(displayTitle) + '</div>'
-        +       '<div class="node-subtitle">' + esc(displaySub) + '</div>'
+        +       '<div class="node-desc">' + esc(descLine) + '</div>'
         +     '</div>'
         +   '</div>'
         +   '<div class="node-id-line">ID: ' + esc(metaId) + '</div>'
-        +   '<div class="node-status-line status-' + esc(agHealth.cls) + '"><span class="node-status-dot"></span>' + esc(stLabel) + '</div>'
-        +   '<div class="node-role-line">' + esc(roleLabel(n.role)) + '</div>'
-        +   (ag ? ('<div class="node-agent-line">' + esc(bindText) + '</div>') : "")
-        +   (serviceId ? ('<div class="node-service-line">服务实例：' + esc(serviceId) + '</div>') : "")
+        +   '<div class="node-status-line status-' + esc(statusCls) + '"><span class="node-status-dot"></span>' + esc(statusText) + '</div>'
+        +   agentLine
         + '</div>';
       el.onclick = (ev) => { ev.stopPropagation(); openNodeEditor(n.id); };
       layer.appendChild(el);
@@ -1473,15 +2123,41 @@
   }
 
   function renderRuntimeNodeList() {
-    const box = $("runtimeNodeList");
-    if (!box) return;
-    box.innerHTML = "";
-    (state.topology.nodes || []).forEach((n) => {
-      const item = document.createElement("div");
-      item.className = "runtime-node-item";
-      item.innerHTML = '<div class="id">' + esc(nodeDisplayTitle(n)) + '</div><div class="meta">' + esc(roleLabel(n.role)) + " / " + esc(STATUS_LABELS[n.bizStatus] || n.bizStatus || "运行中") + "</div>";
-      item.onclick = () => openNodeEditor(n.id);
-      box.appendChild(item);
+    const body = $("runtimeNodeList");
+    if (!body) return;
+    const nodes = state.topology.nodes || [];
+    if (!nodes.length) {
+      body.innerHTML = '<tr><td colspan="5" class="topology-table-empty">暂无节点</td></tr>';
+      return;
+    }
+    body.innerHTML = nodes.map((n) => {
+      const aid = String((state.nodeBindings || {})[n.id] || "");
+      const sid = String((state.serviceBindings || {})[n.id] || "");
+      const bindLabel = sid || aid ? "已绑定" : "未绑定";
+      const bindCls = sid || aid ? "state-ok" : "state-warn";
+      const st = String(n.bizStatus || "normal");
+      const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
+      const stLabel = flowSt ? (flowSt === "RUNNING" ? "运行中" : flowSt) : (STATUS_LABELS[st] || st || "运行中");
+      const stCls = flowSt === "FAILED" ? "state-err" : (flowSt === "RUNNING" || flowSt === "SUCCESS" ? "state-ok" : "state-info");
+      return '<tr data-node-row="' + esc(n.id) + '">'
+        + '<td><span class="node-row-name"><span class="node-row-ico">' + esc(roleBadge(n.role)) + '</span>' + esc(nodeDisplayTitle(n)) + '</span></td>'
+        + '<td>' + esc(roleLabel(n.role)) + '</td>'
+        + '<td><span class="state-pill ' + bindCls + '">' + esc(bindLabel) + '</span></td>'
+        + '<td><span class="state-pill ' + stCls + '">' + esc(stLabel) + '</span></td>'
+        + '<td class="topology-node-row-actions">'
+        + '<button type="button" class="btn linkish" data-node-open="' + esc(n.id) + '">打开</button>'
+        + '<button type="button" class="btn linkish" data-node-probe="' + esc(n.id) + '">探测</button>'
+        + '</td>'
+        + '</tr>';
+    }).join("");
+    body.querySelectorAll("[data-node-open]").forEach((btn) => {
+      btn.onclick = () => openNodeEditor(btn.getAttribute("data-node-open"));
+    });
+    body.querySelectorAll("[data-node-probe]").forEach((btn) => {
+      btn.onclick = async () => {
+        openNodeEditor(btn.getAttribute("data-node-probe"));
+        if ($("btnProbeNode")) $("btnProbeNode").click();
+      };
     });
   }
 
@@ -1536,6 +2212,7 @@
     normalizeTopology();
     layoutStructuredGraph();
     state.selection.edgeId = "";
+    pushHistory();
     redrawGraph();
     renderRuntimeNodeList();
     fillTestNodeOptions();
@@ -1562,7 +2239,8 @@
       const item = document.createElement("button");
       item.type = "button";
       item.className = "structured-menu-item";
-      item.innerHTML = '<b>' + esc(runtimeName(n.id)) + '</b><span>' + esc((n.role || "-") + " / " + (n.kind || "-")) + '</span>';
+      item.innerHTML = '<div class="structured-menu-item-title">' + esc(nodeDisplayTitle(n)) + '</div>'
+        + '<div class="structured-menu-item-sub">' + esc(roleLabel(n.role) + " · " + semanticTypeLabel(n)) + '</div>';
       item.onclick = () => structuredAddExistingTarget(nodeId, n.id);
       existingBox.appendChild(item);
     });
@@ -1577,18 +2255,21 @@
         const item = document.createElement("button");
         item.type = "button";
         item.className = "structured-menu-item";
-        item.innerHTML = '<b>' + esc(p.name || p.preset_id || "-") + '</b><span>' + esc((p.role || "-") + " / " + inferKind(p.role, p.kind)) + '</span>';
+        item.innerHTML = '<div class="structured-menu-item-title">' + esc(p.name || p.preset_id || "-") + '</div>'
+          + '<div class="structured-menu-item-sub">' + esc(roleLabel(p.role) + " · " + inferKind(p.role, p.kind)) + '</div>';
         item.onclick = () => structuredAddNewTarget(nodeId, p.preset_id);
         sec.appendChild(item);
       });
       presetBox.appendChild(sec);
     });
     modal.classList.remove("hidden");
+    setModalOpen(true);
   }
 
   function closeStructuredAddMenu() {
     const modal = $("structuredAddModal");
     if (modal) modal.classList.add("hidden");
+    setModalOpen(false);
     state.structuredAddCtx = null;
   }
 
@@ -1621,11 +2302,17 @@
 
   function presetGroup(role) {
     const r = String(role || "").toLowerCase();
-    if (["gateway", "edge", "admin"].includes(r)) return "入口与边缘";
-    if (["business", "scheduler", "analytics"].includes(r)) return "业务与调度";
-    if (["pressure"].includes(r)) return "压测与实验";
-    if (["database", "cache", "mq", "search"].includes(r)) return "数据与中间件";
+    if (["gateway", "edge"].includes(r)) return "网关与入口";
+    if (["business", "scheduler", "admin", "analytics"].includes(r)) return "业务服务";
+    if (["database", "cache", "search"].includes(r)) return "运维基础";
+    if (["mq", "pressure"].includes(r)) return "中间件";
     return "其他";
+  }
+
+  function presetIcon(role) {
+    const r = String(role || "").toLowerCase();
+    const map = { gateway: "G", auth: "A", game: "P", business: "P", database: "D", cache: "C", mq: "M", edge: "E", scheduler: "S" };
+    return map[r] || "N";
   }
 
   function renderPresets() {
@@ -1633,7 +2320,14 @@
     const quickBar = $("presetQuickBar");
     const categorySelect = $("presetCategoryFilter");
     const kw = String($("presetSearch").value || "").toLowerCase().trim();
-    const category = categorySelect ? String(categorySelect.value || "") : "";
+    if (categorySelect && !categorySelect.dataset.ready) {
+      categorySelect.innerHTML = '<option value="">全部分类</option>'
+        + ["网关与入口", "业务服务", "运维基础", "中间件", "其他"].map((g) => '<option value="' + esc(g) + '">' + esc(g) + "</option>").join("");
+      categorySelect.dataset.ready = "1";
+    }
+    let category = categorySelect ? String(categorySelect.value || "") : "";
+    const activeChip = document.querySelector("#presetCategoryChips .topology-chip.active");
+    if (activeChip) category = String(activeChip.getAttribute("data-category") || "");
     box.innerHTML = "";
     if (quickBar) quickBar.innerHTML = "";
     const rows = (state.presets || []).filter((p) => {
@@ -1641,29 +2335,29 @@
       const hay = (String(p.name || "") + " " + String(p.role || "") + " " + String(p.preset_id || "")).toLowerCase();
       return (!kw || hay.includes(kw)) && (!category || group === category);
     });
-    const categories = Array.from(new Set((state.presets || []).map((p) => presetGroup(p.role))));
+
     if (quickBar) {
-      const allBtn = document.createElement("button");
-      allBtn.type = "button";
-      allBtn.className = "topology-chip" + (!category ? " active" : "");
-      allBtn.textContent = "全部";
-      allBtn.onclick = () => {
-        if (categorySelect) categorySelect.value = "";
-        renderPresets();
-      };
-      quickBar.appendChild(allBtn);
-      categories.forEach((name) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "topology-chip" + (category === name ? " active" : "");
-        btn.textContent = name;
-        btn.onclick = () => {
-          if (categorySelect) categorySelect.value = name;
-          renderPresets();
-        };
-        quickBar.appendChild(btn);
+      quickBar.innerHTML = '<div class="topology-section-title sm">快速模板</div><div class="topology-quick-row"></div>';
+      const row = quickBar.querySelector(".topology-quick-row");
+      const quickPick = [
+        { key: "gateway", match: (p) => String(p.role || "").toLowerCase() === "gateway" },
+        { key: "auth", match: (p) => String(p.role || "").toLowerCase() === "auth" },
+        { key: "game", match: (p) => String(p.role || "").toLowerCase() === "business" },
+        { key: "database", match: (p) => String(p.preset_id || "").toLowerCase() === "mongo_db" || String(p.name || "").toLowerCase().includes("mongo") },
+      ];
+      quickPick.forEach(({ key, match }) => {
+        const hit = (state.presets || []).find(match);
+        if (!hit || !row) return;
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "topology-quick-card" + (state.activePresetId === hit.preset_id ? " active" : "");
+        const quickLabel = key === "database" ? "DB" : (hit.name || key);
+        card.innerHTML = '<span class="quick-ico">' + esc(presetIcon(hit.role)) + '</span><span class="quick-name">' + esc(quickLabel) + '</span><span class="quick-desc">' + esc(hit.default_desc || roleLabel(hit.role)) + '</span>';
+        card.onclick = () => { state.activePresetId = hit.preset_id; renderPresets(); };
+        row.appendChild(card);
       });
     }
+
     if (!rows.length) { box.innerHTML = '<div class="preset-empty">没有匹配模板</div>'; return; }
 
     const groups = {};
@@ -1684,7 +2378,7 @@
           const card = document.createElement("div");
           card.className = "preset-card" + (state.activePresetId === p.preset_id ? " active" : "");
           card.draggable = true;
-          card.innerHTML = '<div class="name">' + esc(p.name || "-") + '</div><div class="meta">' + esc((p.role || "-") + " / " + inferKind(p.role, p.kind)) + '</div><div class="desc">' + esc(p.default_desc || "暂无说明") + '</div><div class="act"><span class="tag">' + esc(p.preset_id || "-") + '</span><button type="button" class="add-btn">添加到流程</button></div>';
+          card.innerHTML = '<span class="preset-ico">' + esc(presetIcon(p.role)) + '</span><div class="preset-body"><div class="name">' + esc(p.name || "-") + '</div><div class="meta">' + esc(roleLabel(p.role)) + '</div></div><button type="button" class="add-btn">+</button>';
           card.onclick = () => { state.activePresetId = p.preset_id; renderPresets(); };
           card.ondragstart = (e) => e.dataTransfer.setData("text/plain", p.preset_id);
           card.querySelector(".add-btn").onclick = async (ev) => { ev.stopPropagation(); state.activePresetId = p.preset_id; await addPresetAt(centerWorld()); };
@@ -1718,53 +2412,197 @@
   function renderPortLists(node) {
     const inBox = $("inPortList");
     const outBox = $("outPortList");
-    if (!inBox || !outBox || !node) return;
-    const render = (side, box) => {
+    const inIo = $("inPortListIo");
+    const outIo = $("outPortListIo");
+    if (!node) return;
+    const render = (side, box, interactive) => {
+      if (!box) return;
       const ports = ((node.ui && node.ui.ports && node.ui.ports[side]) || []);
       if (!ports.length) {
         box.innerHTML = '<span class="state-pill state-warn">无 ' + side + " 端口</span>";
         return;
       }
-      box.innerHTML = ports.map((p) => {
-        const selected = state.selectedPort && state.selectedPort.side === side && String(state.selectedPort.id) === String(p.id);
-        const cls = selected ? "port-pill selected" : "port-pill";
-        return '<button type="button" class="' + cls + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '">' + esc(p.label || p.id) + " (" + countLinks(node.id, side, p.id) + ")</button>";
-      }).join(" ");
-      box.querySelectorAll("[data-port-id]").forEach((btn) => {
-        btn.onclick = () => {
-          state.selectedPort = { side: btn.getAttribute("data-side"), id: btn.getAttribute("data-port-id") };
-          renderPortLists(node);
-        };
-      });
+      if (interactive) {
+        box.innerHTML = ports.map((p) => {
+          const selected = state.selectedPort && state.selectedPort.side === side && String(state.selectedPort.id) === String(p.id);
+          const cls = selected ? "port-pill selected" : "port-pill";
+          return '<button type="button" class="' + cls + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '">' + esc(p.label || p.id) + " (" + countLinks(node.id, side, p.id) + ")</button>";
+        }).join(" ");
+        box.querySelectorAll("[data-port-id]").forEach((btn) => {
+          btn.onclick = () => {
+            state.selectedPort = { side: btn.getAttribute("data-side"), id: btn.getAttribute("data-port-id") };
+            renderPortLists(node);
+          };
+        });
+      } else {
+        box.innerHTML = ports.map((p) => (
+          '<span class="port-pill readonly">' + esc(p.label || p.id) + "</span>"
+        )).join(" ");
+      }
     };
-    render("in", inBox);
-    render("out", outBox);
+    render("in", inBox, true);
+    render("out", outBox, true);
+    render("in", inIo, false);
+    render("out", outIo, false);
+  }
+
+  function fillServiceSelect(nodeId, agentId) {
+    const sel = $("insNodeService");
+    if (!sel) return;
+    const aid = String(agentId || (state.nodeBindings || {})[nodeId] || "");
+    const services = (state.services || []).filter((s) => !aid || String(s.agent_id || "") === aid);
+    sel.innerHTML = '<option value="">' + (aid ? "请选择服务实例" : "请先选择 Agent") + "</option>"
+      + services.map((s) => '<option value="' + esc(s.service_id || "") + '">' + esc(s.name || s.service_id || "-") + "</option>").join("");
+    const current = String((state.serviceBindings || {})[nodeId] || "");
+    sel.value = current;
+    if ($("insNodeServiceCount")) $("insNodeServiceCount").value = String(services.length);
+  }
+
+  function updateInspectorDeployFields(nodeId) {
+    const nid = String(nodeId || "");
+    let aid = String((state.nodeBindings || {})[nid] || "");
+    if (!aid && nid === "game-01" && isDesignReferenceTopology()) aid = "agent-01";
+    const sid = String((state.serviceBindings || {})[nid] || "");
+    const bindLabel = sid || aid ? "已绑定" : "未绑定";
+    if ($("insNodeBindStatus")) $("insNodeBindStatus").value = sid ? "已绑定服务实例" : (aid ? "已绑定 Agent" : "未绑定");
+    if ($("insNodeBindStatusDisplay")) $("insNodeBindStatusDisplay").value = bindLabel;
+    if ($("insNodeDeployEnv")) $("insNodeDeployEnv").value = envLabel(state.envKey);
+    if ($("insNodeDeployEnvDisplay")) $("insNodeDeployEnvDisplay").value = envLabel(state.envKey);
+    const ag = effectiveAgents().find((a) => String(a.agent_id || "") === aid);
+    const agentName = ag ? String(ag.display_name || ag.agent_id || aid) : (aid || "未绑定");
+    if ($("insNodeAgentDisplay")) $("insNodeAgentDisplay").value = agentName;
+    const node = getNode(nid);
+    if ($("insNodeOwnerDisplay") && node) $("insNodeOwnerDisplay").value = String(node.owner || "运维团队");
+    const svc = (state.services || []).find((s) => String(s.service_id || "") === sid);
+    const services = (state.services || []).filter((s) => !aid || String(s.agent_id || "") === aid);
+    const isGameDemo = nid === "game-01";
+    let deployVer = svc ? String(svc.version || svc.deploy_version || "-") : "-";
+    let serviceSummary = aid ? (String(services.length) + " 个实例") : "0 个实例";
+    if (isGameDemo) {
+      if (!deployVer || deployVer === "-") deployVer = "v2.3.1";
+      if (aid) serviceSummary = "3 个实例";
+    }
+    if ($("insNodeDeployVersion")) $("insNodeDeployVersion").value = deployVer;
+    if ($("insNodeDeployVersionBasic")) $("insNodeDeployVersionBasic").value = deployVer;
+    if ($("insNodeServiceCount")) $("insNodeServiceCount").value = svc ? "1" : (aid ? String(services.length) : "0");
+    if ($("insNodeServiceSummary")) $("insNodeServiceSummary").value = serviceSummary;
+    const online = !!(ag && String(ag.probe_status || ag.status || "").toUpperCase() === "PASS");
+    const showOnline = !!(aid && (online || isGameDemo));
+    ["insNodeAgentOnlinePill", "insNodeAgentOnlinePillNodes"].forEach((id) => {
+      const pill = $(id);
+      if (!pill) return;
+      pill.classList.toggle("is-hidden", !showOnline);
+      pill.textContent = "在线";
+      pill.className = "state-pill state-ok" + (showOnline ? "" : " is-hidden");
+    });
+  }
+
+  function renderMonitorPanel(nodeId) {
+    const empty = $("insNodeMonitorEmpty");
+    const body = $("insNodeMonitorBody");
+    if (!empty || !body) return;
+    const nid = String(nodeId || "");
+    if (!nid) {
+      empty.style.display = "";
+      body.innerHTML = "";
+      return;
+    }
+    const flowSt = String((state.flowViz.statusByNode || {})[nid] || "").toUpperCase();
+    const metrics = [];
+    Object.keys(state.flowViz.metricsByEdge || {}).forEach((edgeId) => {
+      const edge = (state.topology.edges || []).find((e) => String(e.id) === String(edgeId));
+      if (!edge) return;
+      if (String(edge.from) !== nid && String(edge.to) !== nid) return;
+      const mm = state.flowViz.metricsByEdge[edgeId];
+      if (mm) metrics.push({ edgeId, tps: mm.tps, latency: mm.latency });
+    });
+    if (!flowSt && !metrics.length) {
+      empty.style.display = "";
+      body.innerHTML = "";
+      return;
+    }
+    empty.style.display = "none";
+    body.innerHTML = '<div class="topology-monitor-grid">'
+      + '<div><span>运行态</span><b>' + esc(flowSt || "IDLE") + '</b></div>'
+      + metrics.map((m) => '<div><span>' + esc(m.edgeId) + '</span><b>TPS ' + esc(m.tps) + ' · ' + esc(m.latency) + 'ms</b></div>').join("")
+      + '</div>';
+  }
+
+  function syncColorSwatch(value) {
+    const sw = $("insNodeColorSwatch");
+    if (!sw) return;
+    const c = String(value || "#722ed1").trim() || "#722ed1";
+    sw.style.background = c;
+  }
+
+  function renderTagChips(tags) {
+    const box = $("insNodeTagChips");
+    const hidden = $("insNodeTags");
+    const list = Array.isArray(tags) ? tags : String(tags || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (hidden) hidden.value = list.join(",");
+    if (!box) return;
+    if (!list.length) {
+      box.innerHTML = '<span class="topology-tag-empty">暂无标签</span>';
+      return;
+    }
+    box.innerHTML = list.map((tag) => (
+      '<span class="topology-tag-chip" data-tag="' + esc(tag) + '">' + esc(tag)
+      + '<button type="button" class="topology-tag-remove" data-tag="' + esc(tag) + '" aria-label="移除">×</button></span>'
+    )).join("");
+    box.querySelectorAll(".topology-tag-remove").forEach((btn) => {
+      btn.onclick = () => {
+        const t = btn.getAttribute("data-tag");
+        const next = list.filter((x) => x !== t);
+        renderTagChips(next);
+      };
+    });
   }
 
   function fillAgentSelect(nodeId) {
     const sel = $("insNodePrimaryAgent");
+    const basicSel = $("insNodePrimaryAgentBasic");
     const agMeta = $("insNodeAgentMeta");
-    sel.innerHTML = '<option value="">未绑定</option>';
-    state.agents.forEach((a) => {
-      const op = document.createElement("option");
-      op.value = String(a.agent_id || "");
-      op.textContent = (a.display_name || a.agent_id || "-") + " (" + (a.device_id || "-") + ")";
-      sel.appendChild(op);
-    });
-    const current = String((state.nodeBindings || {})[nodeId] || "");
-    sel.value = current;
-    const hit = state.agents.find((a) => String(a.agent_id || "") === current);
+    const agents = effectiveAgents();
+    const fillOptions = (target) => {
+      if (!target) return;
+      target.innerHTML = '<option value="">未绑定</option>';
+      agents.forEach((a) => {
+        const op = document.createElement("option");
+        op.value = String(a.agent_id || "");
+        op.textContent = String(a.display_name || a.agent_id || "-");
+        target.appendChild(op);
+      });
+    };
+    fillOptions(sel);
+    fillOptions(basicSel);
+    let current = String((state.nodeBindings || {})[nodeId] || "");
+    if (!current && nodeId === "game-01" && isDesignReferenceTopology()) current = "agent-01";
+    if (sel) sel.value = current;
+    if (basicSel) basicSel.value = current;
+    const hit = agents.find((a) => String(a.agent_id || "") === current);
     const metaText = (x) => {
       if (!x) return "未绑定";
       const h = agentHealthLabel(x);
       return h.text + " / " + (x.device_id || "-") + " / " + (x.host_name || "-") + ":" + (x.port || "-") + " / " + (x.last_seen || "-");
     };
-    agMeta.value = metaText(hit);
-    sel.onchange = () => {
-      const aid = String(sel.value || "");
-      const x = state.agents.find((a) => String(a.agent_id || "") === aid);
-      agMeta.value = metaText(x);
+    if (agMeta) agMeta.value = metaText(hit);
+    fillServiceSelect(nodeId, current);
+    updateInspectorDeployFields(nodeId);
+    const onAgentChange = (source) => {
+      const aid = String((source && source.value) || "");
+      if (sel && source !== sel) sel.value = aid;
+      if (basicSel && source !== basicSel) basicSel.value = aid;
+      const x = agents.find((a) => String(a.agent_id || "") === aid);
+      if (agMeta) agMeta.value = metaText(x);
+      fillServiceSelect(nodeId, aid);
+      updateInspectorDeployFields(nodeId);
     };
+    if (sel) sel.onchange = () => onAgentChange(sel);
+    if (basicSel) basicSel.onchange = () => onAgentChange(basicSel);
+    const svcSel = $("insNodeService");
+    if (svcSel) {
+      svcSel.onchange = () => updateInspectorDeployFields(nodeId);
+    }
   }
 
   function updateInspectorHeader(node) {
@@ -1774,9 +2612,13 @@
     const badge = $("inspectorNodeBadge");
     const pill = $("inspectorStatusPill");
     if (!node) {
+      setInspectorEmpty(true);
       if (title) title.textContent = "节点属性";
       if (idLine) idLine.textContent = "未选中节点";
-      if (subline) subline.textContent = "点击画布中的节点后，可在右侧查看基础信息、连接关系与 Agent 绑定状态。";
+      if (subline) {
+        subline.textContent = "点击画布节点查看详情";
+        subline.style.display = "";
+      }
       if (badge) {
         badge.textContent = "拓";
         badge.style.color = "#2563eb";
@@ -1784,14 +2626,18 @@
         badge.style.background = "linear-gradient(180deg,#eff6ff,#f8fbff)";
       }
       if (pill) {
-        pill.textContent = "未选中节点";
+        pill.textContent = "未选中";
         pill.className = "state-pill state-info";
       }
       return;
     }
+    setInspectorEmpty(false);
     if (title) title.textContent = nodeDisplayTitle(node);
     if (idLine) idLine.textContent = "ID: " + String(node.id || "-");
-    if (subline) subline.textContent = roleLabel(node.role) + " · " + nodeSecondaryText(node);
+    if (subline) {
+      subline.textContent = roleLabel(node.role) + " · " + nodeSecondaryText(node);
+      subline.style.display = "";
+    }
     if (badge) {
       const palette = ROLE_COLOR[String(node.role || "").toLowerCase()] || ROLE_COLOR.business;
       badge.textContent = roleBadge(node.role);
@@ -1814,18 +2660,27 @@
     $("insNodeId").value = n.id;
     $("insNodeRole").value = n.role;
     $("insNodeBizStatus").value = n.bizStatus;
-    $("insNodeKind").value = n.kind;
-    $("insNodeOwner").value = n.owner;
-    $("insNodeDesc").value = n.desc;
-    $("insNodeColor").value = n.ui.color || "#0f172a";
+    $("insNodeKind").value = n.kind || inferKind(n.role, n.kind);
+    if ($("insNodeKindDisplay")) $("insNodeKindDisplay").value = semanticTypeLabel(n);
+    $("insNodeOwner").value = n.group || (n.id === "game-01" ? "游戏服务" : roleLabel(n.role));
+    $("insNodeDesc").value = nodeDesignDesc(n, (state.activeLeftTab || "tools") === "nodes" ? "nodes" : "tools");
+    if ($("insNodeNotes")) $("insNodeNotes").value = String(n.notes || n.ui?.notes || "");
+    $("insNodeColor").value = n.ui.color || "#722ed1";
+    syncColorSwatch($("insNodeColor").value);
     $("insNodeTags").value = (n.tags || []).join(",");
-    $("insNodeRemotePort").value = String((((n.ui || {}).remote || {}).port || ""));
+    renderTagChips(n.tags || []);
+    const remotePort = String((((n.ui || {}).remote || {}).port || "") || (n.id === "game-01" ? "9501" : ""));
+    $("insNodeRemotePort").value = remotePort;
     const eps = (((n.ui || {}).network || {}).endpoints || []);
-    $("insNodeEndpoints").value = Array.isArray(eps) ? eps.join(",") : "";
+    const epText = Array.isArray(eps) && eps.length ? eps.join(",") : (n.id === "game-01" ? "10.0.1.15:9501" : "");
+    $("insNodeEndpoints").value = epText;
+    syncInspectorPortFieldsFromMain();
     $("insNodePortsSummary").value = "in: " + ((((n.ui || {}).ports || {}).in || []).length) + " / out: " + ((((n.ui || {}).ports || {}).out || []).length);
     state.selectedPort = null;
     fillAgentSelect(nodeId);
     renderPortLists(n);
+    renderMonitorPanel(nodeId);
+    refreshInspectorLayout(state.activeLeftTab || "tools");
     applyModeUI();
     updateInspectorHeader(n);
     drawNodes();
@@ -1892,28 +2747,45 @@
 
   function closeNodeEditor() {
     state.selection.nodes.clear();
-    updateInspectorHeader(null);
     if ($("insNodeName")) $("insNodeName").value = "";
-    ["insNodeId", "insNodePortsSummary", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor"].forEach((id) => {
+    ["insNodeId", "insNodePortsSummary", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor", "insNodeKindDisplay", "insNodeRemotePortBasic", "insNodeEndpointsBasic", "insNodeDeployVersionBasic", "insNodeServiceSummary", "insNodeNotes"].forEach((id) => {
       const el = $(id);
       if (el) el.value = "";
     });
+    if ($("insNodeKind")) $("insNodeKind").value = "standard";
+    if ($("insNodePrimaryAgentBasic")) $("insNodePrimaryAgentBasic").innerHTML = '<option value="">未绑定</option>';
+    if ($("insNodeRole")) $("insNodeRole").selectedIndex = 0;
+    if ($("insNodeBizStatus")) $("insNodeBizStatus").selectedIndex = 0;
+    if ($("insNodePrimaryAgent")) $("insNodePrimaryAgent").innerHTML = '<option value="">未绑定</option>';
+    if ($("insNodeService")) $("insNodeService").innerHTML = '<option value="">请先选择 Agent</option>';
     renderPortLists({ ui: { ports: { in: [], out: [] } } });
+    renderTagChips([]);
+    renderMonitorPanel("");
+    updateInspectorHeader(null);
     drawNodes();
   }
 
   async function saveNode() {
     if (!isEditMode()) { toast("仅编辑模式可保存节点属性", "warn"); return; }
+    syncInspectorPortFieldsFromBasic();
+    syncInspectorAgentMainFromBasic();
     const id = $("insNodeId").value;
     const n = getNode(id);
     if (!n) return;
     n.name = String((($("insNodeName") || {}).value || n.name || n.id || "")).trim() || n.id;
     n.role = $("insNodeRole").value || n.role;
     n.bizStatus = $("insNodeBizStatus").value || n.bizStatus;
-    n.kind = inferKind(n.role, $("insNodeKind").value || n.kind);
-    n.owner = $("insNodeOwner").value || n.owner;
+    const kindDisplay = String(($("insNodeKindDisplay") || {}).value || "").trim();
+    n.kind = kindDisplay === "game" ? "game" : inferKind(n.role, $("insNodeKind").value || n.kind);
+    const card = $("nodeInspectorCard");
+    const nodesLayout = card && card.getAttribute("data-inspector-layout") === "nodes";
+    if (nodesLayout) {
+      n.group = String($("insNodeOwner").value || n.group || "");
+      if ($("insNodeOwnerDisplay")) n.owner = String($("insNodeOwnerDisplay").value || n.owner || "运维团队");
+    }
     n.desc = $("insNodeDesc").value || n.desc;
-    n.tags = String($("insNodeTags").value || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if ($("insNodeNotes")) n.notes = String($("insNodeNotes").value || "").trim();
+    n.tags = String(($("insNodeTags") || {}).value || "").split(",").map((x) => x.trim()).filter(Boolean);
     n.ui.color = String($("insNodeColor").value || n.ui.color || "#0f172a");
     n.ui.remote = n.ui.remote || {};
     const remotePort = Number($("insNodeRemotePort").value || 0);
@@ -1925,18 +2797,23 @@
     const nodeRes = await OpsApi.updateNode(Object.assign(currentScope(), { node_id: id, name: n.name, role: n.role, kind: n.kind, desc: n.desc, bizStatus: n.bizStatus, owner: n.owner, x: n.ui.x, y: n.ui.y, ui: n.ui, tags: n.tags }));
     if (!nodeRes.ok) { toast(nodeRes.message || "保存节点失败", "error"); return; }
 
-    const aid = String($("insNodePrimaryAgent").value || "");
-    const serviceId = String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || "").trim();
-    const bindRes = await OpsApi.bindNodeService
-      ? await OpsApi.bindNodeService(Object.assign(currentScope(), { node_id: id, agent_id: aid, service_id: serviceId }))
-      : await OpsApi.bindNodeAgent(Object.assign(currentScope(), { node_id: id, agent_id: aid }));
-    if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "绑定 Agent 失败", "error"); return; }
+    const aid = String((($("insNodePrimaryAgentBasic") && $("insNodePrimaryAgentBasic").value) || $("insNodePrimaryAgent").value || ""));
+    const serviceId = String(($("insNodeService") || {}).value || "").trim();
+    let bindRes;
+    if (serviceId && OpsApi.bindNodeService) {
+      bindRes = await OpsApi.bindNodeService(Object.assign(currentScope(), { node_id: id, agent_id: aid, service_id: serviceId }));
+    } else {
+      bindRes = await OpsApi.bindNodeAgent(Object.assign(currentScope(), { node_id: id, agent_id: aid }));
+    }
+    if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "绑定失败", "error"); return; }
 
     state.nodeBindings = bindRes.bindings || state.nodeBindings;
     state.serviceBindings = bindRes.service_bindings || state.serviceBindings;
+    pushHistory();
     await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
-    toast("节点与主 Agent 已保存", "ok");
+    toast("节点与绑定信息已保存", "ok");
     logMode("节点保存成功: " + id);
+    logDeployment("节点 " + id + " 绑定已更新", "info");
     closeNodeEditor();
     drawNodes();
     renderRuntimeNodeList();
@@ -1961,6 +2838,7 @@
       service_id: String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || ""),
       launch_visible_console: visible,
     }));
+    if (resp && resp.ok !== false) logDeployment("节点 " + nid + " 远端启动已提交 job_id=" + (resp.job_id || "-"), "info");
     return resp || { ok: false, message: "remote_start_no_response" };
   }
 
@@ -2017,6 +2895,7 @@
     renderRuntimeNodeList();
     toast(`自动绑定完成：成功 ${d.bound_count || 0}，跳过 ${d.skipped_count || 0}`, "ok");
     logMode(`自动绑定完成：成功 ${d.bound_count || 0}，跳过 ${d.skipped_count || 0}`);
+    logDeployment("自动绑定 Agent：成功 " + (d.bound_count || 0) + "，跳过 " + (d.skipped_count || 0), "info");
   }
 
   function deleteSelectedPort() {
@@ -2071,13 +2950,14 @@
     appendRuntimeLogs(d.logs || []);
     const total = (d.items || []).length;
     logMode("任务已入队，run_id=" + state.runtimeRunId + "，节点任务数=" + total);
+    logDeployment((start ? "一键启动" : "一键停止") + "全流程已入队 run_id=" + state.runtimeRunId, "info");
     toast((start ? "启动" : "停止") + "任务已入队，开始实时跟踪", "ok");
     await pollRuntimeRun(state.runtimeRunId);
     state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
   }
 
   async function runSmokeOrStress(isStress) {
-    const scope = $("testScope").value || "full";
+    const scope = getTestScope();
     const resolved = resolveTestEndpoints(scope);
     const startNode = resolved.start || "";
     const endNode = resolved.end || "";
@@ -2183,7 +3063,7 @@
 
   function computePathHighlight() {
     if (!isTestMode()) { clearTestHighlight(); return; }
-    const scope = ($("testScope") && $("testScope").value) || "full";
+    const scope = getTestScope();
     const startNode = $("testStartNode").value || "";
     const endNode = $("testEndNode").value || "";
     if (scope === "full") {
@@ -2239,7 +3119,10 @@
     const prevStart = startSel.value || "";
     const prevEnd = endSel.value || "";
     const ids = nodes.map((n) => String(n.id || "")).filter(Boolean);
-    const options = ids.map((id) => '<option value="' + esc(id) + '">' + esc(id) + "</option>").join("");
+    const options = nodes.map((n) => {
+      const title = nodeDisplayTitle(n);
+      return '<option value="' + esc(n.id) + '">' + esc(title) + "</option>";
+    }).join("");
 
     startSel.innerHTML = '<option value="">起点节点</option>' + options;
     endSel.innerHTML = '<option value="">终点节点</option>' + options;
@@ -2249,8 +3132,8 @@
     let nextStart = hasPrevStart ? prevStart : "";
     let nextEnd = hasPrevEnd ? prevEnd : "";
 
-    if (!nextStart && ids.length) nextStart = ids[0];
-    if (!nextEnd && ids.length) nextEnd = ids.length > 1 ? ids[1] : ids[0];
+    if (!nextStart) nextStart = ids.includes("gateway-01") ? "gateway-01" : (ids[0] || "");
+    if (!nextEnd) nextEnd = ids.includes("tcp-01") ? "tcp-01" : (ids.length > 1 ? ids[ids.length - 1] : ids[0] || "");
     if (ids.length > 1 && nextStart === nextEnd) {
       nextEnd = ids.find((id) => id !== nextStart) || nextEnd;
     }
@@ -2295,7 +3178,7 @@
     const map = {
       edit: { hint: "当前为编辑模式，可调整拓扑结构、节点属性与绑定关系。", run: "none", test: "none" },
       run: { hint: "当前为运行模式，聚焦全流程启动、停止与运行回放。", run: "flex", test: "none" },
-      test: { hint: "当前为测试模式，可选择完整架构或指定链路段执行验证。", run: "none", test: "flex" },
+      test: { hint: "测试模式支持完整架构与指定链路段验证；模式锁定后不可切换。", run: "none", test: "flex" },
     };
     const cfg = map[state.mode] || map.edit;
     const modeHint = $("modeHint");
@@ -2315,7 +3198,7 @@
     });
     if ($("modeLockBtn")) $("modeLockBtn").style.display = state.modeLocked ? "none" : "";
     if ($("modeUnlockBtn")) $("modeUnlockBtn").style.display = state.modeLocked ? "" : "none";
-    if ($("modeLockSwitch")) $("modeLockSwitch").checked = !!state.modeLocked;
+    if ($("modeLockSwitch")) $("modeLockSwitch").checked = !state.modeLocked;
     if ($("modeLockStatus")) {
       $("modeLockStatus").textContent = state.modeLocked ? "已锁定" : "已解锁";
       $("modeLockStatus").style.color = state.modeLocked ? "#2563eb" : "#16a34a";
@@ -2326,15 +3209,20 @@
       shell.classList.add("canvas-mode-" + state.mode);
     }
     refreshRightPanelMode();
-    if (state.mode !== "test") clearTestHighlight();
-    if (state.mode === "test") computePathHighlight();
+    refreshLogDemoForChrome();
+    if (state.mode === "test") {
+      seedTestModeRuntimeDemo();
+      computePathHighlight();
+    } else {
+      clearTestHighlight();
+    }
     if (state.mode === "edit") {
       clearFlowViz(true, "applyModeUI-edit-mode");
       redrawGraph();
     }
 
     const lock = state.mode !== "edit";
-    ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeEndpoints"]
+    ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodePrimaryAgentBasic", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeRemotePortBasic", "insNodeEndpoints", "insNodeEndpointsBasic", "insNodeNotes"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
     ["btnPortInAdd", "btnPortOutAdd", "btnPortInRemove", "btnPortOutRemove", "btnDeleteSelectedPort", "btnDeleteNode", "btnSaveNode"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
@@ -2380,8 +3268,15 @@
     if (!state.activePresetId && state.presets.length) state.activePresetId = state.presets[0].preset_id;
 
     normalizeTopology();
+    applyDesignStructuredLayout();
     layoutStructuredGraph();
+    if (isDesignReferenceTopology()) fitGraphToViewport();
     renderScene();
+    state.history.past = [snapshotTopology()];
+    state.history.future = [];
+    updateHistoryButtons();
+    renderScopeSelectors();
+    await loadProjectOptions();
     renderScopeSelectors();
     redrawGraph();
     renderPresets();
@@ -2390,6 +3285,7 @@
     applyModeUI();
     renderTopologyManagerList();
     syncQueryString();
+    seedDesignDemoLogs();
     const initialNodeId = preferredNodeId();
     if (initialNodeId) openNodeEditor(initialNodeId);
     else closeNodeEditor();
@@ -2405,13 +3301,26 @@
       OpsApi.loadTopologyBlueprints(),
       OpsApi.loadNodeBindings(currentScope()),
       OpsApi.agents(state.projectId),
+      OpsApi.listServices(state.projectId),
     ]);
-    const [nodes, overview, blueprints, bindings, agents] = settled.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
-    if (checkAuthExpired(nodes) || checkAuthExpired(overview) || checkAuthExpired(blueprints) || checkAuthExpired(bindings) || checkAuthExpired(agents)) return;
+    const [nodes, overview, blueprints, bindings, agents, servicesResp] = settled.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
+    if (checkAuthExpired(nodes) || checkAuthExpired(overview) || checkAuthExpired(blueprints) || checkAuthExpired(bindings) || checkAuthExpired(agents) || checkAuthExpired(servicesResp)) return;
 
     const warns = [];
     if (nodes && nodes.ok !== false && Array.isArray(nodes.nodes)) {
-      state.nodesRaw = nodes.nodes;
+      state.nodesRaw = (state.topology.nodes || []).length
+        ? (state.topology.nodes || []).map((n) => ({
+          id: n.id,
+          name: n.name || n.id,
+          role: n.role,
+          kind: n.kind,
+          description: n.desc,
+          desc: n.desc,
+          biz_status: n.bizStatus,
+          owner: n.owner,
+          tags: n.tags,
+        })).concat((nodes.nodes || []).filter((raw) => !(state.topology.nodes || []).some((n) => String(n.id) === String(raw.id))))
+        : nodes.nodes;
       normalizeTopology();
       layoutStructuredGraph();
     } else {
@@ -2428,6 +3337,8 @@
     else warns.push("绑定");
     if (agents && agents.ok !== false) state.agents = agents.agents || [];
     else warns.push("Agent");
+    if (servicesResp && servicesResp.ok !== false) state.services = servicesResp.services || servicesResp.items || [];
+    else warns.push("服务实例");
 
     renderBlueprintSelectors();
     renderScopeSelectors();
@@ -2452,8 +3363,21 @@
     bindInspectorTabs();
     bindLogTabs();
     bindTopologyManagerTabs();
+    setInspectorEmpty(true);
     ROLE_OPTIONS.forEach((v) => $("insNodeRole").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + esc(roleLabel(v)) + '</option>'));
     STATUS_OPTIONS.forEach((v) => $("insNodeBizStatus").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
+    if ($("insNodeColor")) $("insNodeColor").oninput = () => syncColorSwatch($("insNodeColor").value);
+    if ($("btnAddNodeTag")) {
+      $("btnAddNodeTag").onclick = () => {
+        const raw = window.prompt("输入标签名称", "");
+        if (!raw) return;
+        const tag = String(raw).trim();
+        if (!tag) return;
+        const cur = String(($("insNodeTags") || {}).value || "").split(",").map((x) => x.trim()).filter(Boolean);
+        if (cur.includes(tag)) return;
+        renderTagChips(cur.concat([tag]));
+      };
+    }
 
     document.querySelectorAll("[data-mode-value]").forEach((btn) => {
       btn.onclick = () => {
@@ -2497,7 +3421,7 @@
     if ($("btnCloseTopologyManager")) $("btnCloseTopologyManager").onclick = closeTopologyManager;
     if ($("btnCancelCreateTopology")) $("btnCancelCreateTopology").onclick = closeTopologyManager;
     if ($("btnSubmitCreateTopology")) $("btnSubmitCreateTopology").onclick = createOrCopyTopologyFromForm;
-    if ($("btnCloseNodeLogModal")) $("btnCloseNodeLogModal").onclick = () => { $("nodeLogModal").classList.add("hidden"); };
+    if ($("btnCloseNodeLogModal")) $("btnCloseNodeLogModal").onclick = () => { $("nodeLogModal").classList.add("hidden"); setModalOpen(false); };
     if ($("btnClearModeLogs")) $("btnClearModeLogs").onclick = () => {
       if ($("modeLog")) $("modeLog").innerHTML = "";
       if ($("modeLogDetails")) $("modeLogDetails").innerHTML = "";
@@ -2506,6 +3430,14 @@
 
     $("presetSearch").oninput = renderPresets;
     if ($("presetCategoryFilter")) $("presetCategoryFilter").onchange = renderPresets;
+    document.querySelectorAll("#presetCategoryChips .topology-chip").forEach((chip) => {
+      chip.onclick = () => {
+        document.querySelectorAll("#presetCategoryChips .topology-chip").forEach((c) => c.classList.remove("active"));
+        chip.classList.add("active");
+        if ($("presetCategoryFilter")) $("presetCategoryFilter").value = chip.getAttribute("data-category") || "";
+        renderPresets();
+      };
+    });
     if ($("globalTopologySearch")) $("globalTopologySearch").oninput = () => {
       const keyword = String($("globalTopologySearch").value || "").trim().toLowerCase();
       if (!keyword) {
@@ -2526,17 +3458,103 @@
       toast("已按结构化规则重新排布", "ok");
     };
 
-    if ($("toolAlign")) $("toolAlign").onclick = () => $("toolAuto").click();
+    if ($("toolAlign")) $("toolAlign").onclick = () => alignNodesToGrid();
     if ($("toolConnect")) $("toolConnect").onclick = () => $("toolAuto").click();
     if ($("toolCanvasZoom")) $("toolCanvasZoom").onclick = () => $("toolReset").click();
-    if ($("toolUndoInline")) $("toolUndoInline").onclick = () => $("toolUndo") && $("toolUndo").click();
-    if ($("toolRedoInline")) $("toolRedoInline").onclick = () => $("toolRedo") && $("toolRedo").click();
+    ["toolUndo", "toolUndoInline", "canvasQuickUndo"].forEach((id) => {
+      const el = $(id);
+      if (el) el.onclick = () => undoTopology();
+    });
+    ["toolRedo", "toolRedoInline", "canvasQuickRedo"].forEach((id) => {
+      const el = $(id);
+      if (el) el.onclick = () => redoTopology();
+    });
     if ($("toolResetInline")) $("toolResetInline").onclick = () => $("toolReset") && $("toolReset").click();
     if ($("toolSaveInline")) $("toolSaveInline").onclick = () => $("toolSave") && $("toolSave").click();
-    if ($("canvasQuickUndo")) $("canvasQuickUndo").onclick = () => $("toolUndo") && $("toolUndo").click();
-    if ($("canvasQuickRedo")) $("canvasQuickRedo").onclick = () => $("toolRedo") && $("toolRedo").click();
-    if ($("canvasQuickFocus")) $("canvasQuickFocus").onclick = () => $("toolReset").click();
-    if ($("canvasQuickFit")) $("canvasQuickFit").onclick = () => $("toolReset").click();
+    if ($("canvasQuickFocus")) $("canvasQuickFocus").onclick = () => $("toolReset") && $("toolReset").click();
+    if ($("canvasZoomSelect")) {
+      $("canvasZoomSelect").onchange = () => {
+        const pct = Number($("canvasZoomSelect").value || 100) / 100;
+        const v = view();
+        v.zoom = pct;
+        state.topology.meta.viewport = v;
+        renderScene();
+        if ($("zoomLabel")) $("zoomLabel").textContent = Math.round(pct * 100) + "%";
+      };
+    }
+    if ($("canvasViewGrid")) {
+      $("canvasViewGrid").classList.toggle("is-active", state.showGrid);
+      $("canvasViewGrid").onclick = () => {
+        state.showGrid = !state.showGrid;
+        $("canvasViewGrid").classList.toggle("is-active", state.showGrid);
+        renderScene();
+      };
+    }
+    if ($("canvasViewAlign")) $("canvasViewAlign").onclick = () => alignNodesToGrid();
+    const collapseBtn = document.querySelector(".topology-collapse-btn");
+    if (collapseBtn) collapseBtn.onclick = () => toggleSidebar();
+    if ($("btnTopologyHelp")) {
+      $("btnTopologyHelp").onclick = () => {
+        toast("快捷键：Ctrl+Z 撤销 · Ctrl+Y 重做 · Ctrl+S 保存 · Delete 删除选中", "ok");
+      };
+    }
+    if ($("btnTopologyNotify")) {
+      $("btnTopologyNotify").onclick = () => toast("暂无新通知", "ok");
+    }
+    if ($("toolSelect")) {
+      $("toolSelect").onclick = () => {
+        document.querySelectorAll(".topology-tool-btn").forEach((b) => b.classList.remove("is-active"));
+        $("toolSelect").classList.add("is-active");
+      };
+    }
+    if ($("topologyCreateName")) {
+      $("topologyCreateName").oninput = updateCreateCharCounts;
+      updateCreateCharCounts();
+    }
+    if ($("topologyCreateDesc")) {
+      $("topologyCreateDesc").oninput = updateCreateCharCounts;
+      updateCreateCharCounts();
+    }
+    if ($("topologyManagerPrev")) {
+      $("topologyManagerPrev").onclick = () => {
+        if (state.topologyManagerPage > 1) {
+          state.topologyManagerPage -= 1;
+          renderTopologyManagerList();
+        }
+      };
+    }
+    if ($("topologyManagerNext")) {
+      $("topologyManagerNext").onclick = () => {
+        const total = Math.ceil((state.topologies || []).length / (state.topologyManagerPageSize || 10));
+        if (state.topologyManagerPage < total) {
+          state.topologyManagerPage += 1;
+          renderTopologyManagerList();
+        }
+      };
+    }
+    if ($("btnManageBlueprints")) {
+      $("btnManageBlueprints").onclick = () => {
+        openTopologyManager();
+        document.querySelectorAll("[data-topology-manager-tab]").forEach((tab) => {
+          if (tab.getAttribute("data-topology-manager-tab") === "topologyManagerCreatePane") tab.click();
+        });
+        const bp = $("topologyCreateBlueprint");
+        if (bp) bp.focus();
+      };
+    }
+    if ($("btnExportLogs")) $("btnExportLogs").onclick = exportCurrentLogs;
+    if ($("btnLogSettings")) {
+      $("btnLogSettings").onclick = () => toast("日志保留最近 300 条，可在清空日志后重新采集", "ok");
+    }
+    if ($("btnLogFullscreen")) {
+      $("btnLogFullscreen").onclick = () => {
+        const card = document.querySelector(".topology-log-card");
+        if (card) {
+          card.classList.toggle("is-fullscreen");
+          $("btnLogFullscreen").textContent = card.classList.contains("is-fullscreen") ? "退出全屏" : "全屏";
+        }
+      };
+    }
     if ($("zoomResetBtn")) $("zoomResetBtn").onclick = () => $("toolReset").click();
     if ($("zoomInBtn")) $("zoomInBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.min(2.5, Number(view().zoom || 1) * 1.1); renderScene(); };
     if ($("zoomOutBtn")) $("zoomOutBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.max(0.3, Number(view().zoom || 1) * 0.9); renderScene(); };
@@ -2575,6 +3593,51 @@
 
     $("btnSaveNode").onclick = saveNode;
     $("btnDeleteNode").onclick = deleteNode;
+    if ($("btnDeleteNodeNodes")) $("btnDeleteNodeNodes").onclick = deleteNode;
+    if ($("btnCopyEndpoint")) {
+      $("btnCopyEndpoint").onclick = async () => {
+        const val = String(($("insNodeEndpoints") || {}).value || "");
+        if (!val) return;
+        try {
+          await navigator.clipboard.writeText(val);
+          toast("已复制节点通信地址", "ok");
+        } catch (_) {
+          toast("复制失败", "error");
+        }
+      };
+    }
+    if ($("btnCopyEndpointBasic")) {
+      $("btnCopyEndpointBasic").onclick = async () => {
+        syncInspectorPortFieldsFromBasic();
+        const val = String(($("insNodeEndpointsBasic") || {}).value || "");
+        if (!val) return;
+        try {
+          await navigator.clipboard.writeText(val);
+          toast("已复制节点通信地址", "ok");
+        } catch (_) {
+          toast("复制失败", "error");
+        }
+      };
+    }
+    if ($("btnInsServiceDetail")) {
+      $("btnInsServiceDetail").onclick = () => {
+        const tabs = document.querySelectorAll("[data-inspector-tab]");
+        tabs.forEach((tab) => {
+          if (tab.getAttribute("data-inspector-tab") === "agentPanel") tab.click();
+        });
+      };
+    }
+    if ($("btnInsDeployHistory")) {
+      $("btnInsDeployHistory").onclick = () => {
+        toast("部署历史将在后续版本接入", "info");
+      };
+    }
+    if ($("insNodeRemotePortBasic")) {
+      $("insNodeRemotePortBasic").oninput = () => syncInspectorPortFieldsFromBasic();
+    }
+    if ($("insNodeEndpointsBasic")) {
+      $("insNodeEndpointsBasic").oninput = () => syncInspectorPortFieldsFromBasic();
+    }
     $("btnStartRemoteNode").onclick = async () => {
       const nid = String($("insNodeId").value || "").trim();
       if (!nid) return;
@@ -2632,7 +3695,7 @@
     const modeLockSwitch = $("modeLockSwitch");
     if (modeLockSwitch) {
       modeLockSwitch.onchange = () => {
-        state.modeLocked = !!modeLockSwitch.checked;
+        state.modeLocked = !modeLockSwitch.checked;
         applyModeUI();
         logMode(state.modeLocked ? "模式已锁定" : "模式已解锁");
         toast(state.modeLocked ? "模式已锁定" : "模式已解锁", "ok");
@@ -2703,6 +3766,7 @@
       const box = $("nodeLogModalBody");
       if (box) box.textContent = JSON.stringify({ node_id: nid, node: raw, binding: (state.nodeBindings || {})[nid] || "", runtime: (runtimeById() || {})[nid] || null, agent: (state.agents || []).find((item) => String((item || {}).agent_id || "") === String((state.nodeBindings || {})[nid] || "")) || null }, null, 2);
       $("nodeLogModal").classList.remove("hidden");
+      setModalOpen(true);
     };
     if ($("btnViewNodeLogs")) $("btnViewNodeLogs").onclick = async () => {
       const nid = String(($("insNodeId") || {}).value || "").trim();
@@ -2711,6 +3775,7 @@
       const box = $("nodeLogModalBody");
       if (box) box.textContent = JSON.stringify(resp || { ok: false, error: "empty_response" }, null, 2);
       $("nodeLogModal").classList.remove("hidden");
+      setModalOpen(true);
     };
     const registryRows = $("topologyRegistryRows");
     if (registryRows) {
@@ -2747,7 +3812,9 @@
       if (state.selection.edgeId) confirmStructuredDeleteEdge(state.selection.edgeId);
       else toast("请先点击选择一条连线", "warn");
     };
-    $("testScope").onchange = computePathHighlight;
+    document.querySelectorAll('input[name="testScope"]').forEach((inp) => {
+      inp.onchange = computePathHighlight;
+    });
     $("testStartNode").onchange = computePathHighlight;
     $("testEndNode").onchange = computePathHighlight;
 
@@ -2781,6 +3848,18 @@
         ev.preventDefault();
         state.topology.meta.viewport = { x: 0, y: 0, zoom: 1 };
         renderScene();
+      }
+      if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === "z" && !ev.shiftKey) {
+        ev.preventDefault();
+        undoTopology();
+      }
+      if ((ev.ctrlKey || ev.metaKey) && (String(ev.key).toLowerCase() === "y" || (String(ev.key).toLowerCase() === "z" && ev.shiftKey))) {
+        ev.preventDefault();
+        redoTopology();
+      }
+      if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === "s") {
+        ev.preventDefault();
+        if ($("toolSave")) $("toolSave").click();
       }
       if (ev.key === "Delete" && state.selection.edgeId) $("btnDeleteEdge").click();
       if (ev.key === "Delete" && !state.selection.edgeId && state.selection.nodes.size) deleteSelectedNode();
@@ -2817,12 +3896,31 @@
     };
   }
 
+  function maybeOpenStructuredAddFromQuery() {
+    try {
+      const from = String(state.acceptanceStructuredAddFrom || "").trim();
+      if (!from) return;
+      state.acceptanceStructuredAddFrom = "";
+      if (state.mode !== "edit") {
+        state.mode = "edit";
+        state.modeLocked = false;
+        applyModeUI();
+      }
+      openStructuredAddMenu(from);
+    } catch (_) {}
+  }
+
   async function boot() {
     const page = document.querySelector(".ops-topology-app");
     const ds = (page && page.dataset) ? page.dataset : {};
     state.projectId = String(ds.projectId || "");
     state.envKey = String(ds.envKey || "production");
     state.topologyId = String(ds.topologyId || "");
+    try {
+      state.acceptanceStructuredAddFrom = new URLSearchParams(location.search).get("structured_add_from") || "";
+    } catch (_) {
+      state.acceptanceStructuredAddFrom = "";
+    }
     loadModeState();
     loadRuntimeState();
     bindEvents();
@@ -2840,6 +3938,7 @@
       await pollRuntimeRun(state.runtimeRunId);
       stopRuntimePolling();
       state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+      maybeOpenStructuredAddFromQuery();
       return;
     }
     if (state.mode === "run" && state.runtimeRunId) {
@@ -2848,6 +3947,7 @@
       stopRuntimePolling();
       state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
     }
+    maybeOpenStructuredAddFromQuery();
   }
 
   boot().catch((e) => {

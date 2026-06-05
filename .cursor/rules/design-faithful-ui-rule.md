@@ -1,143 +1,298 @@
-# Design Faithful UI Rule
+# Design Faithful UI Rule — 零容差
 
-## Purpose
+> **Cursor Rule：凡涉及设计图/视觉稿/截图驱动的界面实现，本规则与 `AGENTS.md`、`.cursor/skills/design-faithful-ui/SKILL.md` 同时生效。**
+>
+> **本文件是硬门槛摘要。** 完整 Phase A–C、专业验收 Step 1–6、判定表、报告模板 → **只以 skill 为详表**，不得因本 rule 较短而跳过 skill 中的验收流程。
+>
+> **禁止流程幻觉：** skill / rule **文件存在 ≠ 流程已执行**。未跑 Phase C 就总结 = **流程 FAIL**（见 F 类事故）。
 
-- This is the single design-rule entrypoint for any module implemented from a design image.
-- When the user names `design-faithful-ui`, this rule is automatically active.
-- This rule exists to prevent "close enough" delivery and force rendered-result validation.
+## 适用范围
 
-## Automatic companions
+- 用户提供设计图、截图、mockup、视觉参考，并要求实现或还原页面
+- 用户 @ `design-faithful-ui` skill
+- 任何 `docs/design_assets/` 中存在对应设计稿的模块
+- **全仓库所有模块**，不限于 Agent / 拓扑 / 运维平台
 
-- This rule runs together with:
-  - `AGENTS.md`
-  - `.cursor/rules/safe-change-workflow.md`
-  - `docs/design_specs/README.md`
-  - `docs/design_specs/_design-module-spec-template.md`
-  - `docs/design_assets/README.md`
-- If a matching module spec already exists in `docs/design_specs/*.md`, it must be read first.
-- If no module spec exists, it must be created before code changes.
+## 自动伴随文件
 
-## Hard requirements
+- `AGENTS.md`
+- `.cursor/skills/design-faithful-ui/SKILL.md`
+- `.cursor/rules/safe-change-workflow.md`
+- `docs/design_specs/README.md`
+- `docs/design_specs/_design-module-spec-template.md`
+- `docs/design_assets/README.md`
+- 模块 spec：`docs/design_specs/*.md`
 
-- The design is a hard acceptance target, not inspiration.
-- The implementation must be accepted against the rendered page, not only against source code.
-- The implementation must not be called complete until rendered-result differences are cleared or explicitly listed as blocking differences.
-- The implementation must not be visually real but behaviorally fake.
-- If a feature is claimed implemented, the UI, route, backend logic, feedback, and state transitions for that feature must all work within the agreed scope.
-- It is not acceptable to ship buttons, menus, KPI cards, tabs, sections, or dialogs that look interactive but have no real behavior unless the user explicitly approves a placeholder.
-- Frontend and backend business behavior must stay aligned; do not leave API-only features without usable UI in scope, and do not leave UI-only features without real backend effect in scope.
-- Where state, severity, risk, or function differ, the design should use semantic color differentiation that still fits the overall page style.
-- Realtime metrics, progress bars, queue counters, running-state indicators, and monitoring curves must come from live sampling or in-memory runtime state, not persisted snapshots or fabricated fallback values.
-- It is forbidden to repeat one stored value into a fake curve or fake progress timeline just to satisfy the design visually.
-- It is not acceptable to stop at:
-  - matching only the outer shell
-  - matching only high-level layout
-  - matching only data behavior
-  - matching only code structure
-  - matching only the interactive shell without real execution
-- It is not acceptable to ignore obvious visual mismatches that are visible in a browser screenshot.
+模块 spec 不存在 → **先创建再写代码**。设计图未归档 → **先归档到 `docs/design_assets/` 再写代码**。
 
-## Required pre-implementation design analysis
+---
 
-- Before coding, convert the design into a checklist and place it in the module spec.
-- That checklist must include at least:
-  - page shell width and alignment
-  - left navigation width, grouping, active state, icons
-  - top toolbar / breadcrumb / title area
-  - primary and secondary button size, order, spacing, icon treatment
-  - KPI card count, size, icon style, typography hierarchy
-  - filters, search, view switch, and batch toolbar layout
-  - main content primary state
-  - card layout, card content, card actions, borders, hover states
-  - tables, charts, tabs, and summary cards
-  - which actions are real, what they trigger, and how success/failure is surfaced
-  - which metrics or progress values are realtime, their sampling source, and refresh cadence
-  - frontend/backend ownership and handoff for each in-scope interaction
-  - semantic color rules for status, severity, risk, and action types
-  - empty, loading, error, hover, active, disabled, selected states
-- If this checklist does not exist yet, do not start implementation.
+## Agent 执行门禁（与 skill 同步 · 写死）
 
-## Required implementation flow
+| 阶段 | 门禁 | 未满足则 |
+|------|------|----------|
+| **开工** | skill G1–G5（Read 全部原图、A0 建档、主态清单、URL/cache、baseline） | 禁止写代码 |
+| **每回合回复前** | skill R1–R6（全图、全主态、画布连线、交互、PASS 表、FAIL 则继续修） | 禁止完成态话术 |
+| **完工** | skill F1–F7 + 本 rule Hard Gate 全部勾选 | 禁止宣告完成 |
 
-- Read `AGENTS.md`.
-- Read this rule.
-- Read or create the module design spec.
-- Inspect `git status`.
-- Create a baseline commit and push it to the current remote branch before starting the new implementation pass.
-- If the push fails, stop and report the block.
-- Decide whether the page needs a rewrite; if the old shell conflicts with the design, rewrite rather than patch around it.
-- If the change touches any of these, verify the real runtime entrypoint before claiming a fix:
-  - routes
-  - template selection
-  - aggregation
-  - controller/view-model
-  - cache-busting version
-  - service process
+**用户质问（「对上了吗」「又犯错误了」）= 强制重开 Phase C**，不得用解释代替 Browser 验收。
 
-## Browser validation gate
+---
 
-- If Chrome automation or Browser automation is available, it must be used after major UI changes.
-- The rendered local page must be inspected in the browser before the task can be called complete.
-- Source inspection alone is not sufficient.
-- Real clicks and in-scope actions must be exercised in the browser when the feature includes interaction.
-- Realtime cards and charts must be observed long enough to confirm that they update from live data rather than from persisted snapshots.
-- If the browser result differs from the design in obvious ways, keep working; do not report completion.
+## 零容差原则（不可协商）
 
-## Required post-implementation comparison
+1. **设计图是验收标准，不是参考灵感。** 布局、间距、字体、颜色、图标、阴影、圆角、文案、反馈态 — **差一点都不算完成**。
+2. **禁止把未通过视觉验收的版本作为成品交给用户。**
+3. **禁止**用下列说法代替完成：基本完成、差不多、骨架对了、约 xx%、后续微调、主要功能有了。
+4. **「代码看起来对」无效** — 必须以**浏览器渲染结果**对照设计图验收。
+5. **「数据和行为对了」无效** — 视觉未 1:1 仍不得交付。
+6. 功能必须真实可用；视觉必须真实匹配 — **两者同时满足**。
 
-- After implementation, produce a mental or written diff between:
-  - current rendered result
-  - target design
-- That comparison must explicitly cover:
-  - left navigation
-  - top bar
-  - hero/title block
-  - button groups
-  - KPI cards
-  - filters and toolbars
-  - primary content state
-  - pagination
-  - detail summary cards
-  - tabs
-  - tables
-  - charts
-  - whether visible actions are real and produce the expected user-facing result
-  - whether status/function/risk color usage is consistent and style-compatible
-- If any one of those still obviously differs, "1:1 complete" is not allowed.
+---
 
-## Hard blockers for claiming completion
+## 禁止替代验收（写死 · 用户未授权）
 
-- Any of the following blocks a "done" claim:
-  - wrong primary state versus design
-  - wrong navigation structure or icon treatment
-  - wrong button order, size, or spacing
-  - wrong KPI visual hierarchy
-  - wrong card density or card composition
-  - wrong tab spacing / underline / active state
-  - wrong table widths / alignment / action buttons
-  - fake or dead interaction on any visible in-scope control
-  - frontend/backend scope mismatch for an implemented feature
-  - missing or misleading semantic color treatment for statuses or risky actions
-  - obvious browser-visible mismatch that would be clear to a human without code inspection
-  - unverified runtime process, route, or cache version
-  - skipped baseline commit/push
+下列理由**不得**作为交付或「按图完成」的依据：
 
-## Lessons from this task, now mandatory
+- HTML/CSS **结构/分区/tab 名称**与设计图一致
+- 后端 **demo 拓扑 / seed 数据**节点数与 design 相同
+- 接口 **200 / 字段齐全 / 无乱码**
+- 页面 **可打开、按钮可点**
+- 未做 **浏览器并排截图对比**就声称 PASS
 
-- Do not change only helper functions while forgetting the actual page-facing endpoint.
-- Do not treat "rendered something similar" as success.
-- Do not rely on code inspection to decide whether a design is matched.
-- Do not skip browser-based self-verification when automation is available.
-- Do not wait for the user to point out obvious mismatches that should have been caught during inspection.
-- Do not stop after data-model correctness if the design is still clearly wrong.
-- Do not accept fake buttons or fake cards just because the backend endpoint exists.
-- Do not accept backend capability without a usable interface when that interface is in scope for the task.
-- Do not flatten all actions into one generic visual treatment when the design should communicate state or risk.
+**唯一合法完成条件：** `docs/design_assets/` 设计图 + spec **专业验收判定表全部 PASS** + 专业验收报告结论为「通过验收」。无例外，除非用户书面确认保留差异。
 
-## Code constraints
+---
 
-- Do not put all page logic into one script.
-- Keep templates, styles, scripts, routes, and services separated by responsibility.
-- Use clean names and shallow functions.
-- Do not leak styles or scripts into unrelated modules.
-- Do not ship visible encoding issues.
+## 11 维视觉验收（每项必须一致）
+
+> 逐项检查清单与 spec 填表格式见 skill《设计图是唯一真相》与 Phase A 拆解表。下表为**始终生效的维度提醒**。
+
+| # | 维度 | 验收要点 |
+|---|------|----------|
+| 1 | 布局 | 分区、列宽、对齐、嵌套层级、滚动容器 |
+| 2 | 间距 | padding / margin / gap，组内组间 |
+| 3 | 字体格式 | 字体族、字重、行高、字间距 |
+| 4 | 字号 | 各级标题/正文/辅助/表头/标签 |
+| 5 | 排版 | label 对齐、换行、截断、列布局 |
+| 6 | 颜色与风格 | 背景、边框、主色、渐变、语义色、圆角、阴影 |
+| 7 | 图标 | 位置、大小、风格；有图标位就必须有图标（可选取开源近似款并记录来源） |
+| 8 | 适配 | 基准宽度与 spec 定义断点下无撑破/重叠 |
+| 9 | 视觉效果 | hover / active / selected / disabled / badge / chip |
+| 10 | 反馈 | loading / empty / error / success / toast 文案与样式 |
+| 11 | 文案 | 所有可见文字与 design 一致（含 placeholder） |
+
+任一维度在同一区块出现可见偏差 → 该区块 **FAIL**，任务 **未完成**。
+
+---
+
+## 实现前强制产出（spec 内）
+
+**未完成以下表格，禁止写 HTML/CSS/JS：**
+
+- 设计 token 表（颜色、字号、间距、圆角、阴影）
+- 分区尺寸表（px）
+- 图标清单（位置 + 选用 + 来源）
+- 文案清单（与设计图逐字对照）
+- 11 维 × 区块 对照表
+- 交互与后端映射（真实按钮 → 接口 → 反馈）
+
+模板见 `docs/design_specs/_design-module-spec-template.md`。
+
+---
+
+## 实现约束
+
+### 必须
+
+- baseline commit + push 后再改 UI（push 失败则停止）
+- 设计冲突时 **重写**，不 patch 旧壳
+- 模块样式 scoped 到根 class（如 `.ops-topology-app`），隔离全局 CSS
+- 静态资源改动的 cache-bust 版本号必须更新并验证浏览器加载
+- 验证真实 route / template / 进程，不只改 helper
+
+### 禁止
+
+- 同一 CSS 文件多轮 fidelity 补丁堆叠（超过 1 次视觉修复仍不对 → 重写该 CSS）
+- 全局 `.btn` / 共享 admin 壳顶替设计稿组件
+- 装饰性可点控件（假按钮、假 KPI、假 tab）
+- 假实时曲线 / 假进度
+- 跳过浏览器验收（工具可用时）
+- 等用户指出明显差异才修
+
+---
+
+## 浏览器验收门禁（Hard Gate）
+
+**宣告完成的前置条件（全部满足 = skill F1–F7 + 下列项）：**
+
+- [ ] **G1/R1** 已 Read `docs/design_assets/` **全部**效果图原图（非 thread 描述）
+- [ ] 本地服务健康，打开的是正确 URL
+- [ ] 静态资源版本已 bump 且浏览器 Network 确认加载新版本（非旧 304）
+- [ ] 已按 skill **《专业验收机制》** 执行 Step 1–6（独立验收员角色）
+- [ ] 已执行 skill **《多屏必验动作清单》**（每一主态 / 每一弹窗）
+- [ ] 已填写 **《交互抽检表》**，in-scope 控件均已点击
+- [ ] 已填写 **《画布 / 节点 / 连线专项门禁》**
+- [ ] 已验证 **数据链路门禁**（normalize 保字段、demo 升级生效）
+- [ ] 已逐区截图并与 `docs/design_assets/` 设计图并排对比
+- [ ] 「屏级 PASS 表」**ALL PASS**
+- [ ] 专业验收报告结论为 **「通过验收」**（非「未通过验收」）
+- [ ] JS 语法检查通过；Python compile 通过
+- [ ] 无乱码 / 编码问题
+
+**任一未勾选 → 未通过验收，不得向用户交付。**
+
+**验收结论仅二选一：** `通过验收` / `未通过验收`。禁止第三种结论。
+
+**未通过时禁止：** 解释未实现原因、列举遗留项、建议用户先凑合用、**只报 FAIL 不修**（除非用户明确要求仅验收）。
+
+**验收 FAIL 后：** 同一任务内立即修复（Phase C-fix）→ 再验；见 skill《验收失败后的动作》。
+
+**写代码前：** 必须完成 skill **Phase A0 设计图深度读图** + Phase A 填表；见 skill，不得跳过读图直接实现。
+
+---
+
+## 验收闭环门禁（Mandatory Loop · 写死）
+
+设计图任务**没有「阶段性交付」**——只有「全部效果图 PASS」或「未通过验收仍在修」。
+
+```
+Phase C 全屏验收
+    ↓
+任一屏 / 任一区块 FAIL？
+    ├─ 是 → Phase C-fix 改代码 → bump cache → 浏览器复验 → 回到 Phase C（不得结束任务）
+    └─ 否 → 全部 PASS → 才可结束任务、才可对用户宣告完成
+```
+
+| 必须 | 禁止 |
+|------|------|
+| FAIL 后**同一任务内**继续开发，直到**全部** `docs/design_assets/` 效果图 PASS | 输出 FAIL 清单后结束回合 |
+| 每轮 C-fix 后 bump cache 并硬刷新复验 | 只改源码不做浏览器并排对照 |
+| 多屏模块：**每一张**效果图单独判定，一张 FAIL = 模块 FAIL | 只验一屏就宣称模块完成 |
+| 2 轮完整验收仍多区 FAIL → baseline 整页重写再验 | 第 3 轮在同 CSS 叠 `fidelity-vN` 补丁 |
+| 全部 PASS 后一次性交付 | 「下一步建议」「需要我继续吗」「你可以先看看」 |
+
+**唯一允许停手不修的条件：** 用户书面说「只验收 / 先别改 / 停」；或环境确实无法写代码/开浏览器（结论仍为**未通过验收**）。
+
+---
+
+## 历史事故清单（禁止再犯 · 来自真实 FAIL 复盘）
+
+> 下列条目来自拓扑编排等模块的真实验收 FAIL。**同类错误再出现 = 任务未完成。**
+
+### A. 交付与话术
+
+| # | 禁止行为 | 正确做法 |
+|---|----------|----------|
+| A1 | 改了一整夜仍 FAIL，却对用户说「基本完成 / 可验收 / 1:1」 | 未全部 PASS 前只能说：**未通过验收，继续修改** |
+| A2 | 回合结束只给 FAIL 列表 +「下一步建议 / 需要我继续吗」 | FAIL 后**立即 Phase C-fix**，修完再验，全部 PASS 才结束 |
+| A3 | 用「结构像 / 5 节点 seed / 接口 200」代替视觉 PASS | 必须浏览器并排对照 `design_assets` 原图 |
+| A4 | 只验工具态一屏，未验节点态 / 测试态 / 弹窗 | **每一张**效果图独立 Step 1–6 |
+| A5 | 交付报告写「遗留 / 待办 / 除 XX 外已对齐」 | 未 PASS 项 = FAIL，不是遗留 |
+
+### B. 结构与布局（跨屏 / 同屏多态）
+
+| # | 禁止行为 | 正确做法 |
+|---|----------|----------|
+| B1 | 工具态与节点态**共用同一套** Inspector 字段顺序 | A0 建档写清差异；HTML 用 `data-inspector-layout` / `data-layout` **分态渲染** |
+| B2 | 工具态基础 Tab 出现节点态字段（节点名称、节点 ID、所属分组、「所有权与绑定」只读块） | 工具态基础 Tab 按设计：**角色→状态→语义类型→颜色→描述→标签→Agent 内联块** |
+| B3 | Agent / 部署信息只在独立 Tab，基础 Tab 缺内联块 | 工具态基础 Tab 内联：**主 Agent+在线、服务实例、部署版本、运维端口、通信地址** |
+| B4 | 节点态第 4 Tab 仍显示「监控指标」或 monitor 面板内容 | 节点态 Tab4 = **输入输出端口**，独立 pane，禁止 pane 串台 |
+| B5 | 测试态右栏仍显示 Inspector 表单 | 测试态右栏 = **运行状态卡**（非 Inspector） |
+| B6 | 顶栏不随左栏 Tab 切换（工具态「当前拓扑」vs 节点态三层选择器） | A0-7 跨屏差异表 + JS `refreshLeftPanelChrome` 真切换 |
+| B7 | 左栏三态（工具/模式/节点）内容相同或只改 Tab 文案 | 三态左栏**内容结构**须分别对照设计图 |
+
+### C. 字段 / 文案 / demo
+
+| # | 禁止行为 | 正确做法 |
+|---|----------|----------|
+| C1 | 语义类型显示 `standard`，设计为 `game` | 文案清单逐字对照；role/kind 映射写入 spec |
+| C2 | 快速模板四宫格只出 3 个（preset 匹配 key 写错） | 按 **role/preset_id** 精确匹配，不用模糊 `includes("game")` |
+| C3 | 节点表 5 行，设计 demo 6 行 | design 为 demo 态 → 实现须同等行数/密度 |
+| C4 | 项目名 / 描述 / 版本等 demo 文案与设计不符 | A0-3 文案抽取表逐字实现 |
+| C5 | 底部按钮数量或文案错（如「隔离节点」≠ 设计「探测节点」） | 按钮清单计入文案验收；改 JS 后 bump cache |
+
+### D. CSS / 实现方式
+
+| # | 禁止行为 | 正确做法 |
+|---|----------|----------|
+| D1 | 同一 CSS 叠 v8–v14「fidelity pass」至 2800+ 行仍 FAIL | **2 轮仍 FAIL → 回 baseline（如 git 重构提交）整页重写**，禁止第 3 轮叠补丁 |
+| D2 | 移除共载 CSS 后全局 `.btn` 污染拓扑页 | scoped 根 class + 显式覆盖全局样式 |
+| D3 | 只改 JS/后端不改 HTML/CSS 结构就声称对齐 | 结构 FAIL 优先于样式微调 |
+| D4 | 改 template/静态资源不 bump `?v=` cache | 每轮 C-fix 后 bump 并验证浏览器加载新版本 |
+| D5 | 只读 helper/内部 builder，不验浏览器实际 route | 以浏览器 URL 对应 entrypoint 为准 |
+
+### E. 验收执行
+
+| # | 禁止行为 | 正确做法 |
+|---|----------|----------|
+| E1 | 只做 `node --check` / `py_compile`，不做浏览器验收 | Hard Gate 全部勾选才可宣告完成 |
+| E2 | 只看源码推断「应该对了」 | Step 1 并排截图：实现屏 + design 原图 |
+| E3 | spec 写「仍 FAIL（需 C-fix）」然后停手 | spec 记录 FAIL + **同任务内继续修到 PASS** |
+| E4 | 用户贴对比截图质问，仍用段落解释而非立刻修 | 用户截图 = 新 FAIL 证据 → 立即 C-fix |
+
+### F. 流程执行不到位（Meta · 写了规则不执行）
+
+| # | 禁止行为 | 正确做法 |
+|---|----------|----------|
+| F1 | skill/rule 已更新，但回合内未 Read design_assets 就改代码 | **先 G1 再写代码**；Read 工具记录可审计 |
+| F2 | 只验一屏（如工具态）就回复用户 | **每一张**效果图 + **每一个**主态切换 |
+| F3 | 用源码/API/compile 推断 PASS，未 Browser 并排 | **Step 1 并排截图**为唯一视觉依据 |
+| F4 | FAIL 后输出清单 +「下一步建议 / 需要我继续吗」结束回合 | **Phase C-fix 同回合继续修**，全部 PASS 才结束 |
+| F5 | 改了 backend seed 但浏览器仍旧（normalize 剥字段 / 未 reload / cache 旧） | 验 **数据链路门禁** + Network 新版本 |
+| F6 | 画布节点数/连线 label 与设计不符仍声称 Inspector 已对齐 | **画布专项**与 Inspector **分别**判定 |
+| F7 | 向用户汇报「增量 / 部分完成」而未填屏级 PASS 表 | **R5 未 ALL PASS → 禁止完成态话术** |
+
+**F 类任一命中 = 与用户质问等效 → 强制重开 Phase C，不得用话术收尾。**
+
+---
+
+## 图标
+
+> 详表与 spec 填表见 skill《图标策略》。摘要：
+
+- 设计稿每个图标位必须有视觉实现
+- 允许从 Heroicons / Lucide / Phosphor / Iconify 等选取**最接近**设计稿的图标
+- 必须在 spec 图标清单记录名称与来源
+- 禁止长期用 emoji、纯文字、空占位代替
+
+---
+
+## 完成宣告格式
+
+**允许（仅当全部效果图 PASS + 专业验收报告结论为「通过验收」）：**
+
+> 已通过验收。对照 `[设计图文件名列表]` 全部 1:1 对齐，专业验收报告见 spec。
+
+**任务进行中（仍在 C-fix 循环内）：** 默认不向用户发送半成品总结；**全部 PASS 后再回复**。
+
+**本回合因用户要求停手且仍 FAIL 时，只允许：**
+
+> 未通过验收。FAIL：[区块] — 设计：[…]；实际：[…]。继续修改。
+
+**不允许（含任务结束时）：**
+
+> 已完成 / 可以验收了 / 1:1 还原了 / 下一步建议 / 需要我继续吗 / 你可以先看看
+
+**若仍有 FAIL，禁止：**
+
+> 遗留：… / 因为…所以没做 / 除 XX 外已对齐 / 后续再调…
+
+→ 统一动作：**继续 Phase C-fix，直到全部 PASS 或用户明确要求停手。**
+
+---
+
+## 与 safe-change-workflow 的关系
+
+- 语法检查、服务重启、health 检查：仍遵守 safe-change-workflow
+- 设计任务 **额外** 遵守本 rule 的浏览器视觉 Hard Gate
+- 连续 2 轮视觉修复失败 → 回 baseline 重写（safe-change-workflow §6），**禁止**第 3 轮叠补丁
+
+---
+
+## 代码组织
+
+- 模板 / 样式 / 脚本 / 路由 / 服务分离
+- 不污染其他模块 CSS/JS
+- 短函数、清晰命名
+- 不写无注释的 magic number — 间距/颜色应来自 spec token 表

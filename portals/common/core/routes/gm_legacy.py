@@ -108,7 +108,7 @@ def _default_nodes() -> List[Dict[str, Any]]:
         _normalize_node(
             {
                 "id": "local-gm",
-                "name": "鏈湴GM鑺傜偣",
+                "name": "本地GM节点",
                 "base_url": base_url,
                 "ops_base_url": ops_base_url,
                 "ops_read_key": ops_read_key,
@@ -121,7 +121,7 @@ def _default_nodes() -> List[Dict[str, Any]]:
                 "role": "business",
                 "node_category": "application",
                 "node_type": "business_server",
-                "description": "榛樿鑺傜偣",
+                "description": "默认节点",
                 "biz_status": "normal",
                 "allowed_upstream_roles": ["gateway", "scheduler", "admin"],
                 "allowed_downstream_roles": ["database", "cache", "mq", "search"],
@@ -132,14 +132,42 @@ def _default_nodes() -> List[Dict[str, Any]]:
     ]
 
 
+def _text_has_mojibake(text: str) -> bool:
+    sample = str(text or "")
+    if not sample:
+        return False
+    markers = ("鑺", "榛", "缃", "鍘", "涓", "璋", "鏈", "鍏", "瀹", "鍏崇")
+    return any(m in sample for m in markers)
+
+
+def _repair_legacy_node_text(item: Dict[str, Any]) -> Dict[str, Any]:
+    row = dict(item or {})
+    name = str(row.get("name") or "")
+    desc = str(row.get("description") or "")
+    if _text_has_mojibake(name):
+        if str(row.get("id") or "") == "local-gm":
+            row["name"] = "本地GM节点"
+        else:
+            row["name"] = str(row.get("id") or "节点")
+    if _text_has_mojibake(desc):
+        row["description"] = "默认节点"
+    return row
+
+
 def _load_nodes() -> List[Dict[str, Any]]:
     raw = get_system_config(NODE_CONFIG_KEY, [])
     if isinstance(raw, list) and raw:
         rows: List[Dict[str, Any]] = []
+        changed = False
         for item in raw:
             if isinstance(item, dict):
-                rows.append(_normalize_node(item))
+                repaired = _repair_legacy_node_text(item)
+                if repaired != item:
+                    changed = True
+                rows.append(_normalize_node(repaired))
         if rows:
+            if changed:
+                _save_nodes(rows)
             return rows
     return _default_nodes()
 
@@ -150,7 +178,7 @@ def _save_nodes(rows: List[Dict[str, Any]]) -> None:
         NODE_CONFIG_KEY,
         normalized,
         value_type="json",
-        description="Legacy GM + Ops 鑺傜偣閰嶇疆",
+        description="Legacy GM + Ops 节点配置",
         username="system",
     )
 
@@ -1474,11 +1502,93 @@ def _scope_binding_key(topology_id: str, node_id: str) -> str:
     return f"{str(topology_id or '').strip()}::{str(node_id or '').strip()}"
 
 
+def _topology_content_counts(topology_id: str) -> Tuple[int, int]:
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return 0, 0
+    contents = _load_topology_contents()
+    topo = contents.get(tid) if isinstance(contents.get(tid), dict) else {}
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    return len(nodes), len(edges)
+
+
+def _ensure_design_demo_registry(project_id: str) -> None:
+    """设计稿管理弹窗 demo：四环境各一条拓扑注册记录（存在则同步元数据）。"""
+    pid = str(project_id or "").strip()
+    if not pid:
+        return
+    rows = _load_topology_registry()
+    if not isinstance(rows, list):
+        rows = []
+    demo_specs = [
+        {"env_key": "production", "name": "生产环境拓扑", "version_label": "v2.3.1", "owner": "运维管理员", "is_default": True, "status": "running", "updated_at": "2025-05-20T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
+        {"env_key": "staging", "name": "预发环境拓扑", "version_label": "v2.1.4", "owner": "张三", "status": "running", "updated_at": "2025-05-19T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
+        {"env_key": "testing", "name": "测试环境拓扑", "version_label": "v1.8.7", "owner": "李四", "status": "stopped", "updated_at": "2025-05-16T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
+        {"env_key": "development", "name": "开发环境拓扑", "version_label": "v1.5.2", "owner": "王五", "status": "running", "updated_at": "2025-05-12T12:34:00+08:00", "design_demo_node_count": 4, "design_demo_edge_count": 5},
+    ]
+    changed = False
+    contents = _load_topology_contents()
+    for spec in demo_specs:
+        env = _normalize_env_key(spec.get("env_key"))
+        hit_idx = -1
+        for i, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("project_id") or "") == pid and _normalize_env_key(row.get("env_key")) == env:
+                hit_idx = i
+                break
+        if hit_idx >= 0:
+            merged = dict(rows[hit_idx])
+            merged["name"] = spec["name"]
+            merged["version_label"] = spec["version_label"]
+            merged["owner"] = spec["owner"]
+            merged["status"] = spec.get("status") or merged.get("status")
+            if spec.get("is_default"):
+                merged["is_default"] = True
+            merged["design_demo_node_count"] = spec.get("design_demo_node_count")
+            merged["design_demo_edge_count"] = spec.get("design_demo_edge_count")
+            merged["updated_at"] = spec.get("updated_at") or merged.get("updated_at")
+            rows[hit_idx] = _normalize_topology_registry_row(merged)
+            changed = True
+            continue
+        row = _normalize_topology_registry_row(
+            {
+                "topology_id": f"topology-design-{pid.replace('/', '-').replace(' ', '-').lower()}-{env}",
+                "project_id": pid,
+                "env_key": env,
+                "name": spec["name"],
+                "version_label": spec["version_label"],
+                "owner": spec["owner"],
+                "is_default": bool(spec.get("is_default")),
+                "status": spec.get("status") or "running",
+                "description": "设计稿 demo 拓扑",
+                "created_at": spec.get("updated_at") or _now_iso(),
+                "updated_at": spec.get("updated_at") or _now_iso(),
+                "design_demo_node_count": spec.get("design_demo_node_count"),
+                "design_demo_edge_count": spec.get("design_demo_edge_count"),
+            }
+        )
+        rows.append(row)
+        if env == "development":
+            dev_topo = _design_reference_topology_content(pid, env)
+            dev_topo["nodes"] = [n for n in (dev_topo.get("nodes") or []) if str(n.get("id") or "") != "db-01" and not ((n.get("ui") or {}).get("list_only"))]
+            dev_topo["nodes"] = (dev_topo.get("nodes") or [])[:4]
+            dev_topo["edges"] = [e for e in (dev_topo.get("edges") or []) if str(e.get("to") or "") != "tcp-01" and str(e.get("from") or "") != "tcp-01"]
+            contents[row["topology_id"]] = dev_topo
+        else:
+            contents[row["topology_id"]] = _design_reference_topology_content(pid, env)
+        changed = True
+    if changed:
+        _save_topology_registry(rows)
+        _save_topology_contents(contents)
+
+
 def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
     item = row if isinstance(row, dict) else {}
     env_key = _normalize_env_key(item.get("env_key"))
     topology_id = str(item.get("topology_id") or "").strip() or ("topology-" + uuid.uuid4().hex[:10])
-    return {
+    out = {
         "topology_id": topology_id,
         "project_id": str(item.get("project_id") or "").strip(),
         "env_key": env_key,
@@ -1494,6 +1604,245 @@ def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": str(item.get("created_at") or _now_iso()),
         "updated_at": str(item.get("updated_at") or item.get("created_at") or _now_iso()),
     }
+    nc, ec = _topology_content_counts(topology_id)
+    if item.get("design_demo_node_count") is not None:
+        out["design_demo_node_count"] = int(item.get("design_demo_node_count") or 0)
+        out["design_demo_edge_count"] = int(item.get("design_demo_edge_count") or 0)
+        out["node_count"] = out["design_demo_node_count"]
+        out["edge_count"] = out["design_demo_edge_count"]
+    elif nc or ec:
+        out["node_count"] = nc
+        out["edge_count"] = ec
+    elif item.get("node_count") is not None:
+        out["node_count"] = int(item.get("node_count") or 0)
+        out["edge_count"] = int(item.get("edge_count") or 0)
+    else:
+        out["node_count"] = 5
+        out["edge_count"] = 6
+    return out
+
+
+def _design_reference_topology_content(project_id: str = "", env_key: str = "production") -> Dict[str, Any]:
+    """设计稿标准 5 节点 demo 拓扑：Gateway / Auth / Ops / Game / TCP Transport。"""
+    gateway_ports = {
+        "in": [],
+        "out": [
+            {"id": "out-1", "label": "http:80", "kind": "out", "max_links": 1},
+            {"id": "out-2", "label": "http:443", "kind": "out", "max_links": 1},
+        ],
+    }
+
+    def _node(
+        node_id: str,
+        name: str,
+        role: str,
+        desc: str,
+        x: int,
+        y: int,
+        color: str,
+        kind: str = "",
+        tags: Optional[List[str]] = None,
+        ports: Optional[Dict[str, Any]] = None,
+        owner: str = "",
+        group: str = "",
+        list_only: bool = False,
+        remote_port: int = 0,
+        endpoints: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        k = kind or _infer_node_kind(role, "")
+        ui_ports = ports if isinstance(ports, dict) else _normalize_ports(k, None)
+        ui: Dict[str, Any] = {
+            "x": x,
+            "y": y,
+            "w": 220,
+            "h": 108,
+            "color": color,
+            "locked": False,
+            "ports": ui_ports,
+            "list_only": bool(list_only),
+        }
+        if remote_port:
+            ui["remote"] = {"port": int(remote_port)}
+        if endpoints:
+            ui["network"] = {"endpoints": list(endpoints)}
+        return {
+            "id": node_id,
+            "name": name,
+            "server_id": node_id,
+            "project_id": str(project_id or ""),
+            "env": _normalize_env_key(env_key) or "production",
+            "role": role,
+            "kind": k,
+            "desc": desc,
+            "bizStatus": "normal",
+            "owner": str(owner or ""),
+            "group": str(group or ""),
+            "x": float(x),
+            "y": float(y),
+            "tags": tags if isinstance(tags, list) else [],
+            "ui": ui,
+        }
+
+    nodes = [
+        _node("gateway-01", "Gateway", "gateway", "网关服务", 72, 48, "#1890ff", "entry", ports=gateway_ports),
+        _node("auth-01", "Auth", "auth", "认证服务", 72, 248, "#52c41a"),
+        _node("ops-01", "Ops", "admin", "运维服务", 320, 248, "#faad14"),
+        _node(
+            "game-01", "Game", "business",
+            "核心游戏逻辑服务节点。处理玩家会话与游戏逻辑。",
+            560, 128, "#722ed1", "game",
+            tags=["business", "core"], owner="运维团队", group="游戏服务",
+            remote_port=9501, endpoints=["10.0.1.15:9501"],
+        ),
+        _node("tcp-01", "TCP Transport", "transport", "传输服务", 820, 328, "#f5222d", "terminal"),
+        _node("db-01", "Database", "database", "Mongo 主存储", 0, 0, "#13c2c2", tags=["storage"], list_only=True),
+    ]
+    edges = [
+        {"id": "edge-gw-auth", "from": "gateway-01", "to": "auth-01", "from_port": "out-1", "to_port": "in-1", "type": "http", "note": "http:80"},
+        {"id": "edge-gw-ops", "from": "gateway-01", "to": "ops-01", "from_port": "out-2", "to_port": "in-1", "type": "http", "note": "http:443"},
+        {"id": "edge-auth-game", "from": "auth-01", "to": "game-01", "from_port": "out-1", "to_port": "in-1", "type": "tcp", "note": "tcp:5501"},
+        {"id": "edge-ops-game", "from": "ops-01", "to": "game-01", "from_port": "out-1", "to_port": "in-1", "type": "tcp", "note": "tcp:5512"},
+        {"id": "edge-game-tcp", "from": "game-01", "to": "tcp-01", "from_port": "out-1", "to_port": "in-1", "type": "tcp", "note": "tcp:9512"},
+    ]
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "meta": {
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+            "layout_mode": "structured",
+            "layout_locked": False,
+            "design_reference": "v4",
+            "updated_at": _now_iso(),
+        },
+    }
+
+
+def _needs_design_reference_upgrade(topo: Any) -> bool:
+    if not isinstance(topo, dict):
+        return True
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    if str(meta.get("design_reference") or "") == "v4":
+        for item in nodes:
+            if not isinstance(item, dict):
+                continue
+            nid = str(item.get("id") or "")
+            if nid == "game-01" and "核心游戏逻辑" not in str(item.get("desc") or ""):
+                return True
+            if nid == "game-01" and str(item.get("owner") or "") != "运维团队":
+                return True
+            if nid == "db-01":
+                ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+                if not ui.get("list_only"):
+                    return True
+        edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+        notes = {str(e.get("note") or "") for e in edges if isinstance(e, dict)}
+        if "http:80" not in notes or "tcp:9512" not in notes:
+            return True
+        if "db-01" not in {str(n.get("id") or "") for n in nodes if isinstance(n, dict)}:
+            return True
+        if meta.get("layout_locked") is True:
+            return True
+        for item in nodes:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("id") or "") != "gateway-01":
+                continue
+            ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+            gx = float(ui.get("x") if ui.get("x") is not None else item.get("x") or 0)
+            if abs(gx - 72.0) < 1.0:
+                return True
+        return False
+    if str(meta.get("design_reference") or "") in ("v1", "v2", "v3", ""):
+        return True
+    if len(nodes) >= 5:
+        ids = {str(n.get("id") or "") for n in nodes if isinstance(n, dict)}
+        if {"gateway-01", "auth-01", "game-01", "tcp-01", "db-01"}.issubset(ids):
+            return False
+    if len(nodes) <= 1:
+        return True
+    ids = {str(n.get("id") or "") for n in nodes if isinstance(n, dict)}
+    if ids <= {"local-gm", ""}:
+        return True
+    for item in nodes:
+        if not isinstance(item, dict):
+            continue
+        if _text_has_mojibake(str(item.get("desc") or "")):
+            return True
+    return False
+
+
+def _ensure_design_reference_bindings(topology_id: str) -> None:
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return
+    store = _load_node_agent_bindings()
+    if not isinstance(store, dict):
+        store = {}
+    key = _scope_binding_key(tid, "game-01")
+    if not str(store.get(key) or "").strip():
+        store[key] = "agent-01"
+        _save_node_agent_bindings(store)
+
+
+def _ensure_design_reference_agents(project_id: str) -> None:
+    """设计稿 demo：保证 game-01 可绑定 agent-01 并在 Inspector/节点卡展示。"""
+    pid = str(project_id or "").strip()
+    if not pid:
+        return
+    registry = _load_agent_registry_v2()
+    if not isinstance(registry, dict):
+        registry = {}
+    aid = "agent-01"
+    existing = registry.get(aid) if isinstance(registry.get(aid), dict) else {}
+    if str(existing.get("project_id") or "").strip() and str(existing.get("project_id") or "").strip() != pid:
+        return
+    if existing.get("agent_id") == aid and str(existing.get("probe_status") or "").upper() == "PASS":
+        return
+    now = _now_iso()
+    registry[aid] = {
+        "agent_id": aid,
+        "device_id": "device-game-01",
+        "display_name": aid,
+        "project_id": pid,
+        "node_id": "game-01",
+        "host_name": "10.0.1.15",
+        "host_ip": "10.0.1.15",
+        "port": 9501,
+        "remote_game_server_port": 9501,
+        "status": "ONLINE",
+        "probe_status": "PASS",
+        "probe_at": now,
+        "last_seen": now,
+        "version": "v2.3.1",
+        "services": [
+            {
+                "service_id": "svc-game-01-a",
+                "agent_id": aid,
+                "node_id": "game-01",
+                "service_port": 9501,
+                "status": "ONLINE",
+                "probe_status": "PASS",
+            },
+            {
+                "service_id": "svc-game-01-b",
+                "agent_id": aid,
+                "node_id": "game-01",
+                "service_port": 9502,
+                "status": "ONLINE",
+                "probe_status": "PASS",
+            },
+            {
+                "service_id": "svc-game-01-c",
+                "agent_id": aid,
+                "node_id": "game-01",
+                "service_port": 9503,
+                "status": "ONLINE",
+                "probe_status": "PASS",
+            },
+        ],
+    }
+    _save_agent_registry_v2(registry)
 
 
 def _default_topology_content_from_nodes(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1506,19 +1855,8 @@ def _default_topology_content_from_nodes(rows: List[Dict[str, Any]]) -> Dict[str
 
 def _topology_seed_content(project_id: str, env_key: str) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
-    env = _normalize_env_key(env_key)
-    rows = _load_nodes()
-    scoped: List[Dict[str, Any]] = []
-    for item in rows:
-        if not isinstance(item, dict):
-            continue
-        if pid and str(item.get("project_id") or "").strip() != pid:
-            continue
-        item_env = _normalize_env_key(item.get("env") or "")
-        if item_env and env and item_env != env:
-            continue
-        scoped.append(item)
-    return _default_topology_content_from_nodes(scoped)
+    env = _normalize_env_key(env_key) or "production"
+    return _design_reference_topology_content(pid, env)
 
 
 def _migrate_topology_storage_if_needed() -> None:
@@ -1622,10 +1960,12 @@ def _migrate_topology_storage_if_needed() -> None:
         _save_runtime_runs(runtime_rows)
 
 
-def _list_topologies(project_id: str = "", env_key: str = "") -> List[Dict[str, Any]]:
+def _list_topologies(project_id: str = "", env_key: Optional[str] = None) -> List[Dict[str, Any]]:
     _migrate_topology_storage_if_needed()
     pid = str(project_id or "").strip()
-    env = _normalize_env_key(env_key)
+    env_filter = _normalize_env_key(env_key) if (env_key is not None and str(env_key).strip()) else None
+    if pid:
+        _ensure_design_demo_registry(pid)
     out: List[Dict[str, Any]] = []
     for item in _load_topology_registry():
         if not isinstance(item, dict):
@@ -1633,7 +1973,7 @@ def _list_topologies(project_id: str = "", env_key: str = "") -> List[Dict[str, 
         row = _normalize_topology_registry_row(item)
         if pid and row.get("project_id") != pid:
             continue
-        if env and row.get("env_key") != env:
+        if env_filter and row.get("env_key") != env_filter:
             continue
         out.append(row)
     out.sort(key=lambda x: (x.get("project_id") or "", x.get("env_key") or "", 0 if x.get("is_default") else 1, x.get("updated_at") or ""), reverse=False)
@@ -1702,6 +2042,12 @@ def _resolve_topology_context(project_id: str = "", env_key: str = "", topology_
         topo = _topology_seed_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
         contents[str(target.get("topology_id") or "")] = topo
         _save_topology_contents(contents)
+    elif _needs_design_reference_upgrade(topo):
+        topo = _design_reference_topology_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
+        contents[str(target.get("topology_id") or "")] = topo
+        _save_topology_contents(contents)
+    _ensure_design_reference_bindings(str(target.get("topology_id") or ""))
+    _ensure_design_reference_agents(str(target.get("project_id") or pid or ""))
     return {
         "topology": topo,
         "row": target,
@@ -1741,6 +2087,7 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
                 "desc": str(item.get("desc") or ""),
                 "bizStatus": str(item.get("bizStatus") or "normal"),
                 "owner": str(item.get("owner") or ""),
+                "group": str(item.get("group") or ""),
                 "node_category": str(item.get("node_category") or ""),
                 "node_type": str(item.get("node_type") or ""),
                 "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
@@ -1778,6 +2125,8 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
             "version": int(meta.get("version") or 1),
             "updated_at": str(meta.get("updated_at") or ""),
             "layout_mode": str(meta.get("layout_mode") or "structured"),
+            "layout_locked": bool(meta.get("layout_locked")),
+            "design_reference": str(meta.get("design_reference") or ""),
         },
         "registry": ctx.get("row"),
         "topologies": ctx.get("topologies") if isinstance(ctx.get("topologies"), list) else [],
@@ -1921,6 +2270,7 @@ def _build_runtime_node_from_topology_node(project_id: str, env_key: str, topo_n
 def _cluster_type_for_role(role: str) -> str:
     mapping = {
         "gateway": "Gateway",
+        "auth": "Auth",
         "business": "Game",
         "pressure": "Pressure",
         "database": "Db",
@@ -3847,44 +4197,77 @@ def _default_node_presets() -> List[Dict[str, Any]]:
     return [
         {
             "preset_id": "gateway_http",
-            "name": "缃戝叧鑺傜偣",
+            "name": "网关服务",
             "category": "application",
             "role": "gateway",
             "node_type": "gateway_server",
-            "default_desc": "鍏ュ彛缃戝叧锛屾壙鎺ユ祦閲忓苟杞彂涓氬姟鏈嶅姟",
+            "default_desc": "入口网关，承接流量并转发业务服务",
             "fixed_upstream_roles": ["edge", "lb", "admin"],
-            "fixed_downstream_roles": ["business", "pressure"],
+            "fixed_downstream_roles": ["business", "pressure", "auth"],
+            "daemon_profile": "ops_native",
+        },
+        {
+            "preset_id": "auth_service",
+            "name": "认证服务",
+            "category": "application",
+            "role": "auth",
+            "node_type": "auth_server",
+            "default_desc": "用户认证与会话校验服务",
+            "fixed_upstream_roles": ["gateway", "edge"],
+            "fixed_downstream_roles": ["business"],
             "daemon_profile": "ops_native",
         },
         {
             "preset_id": "business_main",
-            "name": "涓氬姟鑺傜偣",
+            "name": "游戏服务",
             "category": "application",
             "role": "business",
             "node_type": "business_server",
-            "default_desc": "鏍稿績涓氬姟澶勭悊鑺傜偣",
-            "fixed_upstream_roles": ["gateway", "scheduler", "admin"],
-            "fixed_downstream_roles": ["database", "cache", "mq", "search"],
+            "default_desc": "核心业务处理节点",
+            "fixed_upstream_roles": ["gateway", "scheduler", "admin", "auth"],
+            "fixed_downstream_roles": ["database", "cache", "mq", "search", "transport"],
+            "daemon_profile": "ops_native",
+        },
+        {
+            "preset_id": "ops_service",
+            "name": "运维服务",
+            "category": "application",
+            "role": "admin",
+            "node_type": "admin_server",
+            "default_desc": "运维控制与诊断服务",
+            "fixed_upstream_roles": ["gateway", "edge"],
+            "fixed_downstream_roles": ["business"],
+            "daemon_profile": "ops_native",
+        },
+        {
+            "preset_id": "tcp_transport",
+            "name": "传输服务",
+            "category": "network",
+            "role": "transport",
+            "node_type": "tcp_transport",
+            "default_desc": "TCP 长连接传输节点",
+            "fixed_upstream_roles": ["business", "gateway"],
+            "fixed_downstream_roles": [],
             "daemon_profile": "ops_native",
         },
         {
             "preset_id": "pressure_worker",
-            "name": "鍘嬪姏鑺傜偣",
+            "name": "压测服务",
             "category": "test",
             "role": "pressure",
             "node_type": "pressure_server",
-            "default_desc": "鍘嬫祴娴侀噺涓庢€ц兘鍥炲綊鑺傜偣",
+            "default_desc": "压测流量与性能回归节点",
             "fixed_upstream_roles": ["gateway", "admin"],
             "fixed_downstream_roles": ["business"],
             "daemon_profile": "ops_native",
         },
         {
             "preset_id": "redis_cache",
-            "name": "Redis 缂撳瓨",
+            "name": "Redis 缓存",
             "category": "infrastructure",
             "role": "cache",
             "node_type": "redis_cache",
-            "default_desc": "Cache and session storage node",
+            "default_desc": "缓存与会话存储节点",
             "fixed_upstream_roles": ["business", "gateway", "scheduler"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
@@ -3895,7 +4278,7 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "category": "database",
             "role": "database",
             "node_type": "mongo_database",
-            "default_desc": "涓氬姟涓诲瓨鍌ㄦ暟鎹簱",
+            "default_desc": "业务主存储数据库",
             "fixed_upstream_roles": ["business", "scheduler", "admin"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
@@ -3906,29 +4289,29 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "category": "database",
             "role": "database",
             "node_type": "mysql_database",
-            "default_desc": "鍏崇郴鍨嬫暟鎹簱鑺傜偣",
+            "default_desc": "关系型数据库节点",
             "fixed_upstream_roles": ["business", "scheduler", "admin"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "mq_kafka",
-            "name": "娑堟伅闃熷垪",
+            "name": "消息队列",
             "category": "infrastructure",
             "role": "mq",
             "node_type": "mq_kafka",
-            "default_desc": "寮傛浜嬩欢闃熷垪",
+            "default_desc": "异步事件队列",
             "fixed_upstream_roles": ["business", "gateway", "scheduler"],
             "fixed_downstream_roles": ["business", "analytics"],
             "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "scheduler_job",
-            "name": "璋冨害鑺傜偣",
+            "name": "调度服务",
             "category": "application",
             "role": "scheduler",
             "node_type": "scheduler_server",
-            "default_desc": "瀹氭椂浠诲姟涓庢壒澶勭悊鑺傜偣",
+            "default_desc": "定时任务与批处理节点",
             "fixed_upstream_roles": ["admin"],
             "fixed_downstream_roles": ["business", "database", "cache", "mq"],
             "daemon_profile": "ops_native",
@@ -3944,6 +4327,10 @@ def _load_node_presets() -> List[Dict[str, Any]]:
             if isinstance(item, dict) and str(item.get("preset_id") or "").strip():
                 out.append(item)
         if out:
+            if any(_text_has_mojibake(str(x.get("name") or "") + str(x.get("default_desc") or "")) for x in out):
+                presets = _default_node_presets()
+                _save_json_config(OPS_NODE_PRESETS_KEY, presets, description="Ops node preset catalog")
+                return presets
             return out
     presets = _default_node_presets()
     _save_json_config(OPS_NODE_PRESETS_KEY, presets, description="Ops node preset catalog")
@@ -4004,7 +4391,7 @@ def _infer_node_kind(role: str, explicit_kind: str = "") -> str:
     r = str(role or "").strip().lower()
     if r in ("gateway", "edge"):
         return "entry"
-    if r in ("database", "cache", "mq", "search"):
+    if r in ("database", "cache", "mq", "search", "transport", "tcp"):
         return "terminal"
     return "standard"
 
@@ -5978,8 +6365,9 @@ def ops_platform_topologies():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
-    env_key = _normalize_env_key(request.args.get("env_key") or "")
-    rows = _list_topologies(project_id, env_key)
+    env_arg = request.args.get("env_key")
+    env_filter = _normalize_env_key(env_arg) if (env_arg is not None and str(env_arg).strip()) else None
+    rows = _list_topologies(project_id, env_filter)
     env_values = []
     seen_env = set()
     for item in _default_env_options() + [{"env_key": str(x.get("env_key") or ""), "label": str(x.get("env_label") or _env_label(x.get("env_key") or ""))} for x in rows]:
@@ -5988,7 +6376,7 @@ def ops_platform_topologies():
             continue
         seen_env.add(key)
         env_values.append({"env_key": key, "label": str(item.get("label") or _env_label(key))})
-    return jsonify({"ok": True, "project_id": project_id, "env_key": env_key, "count": len(rows), "topologies": rows, "environments": env_values})
+    return jsonify({"ok": True, "project_id": project_id, "env_key": env_filter or "", "count": len(rows), "topologies": rows, "environments": env_values})
 
 
 @bp.route("/api/ops-platform/topologies/detail")
