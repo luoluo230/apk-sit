@@ -1,7 +1,33 @@
 (function () {
   const ROLE_OPTIONS = ["gateway", "business", "pressure", "database", "cache", "mq", "search", "scheduler", "admin", "edge", "analytics"];
   const STATUS_OPTIONS = ["normal", "observe", "degraded", "error", "offline"];
-  const STATUS_LABELS = { normal: "正常", observe: "观察", degraded: "退化", error: "异常", offline: "离线" };
+  const STATUS_LABELS = { normal: "运行中", observe: "观察中", degraded: "降级中", error: "异常", offline: "离线" };
+  const ROLE_LABELS = {
+    gateway: "网关服务",
+    business: "游戏服务",
+    pressure: "压测服务",
+    database: "数据库",
+    cache: "缓存服务",
+    mq: "消息队列",
+    search: "检索服务",
+    scheduler: "调度服务",
+    admin: "运维服务",
+    edge: "边缘节点",
+    analytics: "数据分析",
+  };
+  const ROLE_BADGES = {
+    gateway: "网",
+    business: "游",
+    pressure: "压",
+    database: "库",
+    cache: "缓",
+    mq: "列",
+    search: "搜",
+    scheduler: "调",
+    admin: "运",
+    edge: "边",
+    analytics: "析",
+  };
   const ROLE_COLOR = {
     gateway: { border: "#3b82f6", bg1: "#eff6ff", bg2: "#dbeafe" },
     business: { border: "#0ea5e9", bg1: "#ecfeff", bg2: "#cffafe" },
@@ -122,7 +148,6 @@
     const body = payload ? " " + JSON.stringify(payload) : "";
     const line = "[DBG#" + state.debugSeq + "] " + tag + body;
     try { console.debug(line); } catch (_) {}
-    logMode(line, "warn");
   }
 
   function toast(msg, type) {
@@ -149,6 +174,54 @@
   function runtimeName(id) {
     const n = getNode(id);
     return String((n && (n.name || n.node_name || n.title || n.id)) || id || "-");
+  }
+  function roleLabel(role) {
+    return ROLE_LABELS[String(role || "").toLowerCase()] || String(role || "未分类节点");
+  }
+  function roleBadge(role) {
+    return ROLE_BADGES[String(role || "").toLowerCase()] || "点";
+  }
+  function nodeDisplayTitle(node) {
+    if (!node) return "-";
+    const raw = String(node.name || node.title || node.id || "-").trim();
+    const first = raw.split(/[-_]/)[0].toLowerCase();
+    const alias = {
+      gateway: "Gateway",
+      auth: "Auth",
+      game: "Game",
+      business: "Game",
+      ops: "Ops",
+      tcp: "TCP Transport",
+      transport: "TCP Transport",
+      pressure: "Pressure",
+      database: "DB",
+      db: "DB",
+      cache: "Cache",
+      mq: "MQ",
+      scheduler: "Scheduler",
+      search: "Search",
+    };
+    if (alias[first]) return alias[first];
+    return raw || "-";
+  }
+  function nodeSecondaryText(node) {
+    if (!node) return "-";
+    const desc = String(node.desc || "").trim();
+    return desc || roleLabel(node.role);
+  }
+  function preferredNodeId() {
+    const nodes = Array.isArray(state.topology.nodes) ? state.topology.nodes : [];
+    if (!nodes.length) return "";
+    const selected = Array.from(state.selection.nodes || [])[0];
+    if (selected && nodes.some((node) => String(node.id) === String(selected))) return String(selected);
+    const score = (node) => {
+      const role = String((node || {}).role || "").toLowerCase();
+      if (role === "business") return 100;
+      if (role === "gateway") return 90;
+      if (role === "admin") return 80;
+      return 10;
+    };
+    return String(nodes.slice().sort((a, b) => score(b) - score(a))[0].id || "");
   }
   function rawNodeMeta(id) {
     const key = String(id || "");
@@ -465,15 +538,10 @@
         const qps = Math.max(0, Math.round((Number(fm.qps || 0) + Number(tm.qps || 0)) / (tm.qps ? 2 : 1)));
         const latency = Math.max(1, Math.round((Number(fm.rtt || 0) + Number(tm.rtt || 0)) / ((fm.rtt || tm.rtt) ? 2 : 1)));
         const fail = ["FAILED", "TIMEOUT", "CANCELED"].includes(String(status || "").toUpperCase());
-        return { tps: qps || 1, latency: latency || 1, err: fail ? 12 : 0 };
+        return { tps: qps || 0, latency: latency || 0, err: fail ? 12 : 0, source: "real" };
       }
     }
-    const s = nodeSeed(edgeId) + Math.floor(Date.now() / 1200) + (state.flowViz.seed || 0);
-    const fail = ["FAILED", "TIMEOUT", "CANCELED"].includes(String(status || "").toUpperCase());
-    const tps = Math.max(6, (s % 380) + (fail ? 0 : 40));
-    const latency = Math.max(8, (s % 70) + (fail ? 55 : 12));
-    const err = fail ? Math.min(42, (s % 35) + 6) : Math.max(0, (s % 5));
-    return { tps, latency, err };
+    return null;
   }
 
   function pushFlowSnapshot() {
@@ -554,7 +622,7 @@
     await refreshAgentsIfNeeded(false);
     const d = await OpsApi.runtimeFlowStatus(runId);
     if (!d || d.ok === false) {
-      logMode("运行状态拉取失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
+      logMode("运行状态拉取失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
       stopRuntimePolling();
       return;
     }
@@ -1308,7 +1376,7 @@
     const drawSig = visible + "/" + skipped + "/" + sig;
     if (state.lastEdgeDrawSig !== drawSig) {
       state.lastEdgeDrawSig = drawSig;
-      logMode("连线重绘: 数据=" + ((state.topology.edges || []).length) + " 可见=" + visible + " 跳过=" + skipped, skipped ? "warn" : "info");
+      if (skipped) logMode("部分连线暂不可见，已按当前节点布局重新计算画布。", "warn");
     }
     const delBtn = $("btnDeleteEdgeInline");
     if (delBtn) delBtn.disabled = !state.selection.edgeId;
@@ -1336,15 +1404,18 @@
     (state.topology.nodes || []).forEach((n) => {
       const aid = String((state.nodeBindings || {})[n.id] || "");
       const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
-      const bindText = ag ? ("Agent: " + (ag.display_name || ag.agent_id)) : "未绑定Agent";
-      const bindCls = ag ? "state-ok" : "state-warn";
+      const bindText = ag ? ("Agent： " + (ag.display_name || ag.agent_id)) : "未绑定 Agent";
       const agHealth = agentHealthLabel(ag);
       const st = String(n.bizStatus || "normal");
       const stLabel = agHealth.cls === "err" ? "心跳过期" : (agHealth.cls === "warn" ? "Agent异常" : (STATUS_LABELS[st] || st));
       const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
       const isFlow = state.flowViz.nodes.has(n.id);
-      const metrics = nodeMetrics(n.id, flowSt);
       const palette = ROLE_COLOR[String(n.role || "").toLowerCase()] || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#f4f8ff" };
+      const runtimeItem = runtime[n.id] || {};
+      const displayTitle = nodeDisplayTitle(n);
+      const displaySub = nodeSecondaryText(n);
+      const metaId = String(runtimeItem.server_id || n.server_id || n.id || "-");
+      const serviceId = String((state.serviceBindings || {})[n.id] || "");
 
       const el = document.createElement("div");
       el.className = "node structured-node"
@@ -1352,7 +1423,8 @@
         + (state.highlight.nodes.has(n.id) ? " hl" : "")
         + (isFlow ? " flow-active" : "")
         + (["FAILED", "TIMEOUT", "CANCELED"].includes(flowSt) ? " flow-fail" : "")
-        + (flowSt === "SUCCESS" ? " flow-ok" : "");
+        + (flowSt === "SUCCESS" ? " flow-ok" : "")
+        + ((((n.ui || {}).disabled) ? " is-disabled" : ""));
       el.style.left = n.ui.x + "px";
       el.style.top = n.ui.y + "px";
       el.style.width = n.ui.w + "px";
@@ -1361,23 +1433,22 @@
       el.style.background = "linear-gradient(165deg," + palette.bg1 + "," + palette.bg2 + ")";
       el.innerHTML = '<div class="node-role-strip" style="background:' + esc(palette.border) + '"></div>'
         + drawPorts(n, "in") + drawPorts(n, "out")
-        + (isEditMode() ? '<button class="node-remove-btn" type="button" data-node-id="' + esc(n.id) + '" title="删除节点">-</button>' : "")
-        + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游">+</button>' : "")
-        + '<div class="t">' + esc((runtime[n.id] || {}).name || n.id) + '</div>'
-        + '<div class="s">' + esc(n.role) + '</div>'
-        + '<div class="s node-status-line status-' + esc(agHealth.cls) + '">状态: ' + esc(stLabel) + '</div>'
-        + '<div class="s">' + esc(n.owner || "-") + '</div>'
-        + '<div class="state-pill ' + bindCls + '" style="margin-top:4px">' + esc(bindText) + "</div>"
-        + '<div class="state-pill state-' + esc(agHealth.cls) + '" style="margin-top:4px">' + esc(agHealth.text) + "</div>"
-        + (isFlow ? (
-          '<div class="node-metrics">'
-          + '<div class="metric-src ' + ((metrics.source === "real" || metrics.source === "local" || metrics.source === "agent") ? "real" : "mock") + '">' + ((metrics.source === "real" || metrics.source === "local" || metrics.source === "agent") ? "实时" : "实时缺失") + (metrics.rtt ? (" · RTT " + Math.round(metrics.rtt) + "ms") : "") + '</div>'
-          + '<div class="metric-row"><span>CPU</span><div class="metric-bar"><i style="width:' + Math.round(metrics.cpu) + '%"></i></div><em>' + Math.round(metrics.cpu) + '%</em></div>'
-          + '<div class="metric-row"><span>MEM</span><div class="metric-bar"><i style="width:' + Math.round(metrics.mem) + '%"></i></div><em>' + Math.round(metrics.mem) + '%</em></div>'
-          + '<div class="metric-row"><span>QPS</span><div class="metric-bar"><i style="width:' + Math.round(metrics.qps) + '%"></i></div><em>' + Math.round(metrics.qps) + '</em></div>'
-          + '<div class="metric-flame"><b style="width:' + Math.max(metrics.cpu, metrics.mem) + '%"></b><b style="width:' + Math.max(8, metrics.qps * 0.9) + '%"></b><b style="width:' + Math.max(6, metrics.cpu * 0.7) + '%"></b></div>'
-          + '</div>'
-        ) : "");
+        + (isEditMode() ? '<button class="node-remove-btn" type="button" data-node-id="' + esc(n.id) + '" title="删除节点"></button>' : "")
+        + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游"></button>' : "")
+        + '<div class="node-shell">'
+        +   '<div class="node-card-head">'
+        +     '<span class="node-badge" style="color:' + esc(palette.border) + ';border-color:' + esc(palette.bg2) + ';background:' + esc(palette.bg1) + '">' + esc(roleBadge(n.role)) + '</span>'
+        +     '<div class="node-heading-block">'
+        +       '<div class="node-title">' + esc(displayTitle) + '</div>'
+        +       '<div class="node-subtitle">' + esc(displaySub) + '</div>'
+        +     '</div>'
+        +   '</div>'
+        +   '<div class="node-id-line">ID: ' + esc(metaId) + '</div>'
+        +   '<div class="node-status-line status-' + esc(agHealth.cls) + '"><span class="node-status-dot"></span>' + esc(stLabel) + '</div>'
+        +   '<div class="node-role-line">' + esc(roleLabel(n.role)) + '</div>'
+        +   (ag ? ('<div class="node-agent-line">' + esc(bindText) + '</div>') : "")
+        +   (serviceId ? ('<div class="node-service-line">服务实例：' + esc(serviceId) + '</div>') : "")
+        + '</div>';
       el.onclick = (ev) => { ev.stopPropagation(); openNodeEditor(n.id); };
       layer.appendChild(el);
     });
@@ -1404,12 +1475,11 @@
   function renderRuntimeNodeList() {
     const box = $("runtimeNodeList");
     if (!box) return;
-    const runtime = runtimeById();
     box.innerHTML = "";
     (state.topology.nodes || []).forEach((n) => {
       const item = document.createElement("div");
       item.className = "runtime-node-item";
-      item.innerHTML = '<div class="id">' + esc((runtime[n.id] || {}).name || n.id) + '</div><div class="meta">' + esc(n.role) + " / " + esc(n.kind) + "</div>";
+      item.innerHTML = '<div class="id">' + esc(nodeDisplayTitle(n)) + '</div><div class="meta">' + esc(roleLabel(n.role)) + " / " + esc(STATUS_LABELS[n.bizStatus] || n.bizStatus || "运行中") + "</div>";
       item.onclick = () => openNodeEditor(n.id);
       box.appendChild(item);
     });
@@ -1560,16 +1630,40 @@
 
   function renderPresets() {
     const box = $("presetList");
+    const quickBar = $("presetQuickBar");
+    const categorySelect = $("presetCategoryFilter");
     const kw = String($("presetSearch").value || "").toLowerCase().trim();
-    const category = $("presetCategoryFilter") ? String($("presetCategoryFilter").value || "") : "";
+    const category = categorySelect ? String(categorySelect.value || "") : "";
     box.innerHTML = "";
+    if (quickBar) quickBar.innerHTML = "";
     const rows = (state.presets || []).filter((p) => {
       const group = presetGroup(p.role);
       const hay = (String(p.name || "") + " " + String(p.role || "") + " " + String(p.preset_id || "")).toLowerCase();
       return (!kw || hay.includes(kw)) && (!category || group === category);
     });
-    const active = (state.presets || []).find((x) => x.preset_id === state.activePresetId);
-    $("presetQuickBar").textContent = active ? ("已选择模板: " + (active.name || active.preset_id) + " / " + (active.role || "-")) : "未选择模板";
+    const categories = Array.from(new Set((state.presets || []).map((p) => presetGroup(p.role))));
+    if (quickBar) {
+      const allBtn = document.createElement("button");
+      allBtn.type = "button";
+      allBtn.className = "topology-chip" + (!category ? " active" : "");
+      allBtn.textContent = "全部";
+      allBtn.onclick = () => {
+        if (categorySelect) categorySelect.value = "";
+        renderPresets();
+      };
+      quickBar.appendChild(allBtn);
+      categories.forEach((name) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "topology-chip" + (category === name ? " active" : "");
+        btn.textContent = name;
+        btn.onclick = () => {
+          if (categorySelect) categorySelect.value = name;
+          renderPresets();
+        };
+        quickBar.appendChild(btn);
+      });
+    }
     if (!rows.length) { box.innerHTML = '<div class="preset-empty">没有匹配模板</div>'; return; }
 
     const groups = {};
@@ -1607,7 +1701,7 @@
     const p = (state.presets || []).find((x) => x.preset_id === state.activePresetId);
     if (!p) return;
     const d = await OpsApi.addNodeFromPreset({ preset_id: String(p.preset_id || ""), name: "", server_id: "", project_id: state.projectId, owner: "", env: "prod", channel: "", description: p.default_desc || "" });
-    if (!d.ok) { toast(d.message || "Add node failed", "error"); logMode("新增节点失败: " + (d.message || d.error || "unknown"), "error"); return; }
+    if (!d.ok) { toast(d.message || "新增节点失败", "error"); logMode("新增节点失败: " + (d.message || d.error || "未知错误"), "error"); return; }
     await loadAll();
     if (d.node && d.node.id) {
       const n = getNode(d.node.id);
@@ -1673,6 +1767,44 @@
     };
   }
 
+  function updateInspectorHeader(node) {
+    const title = $("inspectorTitle");
+    const idLine = $("inspectorNodeIdLine");
+    const subline = $("inspectorSubline");
+    const badge = $("inspectorNodeBadge");
+    const pill = $("inspectorStatusPill");
+    if (!node) {
+      if (title) title.textContent = "节点属性";
+      if (idLine) idLine.textContent = "未选中节点";
+      if (subline) subline.textContent = "点击画布中的节点后，可在右侧查看基础信息、连接关系与 Agent 绑定状态。";
+      if (badge) {
+        badge.textContent = "拓";
+        badge.style.color = "#2563eb";
+        badge.style.borderColor = "#dbeafe";
+        badge.style.background = "linear-gradient(180deg,#eff6ff,#f8fbff)";
+      }
+      if (pill) {
+        pill.textContent = "未选中节点";
+        pill.className = "state-pill state-info";
+      }
+      return;
+    }
+    if (title) title.textContent = nodeDisplayTitle(node);
+    if (idLine) idLine.textContent = "ID: " + String(node.id || "-");
+    if (subline) subline.textContent = roleLabel(node.role) + " · " + nodeSecondaryText(node);
+    if (badge) {
+      const palette = ROLE_COLOR[String(node.role || "").toLowerCase()] || ROLE_COLOR.business;
+      badge.textContent = roleBadge(node.role);
+      badge.style.color = palette.border;
+      badge.style.borderColor = palette.bg2;
+      badge.style.background = "linear-gradient(180deg," + palette.bg1 + "," + "#ffffff)";
+    }
+    if (pill) {
+      pill.textContent = STATUS_LABELS[node.bizStatus] || node.bizStatus || "运行中";
+      pill.className = "state-pill " + (node.bizStatus === "normal" ? "state-ok" : node.bizStatus === "error" ? "state-err" : "state-info");
+    }
+  }
+
   function openNodeEditor(nodeId) {
     const n = getNode(nodeId);
     if (!n) return;
@@ -1695,13 +1827,7 @@
     fillAgentSelect(nodeId);
     renderPortLists(n);
     applyModeUI();
-    const title = $("inspectorSubline");
-    if (title) title.textContent = "当前选中节点：" + String(n.name || n.id || "-") + "，可在右侧直接编辑并同步到运行拓扑。";
-    const pill = $("inspectorStatusPill");
-    if (pill) {
-      pill.textContent = STATUS_LABELS[n.bizStatus] || n.bizStatus || "已选中";
-      pill.className = "state-pill " + (n.bizStatus === "normal" ? "state-ok" : n.bizStatus === "error" ? "state-err" : "state-info");
-    }
+    updateInspectorHeader(n);
     drawNodes();
   }
 
@@ -1726,10 +1852,10 @@
     const id = $("insNodeId").value;
     const n = getNode(id);
     if (!n) return;
-    if (n.kind === "entry" && side === "in") { toast("Entry node cannot add input port", "warn"); return; }
-    if (n.kind === "terminal" && side === "out") { toast("Terminal node cannot add output port", "warn"); return; }
+    if (n.kind === "entry" && side === "in") { toast("入口节点不能新增输入端口", "warn"); return; }
+    if (n.kind === "terminal" && side === "out") { toast("终止节点不能新增输出端口", "warn"); return; }
     const ports = (((n.ui || {}).ports || {})[side] || []);
-    if (ports.length >= 8) { toast("Port count limit reached", "warn"); return; }
+    if (ports.length >= 8) { toast("同侧端口数量最多为 8 个", "warn"); return; }
     const pid = newPortId(side, ports);
     ports.push({ id: pid, label: pid, kind: side, max_links: 1, required: false });
     n.ui.ports = n.ui.ports || { in: [], out: [] };
@@ -1746,7 +1872,7 @@
     if (!n) return;
     const ports = ((n.ui && n.ui.ports && n.ui.ports[side]) || []);
     if (!ports.length) return;
-    if (ports.length <= 1) { toast("At least one port must remain on this side", "warn"); return; }
+    if (ports.length <= 1) { toast("该侧至少保留一个端口", "warn"); return; }
     if (!state.selectedPort || state.selectedPort.side !== side) {
       toast("请先在" + (side === "in" ? "输入" : "输出") + "针脚列表中选择要删除的针脚", "warn");
       return;
@@ -1755,7 +1881,7 @@
     const hit = ports.find((p) => String(p.id) === pid);
     if (!hit) { toast("选中的针脚不存在，请重新选择", "warn"); state.selectedPort = null; renderPortLists(n); return; }
     const hasLinks = countLinks(n.id, side, pid) > 0;
-    if (hasLinks) { toast("Please remove connected edge first", "warn"); return; }
+    if (hasLinks) { toast("请先删除占用该端口的连线", "warn"); return; }
     n.ui.ports[side] = ports.filter((p) => String(p.id) !== pid);
     n.ui.ports = n.ui.ports || { in: [], out: [] };
     state.selectedPort = null;
@@ -1766,13 +1892,7 @@
 
   function closeNodeEditor() {
     state.selection.nodes.clear();
-    const title = $("inspectorSubline");
-    if (title) title.textContent = "未选中节点时显示当前拓扑概况与绑定摘要。";
-    const pill = $("inspectorStatusPill");
-    if (pill) {
-      pill.textContent = "未选中节点";
-      pill.className = "state-pill state-info";
-    }
+    updateInspectorHeader(null);
     if ($("insNodeName")) $("insNodeName").value = "";
     ["insNodeId", "insNodePortsSummary", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor"].forEach((id) => {
       const el = $(id);
@@ -1803,19 +1923,19 @@
     n.ui.ports = normalizePorts(n.kind, n.ui.ports);
 
     const nodeRes = await OpsApi.updateNode(Object.assign(currentScope(), { node_id: id, name: n.name, role: n.role, kind: n.kind, desc: n.desc, bizStatus: n.bizStatus, owner: n.owner, x: n.ui.x, y: n.ui.y, ui: n.ui, tags: n.tags }));
-    if (!nodeRes.ok) { toast(nodeRes.message || "Save node failed", "error"); return; }
+    if (!nodeRes.ok) { toast(nodeRes.message || "保存节点失败", "error"); return; }
 
     const aid = String($("insNodePrimaryAgent").value || "");
     const serviceId = String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || "").trim();
     const bindRes = await OpsApi.bindNodeService
       ? await OpsApi.bindNodeService(Object.assign(currentScope(), { node_id: id, agent_id: aid, service_id: serviceId }))
       : await OpsApi.bindNodeAgent(Object.assign(currentScope(), { node_id: id, agent_id: aid }));
-    if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "Bind agent failed", "error"); return; }
+    if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "绑定 Agent 失败", "error"); return; }
 
     state.nodeBindings = bindRes.bindings || state.nodeBindings;
     state.serviceBindings = bindRes.service_bindings || state.serviceBindings;
     await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
-    toast("Node and primary agent saved", "ok");
+    toast("节点与主 Agent 已保存", "ok");
     logMode("节点保存成功: " + id);
     closeNodeEditor();
     drawNodes();
@@ -1828,11 +1948,11 @@
     const n = getNode(nid);
     if (!n) return { ok: false, message: "node_not_found" };
     const aid = String((state.nodeBindings || {})[nid] || "");
-    if (!aid) return { ok: false, message: "节点未绑定Agent", error_code: "OPS_AGENT_NOT_BOUND" };
+    if (!aid) return { ok: false, message: "节点未绑定 Agent", error_code: "OPS_AGENT_NOT_BOUND" };
     const ag = (state.agents || []).find((x) => String((x || {}).agent_id || "") === aid) || null;
-    if (!ag) return { ok: false, message: "绑定Agent不存在", error_code: "OPS_AGENT_NOT_REGISTERED" };
+    if (!ag) return { ok: false, message: "绑定的 Agent 不存在", error_code: "OPS_AGENT_NOT_REGISTERED" };
     const probe = String(ag.probe_status || "").toUpperCase();
-    if (probe !== "PASS") return { ok: false, message: "Agent联通测试未通过", error_code: "OPS_AGENT_PROBE_REQUIRED" };
+    if (probe !== "PASS") return { ok: false, message: "Agent 连通性检测未通过", error_code: "OPS_AGENT_PROBE_REQUIRED" };
     const visible = (typeof launchVisibleConsole === "boolean")
       ? launchVisibleConsole
       : !!($("insNodeVisibleConsole") ? $("insNodeVisibleConsole").checked : true);
@@ -1851,8 +1971,8 @@
     for (const nid of uniq) {
       const r = await startRemoteForNode(nid, true);
       if (!r || r.ok === false) {
-        failures.push({ node_id: nid, error_code: (r && r.error_code) || "OPS_REMOTE_START_FAILED", message: (r && (r.message || r.error)) || "remote start failed" });
-        logMode("远端启动失败 " + nid + ": " + ((r && (r.message || r.error)) || "unknown"), "error");
+        failures.push({ node_id: nid, error_code: (r && r.error_code) || "OPS_REMOTE_START_FAILED", message: (r && (r.message || r.error)) || "远端启动失败" });
+        logMode("远端启动失败 " + nid + ": " + ((r && (r.message || r.error)) || "未知错误"), "error");
         appendJsonDetail("远端启动失败 " + nid, r || {});
       } else {
         logMode("远端启动已提交 " + nid + " job_id=" + (r.job_id || "-") + " trace_id=" + (r.trace_id || "-"));
@@ -1867,7 +1987,7 @@
     if (!isEditMode()) { toast("仅编辑模式可删除节点", "warn"); return; }
     if (!window.confirm("删除该节点及其所有关联连线？")) return;
     const d = await OpsApi.deleteNode(Object.assign(currentScope(), { node_id: nodeId }));
-    if (!d.ok) { toast(d.message || d.error || "Delete node failed", "error"); logMode("删除节点失败: " + (d.message || d.error || "unknown"), "error"); return; }
+    if (!d.ok) { toast(d.message || d.error || "删除节点失败", "error"); logMode("删除节点失败: " + (d.message || d.error || "未知错误"), "error"); return; }
     state.topology = d.topology || state.topology;
     state.nodeBindings = d.bindings || state.nodeBindings;
     state.selection.nodes.clear();
@@ -1875,7 +1995,7 @@
     closeNodeEditor();
     redrawGraph();
     renderRuntimeNodeList();
-    toast("Node deleted", "ok");
+    toast("节点已删除", "ok");
     logMode("删除节点成功: " + nodeId);
   }
 
@@ -1942,7 +2062,7 @@
     const d = await OpsApi.runtimeFlowControl(Object.assign(currentScope(), { op }));
     if (!d || d.ok === false) {
       toast((d && d.message) || "运行请求失败", "error");
-      logMode("运行请求失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
+      logMode("运行请求失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
       return;
     }
     state.runtimeRunId = String(d.run_id || "");
@@ -1963,7 +2083,7 @@
     const endNode = resolved.end || "";
     if (!resolved.ok) {
       toast(resolved.reason || "链路段测试需选择起点和终点", "warn");
-      logMode("链路段测试参数不完整: start=" + (startNode || "-") + " end=" + (endNode || "-") + " reason=" + (resolved.reason || "unknown"), "warn");
+      logMode("链路段测试参数不完整: start=" + (startNode || "-") + " end=" + (endNode || "-") + " reason=" + (resolved.reason || "未知原因"), "warn");
       return;
     }
     logMode("测试参数确认: scope=" + scope + " start=" + (startNode || "-") + " end=" + (endNode || "-"));
@@ -1996,7 +2116,7 @@
         toast("压力测试已提交", "ok");
         setTimeout(() => { clearFlowViz(true, "runSmokeOrStress-stress-success"); redrawGraph(); }, 2600);
       } else {
-        logMode("压力测试失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
+        logMode("压力测试失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
         if (d) {
           testLogKV("error_code", d.error_code || d.error || "-");
           testLogKV("http_status", d._http_status || "-");
@@ -2041,7 +2161,7 @@
       });
       redrawGraph();
     } else {
-      logMode("单元测试失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
+      logMode("单元测试失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
       if (d) {
         testLogKV("error_code", d.error_code || d.error || "-");
         testLogKV("http_status", d._http_status || "-");
@@ -2173,9 +2293,9 @@
 
   function applyModeUI() {
     const map = {
-      edit: { hint: "当前模式：编辑模式（可编辑节点属性、端口、删除）", run: "none", test: "none" },
-      run: { hint: "当前模式：运行模式（锁定节点属性；允许新增节点与连线切换）", run: "flex", test: "none" },
-      test: { hint: "当前模式：测试模式（可选全链路或链路段测试）", run: "none", test: "flex" },
+      edit: { hint: "当前为编辑模式，可调整拓扑结构、节点属性与绑定关系。", run: "none", test: "none" },
+      run: { hint: "当前为运行模式，聚焦全流程启动、停止与运行回放。", run: "flex", test: "none" },
+      test: { hint: "当前为测试模式，可选择完整架构或指定链路段执行验证。", run: "none", test: "flex" },
     };
     const cfg = map[state.mode] || map.edit;
     const modeHint = $("modeHint");
@@ -2195,6 +2315,11 @@
     });
     if ($("modeLockBtn")) $("modeLockBtn").style.display = state.modeLocked ? "none" : "";
     if ($("modeUnlockBtn")) $("modeUnlockBtn").style.display = state.modeLocked ? "" : "none";
+    if ($("modeLockSwitch")) $("modeLockSwitch").checked = !!state.modeLocked;
+    if ($("modeLockStatus")) {
+      $("modeLockStatus").textContent = state.modeLocked ? "已锁定" : "已解锁";
+      $("modeLockStatus").style.color = state.modeLocked ? "#2563eb" : "#16a34a";
+    }
     const shell = document.querySelector(".ops-topology-app");
     if (shell) {
       shell.classList.remove("canvas-mode-edit", "canvas-mode-run", "canvas-mode-test");
@@ -2265,6 +2390,9 @@
     applyModeUI();
     renderTopologyManagerList();
     syncQueryString();
+    const initialNodeId = preferredNodeId();
+    if (initialNodeId) openNodeEditor(initialNodeId);
+    else closeNodeEditor();
     setTopologyHint("拓扑已可操作，正在后台同步 Agent、绑定与总览数据...", "loading");
 
     loadAuxiliaryData();
@@ -2314,6 +2442,8 @@
     renderRuntimeNodeList();
     fillTestNodeOptions();
     applyModeUI();
+    const currentNodeId = String((($("insNodeId") || {}).value || "")).trim();
+    if (currentNodeId && getNode(currentNodeId)) openNodeEditor(currentNodeId);
     setTopologyHint(warns.length ? ("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
   }
 
@@ -2322,7 +2452,7 @@
     bindInspectorTabs();
     bindLogTabs();
     bindTopologyManagerTabs();
-    ROLE_OPTIONS.forEach((v) => $("insNodeRole").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + v + '</option>'));
+    ROLE_OPTIONS.forEach((v) => $("insNodeRole").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + esc(roleLabel(v)) + '</option>'));
     STATUS_OPTIONS.forEach((v) => $("insNodeBizStatus").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
 
     document.querySelectorAll("[data-mode-value]").forEach((btn) => {
@@ -2353,7 +2483,12 @@
       const el = $(id);
       if (el) el.onclick = openTopologyManager;
     });
-    if ($("btnCreateTopologyHeader")) $("btnCreateTopologyHeader").onclick = openTopologyManager;
+    if ($("btnCreateTopologyHeader")) $("btnCreateTopologyHeader").onclick = () => {
+      openTopologyManager();
+      document.querySelectorAll("[data-topology-manager-tab]").forEach((tab) => {
+        if (tab.getAttribute("data-topology-manager-tab") === "topologyManagerCreatePane") tab.click();
+      });
+    };
     if ($("btnCreateTopologyFromModal")) $("btnCreateTopologyFromModal").onclick = () => {
       document.querySelectorAll("[data-topology-manager-tab]").forEach((tab) => {
         if (tab.getAttribute("data-topology-manager-tab") === "topologyManagerCreatePane") tab.click();
@@ -2392,8 +2527,12 @@
     };
 
     if ($("toolAlign")) $("toolAlign").onclick = () => $("toolAuto").click();
-    if ($("toolConnect")) $("toolConnect").onclick = () => setTopologyHint("结构化编排不支持自由拖线，请点击节点右侧 + 添加合法下游。", "warn");
+    if ($("toolConnect")) $("toolConnect").onclick = () => $("toolAuto").click();
     if ($("toolCanvasZoom")) $("toolCanvasZoom").onclick = () => $("toolReset").click();
+    if ($("toolUndoInline")) $("toolUndoInline").onclick = () => $("toolUndo") && $("toolUndo").click();
+    if ($("toolRedoInline")) $("toolRedoInline").onclick = () => $("toolRedo") && $("toolRedo").click();
+    if ($("toolResetInline")) $("toolResetInline").onclick = () => $("toolReset") && $("toolReset").click();
+    if ($("toolSaveInline")) $("toolSaveInline").onclick = () => $("toolSave") && $("toolSave").click();
     if ($("canvasQuickUndo")) $("canvasQuickUndo").onclick = () => $("toolUndo") && $("toolUndo").click();
     if ($("canvasQuickRedo")) $("canvasQuickRedo").onclick = () => $("toolRedo") && $("toolRedo").click();
     if ($("canvasQuickFocus")) $("canvasQuickFocus").onclick = () => $("toolReset").click();
@@ -2417,19 +2556,19 @@
     $("toolSave").onclick = async () => {
       if (isTestMode()) { toast("测试模式禁止保存拓扑", "warn"); return; }
       const d = await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
-      toast((d && d.ok !== false) ? "Topology saved" : ((d && d.message) || "Save failed"), (d && d.ok !== false) ? "ok" : "error");
+      toast((d && d.ok !== false) ? "拓扑已保存" : ((d && d.message) || "保存失败"), (d && d.ok !== false) ? "ok" : "error");
       if (d && d.ok !== false) logMode("拓扑保存成功");
     };
 
     $("btnApplyBlueprint").onclick = async () => {
       const bid = String((($("flowBlueprintSelect") || {}).value || "")).trim();
-      if (!bid) { toast("Please choose a blueprint", "warn"); return; }
+      if (!bid) { toast("请选择蓝图模板", "warn"); return; }
       const chosen = state.blueprints.find((x) => String(x.blueprint_id) === bid);
-      const confirmText = "Apply blueprint will clear all current canvas nodes and edges.\n\nBlueprint: " + (chosen ? chosen.name : bid) + "\n\nContinue?";
+      const confirmText = "应用蓝图后会替换当前画布中的全部节点与连线。\n\n蓝图：" + (chosen ? chosen.name : bid) + "\n\n确认继续？";
       if (!window.confirm(confirmText)) return;
       const d = await OpsApi.applyTopologyBlueprint(Object.assign(currentScope(), { blueprint_id: bid, replace_existing: true }));
-      if (!d.ok) { toast(d.message || d.error || "Apply blueprint failed", "error"); return; }
-      toast("Blueprint applied", "ok");
+      if (!d.ok) { toast(d.message || d.error || "应用蓝图失败", "error"); return; }
+      toast("蓝图已应用", "ok");
       await loadAll();
     };
     if ($("btnAutoBindAgents")) $("btnAutoBindAgents").onclick = autoBindAgents;
@@ -2487,6 +2626,16 @@
         applyModeUI();
         logMode("模式已解锁");
         toast("模式已解锁", "ok");
+        saveModeState();
+      };
+    }
+    const modeLockSwitch = $("modeLockSwitch");
+    if (modeLockSwitch) {
+      modeLockSwitch.onchange = () => {
+        state.modeLocked = !!modeLockSwitch.checked;
+        applyModeUI();
+        logMode(state.modeLocked ? "模式已锁定" : "模式已解锁");
+        toast(state.modeLocked ? "模式已锁定" : "模式已解锁", "ok");
         saveModeState();
       };
     }
@@ -2678,7 +2827,6 @@
     loadRuntimeState();
     bindEvents();
     await loadAll();
-    closeNodeEditor();
     startAgentsRealtimeTick();
     const act = await OpsApi.runtimeFlowActive(currentScope());
     if (act && act.ok !== false && act.active && act.run_id) {
@@ -2704,6 +2852,6 @@
 
   boot().catch((e) => {
     console.error(e);
-    toast("Topology editor initialization failed, refresh and retry", "error");
+    toast("拓扑工作台初始化失败，请刷新后重试", "error");
   });
 })();

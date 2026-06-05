@@ -1,5 +1,5 @@
-<link rel="stylesheet" href="/static/ops_platform.css?v=20260605-topology-rebuild-v1">
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260605-topology-rebuild-v1">
+<link rel="stylesheet" href="/static/ops_platform.css?v=20260605-topology-fidelity-v2">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260605-topology-fidelity-v2">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -86,17 +86,16 @@
 
     <section class="topology-rule-banner">
       <span class="rule-dot">i</span>
-      <span>规则提示：节点右键或右侧操作区可新增合法下游；选中节点或连线后可删除；系统会保护关键链路，不允许非法结构保存。</span>
+      <span>规则提示：节点右侧的 + 可添加合法下游；选中节点或连线后可删除；系统会保护关键链路，不允许非法结构保存。</span>
     </section>
 
     <section class="topology-toolbar-row">
-      <div class="topology-toolbar-group">
+      <div class="topology-toolbar-group topology-toolbar-group-history">
         <button id="toolUndo" class="btn" type="button">撤销</button>
         <button id="toolRedo" class="btn" type="button">重做</button>
         <button id="toolReset" class="btn" type="button">重置视图</button>
       </div>
       <div class="topology-toolbar-group">
-        <button id="btnManageTopologyInline" class="btn" type="button">管理拓扑图</button>
         <button id="toolAuto" class="btn" type="button">自动布局</button>
         <button id="btnValidateTopology" class="btn" type="button">检查连接</button>
         <button id="btnTopologyMore" class="btn" type="button">更多操作</button>
@@ -117,9 +116,11 @@
             <div class="topology-card-title">工具</div>
             <div class="topology-tool-list">
               <button id="toolSelect" class="topology-tool-btn is-active" type="button">选择</button>
-              <button id="toolConnect" class="topology-tool-btn" type="button">连线</button>
-              <button id="toolAlign" class="topology-tool-btn" type="button">对齐</button>
-              <button id="toolCanvasZoom" class="topology-tool-btn" type="button">画布缩放</button>
+              <button id="toolConnect" class="topology-tool-btn" type="button">重新布局</button>
+              <button id="toolUndoInline" class="topology-tool-btn" type="button">撤销</button>
+              <button id="toolRedoInline" class="topology-tool-btn" type="button">重做</button>
+              <button id="toolResetInline" class="topology-tool-btn" type="button">重置视图</button>
+              <button id="toolSaveInline" class="topology-tool-btn" type="button">保存</button>
               <button id="btnApplyBlueprint" class="topology-tool-btn" type="button">蓝图模板</button>
               <button id="btnAutoBindAgents" class="topology-tool-btn" type="button">自动绑定</button>
             </div>
@@ -128,7 +129,7 @@
           <div class="topology-card">
             <div class="topology-card-title">流程工具</div>
             <select id="flowBlueprintSelect" class="sel">
-              <option value="">请选择蓝图模板</option>
+              <option value="">请选择流程模板</option>
             </select>
             <div class="topology-inline-actions">
               <button id="toolReset2" class="btn" type="button">重置视图</button>
@@ -151,15 +152,20 @@
             </div>
             <div class="topology-mode-lock">
               <span>模式锁定</span>
-              <button id="modeLockBtn" class="btn" type="button">锁定</button>
-              <button id="modeUnlockBtn" class="btn" type="button" style="display:none">解锁</button>
+              <span id="modeLockStatus" class="mode-lock-status">已解锁</span>
+              <label class="mode-lock-switch">
+                <input id="modeLockSwitch" type="checkbox">
+                <i></i>
+              </label>
+              <button id="modeLockBtn" class="btn topology-hidden-select" type="button">锁定</button>
+              <button id="modeUnlockBtn" class="btn topology-hidden-select" type="button" style="display:none">解锁</button>
             </div>
             <select id="modeSelect" class="sel topology-hidden-select">
               <option value="edit">编辑模式</option>
               <option value="run">运行模式</option>
               <option value="test">测试模式</option>
             </select>
-            <div id="modeHint" class="topology-mode-hint">当前为编辑模式，可调整结构、保存节点和同步拓扑。</div>
+            <div id="modeHint" class="topology-mode-hint">当前处于编辑模式，可调整拓扑结构、节点属性和绑定信息。</div>
           </div>
 
           <div class="topology-card" id="runBar" style="display:none">
@@ -212,6 +218,7 @@
           <div class="topology-canvas-actions">
             <button id="canvasViewGrid" class="btn" type="button">网格</button>
             <button id="canvasViewAlign" class="btn" type="button">对齐</button>
+            <button id="btnManageTopologyInline" class="btn" type="button">管理拓扑图</button>
           </div>
         </div>
 
@@ -221,14 +228,14 @@
             <div class="topology-canvas-mini-toolbar">
               <button id="canvasQuickUndo" class="btn" type="button">↶</button>
               <button id="canvasQuickRedo" class="btn" type="button">↷</button>
-              <button id="canvasQuickFocus" class="btn" type="button">⤢</button>
+              <button id="canvasQuickFocus" class="btn" type="button">⛶</button>
               <button id="canvasQuickFit" class="btn" type="button">100%</button>
             </div>
             <div class="topology-canvas-zoombar">
               <button id="zoomInBtn" class="btn" type="button">＋</button>
               <button id="zoomOutBtn" class="btn" type="button">－</button>
               <button id="zoomResetBtn" class="btn" type="button">◎</button>
-              <button id="zoomLockBtn" class="btn" type="button">⎈</button>
+              <button id="zoomLockBtn" class="btn" type="button">◈</button>
             </div>
             <div id="scene" class="scene">
               <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
@@ -267,9 +274,13 @@
       <aside class="topology-right-panel">
         <div id="nodeInspectorCard" class="topology-inspector-card">
           <div class="topology-inspector-header">
-            <div>
-              <div class="topology-inspector-title">拓扑信息概览</div>
-              <div class="topology-inspector-sub" id="inspectorSubline">未选中节点时显示当前拓扑概况与绑定摘要。</div>
+            <div class="topology-inspector-header-main">
+              <div class="topology-inspector-avatar" id="inspectorNodeBadge">拓</div>
+              <div>
+                <div class="topology-inspector-title" id="inspectorTitle">节点属性</div>
+                <div class="topology-inspector-idline" id="inspectorNodeIdLine">未选中节点</div>
+                <div class="topology-inspector-sub" id="inspectorSubline">点击画布中的节点后，可在右侧查看基础信息、连接关系与 Agent 绑定状态。</div>
+              </div>
             </div>
             <span id="inspectorStatusPill" class="state-pill state-info">未选中节点</span>
           </div>
@@ -543,5 +554,5 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260605-topology-rebuild-v1"></script>
-<script src="/static/ops_platform_workbench.js?v=20260605-topology-rebuild-v1"></script>
+<script src="/static/ops_platform_api.js?v=20260605-topology-fidelity-v2"></script>
+<script src="/static/ops_platform_workbench.js?v=20260605-topology-fidelity-v2"></script>
