@@ -11,6 +11,8 @@
     pendingConfirm: null,
     serviceFormMode: "create",
     serviceFormAgentId: "",
+    refreshTimer: null,
+    loading: false,
   };
 
   const nodes = {
@@ -161,9 +163,10 @@
       ? detail.agent.metrics.control
       : (detail.agent && detail.agent.metrics) || {};
     const overview = detail.overview || {};
-    const direct = Number(control[key]);
+    const useLiveMetrics = !!(detail.agent && detail.agent.metrics_live);
+    const direct = useLiveMetrics ? Number(control[key]) : NaN;
     if (Number.isFinite(direct)) return Math.max(0, Math.round(direct));
-    const fallback = Number(overview[key]);
+    const fallback = useLiveMetrics ? Number(overview[key]) : NaN;
     if (Number.isFinite(fallback)) return Math.max(0, Math.round(fallback));
     return null;
   }
@@ -216,22 +219,43 @@
     return String(memberIds[0] || (detail.agent || {}).agent_id || state.agentId || "");
   }
 
+  function formatClock(value) {
+    if (!value) return "--";
+    const ms = Date.parse(value);
+    if (!Number.isFinite(ms)) return "--";
+    const date = new Date(ms);
+    const pad = function (num) { return String(num).padStart(2, "0"); };
+    return [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join(":");
+  }
+
   function lineChartData() {
     const detail = state.detail || {};
     const history = detail.metrics_history || {};
     const points = Array.isArray(history.points) ? history.points : [];
-    const fallbackValues = {
-      cpu_percent: Number(metricValue("cpu_percent") || 0),
-      mem_percent: Number(metricValue("mem_percent") || 0),
-      disk_percent: Number(metricValue("disk_percent") || 0),
-    };
+    const livePoints = points.filter(function (point) {
+      return point && Number.isFinite(Date.parse(point.time || ""));
+    }).slice(-24);
+    function tickLabels(series) {
+      if (series.length < 2) return ["--", "--", "--"];
+      const midIndex = Math.floor((series.length - 1) / 2);
+      return [
+        formatClock(series[0].time),
+        formatClock(series[midIndex].time),
+        formatClock(series[series.length - 1].time),
+      ];
+    }
     function build(key) {
-      const list = points.map(function (point) {
-        return Number(point[key]);
-      }).filter(Number.isFinite);
-      if (list.length >= 2) return list.slice(-18);
-      const base = fallbackValues[key];
-      return [base, base, base, base, base, base];
+      const series = livePoints.filter(function (point) {
+        return Number.isFinite(Number(point[key]));
+      });
+      if (series.length < 2) {
+        return { values: [], labels: ["--", "--", "--"], live: false };
+      }
+      return {
+        values: series.map(function (point) { return Number(point[key]); }),
+        labels: tickLabels(series),
+        live: true,
+      };
     }
     return {
       cpu: build("cpu_percent"),
@@ -240,8 +264,20 @@
     };
   }
 
-  function chartMarkup(title, color, values, shownValue) {
-    const safeValues = values.length ? values : [0, 0, 0];
+  function chartMarkup(title, color, chart, shownValue) {
+    const values = chart && Array.isArray(chart.values) ? chart.values : [];
+    const labels = chart && Array.isArray(chart.labels) ? chart.labels : ["--", "--", "--"];
+    const valueText = shownValue === "--" ? "--" : String(shownValue) + "%";
+    if (values.length < 2) {
+      return "" +
+        '<div class="agent-chart">' +
+          '<div class="agent-chart-head"><span>' + esc(title) + "</span><strong>" + esc(valueText) + "</strong></div>" +
+          '<div class="agent-chart-scale"><span>100</span><span>50</span><span>0</span></div>' +
+          '<div class="agent-chart-empty">暂无实时采样</div>' +
+          '<div class="agent-chart-scale"><span>' + esc(labels[0]) + "</span><span>" + esc(labels[1]) + "</span><span>" + esc(labels[2]) + "</span></div>" +
+        "</div>";
+    }
+    const safeValues = values;
     const points = safeValues.map(function (value, index) {
       const x = safeValues.length === 1 ? 0 : (index / (safeValues.length - 1)) * 240;
       const y = 90 - (Math.max(0, Math.min(100, Number(value) || 0)) * 0.72);
@@ -249,12 +285,12 @@
     }).join(" ");
     return "" +
       '<div class="agent-chart">' +
-        '<div class="agent-chart-head"><span>' + esc(title) + "</span><strong>" + esc(shownValue) + "%</strong></div>" +
+        '<div class="agent-chart-head"><span>' + esc(title) + "</span><strong>" + esc(valueText) + "</strong></div>" +
         '<div class="agent-chart-scale"><span>100</span><span>50</span><span>0</span></div>' +
         '<svg viewBox="0 0 240 100" preserveAspectRatio="none">' +
           '<polyline points="' + esc(points) + '" fill="none" stroke="' + esc(color) + '" stroke-width="3" stroke-linecap="round"></polyline>' +
         "</svg>" +
-        '<div class="agent-chart-scale"><span>10:30</span><span>11:00</span><span>11:30</span></div>' +
+        '<div class="agent-chart-scale"><span>' + esc(labels[0]) + "</span><span>" + esc(labels[1]) + "</span><span>" + esc(labels[2]) + "</span></div>" +
       "</div>";
   }
 
@@ -453,6 +489,8 @@
       ["Agent 配置版本", agent.version || "-"],
       ["配置模式", transport.mode || "-"],
       ["鉴权模式", transport.local_auth_mode || "-"],
+      ["注册来源", agent.registration_origin || "-"],
+      ["拓扑关系", agent.topology_relation || "-"],
       ["服务总数", String(serviceRows().length)],
       ["最后更新时间", formatDate(agent.updated_at || agent.last_seen)],
       ["策略来源", policy.updated_at ? "策略已下发" : "手动维护"],
@@ -958,16 +996,43 @@
     });
   }
 
-  async function load() {
-    const response = await window.OpsApi.agentDetail(state.projectId, state.agentId);
-    if (!ensureOk(response, "加载 Agent 详情失败")) {
-      nodes.loading.classList.add("is-hidden");
+  async function load(options) {
+    const silent = !!(options && options.silent);
+    if (state.loading && silent) {
       return;
     }
-    state.detail = response;
-    nodes.loading.classList.add("is-hidden");
-    renderAll();
-    fillEdit();
+    state.loading = true;
+    try {
+      const response = await window.OpsApi.agentDetail(state.projectId, state.agentId);
+      if (response && (response.error_code === "OPS_AUTH_REQUIRED" || response.error === "auth_redirect")) {
+        window.location.href = "/login";
+        return;
+      }
+      if (!response || !response.ok) {
+        if (!silent) {
+          ensureOk(response, "加载 Agent 详情失败");
+          nodes.loading.classList.add("is-hidden");
+        }
+        return;
+      }
+      state.detail = response;
+      nodes.loading.classList.add("is-hidden");
+      renderAll();
+      fillEdit();
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  function startRealtimePolling() {
+    if (state.refreshTimer) {
+      window.clearInterval(state.refreshTimer);
+    }
+    state.refreshTimer = window.setInterval(function () {
+      load({ silent: true }).catch(function (error) {
+        console.error("[agent-detail] silent refresh failed", error);
+      });
+    }, 5000);
   }
 
   function toggleMoreMenu(forceOpen) {
@@ -1040,6 +1105,13 @@
   }
 
   bindStatic();
+  startRealtimePolling();
+  window.addEventListener("beforeunload", function () {
+    if (state.refreshTimer) {
+      window.clearInterval(state.refreshTimer);
+      state.refreshTimer = null;
+    }
+  });
   load().catch(function (error) {
     console.error("[agent-detail] init failed", error);
     flash("Agent 详情初始化失败", "error");

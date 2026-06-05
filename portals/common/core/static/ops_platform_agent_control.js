@@ -141,7 +141,12 @@
     const snapshot = agent && agent.device_metrics_snapshot && typeof agent.device_metrics_snapshot.control === "object"
       ? agent.device_metrics_snapshot.control
       : {};
-    return { control: control || {}, snapshot: snapshot || {} };
+    const controlLive = !!(agent && agent.metrics_live) || String((control || {}).source || "") === "runtime.sample";
+    const snapshotLive = String((snapshot || {}).source || "") === "runtime.sample";
+    return {
+      control: controlLive ? (control || {}) : {},
+      snapshot: snapshotLive ? (snapshot || {}) : {},
+    };
   }
 
   function metricValue(agent, key) {

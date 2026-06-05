@@ -11,6 +11,7 @@ import uuid
 import hashlib
 import socket
 import threading
+from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -1264,6 +1265,11 @@ OPS_DAEMON_STATE_KEY = "OPS_PLATFORM_DAEMON_STATE"
 OPS_FLOW_EXEC_KEY = "OPS_PLATFORM_FLOW_EXECUTIONS"
 OPS_AGENT_REGISTRY_KEY = "OPS_PLATFORM_AGENT_REGISTRY"
 OPS_AGENT_REGISTRY_V2_KEY = "OPS_PLATFORM_AGENT_REGISTRY_V2"
+OPS_AGENT_METRIC_WINDOW_SEC = 3600
+OPS_AGENT_METRIC_MAX_POINTS = 720
+
+_agent_metric_history_lock = threading.Lock()
+_agent_metric_history: Dict[str, deque] = {}
 OPS_NODE_AGENT_BINDING_KEY = "OPS_PLATFORM_NODE_AGENT_BINDING"
 OPS_NODE_SERVICE_BINDING_KEY = "OPS_PLATFORM_NODE_SERVICE_BINDING"
 OPS_AGENT_JOBS_KEY = "OPS_PLATFORM_AGENT_JOBS"
@@ -1613,6 +1619,9 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
                 if hit.get(k) != v:
                     hit[k] = v
                     changed = True
+            hit["registration_origin"] = "cluster.sync"
+            hit.pop("stale_reason", None)
+            hit.pop("superseded_by", None)
             # 同步配置状态
             if state_config:
                 hit["config_state"] = state_config
@@ -1650,6 +1659,7 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
                 "category": category,
                 "role": role,
                 "probe_proto": "udp" if srv_type.upper() == "KCP" else "tcp",
+                "registration_origin": "cluster.sync",
                 "updated_at": now,
             })
             added += 1
@@ -2601,6 +2611,9 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
         "updated_at": str(item.get("updated_at") or ""),
         # cluster sync 附加字段
         "stale": bool(item.get("stale", False)),
+        "stale_reason": str(item.get("stale_reason") or ""),
+        "superseded_by": str(item.get("superseded_by") or ""),
+        "registration_origin": str(item.get("registration_origin") or ""),
         "config_state": str(item.get("config_state") or "").upper(),
         "category": str(item.get("category") or "").strip(),
         "role": str(item.get("role") or "").strip(),
@@ -2620,6 +2633,9 @@ def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
         item = _normalize_agent_descriptor_v2(v)
         if pid and item.get("project_id") and item.get("project_id") != pid:
             continue
+        if item.get("stale"):
+            continue
+        item["registration_origin"] = _member_registration_origin(item)
         out.append(item)
     return out
 
@@ -2698,6 +2714,175 @@ def _status_rank(status: str) -> int:
     return 0
 
 
+def _parse_iso_ts(value: Any) -> float:
+    try:
+        return datetime.fromisoformat(str(value or "").replace("Z", "")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _member_registration_origin(item: Dict[str, Any]) -> str:
+    origin = str(item.get("registration_origin") or "").strip().lower()
+    if origin:
+        return origin
+    if str(item.get("device_id") or "").strip() == "local-game-server":
+        return "cluster.sync"
+    if str(item.get("last_seen") or "").strip():
+        return "runtime.agent"
+    return "unknown"
+
+
+def _effective_runtime_status(status: Any, run_state: Any, probe_status: Any = "") -> str:
+    run = str(run_state or "").strip().upper()
+    if run in ("RUNNING", "READY"):
+        return "RUNNING"
+    if run in ("STARTING", "STOPPING", "RESTARTING"):
+        return run
+    if run in ("STOPPED", "STOP"):
+        return "STOPPED"
+    base = str(status or "").strip().upper()
+    if base:
+        return base
+    probe = str(probe_status or "").strip().upper()
+    if probe == "PASS":
+        return "ONLINE"
+    if probe == "FAIL":
+        return "OFFLINE"
+    return "UNKNOWN"
+
+
+def _extract_control_metrics(item: Dict[str, Any]) -> Dict[str, Any]:
+    metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    control = metrics.get("control") if isinstance(metrics.get("control"), dict) else metrics
+    if not isinstance(control, dict):
+        control = {}
+    return {
+        "cpu_percent": control.get("cpu_percent"),
+        "mem_percent": control.get("mem_percent"),
+        "disk_percent": control.get("disk_percent"),
+        "qps": control.get("qps"),
+        "rtt_ms": control.get("rtt_ms"),
+        "service_cpu_percent": control.get("service_cpu_percent"),
+        "service_memory_mb": control.get("service_memory_mb"),
+        "updated_at": str(control.get("updated_at") or item.get("updated_at") or item.get("last_seen") or ""),
+        "source": str(control.get("source") or "agent"),
+    }
+
+
+def _append_realtime_agent_sample(item: Dict[str, Any]) -> None:
+    if not isinstance(item, dict):
+        return
+    agent_id = str(item.get("agent_id") or "").strip()
+    if not agent_id:
+        return
+    sample = _extract_control_metrics(item)
+    if not any(sample.get(key) is not None for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb")):
+        return
+    sample_time = str(sample.get("updated_at") or item.get("updated_at") or item.get("last_seen") or _now_iso())
+    point = {
+        "time": sample_time,
+        "cpu_percent": sample.get("cpu_percent"),
+        "mem_percent": sample.get("mem_percent"),
+        "disk_percent": sample.get("disk_percent"),
+        "qps": sample.get("qps"),
+        "rtt_ms": sample.get("rtt_ms"),
+        "service_cpu_percent": sample.get("service_cpu_percent"),
+        "service_memory_mb": sample.get("service_memory_mb"),
+        "_ts": _parse_iso_ts(sample_time) or datetime.utcnow().timestamp(),
+    }
+    with _agent_metric_history_lock:
+        bucket = _agent_metric_history.get(agent_id)
+        if not isinstance(bucket, deque):
+            bucket = deque(maxlen=OPS_AGENT_METRIC_MAX_POINTS)
+            _agent_metric_history[agent_id] = bucket
+        last = bucket[-1] if bucket else None
+        if last and str(last.get("time") or "") == point["time"]:
+            changed = any(last.get(key) != point.get(key) for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"))
+            if not changed:
+                return
+        bucket.append(point)
+
+
+def _realtime_metric_points(agent_ids: List[str], window_sec: int = OPS_AGENT_METRIC_WINDOW_SEC) -> List[Dict[str, Any]]:
+    ids = [str(x or "").strip() for x in (agent_ids or []) if str(x or "").strip()]
+    if not ids:
+        return []
+    cutoff = datetime.utcnow().timestamp() - max(60, int(window_sec or OPS_AGENT_METRIC_WINDOW_SEC))
+    merged: List[Dict[str, Any]] = []
+    with _agent_metric_history_lock:
+        for agent_id in ids:
+            bucket = _agent_metric_history.get(agent_id)
+            if not isinstance(bucket, deque):
+                continue
+            for point in list(bucket):
+                if not isinstance(point, dict):
+                    continue
+                ts_val = float(point.get("_ts") or _parse_iso_ts(point.get("time")))
+                if ts_val < cutoff:
+                    continue
+                merged.append(
+                    {
+                        "time": str(point.get("time") or ""),
+                        "cpu_percent": point.get("cpu_percent"),
+                        "mem_percent": point.get("mem_percent"),
+                        "disk_percent": point.get("disk_percent"),
+                        "qps": point.get("qps"),
+                        "rtt_ms": point.get("rtt_ms"),
+                        "service_cpu_percent": point.get("service_cpu_percent"),
+                        "service_memory_mb": point.get("service_memory_mb"),
+                        "_ts": ts_val,
+                    }
+                )
+    merged.sort(key=lambda item: (float(item.get("_ts") or 0.0), str(item.get("time") or "")))
+    return merged[-OPS_AGENT_METRIC_MAX_POINTS:]
+
+
+def _latest_realtime_metric(agent_ids: List[str]) -> Dict[str, Any]:
+    points = _realtime_metric_points(agent_ids, window_sec=OPS_AGENT_METRIC_WINDOW_SEC * 24)
+    if not points:
+        return {}
+    latest = dict(points[-1])
+    latest.pop("_ts", None)
+    return latest
+
+
+def _overlay_live_metrics(agent: Dict[str, Any], agent_ids: List[str]) -> Dict[str, Any]:
+    if not isinstance(agent, dict):
+        return {}
+    latest = _latest_realtime_metric(agent_ids)
+    if not latest:
+        return agent
+    base_metrics = agent.get("metrics") if isinstance(agent.get("metrics"), dict) else {}
+    control = base_metrics.get("control") if isinstance(base_metrics.get("control"), dict) else base_metrics
+    business = base_metrics.get("business") if isinstance(base_metrics.get("business"), dict) else {}
+    merged = dict(control) if isinstance(control, dict) else {}
+    for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+        if latest.get(key) is not None:
+            merged[key] = latest.get(key)
+    merged["updated_at"] = str(latest.get("time") or merged.get("updated_at") or agent.get("updated_at") or agent.get("last_seen") or "")
+    merged["source"] = "runtime.sample"
+    agent["metrics"] = {"control": merged, "business": business, **merged}
+    agent["metrics_live"] = True
+    return agent
+
+
+def _mark_duplicate_runtime_agents(registry: Dict[str, Any], canonical_agent_id: str, node_id: str) -> None:
+    if not isinstance(registry, dict) or not canonical_agent_id or not node_id:
+        return
+    now = _now_iso()
+    for agent_id, item in registry.items():
+        if agent_id == canonical_agent_id or not isinstance(item, dict):
+            continue
+        if str(item.get("node_id") or "").strip() != node_id:
+            continue
+        if _member_registration_origin(item) == "cluster.sync":
+            continue
+        item["stale"] = True
+        item["stale_reason"] = "duplicate_runtime_agent"
+        item["superseded_by"] = canonical_agent_id
+        item["updated_at"] = now
+
+
 def _pick_primary_agent(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not rows:
         return {}
@@ -2731,6 +2916,7 @@ def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
         service_seen: set = set()
         node_ids: List[str] = []
         member_agent_ids: List[str] = []
+        origin_kinds: set = set()
         best_status = "UNKNOWN"
         best_status_rank = -1
         latest_seen = ""
@@ -2744,6 +2930,7 @@ def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
             if member_node_id and member_node_id not in node_ids:
                 node_ids.append(member_node_id)
 
+            origin_kinds.add(_member_registration_origin(member))
             effective_status = str(member.get("effective_status") or member.get("status") or "UNKNOWN").upper()
             rank = _status_rank(effective_status)
             if rank > best_status_rank:
@@ -2775,13 +2962,14 @@ def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
                             "service_port": int(svc.get("service_port") or svc.get("port") or member.get("remote_game_server_port") or member.get("port") or 0),
                             "remote_game_server_port": int(svc.get("remote_game_server_port") or svc.get("service_port") or svc.get("port") or member.get("remote_game_server_port") or member.get("port") or 0),
                             "run_state": str(svc.get("run_state") or member.get("run_state") or ""),
-                            "status": str(svc.get("status") or member.get("status") or "UNKNOWN"),
+                            "status": _effective_runtime_status(svc.get("status") or member.get("status"), svc.get("run_state") or member.get("run_state"), svc.get("probe_status") or member.get("probe_status")),
                             "probe_status": str(svc.get("probe_status") or member.get("probe_status") or ""),
                             "probe_rtt_ms": float(svc.get("probe_rtt_ms") or member.get("probe_rtt_ms") or 0.0),
                             "metrics": svc.get("metrics") if isinstance(svc.get("metrics"), dict) else (member.get("metrics") if isinstance(member.get("metrics"), dict) else {}),
                             "endpoints": svc.get("endpoints") if isinstance(svc.get("endpoints"), list) else [],
                             "updated_at": str(svc.get("updated_at") or member.get("updated_at") or member.get("last_seen") or ""),
                             "source": "logical.agent.services",
+                            "registration_origin": _member_registration_origin(member),
                         }
                     )
             else:
@@ -2801,13 +2989,14 @@ def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
                             "service_port": int(member.get("port") or 0),
                             "remote_game_server_port": int(member.get("remote_game_server_port") or member.get("port") or 0),
                             "run_state": str(member.get("run_state") or ""),
-                            "status": str(member.get("status") or "UNKNOWN"),
+                            "status": _effective_runtime_status(member.get("status"), member.get("run_state"), member.get("probe_status")),
                             "probe_status": str(member.get("probe_status") or ""),
                             "probe_rtt_ms": float(member.get("probe_rtt_ms") or 0.0),
                             "metrics": m.get("business") if isinstance(m.get("business"), dict) else m,
                             "endpoints": ((member.get("network") or {}).get("endpoints") if isinstance(member.get("network"), dict) else []) or [],
                             "updated_at": str(member.get("updated_at") or member.get("last_seen") or ""),
                             "source": "logical.agent.compat",
+                            "registration_origin": _member_registration_origin(member),
                         }
                     )
 
@@ -2826,6 +3015,17 @@ def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
         aggregated["member_agent_ids"] = member_agent_ids
         aggregated["member_node_ids"] = node_ids
         aggregated["service_count"] = len(services)
+        aggregated["registration_origin"] = _member_registration_origin(primary)
+        aggregated["topology_relation"] = (
+            "mixed_runtime"
+            if "runtime.agent" in origin_kinds and "cluster.sync" in origin_kinds
+            else "standalone_runtime"
+            if "runtime.agent" in origin_kinds
+            else "cluster_compat"
+            if "cluster.sync" in origin_kinds
+            else "unknown"
+        )
+        _overlay_live_metrics(aggregated, member_agent_ids)
         out.append(aggregated)
 
     out.sort(key=lambda x: str(x.get("device_id") or x.get("display_name") or x.get("agent_id") or ""))
@@ -3341,27 +3541,21 @@ def _item_matches_agent_scope(item: Dict[str, Any], agent: Dict[str, Any], servi
     return False
 
 
-def _build_agent_metric_series(agent: Dict[str, Any]) -> Dict[str, Any]:
-    metrics = agent.get("metrics") if isinstance(agent.get("metrics"), dict) else {}
-    control = metrics.get("control") if isinstance(metrics.get("control"), dict) else metrics
-    updated_at = str(control.get("updated_at") or agent.get("updated_at") or agent.get("last_seen") or "")
-    points: List[Dict[str, Any]] = []
-    if updated_at:
-        points.append(
-            {
-                "time": updated_at,
-                "cpu_percent": control.get("cpu_percent"),
-                "mem_percent": control.get("mem_percent"),
-                "disk_percent": control.get("disk_percent"),
-            }
-        )
+def _build_agent_metric_series(agent: Dict[str, Any], member_agent_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    ids = [str(x or "").strip() for x in (member_agent_ids or []) if str(x or "").strip()]
+    primary_agent_id = str(agent.get("agent_id") or "").strip()
+    if primary_agent_id and primary_agent_id not in ids:
+        ids.insert(0, primary_agent_id)
+    points = _realtime_metric_points(ids)
+    cleaned = [{k: v for k, v in point.items() if k != "_ts"} for point in points]
     return {
         "window": "1h",
-        "points": points,
-        "cpu_percent": [{"time": p["time"], "value": p.get("cpu_percent")} for p in points if p.get("cpu_percent") is not None],
-        "mem_percent": [{"time": p["time"], "value": p.get("mem_percent")} for p in points if p.get("mem_percent") is not None],
-        "disk_percent": [{"time": p["time"], "value": p.get("disk_percent")} for p in points if p.get("disk_percent") is not None],
-        "has_history": len(points) > 1,
+        "points": cleaned,
+        "cpu_percent": [{"time": p["time"], "value": p.get("cpu_percent")} for p in cleaned if p.get("cpu_percent") is not None],
+        "mem_percent": [{"time": p["time"], "value": p.get("mem_percent")} for p in cleaned if p.get("mem_percent") is not None],
+        "disk_percent": [{"time": p["time"], "value": p.get("disk_percent")} for p in cleaned if p.get("disk_percent") is not None],
+        "has_history": len(cleaned) > 1,
+        "source": "runtime.sample",
     }
 
 
@@ -3409,6 +3603,7 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
             if not merged.get("source"):
                 merged["source"] = str(pr_m.get("source") or "agent")
             agent["metrics"] = {"control": merged, "business": business, **merged}
+            agent["metrics_live"] = True
     else:
         agent["effective_status"] = str(agent.get("status") or "UNKNOWN").upper()
 
@@ -3416,6 +3611,7 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
     service_ids = [str(s.get("service_id") or "").strip() for s in services if str(s.get("service_id") or "").strip()]
     member_agent_ids = [str(x or "").strip() for x in (logical_hit.get("member_agent_ids") or []) if str(x or "").strip()]
     member_node_ids = [str(x or "").strip() for x in (logical_hit.get("member_node_ids") or []) if str(x or "").strip()]
+    _overlay_live_metrics(agent, member_agent_ids)
     node_id = str(agent.get("node_id") or (member_node_ids[0] if member_node_ids else "")).strip()
     nodes = _load_nodes()
     node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == node_id), None)
@@ -3477,10 +3673,12 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
             break
 
     control_metrics = ((agent.get("metrics") or {}).get("control") if isinstance(agent.get("metrics"), dict) else {}) or {}
+    if not agent.get("metrics_live"):
+        control_metrics = {}
     service_summary = {
         "total": len(services),
-        "online": len([s for s in services if str(s.get("status") or s.get("run_state") or "").upper() in ("ONLINE", "RUNNING", "READY")]),
-        "abnormal": len([s for s in services if str(s.get("status") or s.get("run_state") or "").upper() in ("DEGRADED", "ERROR", "FAILED", "OFFLINE", "STOPPED")]),
+        "online": len([s for s in services if _effective_runtime_status(s.get("status"), s.get("run_state"), s.get("probe_status")) in ("ONLINE", "RUNNING", "READY")]),
+        "abnormal": len([s for s in services if _effective_runtime_status(s.get("status"), s.get("run_state"), s.get("probe_status")) in ("DEGRADED", "ERROR", "FAILED", "OFFLINE", "STOPPED")]),
     }
     service_summary["stopped"] = max(0, service_summary["total"] - service_summary["online"] - service_summary["abnormal"])
 
@@ -3502,7 +3700,7 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
         "events": events,
         "traces": traces,
         "audits": audits,
-        "metrics_history": _build_agent_metric_series(agent),
+        "metrics_history": _build_agent_metric_series(agent, member_agent_ids),
         "config": {
             "policy": _load_agent_policy(),
             "transport": hit.get("transport") if isinstance(hit.get("transport"), dict) else {},
@@ -4175,9 +4373,11 @@ def ops_platform_agents_list():
                 "business": base_b,
                 **merged,
             }
+            obj["metrics_live"] = True
             obj["metrics_missing"] = {"control": not any(merged.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")), "business": not any(base_b.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"))}
         else:
             obj["metrics"] = {"control": base_c, "business": base_b, **base_c}
+            obj["metrics_live"] = bool(obj.get("metrics_live"))
             obj["metrics_missing"] = {"control": not any(base_c.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")), "business": not any(base_b.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"))}
         obj["device_metrics_snapshot"] = {}
         # 探活状态
@@ -7083,9 +7283,15 @@ def ops_platform_agent_register():
                     "auth_mode": str(payload.get("local_bus_auth_mode") or "token"),
                 },
             },
+            "registration_origin": "runtime.agent",
             "updated_at": now,
         }
     )
+    reg_v2[agent_id]["stale"] = False
+    reg_v2[agent_id].pop("stale_reason", None)
+    reg_v2[agent_id].pop("superseded_by", None)
+    _mark_duplicate_runtime_agents(reg_v2, agent_id, node_id)
+    _append_realtime_agent_sample(reg_v2[agent_id])
     _save_agent_registry_v2(reg_v2)
     upgrade = _desired_agent_upgrade(agent_id, policy)
     return jsonify({"ok": True, "agent_id": agent_id, "node_id": node_id, "device_id": device_id, "poll_interval_sec": 5, "mtls_required": bool(policy.get("mtls_required")), "upgrade": upgrade})
@@ -7158,9 +7364,15 @@ def ops_platform_agent_heartbeat():
                 "degraded": bool(payload.get("local_bus_degraded", False)),
                 "degrade_reason": str(payload.get("local_bus_degrade_reason") or ""),
             },
+            "registration_origin": "runtime.agent",
             "updated_at": now,
         }
     )
+    reg_v2[agent_id]["stale"] = False
+    reg_v2[agent_id].pop("stale_reason", None)
+    reg_v2[agent_id].pop("superseded_by", None)
+    _mark_duplicate_runtime_agents(reg_v2, agent_id, node_id)
+    _append_realtime_agent_sample(reg_v2[agent_id])
     _save_agent_registry_v2(reg_v2)
     jobs = _load_agent_jobs()
     if _reconcile_agent_jobs(

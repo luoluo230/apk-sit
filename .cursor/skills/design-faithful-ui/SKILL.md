@@ -41,6 +41,8 @@ description: 用于任何“用户给了设计图、截图、视觉稿，要求�
 - Do not ship demo-only buttons, fake KPI cards, fake action menus, or dead sections unless the user explicitly approves a placeholder.
 - Frontend behavior and backend business capability must stay aligned; do not leave a page with controls that have no real effect, and do not leave backend-only features with no usable UI when they are in scope.
 - Buttons, functional cards, alerts, status areas, and action partitions should use semantic color differences based on status and risk, but those colors must still fit the page's overall visual language.
+- Any realtime value, monitoring card, progress indicator, or trend chart must be driven by live runtime sampling or in-memory state, not by persisted snapshots or visual filler data.
+- Do not fake curves by repeating one value, and do not fake progress by replaying disk-restored state.
 - The rendered browser result must match the design.
 - If obvious differences remain, the task is not complete.
 

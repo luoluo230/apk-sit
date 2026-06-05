@@ -1547,6 +1547,18 @@ button {
   margin-top: 8px;
 }
 
+.agent-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 108px;
+  margin-top: 8px;
+  border-radius: 10px;
+  color: #98a2b3;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
 .agent-config-list,
 .agent-system-footer {
   display: grid;

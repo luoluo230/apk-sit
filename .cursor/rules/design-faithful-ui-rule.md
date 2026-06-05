@@ -27,6 +27,8 @@
 - It is not acceptable to ship buttons, menus, KPI cards, tabs, sections, or dialogs that look interactive but have no real behavior unless the user explicitly approves a placeholder.
 - Frontend and backend business behavior must stay aligned; do not leave API-only features without usable UI in scope, and do not leave UI-only features without real backend effect in scope.
 - Where state, severity, risk, or function differ, the design should use semantic color differentiation that still fits the overall page style.
+- Realtime metrics, progress bars, queue counters, running-state indicators, and monitoring curves must come from live sampling or in-memory runtime state, not persisted snapshots or fabricated fallback values.
+- It is forbidden to repeat one stored value into a fake curve or fake progress timeline just to satisfy the design visually.
 - It is not acceptable to stop at:
   - matching only the outer shell
   - matching only high-level layout
@@ -49,6 +51,7 @@
   - card layout, card content, card actions, borders, hover states
   - tables, charts, tabs, and summary cards
   - which actions are real, what they trigger, and how success/failure is surfaced
+  - which metrics or progress values are realtime, their sampling source, and refresh cadence
   - frontend/backend ownership and handoff for each in-scope interaction
   - semantic color rules for status, severity, risk, and action types
   - empty, loading, error, hover, active, disabled, selected states
@@ -77,6 +80,7 @@
 - The rendered local page must be inspected in the browser before the task can be called complete.
 - Source inspection alone is not sufficient.
 - Real clicks and in-scope actions must be exercised in the browser when the feature includes interaction.
+- Realtime cards and charts must be observed long enough to confirm that they update from live data rather than from persisted snapshots.
 - If the browser result differs from the design in obvious ways, keep working; do not report completion.
 
 ## Required post-implementation comparison

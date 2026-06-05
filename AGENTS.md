@@ -17,6 +17,8 @@ These rules apply to the entire repository.
 - Do not ship visually complete but behaviorally fake features. If a button, card, tab, menu, modal, KPI block, or functional section is claimed implemented, it must be real and interactive within the agreed scope.
 - Do not ship frontend-only features without real backend effect when the feature is in scope, and do not ship backend-only features without usable UI when the user asked for the full workflow.
 - Where actions, statuses, risks, or severities differ, use semantic color differentiation that matches the function and still fits the overall interface style.
+- Any UI that claims to show realtime parameters, live progress, queue state, rolling metrics, or monitoring curves must be backed by real live sampling or in-memory runtime state.
+- Do not synthesize realtime displays from persisted snapshots, disk-restored state, or repeated fallback values just to make the page look alive.
 
 ## Required workflow for design-driven work
 
@@ -38,12 +40,14 @@ These rules apply to the entire repository.
   - pagination
   - tables / charts / summary cards
   - which visible actions are real, what backend flow each one triggers, and how success/failure is surfaced
+  - which values are realtime, where the live samples come from, and how often the page refreshes them
   - how status, risk, severity, and action types are visually distinguished without breaking the page style
   - empty, loading, success, error, hover, active, disabled states
 - Record that checklist in the module spec or update the existing module spec before implementation.
 - If the running page does not match the edited template, verify the actual serving process, route, cache-busting query strings, and stale service instances before continuing visual tweaks.
 - When backend aggregation, view-model shape, or routing are changed, verify the real runtime entrypoint that feeds the page, not only helper functions or internal builders.
 - If there are multiple possible data entrypoints, verify the exact endpoint used by the browser page before declaring a fix complete.
+- If a page includes realtime metrics or progress displays, verify the browser is receiving live updates from runtime memory or active sampling rather than replaying persisted snapshots.
 
 ## Implementation constraints
 
@@ -68,6 +72,7 @@ These rules apply to the entire repository.
 - For interaction-driven pages, verify that visible in-scope actions actually work end to end, not only that the matching endpoints exist.
 - Verify that frontend behavior and backend business logic are aligned for the implemented scope.
 - Verify that status- and action-based color differentiation is present where needed and remains consistent with the overall page style.
+- For realtime KPI, chart, and progress sections, verify that values change from live runtime sampling and do not flatten into synthetic placeholder curves.
 - If the user reports visual mismatch, re-check runtime serving/caching assumptions before making more speculative style edits.
 
 ## Git workflow
