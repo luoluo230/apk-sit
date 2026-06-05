@@ -137,6 +137,26 @@ class OpsPlatformGateway:
     def deployment_catalog(self, node: Dict[str, Any], *, actor: str, reason: str, ticket_id: str) -> Dict[str, Any]:
         return self._request(node, method="GET", path="/ops/deployment-catalog", write=False, actor=actor, reason=reason, ticket_id=ticket_id)
 
+    def apply_topology(
+        self,
+        node: Dict[str, Any],
+        *,
+        payload: Dict[str, Any],
+        actor: str,
+        reason: str,
+        ticket_id: str,
+    ) -> Dict[str, Any]:
+        return self._request(
+            node,
+            method="POST",
+            path="/ops/topology/apply",
+            write=True,
+            actor=actor,
+            reason=reason,
+            ticket_id=ticket_id,
+            json_body=payload or {},
+        )
+
     def execute_action(
         self,
         node: Dict[str, Any],

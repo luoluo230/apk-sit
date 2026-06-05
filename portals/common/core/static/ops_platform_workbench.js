@@ -26,6 +26,10 @@
 
   const state = {
     projectId: "",
+    envKey: "",
+    topologyId: "",
+    topologies: [],
+    topologyRegistry: null,
     nodesRaw: [],
     overviewNodes: [],
     topology: { nodes: [], edges: [], meta: { viewport: { x: 0, y: 0, zoom: 1 } } },
@@ -35,6 +39,7 @@
     presetCollapsed: {},
     selection: { nodes: new Set(), edgeId: "" },
     nodeBindings: {},
+    serviceBindings: {},
     agents: [],
     drag: null,
     pan: null,
@@ -64,9 +69,53 @@
       history: [],
       replayTimer: null,
     },
+    inspectorTab: "basicInfoPanel",
+    activeLeftTab: "tools",
+    nodeLogs: {},
   };
   const MODE_STORAGE_KEY = "ops_topology_mode_v1";
   const RUNTIME_STORAGE_KEY = "ops_topology_runtime_v1";
+  const ENV_LABELS = {
+    development: "开发环境",
+    testing: "测试环境",
+    staging: "预发环境",
+    production: "生产环境",
+  };
+
+  function currentScope(extra) {
+    return Object.assign({
+      project_id: state.projectId,
+      env_key: state.envKey,
+      topology_id: state.topologyId,
+    }, extra || {});
+  }
+
+  function queryStringForScope(scope) {
+    const s = scope || currentScope();
+    const q = new URLSearchParams();
+    if (s.project_id) q.set("project_id", s.project_id);
+    if (s.env_key) q.set("env_key", s.env_key);
+    if (s.topology_id) q.set("topology_id", s.topology_id);
+    return q.toString();
+  }
+
+  function syncQueryString() {
+    const qs = queryStringForScope();
+    const next = window.location.pathname + (qs ? ("?" + qs) : "");
+    window.history.replaceState({}, "", next);
+  }
+
+  function envLabel(key) {
+    const k = String(key || "").trim().toLowerCase();
+    return ENV_LABELS[k] || k || "未命名环境";
+  }
+
+  function formatTime(value) {
+    if (!value) return "-";
+    const d = new Date(String(value));
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString("zh-CN", { hour12: false });
+  }
 
   function dbg(tag, payload) {
     state.debugSeq += 1;
@@ -480,6 +529,26 @@
     });
   }
 
+  function updateRuntimeSummary(snapshot) {
+    const data = snapshot || {};
+    const total = Number(data.total || 0);
+    const done = Number(data.done || 0);
+    const running = Number(data.running || 0);
+    const success = Number(data.success || 0);
+    const failed = Number(data.failed || 0);
+    const warn = Number(data.warn || 0);
+    const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((done / total) * 100))) : 0;
+    if ($("runtimeRunIdValue")) $("runtimeRunIdValue").textContent = String(data.run_id || state.runtimeRunId || "-");
+    if ($("runtimeStartedAtValue")) $("runtimeStartedAtValue").textContent = formatTime(data.started_at || data.created_at || "");
+    if ($("runtimeDurationValue")) $("runtimeDurationValue").textContent = String(data.duration_human || data.duration || "-");
+    if ($("runtimeProgressValue")) $("runtimeProgressValue").textContent = pct + "%";
+    if ($("runtimeProgressBar")) $("runtimeProgressBar").style.width = pct + "%";
+    if ($("runtimeRunningCount")) $("runtimeRunningCount").textContent = String(running);
+    if ($("runtimeSuccessCount")) $("runtimeSuccessCount").textContent = String(success);
+    if ($("runtimeWarnCount")) $("runtimeWarnCount").textContent = String(warn);
+    if ($("runtimeFailedCount")) $("runtimeFailedCount").textContent = String(failed);
+  }
+
   async function pollRuntimeRun(runId) {
     if (!runId) return;
     await refreshAgentsIfNeeded(false);
@@ -511,6 +580,7 @@
     syncFlowViz("run", activeNodes, statusByNode);
     state.flowViz.metricsByEdge = metricsByEdge;
     pushFlowSnapshot();
+    updateRuntimeSummary(d);
     redrawGraph();
     const total = Number(d.total || 0);
     const done = Number(d.done || 0);
@@ -871,11 +941,223 @@
     el.style.display = text ? "" : "none";
   }
 
+  function renderScopeSelectors() {
+    const projectSel = $("projectSelector");
+    if (projectSel) {
+      projectSel.innerHTML = '<option value="' + esc(state.projectId) + '">' + esc(state.projectId || "-") + "</option>";
+      projectSel.value = state.projectId;
+    }
+    const envSel = $("envSelector");
+    const createEnvSel = $("topologyCreateEnv");
+    const envOptions = (((state.topologyRegistry || {}).env_options || []).length ? (state.topologyRegistry || {}).env_options : [
+      { key: "development", label: "开发环境" },
+      { key: "testing", label: "测试环境" },
+      { key: "staging", label: "预发环境" },
+      { key: "production", label: "生产环境" },
+    ]).map((item) => ({
+      key: String((item || {}).key || ""),
+      label: String((item || {}).label || envLabel((item || {}).key || "")),
+    }));
+    const envHtml = envOptions.map((item) => '<option value="' + esc(item.key) + '">' + esc(item.label) + "</option>").join("");
+    if (envSel) {
+      envSel.innerHTML = envHtml;
+      envSel.value = state.envKey;
+    }
+    if (createEnvSel) {
+      createEnvSel.innerHTML = envHtml;
+      createEnvSel.value = state.envKey || "production";
+    }
+    const topoSel = $("topologySelector");
+    if (topoSel) {
+      topoSel.innerHTML = (state.topologies || []).map((item) => {
+        const label = (item.name || item.topology_id || "-") + (item.version_label ? (" · " + item.version_label) : "");
+        return '<option value="' + esc(item.topology_id) + '">' + esc(label) + "</option>";
+      }).join("");
+      topoSel.value = state.topologyId;
+    }
+    const copySel = $("topologyCopySource");
+    if (copySel) {
+      copySel.innerHTML = '<option value="">请选择要复制的拓扑（可选）</option>' + (state.topologies || []).map((item) => (
+        '<option value="' + esc(item.topology_id) + '">' + esc(item.name || item.topology_id) + "</option>"
+      )).join("");
+    }
+  }
+
+  function renderTopologyManagerList() {
+    const body = $("topologyRegistryRows");
+    if (!body) return;
+    const rows = state.topologies || [];
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="9">暂无拓扑，请先创建。</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map((item) => {
+      const status = String(item.status || "draft").toUpperCase();
+      const nodeCount = Number(item.node_count || 0);
+      const edgeCount = Number(item.edge_count || 0);
+      return '<tr>'
+        + '<td>' + esc(item.name || item.topology_id) + (item.is_default ? ' <span class="state-pill state-info">默认</span>' : '') + '</td>'
+        + '<td>' + esc(envLabel(item.env_key)) + '</td>'
+        + '<td><span class="state-pill ' + (status === "RUNNING" ? 'state-ok' : 'state-info') + '">' + esc(status === "RUNNING" ? '运行中' : '草稿') + '</span></td>'
+        + '<td>' + esc(item.version_label || "-") + '</td>'
+        + '<td>' + esc(formatTime(item.updated_at)) + '</td>'
+        + '<td>' + esc(item.owner || "-") + '</td>'
+        + '<td>' + nodeCount + '</td>'
+        + '<td>' + edgeCount + '</td>'
+        + '<td class="topology-manager-actions-cell">'
+        + '<button class="btn" type="button" data-topology-open="' + esc(item.topology_id) + '">打开</button>'
+        + '<button class="btn" type="button" data-topology-copy="' + esc(item.topology_id) + '">复制</button>'
+        + '<button class="btn" type="button" data-topology-default="' + esc(item.topology_id) + '">设为默认</button>'
+        + '<button class="btn danger" type="button" data-topology-delete="' + esc(item.topology_id) + '">删除</button>'
+        + '</td>'
+        + '</tr>';
+    }).join("");
+  }
+
+  function renderBlueprintSelectors() {
+    const bpSel = $("flowBlueprintSelect");
+    const createBpSel = $("topologyCreateBlueprint");
+    const options = '<option value="">请选择蓝图（可选）</option>' + (state.blueprints || []).map((b) => (
+      '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name || b.blueprint_id) + "</option>"
+    )).join("");
+    if (bpSel) bpSel.innerHTML = '<option value="">请选择蓝图模板</option>' + (state.blueprints || []).map((b) => (
+      '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name || b.blueprint_id) + "</option>"
+    )).join("");
+    if (createBpSel) createBpSel.innerHTML = options;
+  }
+
+  function openTopologyManager() {
+    const modal = $("topologyManagerModal");
+    if (modal) modal.classList.remove("hidden");
+    renderTopologyManagerList();
+    renderScopeSelectors();
+  }
+
+  function closeTopologyManager() {
+    const modal = $("topologyManagerModal");
+    if (modal) modal.classList.add("hidden");
+  }
+
+  async function switchScope(next) {
+    if (!next) return;
+    if (next.project_id) state.projectId = String(next.project_id);
+    if (next.env_key) state.envKey = String(next.env_key);
+    if (next.topology_id) state.topologyId = String(next.topology_id);
+    syncQueryString();
+    await loadAll();
+  }
+
+  async function createOrCopyTopologyFromForm() {
+    const name = String((($("topologyCreateName") || {}).value || "")).trim();
+    if (!name) { toast("请输入拓扑名称", "warn"); return; }
+    const envKey = String((($("topologyCreateEnv") || {}).value || state.envKey || "production")).trim();
+    const blueprintId = String((($("topologyCreateBlueprint") || {}).value || "")).trim();
+    const copySource = String((($("topologyCopySource") || {}).value || "")).trim();
+    const owner = String((($("topologyCreateOwner") || {}).value || "运维管理员")).trim();
+    const description = String((($("topologyCreateDesc") || {}).value || "")).trim();
+    let resp;
+    if (copySource) {
+      resp = await OpsApi.copyTopology({
+        project_id: state.projectId,
+        env_key: envKey,
+        source_topology_id: copySource,
+        name,
+        owner,
+        description,
+      });
+    } else {
+      resp = await OpsApi.createTopology({
+        project_id: state.projectId,
+        env_key: envKey,
+        name,
+        owner,
+        description,
+        blueprint_id: blueprintId || "",
+      });
+    }
+    if (!resp || resp.ok === false) {
+      toast((resp && (resp.message || resp.error)) || "创建拓扑失败", "error");
+      return;
+    }
+    state.topologies = Array.isArray(resp.topologies) ? resp.topologies : state.topologies;
+    if (resp.topology_id) {
+      state.topologyId = String(resp.topology_id);
+      state.envKey = envKey;
+    }
+    renderScopeSelectors();
+    renderTopologyManagerList();
+    closeTopologyManager();
+    await loadAll();
+  }
+
+  async function setDefaultTopology(topologyId) {
+    const resp = await OpsApi.setDefaultTopology({
+      project_id: state.projectId,
+      env_key: state.envKey,
+      topology_id: topologyId,
+    });
+    if (!resp || resp.ok === false) {
+      toast((resp && (resp.message || resp.error)) || "设置默认拓扑失败", "error");
+      return;
+    }
+    state.topologies = Array.isArray(resp.topologies) ? resp.topologies : state.topologies;
+    renderTopologyManagerList();
+    renderScopeSelectors();
+    toast("默认拓扑已更新", "ok");
+  }
+
+  async function deleteTopology(topologyId) {
+    if (!window.confirm("删除该拓扑后不可恢复，确认继续？")) return;
+    const resp = await OpsApi.deleteTopology({
+      project_id: state.projectId,
+      env_key: state.envKey,
+      topology_id: topologyId,
+    });
+    if (!resp || resp.ok === false) {
+      toast((resp && (resp.message || resp.error)) || "删除拓扑失败", "error");
+      return;
+    }
+    state.topologies = Array.isArray(resp.topologies) ? resp.topologies : state.topologies;
+    if (state.topologyId === topologyId && state.topologies.length) {
+      const fallback = state.topologies[0];
+      state.topologyId = String(fallback.topology_id || "");
+      state.envKey = String(fallback.env_key || state.envKey);
+      await loadAll();
+    } else {
+      renderTopologyManagerList();
+      renderScopeSelectors();
+    }
+    toast("拓扑已删除", "ok");
+  }
+
+  function refreshRightPanelMode() {
+    const runtimeCard = $("runtimeSummaryCard");
+    const inspector = $("nodeInspectorCard");
+    if (runtimeCard) runtimeCard.classList.toggle("is-hidden", state.activeLeftTab !== "mode");
+    if (inspector) inspector.classList.toggle("is-runtime-mode", state.activeLeftTab === "mode");
+  }
+
+  function validateTopologyLocal() {
+    const nodes = state.topology.nodes || [];
+    const edges = state.topology.edges || [];
+    const ids = new Set(nodes.map((n) => String(n.id || "")));
+    const problems = [];
+    edges.forEach((edge) => {
+      if (!ids.has(String(edge.from || "")) || !ids.has(String(edge.to || ""))) {
+        problems.push("存在引用不存在节点的连线: " + String(edge.id || "-"));
+      }
+    });
+    const isolated = nodes.filter((node) => !edges.some((e) => String(e.from) === String(node.id) || String(e.to) === String(node.id)));
+    isolated.forEach((node) => problems.push("节点未接入链路: " + String(node.name || node.id || "-")));
+    return { ok: problems.length === 0, problems };
+  }
+
   function bindLeftTabs() {
     const tabs = Array.from(document.querySelectorAll("[data-topology-left-tab]"));
     const panels = Array.from(document.querySelectorAll("[data-left-panel]"));
     if (!tabs.length || !panels.length) return;
     const activate = (name) => {
+      state.activeLeftTab = name;
       tabs.forEach((tab) => {
         const on = tab.getAttribute("data-topology-left-tab") === name;
         tab.classList.toggle("active", on);
@@ -884,11 +1166,51 @@
       panels.forEach((panel) => {
         panel.classList.toggle("is-hidden", panel.getAttribute("data-left-panel") !== name);
       });
+      refreshRightPanelMode();
     };
     tabs.forEach((tab) => {
       tab.onclick = () => activate(tab.getAttribute("data-topology-left-tab") || "tools");
     });
     activate("tools");
+  }
+
+  function bindInspectorTabs() {
+    const tabs = Array.from(document.querySelectorAll("[data-inspector-tab]"));
+    const panes = Array.from(document.querySelectorAll(".topology-inspector-pane"));
+    if (!tabs.length || !panes.length) return;
+    const activate = (name) => {
+      state.inspectorTab = name;
+      tabs.forEach((tab) => tab.classList.toggle("active", tab.getAttribute("data-inspector-tab") === name));
+      panes.forEach((pane) => pane.classList.toggle("active", pane.id === name));
+    };
+    tabs.forEach((tab) => {
+      tab.onclick = () => activate(tab.getAttribute("data-inspector-tab") || "basicInfoPanel");
+    });
+    activate(state.inspectorTab || "basicInfoPanel");
+  }
+
+  function bindLogTabs() {
+    const tabs = Array.from(document.querySelectorAll("[data-log-tab]"));
+    const panes = Array.from(document.querySelectorAll(".topology-log-pane"));
+    tabs.forEach((tab) => {
+      tab.onclick = () => {
+        const id = tab.getAttribute("data-log-tab");
+        tabs.forEach((it) => it.classList.toggle("active", it === tab));
+        panes.forEach((pane) => pane.classList.toggle("active", pane.id === id));
+      };
+    });
+  }
+
+  function bindTopologyManagerTabs() {
+    const tabs = Array.from(document.querySelectorAll("[data-topology-manager-tab]"));
+    const panes = Array.from(document.querySelectorAll(".topology-manager-pane"));
+    tabs.forEach((tab) => {
+      tab.onclick = () => {
+        const id = tab.getAttribute("data-topology-manager-tab");
+        tabs.forEach((it) => it.classList.toggle("active", it === tab));
+        panes.forEach((pane) => pane.classList.toggle("active", pane.id === id));
+      };
+    });
   }
 
   function redrawGraph() {
@@ -1201,12 +1523,12 @@
   }
 
   async function structuredAddExistingTarget(fromNodeId, toNodeId) {
-    const d = await OpsApi.structuredAddExistingTarget({ project_id: state.projectId, from_node_id: fromNodeId, to_node_id: toNodeId });
+    const d = await OpsApi.structuredAddExistingTarget(Object.assign(currentScope(), { from_node_id: fromNodeId, to_node_id: toNodeId }));
     if (applyStructuredTopologyResponse(d, "已连接已有下游节点")) closeStructuredAddMenu();
   }
 
   async function structuredAddNewTarget(fromNodeId, presetId) {
-    const d = await OpsApi.structuredAddNewTarget({ project_id: state.projectId, from_node_id: fromNodeId, preset_id: presetId });
+    const d = await OpsApi.structuredAddNewTarget(Object.assign(currentScope(), { from_node_id: fromNodeId, preset_id: presetId }));
     if (applyStructuredTopologyResponse(d, "已新增并连接下游节点")) closeStructuredAddMenu();
   }
 
@@ -1214,7 +1536,7 @@
     if (!isEditMode()) { toast("运行/测试模式不可删除节点", "warn"); return; }
     const name = runtimeName(nodeId);
     if (!window.confirm("确认删除节点 “" + name + "”？\n\n删除会同时移除相关连线，关键链路会被系统拦截。")) return;
-    const d = await OpsApi.structuredDeleteNode({ node_id: nodeId, project_id: state.projectId });
+    const d = await OpsApi.structuredDeleteNode(Object.assign(currentScope(), { node_id: nodeId }));
     applyStructuredTopologyResponse(d, "节点已删除");
   }
 
@@ -1223,7 +1545,7 @@
     const edge = (state.topology.edges || []).find((e) => String(e.id) === String(edgeId));
     const label = edge ? (runtimeName(edge.from) + " → " + runtimeName(edge.to)) : edgeId;
     if (!window.confirm("确认删除连线 “" + label + "”？\n\n关键链路会被系统拦截。")) return;
-    const d = await OpsApi.structuredDeleteEdge({ edge_id: edgeId, project_id: state.projectId });
+    const d = await OpsApi.structuredDeleteEdge(Object.assign(currentScope(), { edge_id: edgeId }));
     applyStructuredTopologyResponse(d, "连线已删除");
   }
 
@@ -1292,7 +1614,7 @@
       if (n) {
         n.ui.x = Math.round(worldPos.x / 8) * 8;
         n.ui.y = Math.round(worldPos.y / 8) * 8;
-        await OpsApi.saveTopology(state.topology);
+        await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
         redrawGraph(); renderRuntimeNodeList();
         logMode("新增节点成功: " + d.node.id);
       }
@@ -1356,6 +1678,7 @@
     if (!n) return;
     state.selection.nodes = new Set([nodeId]);
     state.selection.edgeId = "";
+    if ($("insNodeName")) $("insNodeName").value = String(n.name || n.id || "");
     $("insNodeId").value = n.id;
     $("insNodeRole").value = n.role;
     $("insNodeBizStatus").value = n.bizStatus;
@@ -1372,7 +1695,13 @@
     fillAgentSelect(nodeId);
     renderPortLists(n);
     applyModeUI();
-    $("nodeEditModal").classList.remove("hidden");
+    const title = $("inspectorSubline");
+    if (title) title.textContent = "当前选中节点：" + String(n.name || n.id || "-") + "，可在右侧直接编辑并同步到运行拓扑。";
+    const pill = $("inspectorStatusPill");
+    if (pill) {
+      pill.textContent = STATUS_LABELS[n.bizStatus] || n.bizStatus || "已选中";
+      pill.className = "state-pill " + (n.bizStatus === "normal" ? "state-ok" : n.bizStatus === "error" ? "state-err" : "state-info");
+    }
     drawNodes();
   }
 
@@ -1435,13 +1764,30 @@
     redrawGraph();
   }
 
-  function closeNodeEditor() { $("nodeEditModal").classList.add("hidden"); }
+  function closeNodeEditor() {
+    state.selection.nodes.clear();
+    const title = $("inspectorSubline");
+    if (title) title.textContent = "未选中节点时显示当前拓扑概况与绑定摘要。";
+    const pill = $("inspectorStatusPill");
+    if (pill) {
+      pill.textContent = "未选中节点";
+      pill.className = "state-pill state-info";
+    }
+    if ($("insNodeName")) $("insNodeName").value = "";
+    ["insNodeId", "insNodePortsSummary", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor"].forEach((id) => {
+      const el = $(id);
+      if (el) el.value = "";
+    });
+    renderPortLists({ ui: { ports: { in: [], out: [] } } });
+    drawNodes();
+  }
 
   async function saveNode() {
     if (!isEditMode()) { toast("仅编辑模式可保存节点属性", "warn"); return; }
     const id = $("insNodeId").value;
     const n = getNode(id);
     if (!n) return;
+    n.name = String((($("insNodeName") || {}).value || n.name || n.id || "")).trim() || n.id;
     n.role = $("insNodeRole").value || n.role;
     n.bizStatus = $("insNodeBizStatus").value || n.bizStatus;
     n.kind = inferKind(n.role, $("insNodeKind").value || n.kind);
@@ -1456,18 +1802,19 @@
     n.ui.network = { endpoints: epText ? epText.split(",").map((x) => x.trim()).filter(Boolean) : [] };
     n.ui.ports = normalizePorts(n.kind, n.ui.ports);
 
-    const nodeRes = await OpsApi.updateNode(id, { role: n.role, kind: n.kind, desc: n.desc, bizStatus: n.bizStatus, owner: n.owner, x: n.ui.x, y: n.ui.y, ui: n.ui, tags: n.tags });
+    const nodeRes = await OpsApi.updateNode(Object.assign(currentScope(), { node_id: id, name: n.name, role: n.role, kind: n.kind, desc: n.desc, bizStatus: n.bizStatus, owner: n.owner, x: n.ui.x, y: n.ui.y, ui: n.ui, tags: n.tags }));
     if (!nodeRes.ok) { toast(nodeRes.message || "Save node failed", "error"); return; }
 
     const aid = String($("insNodePrimaryAgent").value || "");
     const serviceId = String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || "").trim();
     const bindRes = await OpsApi.bindNodeService
-      ? await OpsApi.bindNodeService({ node_id: id, agent_id: aid, service_id: serviceId, project_id: state.projectId })
-      : await OpsApi.bindNodeAgent({ node_id: id, agent_id: aid, project_id: state.projectId });
+      ? await OpsApi.bindNodeService(Object.assign(currentScope(), { node_id: id, agent_id: aid, service_id: serviceId }))
+      : await OpsApi.bindNodeAgent(Object.assign(currentScope(), { node_id: id, agent_id: aid }));
     if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "Bind agent failed", "error"); return; }
 
     state.nodeBindings = bindRes.bindings || state.nodeBindings;
-    await OpsApi.saveTopology(state.topology);
+    state.serviceBindings = bindRes.service_bindings || state.serviceBindings;
+    await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
     toast("Node and primary agent saved", "ok");
     logMode("节点保存成功: " + id);
     closeNodeEditor();
@@ -1489,12 +1836,11 @@
     const visible = (typeof launchVisibleConsole === "boolean")
       ? launchVisibleConsole
       : !!($("insNodeVisibleConsole") ? $("insNodeVisibleConsole").checked : true);
-    const resp = await OpsApi.startRemoteNode({
+    const resp = await OpsApi.startRemoteNode(Object.assign(currentScope(), {
       node_id: nid,
-      project_id: state.projectId,
       service_id: String((n.ui && n.ui.remote && n.ui.remote.service_id) || n.service_id || n.id || ""),
       launch_visible_console: visible,
-    });
+    }));
     return resp || { ok: false, message: "remote_start_no_response" };
   }
 
@@ -1520,7 +1866,7 @@
     if (!nodeId) return;
     if (!isEditMode()) { toast("仅编辑模式可删除节点", "warn"); return; }
     if (!window.confirm("删除该节点及其所有关联连线？")) return;
-    const d = await OpsApi.deleteNode(nodeId);
+    const d = await OpsApi.deleteNode(Object.assign(currentScope(), { node_id: nodeId }));
     if (!d.ok) { toast(d.message || d.error || "Delete node failed", "error"); logMode("删除节点失败: " + (d.message || d.error || "unknown"), "error"); return; }
     state.topology = d.topology || state.topology;
     state.nodeBindings = d.bindings || state.nodeBindings;
@@ -1541,7 +1887,7 @@
   }
 
   async function autoBindAgents() {
-    const d = await OpsApi.autoBindAgents({ project_id: state.projectId });
+    const d = await OpsApi.autoBindAgents(currentScope());
     if (!d || d.ok === false) {
       toast((d && (d.message || d.error)) || "自动绑定失败", "error");
       return;
@@ -1593,7 +1939,7 @@
         return;
       }
     }
-    const d = await OpsApi.runtimeFlowControl({ op, project_id: state.projectId });
+    const d = await OpsApi.runtimeFlowControl(Object.assign(currentScope(), { op }));
     if (!d || d.ok === false) {
       toast((d && d.message) || "运行请求失败", "error");
       logMode("运行请求失败: " + ((d && (d.message || d.error)) || "unknown"), "error");
@@ -1631,12 +1977,12 @@
       testLogHeader("压力测试开始", "scope=" + scope + " target=" + target);
       testLogKV("qps", 500);
       testLogKV("duration_sec", 180);
-      const d = await OpsApi.postJSON("/api/ops-platform/stress-test", {
+      const d = await OpsApi.postJSON("/api/ops-platform/stress-test", Object.assign(currentScope(), {
         node_id: target,
         qps: 500,
         duration_sec: 180,
         reason: "拓扑测试模式压力测试",
-      });
+      }));
       if (d && d.ok !== false) {
         logMode("压力测试提交成功: target=" + target + " trace_id=" + (d.trace_id || "-"));
         if (d.result) {
@@ -1674,7 +2020,7 @@
     testLogHeader("单元测试开始", "scope=" + scope);
     testLogKV("path_nodes", pathNodes.join(" -> "));
     testLogKV("path_len", pathNodes.length);
-    const d = await OpsApi.postJSON("/api/ops-platform/flow-smoke", { path_nodes: pathNodes });
+    const d = await OpsApi.postJSON("/api/ops-platform/flow-smoke", Object.assign(currentScope(), { path_nodes: pathNodes }));
     if (d && d.ok !== false) {
       const flowId = d.flow_id || "-";
       const steps = Array.isArray(d.steps) ? d.steps : [];
@@ -1843,13 +2189,18 @@
       modeSelect.value = state.mode;
       modeSelect.disabled = state.modeLocked;
     }
+    document.querySelectorAll("[data-mode-value]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-mode-value") === state.mode);
+      btn.disabled = state.modeLocked;
+    });
     if ($("modeLockBtn")) $("modeLockBtn").style.display = state.modeLocked ? "none" : "";
     if ($("modeUnlockBtn")) $("modeUnlockBtn").style.display = state.modeLocked ? "" : "none";
-    const shell = document.querySelector(".ops-shell");
+    const shell = document.querySelector(".ops-topology-app");
     if (shell) {
       shell.classList.remove("canvas-mode-edit", "canvas-mode-run", "canvas-mode-test");
       shell.classList.add("canvas-mode-" + state.mode);
     }
+    refreshRightPanelMode();
     if (state.mode !== "test") clearTestHighlight();
     if (state.mode === "test") computePathHighlight();
     if (state.mode === "edit") {
@@ -1858,7 +2209,7 @@
     }
 
     const lock = state.mode !== "edit";
-    ["insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeEndpoints"]
+    ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeEndpoints"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
     ["btnPortInAdd", "btnPortOutAdd", "btnPortInRemove", "btnPortOutRemove", "btnDeleteSelectedPort", "btnDeleteNode", "btnSaveNode"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
@@ -1876,7 +2227,7 @@
   async function loadAll() {
     setTopologyHint("正在加载拓扑核心数据...", "");
     const [topo, presets] = await Promise.all([
-      OpsApi.loadTopology(state.projectId),
+      OpsApi.loadTopology(currentScope()),
       OpsApi.loadPresets(),
     ]);
     if (checkAuthExpired(topo) || checkAuthExpired(presets)) return;
@@ -1886,8 +2237,13 @@
     }
 
     state.topology = topo.topology || { nodes: [], edges: [], meta: { viewport: { x: 0, y: 0, zoom: 1 } } };
+    state.topologyRegistry = topo.registry || null;
+    state.topologies = Array.isArray(topo.topologies) ? topo.topologies : [];
+    if (topo.topology_id) state.topologyId = String(topo.topology_id || state.topologyId);
+    if (topo.env_key) state.envKey = String(topo.env_key || state.envKey);
     state.nodesRaw = (state.topology.nodes || []).map((n) => ({
       id: n.id,
+      name: n.name,
       role: n.role,
       kind: n.kind,
       desc: n.desc,
@@ -1901,11 +2257,14 @@
     normalizeTopology();
     layoutStructuredGraph();
     renderScene();
+    renderScopeSelectors();
     redrawGraph();
     renderPresets();
     renderRuntimeNodeList();
     fillTestNodeOptions();
     applyModeUI();
+    renderTopologyManagerList();
+    syncQueryString();
     setTopologyHint("拓扑已可操作，正在后台同步 Agent、绑定与总览数据...", "loading");
 
     loadAuxiliaryData();
@@ -1916,7 +2275,7 @@
       OpsApi.loadNodes(),
       OpsApi.loadOverview(state.projectId),
       OpsApi.loadTopologyBlueprints(),
-      OpsApi.loadNodeBindings(state.projectId),
+      OpsApi.loadNodeBindings(currentScope()),
       OpsApi.agents(state.projectId),
     ]);
     const [nodes, overview, blueprints, bindings, agents] = settled.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
@@ -1934,10 +2293,17 @@
     else warns.push("总览");
     if (blueprints && blueprints.ok !== false && Array.isArray(blueprints.blueprints)) state.blueprints = blueprints.blueprints;
     else warns.push("流程模板");
-    if (bindings && bindings.ok !== false) state.nodeBindings = bindings.bindings || {};
+    if (bindings && bindings.ok !== false) {
+      state.nodeBindings = bindings.bindings || {};
+      state.serviceBindings = bindings.service_bindings || {};
+    }
     else warns.push("绑定");
     if (agents && agents.ok !== false) state.agents = agents.agents || [];
     else warns.push("Agent");
+
+    renderBlueprintSelectors();
+    renderScopeSelectors();
+    renderTopologyManagerList();
 
     const bpSel = $("flowBlueprintSelect");
     if (bpSel) {
@@ -1953,11 +2319,70 @@
 
   function bindEvents() {
     bindLeftTabs();
+    bindInspectorTabs();
+    bindLogTabs();
+    bindTopologyManagerTabs();
     ROLE_OPTIONS.forEach((v) => $("insNodeRole").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + v + '</option>'));
     STATUS_OPTIONS.forEach((v) => $("insNodeBizStatus").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
 
+    document.querySelectorAll("[data-mode-value]").forEach((btn) => {
+      btn.onclick = () => {
+        if (state.modeLocked) return;
+        state.mode = btn.getAttribute("data-mode-value") || "edit";
+        applyModeUI();
+        saveModeState();
+      };
+    });
+
+    if ($("projectSelector")) $("projectSelector").onchange = async () => {
+      const nextProject = String($("projectSelector").value || state.projectId);
+      await switchScope({ project_id: nextProject, env_key: state.envKey, topology_id: state.topologyId });
+    };
+    if ($("envSelector")) $("envSelector").onchange = async () => {
+      const nextEnv = String($("envSelector").value || state.envKey);
+      const fallback = (state.topologies || []).find((item) => String(item.env_key || "") === nextEnv && item.is_default) || (state.topologies || []).find((item) => String(item.env_key || "") === nextEnv) || {};
+      await switchScope({ project_id: state.projectId, env_key: nextEnv, topology_id: String(fallback.topology_id || "") });
+    };
+    if ($("topologySelector")) $("topologySelector").onchange = async () => {
+      const nextTopology = String($("topologySelector").value || state.topologyId);
+      const hit = (state.topologies || []).find((item) => String(item.topology_id || "") === nextTopology) || {};
+      await switchScope({ project_id: state.projectId, env_key: String(hit.env_key || state.envKey), topology_id: nextTopology });
+    };
+
+    ["btnManageTopologyHeader", "btnManageTopologyInline"].forEach((id) => {
+      const el = $(id);
+      if (el) el.onclick = openTopologyManager;
+    });
+    if ($("btnCreateTopologyHeader")) $("btnCreateTopologyHeader").onclick = openTopologyManager;
+    if ($("btnCreateTopologyFromModal")) $("btnCreateTopologyFromModal").onclick = () => {
+      document.querySelectorAll("[data-topology-manager-tab]").forEach((tab) => {
+        if (tab.getAttribute("data-topology-manager-tab") === "topologyManagerCreatePane") tab.click();
+      });
+    };
+    if ($("btnCloseTopologyManager")) $("btnCloseTopologyManager").onclick = closeTopologyManager;
+    if ($("btnCancelCreateTopology")) $("btnCancelCreateTopology").onclick = closeTopologyManager;
+    if ($("btnSubmitCreateTopology")) $("btnSubmitCreateTopology").onclick = createOrCopyTopologyFromForm;
+    if ($("btnCloseNodeLogModal")) $("btnCloseNodeLogModal").onclick = () => { $("nodeLogModal").classList.add("hidden"); };
+    if ($("btnClearModeLogs")) $("btnClearModeLogs").onclick = () => {
+      if ($("modeLog")) $("modeLog").innerHTML = "";
+      if ($("modeLogDetails")) $("modeLogDetails").innerHTML = "";
+      if ($("deploymentLogMirror")) $("deploymentLogMirror").innerHTML = "";
+    };
+
     $("presetSearch").oninput = renderPresets;
     if ($("presetCategoryFilter")) $("presetCategoryFilter").onchange = renderPresets;
+    if ($("globalTopologySearch")) $("globalTopologySearch").oninput = () => {
+      const keyword = String($("globalTopologySearch").value || "").trim().toLowerCase();
+      if (!keyword) {
+        state.highlight = { nodes: new Set(), edges: new Set() };
+        redrawGraph();
+        return;
+      }
+      const hitNodes = (state.topology.nodes || []).filter((n) => [n.id, n.name, n.role, n.owner].some((x) => String(x || "").toLowerCase().includes(keyword))).map((n) => n.id);
+      const hitEdges = (state.topology.edges || []).filter((e) => hitNodes.includes(String(e.from || "")) || hitNodes.includes(String(e.to || ""))).map((e) => e.id);
+      state.highlight = { nodes: new Set(hitNodes), edges: new Set(hitEdges) };
+      redrawGraph();
+    };
 
     $("toolAuto").onclick = () => {
       if (isTestMode()) { toast("测试模式禁止自动布局", "warn"); return; }
@@ -1966,11 +2391,32 @@
       toast("已按结构化规则重新排布", "ok");
     };
 
+    if ($("toolAlign")) $("toolAlign").onclick = () => $("toolAuto").click();
+    if ($("toolConnect")) $("toolConnect").onclick = () => setTopologyHint("结构化编排不支持自由拖线，请点击节点右侧 + 添加合法下游。", "warn");
+    if ($("toolCanvasZoom")) $("toolCanvasZoom").onclick = () => $("toolReset").click();
+    if ($("canvasQuickUndo")) $("canvasQuickUndo").onclick = () => $("toolUndo") && $("toolUndo").click();
+    if ($("canvasQuickRedo")) $("canvasQuickRedo").onclick = () => $("toolRedo") && $("toolRedo").click();
+    if ($("canvasQuickFocus")) $("canvasQuickFocus").onclick = () => $("toolReset").click();
+    if ($("canvasQuickFit")) $("canvasQuickFit").onclick = () => $("toolReset").click();
+    if ($("zoomResetBtn")) $("zoomResetBtn").onclick = () => $("toolReset").click();
+    if ($("zoomInBtn")) $("zoomInBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.min(2.5, Number(view().zoom || 1) * 1.1); renderScene(); };
+    if ($("zoomOutBtn")) $("zoomOutBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.max(0.3, Number(view().zoom || 1) * 0.9); renderScene(); };
+    if ($("btnValidateTopology")) $("btnValidateTopology").onclick = () => {
+      const result = validateTopologyLocal();
+      if (result.ok) {
+        toast("拓扑校验通过", "ok");
+      } else {
+        toast("拓扑校验发现问题", "warn");
+        appendJsonDetail("拓扑校验问题", result.problems);
+      }
+    };
+    if ($("btnTopologyMore")) $("btnTopologyMore").onclick = openTopologyManager;
+
     $("toolReset").onclick = () => { state.topology.meta.viewport = { x: 0, y: 0, zoom: 1 }; renderScene(); };
 
     $("toolSave").onclick = async () => {
       if (isTestMode()) { toast("测试模式禁止保存拓扑", "warn"); return; }
-      const d = await OpsApi.saveTopology(state.topology);
+      const d = await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
       toast((d && d.ok !== false) ? "Topology saved" : ((d && d.message) || "Save failed"), (d && d.ok !== false) ? "ok" : "error");
       if (d && d.ok !== false) logMode("拓扑保存成功");
     };
@@ -1981,7 +2427,7 @@
       const chosen = state.blueprints.find((x) => String(x.blueprint_id) === bid);
       const confirmText = "Apply blueprint will clear all current canvas nodes and edges.\n\nBlueprint: " + (chosen ? chosen.name : bid) + "\n\nContinue?";
       if (!window.confirm(confirmText)) return;
-      const d = await OpsApi.applyTopologyBlueprint({ blueprint_id: bid, project_id: state.projectId, replace_existing: true });
+      const d = await OpsApi.applyTopologyBlueprint(Object.assign(currentScope(), { blueprint_id: bid, replace_existing: true }));
       if (!d.ok) { toast(d.message || d.error || "Apply blueprint failed", "error"); return; }
       toast("Blueprint applied", "ok");
       await loadAll();
@@ -2014,7 +2460,6 @@
     };
 
     if ($("structuredAddClose")) $("structuredAddClose").onclick = closeStructuredAddMenu;
-    $("nodeEditClose").onclick = closeNodeEditor;
     const modeSelectEl = $("modeSelect");
     if (modeSelectEl) {
       modeSelectEl.onchange = () => {
@@ -2049,6 +2494,106 @@
     $("btnRunStopAll").onclick = () => runFullLifecycle(false);
     $("btnTestSmoke").onclick = () => runSmokeOrStress(false);
     $("btnTestStress").onclick = () => runSmokeOrStress(true);
+    if ($("btnCopyNode")) $("btnCopyNode").onclick = async () => {
+      const nid = String(($("insNodeId") || {}).value || "").trim();
+      if (!nid) return;
+      const resp = await OpsApi.cloneNode(Object.assign(currentScope(), { node_id: nid }));
+      if (!resp || resp.ok === false) {
+        toast((resp && (resp.message || resp.error)) || "复制节点失败", "error");
+        return;
+      }
+      state.topology = resp.topology || state.topology;
+      normalizeTopology();
+      redrawGraph();
+      renderRuntimeNodeList();
+      toast("节点已复制", "ok");
+    };
+    if ($("btnDisableNode")) $("btnDisableNode").onclick = async () => {
+      const nid = String(($("insNodeId") || {}).value || "").trim();
+      if (!nid) return;
+      const node = getNode(nid);
+      const nextDisabled = !(((node || {}).ui || {}).disabled);
+      const resp = await OpsApi.disableNode(Object.assign(currentScope(), { node_id: nid, disabled: nextDisabled }));
+      if (!resp || resp.ok === false) {
+        toast((resp && (resp.message || resp.error)) || "更新节点状态失败", "error");
+        return;
+      }
+      state.topology = resp.topology || state.topology;
+      normalizeTopology();
+      redrawGraph();
+      openNodeEditor(nid);
+      toast(nextDisabled ? "节点已禁用" : "节点已恢复", "ok");
+    };
+    if ($("btnRestartNode")) $("btnRestartNode").onclick = () => {
+      const nid = String(($("insNodeId") || {}).value || "").trim();
+      if (!nid) return;
+      const serviceId = String((state.serviceBindings || {})[nid] || "");
+      const agentId = String((state.nodeBindings || {})[nid] || "");
+      if (!serviceId) {
+        $("btnStartRemoteNode").click();
+        return;
+      }
+      OpsApi.serviceAction(Object.assign(currentScope(), {
+        service_id: serviceId,
+        agent_id: agentId,
+        node_id: nid,
+        action: "restart",
+      })).then((resp) => {
+        if (!resp || resp.ok === false) {
+          toast((resp && (resp.message || resp.error)) || "重启服务失败", "error");
+          return;
+        }
+        toast("服务重启任务已提交", "ok");
+      });
+    };
+    if ($("btnProbeNode")) $("btnProbeNode").onclick = async () => {
+      const nid = String(($("insNodeId") || {}).value || "").trim();
+      if (!nid) return;
+      await refreshAgentsIfNeeded(true);
+      const raw = rawNodeMeta(nid);
+      const box = $("nodeLogModalBody");
+      if (box) box.textContent = JSON.stringify({ node_id: nid, node: raw, binding: (state.nodeBindings || {})[nid] || "", runtime: (runtimeById() || {})[nid] || null, agent: (state.agents || []).find((item) => String((item || {}).agent_id || "") === String((state.nodeBindings || {})[nid] || "")) || null }, null, 2);
+      $("nodeLogModal").classList.remove("hidden");
+    };
+    if ($("btnViewNodeLogs")) $("btnViewNodeLogs").onclick = async () => {
+      const nid = String(($("insNodeId") || {}).value || "").trim();
+      if (!nid) return;
+      const resp = await OpsApi.nodeLogs(Object.assign(currentScope(), { node_id: nid, limit: 50 }));
+      const box = $("nodeLogModalBody");
+      if (box) box.textContent = JSON.stringify(resp || { ok: false, error: "empty_response" }, null, 2);
+      $("nodeLogModal").classList.remove("hidden");
+    };
+    const registryRows = $("topologyRegistryRows");
+    if (registryRows) {
+      registryRows.onclick = async (ev) => {
+        const target = ev.target;
+        if (!(target instanceof HTMLElement)) return;
+        const openId = target.getAttribute("data-topology-open");
+        const copyId = target.getAttribute("data-topology-copy");
+        const defaultId = target.getAttribute("data-topology-default");
+        const deleteId = target.getAttribute("data-topology-delete");
+        if (openId) {
+          const hit = (state.topologies || []).find((item) => String(item.topology_id || "") === String(openId)) || {};
+          closeTopologyManager();
+          await switchScope({ project_id: state.projectId, env_key: String(hit.env_key || state.envKey), topology_id: String(openId) });
+          return;
+        }
+        if (copyId) {
+          if ($("topologyCopySource")) $("topologyCopySource").value = String(copyId);
+          document.querySelectorAll("[data-topology-manager-tab]").forEach((tab) => {
+            if (tab.getAttribute("data-topology-manager-tab") === "topologyManagerCreatePane") tab.click();
+          });
+          return;
+        }
+        if (defaultId) {
+          await setDefaultTopology(String(defaultId));
+          return;
+        }
+        if (deleteId) {
+          await deleteTopology(String(deleteId));
+        }
+      };
+    }
     $("btnDeleteEdgeInline").onclick = () => {
       if (state.selection.edgeId) confirmStructuredDeleteEdge(state.selection.edgeId);
       else toast("请先点击选择一条连线", "warn");
@@ -2124,14 +2669,18 @@
   }
 
   async function boot() {
-    state.projectId = ((document.querySelector(".ops-shell") || {}).dataset || {}).projectId || "";
-    $("opsProjectFilter").value = state.projectId;
+    const page = document.querySelector(".ops-topology-app");
+    const ds = (page && page.dataset) ? page.dataset : {};
+    state.projectId = String(ds.projectId || "");
+    state.envKey = String(ds.envKey || "production");
+    state.topologyId = String(ds.topologyId || "");
     loadModeState();
     loadRuntimeState();
     bindEvents();
     await loadAll();
+    closeNodeEditor();
     startAgentsRealtimeTick();
-    const act = await OpsApi.runtimeFlowActive(state.projectId);
+    const act = await OpsApi.runtimeFlowActive(currentScope());
     if (act && act.ok !== false && act.active && act.run_id) {
       state.mode = "run";
       state.modeLocked = true;

@@ -114,8 +114,22 @@
   api.logClientEvent = (eventName, payload) => api.postJSON('/api/ops-platform/client-log', {event:eventName, payload:payload||{}});
 
   api.loadNodes = () => api.getJSON('/api/gm-legacy/nodes');
+  function withScope(base, scope){
+    const q = [];
+    const s = scope || {};
+    if (s.project_id || s.projectId) q.push('project_id=' + encodeURIComponent(s.project_id || s.projectId));
+    if (s.env_key || s.envKey) q.push('env_key=' + encodeURIComponent(s.env_key || s.envKey));
+    if (s.topology_id || s.topologyId) q.push('topology_id=' + encodeURIComponent(s.topology_id || s.topologyId));
+    return base + (q.length ? ('?' + q.join('&')) : '');
+  }
   api.loadOverview = (projectId) => api.getJSON('/api/ops-platform/overview' + (projectId ? ('?project_id='+encodeURIComponent(projectId)) : ''));
-  api.loadTopology = (projectId) => api.getJSON('/api/ops-platform/topology' + (projectId ? ('?project_id='+encodeURIComponent(projectId)) : ''));
+  api.loadTopologies = (scope) => api.getJSON(withScope('/api/ops-platform/topologies', scope));
+  api.loadTopologyDetail = (scope) => api.getJSON(withScope('/api/ops-platform/topologies/detail', scope));
+  api.createTopology = (payload) => api.postJSON('/api/ops-platform/topologies/create', payload || {});
+  api.copyTopology = (payload) => api.postJSON('/api/ops-platform/topologies/copy', payload || {});
+  api.setDefaultTopology = (payload) => api.postJSON('/api/ops-platform/topologies/set-default', payload || {});
+  api.deleteTopology = (payload) => api.postJSON('/api/ops-platform/topologies/delete', payload || {});
+  api.loadTopology = (scope) => api.getJSON(withScope('/api/ops-platform/topology', scope));
   api.loadPresets = () => api.getJSON('/api/ops-platform/node-presets');
   api.loadTopologyBlueprints = () => api.getJSON('/api/ops-platform/topology-blueprints');
   api.applyTopologyBlueprint = (payload) => api.postJSON('/api/ops-platform/topology/apply-blueprint', payload);
@@ -124,11 +138,14 @@
   api.loadActionCatalog = () => api.getJSON('/api/ops-platform/action-catalog');
   api.validateAction = (payload) => api.postJSON('/api/ops-platform/actions/validate', payload);
   api.executeAction = (payload) => api.postJSON('/api/ops-platform/actions/execute', payload);
-  api.saveTopology = (topology) => api.postJSON('/api/ops-platform/topology/save', {topology});
-  api.updateNode = (nodeId, patch) => api.postJSON('/api/ops-platform/topology/node/update', {node_id:nodeId, patch});
-  api.deleteNode = (nodeId) => api.postJSON('/api/ops-platform/topology/node/delete', {node_id:nodeId});
-  api.upsertEdge = (payload) => api.postJSON('/api/ops-platform/topology/edge/upsert', payload);
-  api.deleteEdge = (edgeId) => api.postJSON('/api/ops-platform/topology/edge/delete', {edge_id:edgeId});
+  api.saveTopology = (payload) => api.postJSON('/api/ops-platform/topology/save', payload || {});
+  api.updateNode = (payload) => api.postJSON('/api/ops-platform/topology/node/update', payload || {});
+  api.cloneNode = (payload) => api.postJSON('/api/ops-platform/topology/node/clone', payload || {});
+  api.disableNode = (payload) => api.postJSON('/api/ops-platform/topology/node/disable', payload || {});
+  api.nodeLogs = (scope) => api.getJSON(withScope('/api/ops-platform/topology/node/logs', scope));
+  api.deleteNode = (payload) => api.postJSON('/api/ops-platform/topology/node/delete', payload || {});
+  api.upsertEdge = (payload) => api.postJSON('/api/ops-platform/topology/edge/upsert', payload || {});
+  api.deleteEdge = (payload) => api.postJSON('/api/ops-platform/topology/edge/delete', payload || {});
   api.structuredAddExistingTarget = (payload) => api.postJSON('/api/ops-platform/topology/structured/add-existing-target', payload || {});
   api.structuredAddNewTarget = (payload) => api.postJSON('/api/ops-platform/topology/structured/add-new-target', payload || {});
   api.structuredDeleteNode = (payload) => api.postJSON('/api/ops-platform/topology/structured/delete-node', payload || {});
@@ -154,7 +171,7 @@
   api.probeAllAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-all', payload || {});
   api.probeRepairAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-repair', payload || {});
   api.startRemoteNode = (payload) => api.postJSON('/api/ops-platform/topology/node/start-remote', payload || {});
-  api.loadNodeBindings = (projectId) => api.getJSON('/api/ops-platform/topology/node/bindings' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.loadNodeBindings = (scope) => api.getJSON(withScope('/api/ops-platform/topology/node/bindings', scope));
   api.bindNodeAgent = (payload) => api.postJSON('/api/ops-platform/topology/node/bind-agent', payload);
   api.bindNodeService = (payload) => api.postJSON('/api/ops-platform/topology/node/bind-service', payload);
   api.listServices = (projectId) => api.getJSON('/api/ops-platform/services' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
@@ -186,7 +203,7 @@
   api.moduleMap = () => api.getJSON('/api/ops-platform/module-map');
   api.runtimeFlowControl = (payload) => api.postJSON('/api/ops-platform/runtime/flow-control', payload || {});
   api.runtimeFlowStatus = (runId) => api.getJSON('/api/ops-platform/runtime/flow-status?run_id=' + encodeURIComponent(runId || ''));
-  api.runtimeFlowActive = (projectId) => api.getJSON('/api/ops-platform/runtime/active' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.runtimeFlowActive = (scope) => api.getJSON(withScope('/api/ops-platform/runtime/active', scope));
 
   window.OpsApi = api;
 })();

@@ -1259,6 +1259,8 @@ OPS_TRACE_LOG_KEY = "OPS_PLATFORM_TRACE_LOGS"
 OPS_EVENT_LOG_KEY = "OPS_PLATFORM_EVENT_LOGS"
 OPS_ALERT_SNAPSHOT_KEY = "OPS_PLATFORM_ALERT_SNAPSHOT"
 OPS_TOPOLOGY_KEY = "OPS_PLATFORM_TOPOLOGY"
+OPS_TOPOLOGY_REGISTRY_KEY = "OPS_PLATFORM_TOPOLOGY_REGISTRY"
+OPS_TOPOLOGY_CONTENTS_KEY = "OPS_PLATFORM_TOPOLOGY_CONTENTS"
 OPS_NODE_PRESETS_KEY = "OPS_PLATFORM_NODE_PRESETS"
 OPS_TOPOLOGY_BLUEPRINTS_KEY = "OPS_PLATFORM_TOPOLOGY_BLUEPRINTS"
 OPS_DAEMON_STATE_KEY = "OPS_PLATFORM_DAEMON_STATE"
@@ -1400,6 +1402,748 @@ def _runtime_active_for_project(project_id: str) -> Dict[str, Any]:
             if latest_start is None:
                 latest_start = row
         if op == "stop" and st in ("running", "success"):
+            if latest_stop is None:
+                latest_stop = row
+    if not latest_start:
+        return {"active": False, "run_id": "", "status": "", "reason": "no_start_run"}
+    start_ts = str(latest_start.get("updated_at") or latest_start.get("created_at") or "")
+    stop_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
+    if latest_stop and stop_ts and start_ts and stop_ts >= start_ts:
+        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "stopped_after_start"}
+    return {"active": True, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "start_alive"}
+
+
+def _normalize_env_key(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    alias = {
+        "dev": "development",
+        "develop": "development",
+        "development": "development",
+        "test": "testing",
+        "testing": "testing",
+        "qa": "testing",
+        "staging": "staging",
+        "pre": "staging",
+        "preprod": "staging",
+        "pre-release": "staging",
+        "prod": "production",
+        "production": "production",
+        "online": "production",
+    }
+    return alias.get(text, text or "production")
+
+
+def _default_env_options() -> List[Dict[str, str]]:
+    return [
+        {"env_key": "development", "label": "开发环境"},
+        {"env_key": "testing", "label": "测试环境"},
+        {"env_key": "staging", "label": "预发环境"},
+        {"env_key": "production", "label": "生产环境"},
+    ]
+
+
+def _env_label(env_key: str) -> str:
+    key = _normalize_env_key(env_key)
+    for item in _default_env_options():
+        if str(item.get("env_key") or "") == key:
+            return str(item.get("label") or key)
+    return key or "生产环境"
+
+
+def _load_topology_registry() -> List[Dict[str, Any]]:
+    raw = _load_json_config(OPS_TOPOLOGY_REGISTRY_KEY, [])
+    return raw if isinstance(raw, list) else []
+
+
+def _save_topology_registry(rows: List[Dict[str, Any]]) -> None:
+    items = rows if isinstance(rows, list) else []
+    _save_json_config(OPS_TOPOLOGY_REGISTRY_KEY, items, description="Ops 拓扑注册表")
+
+
+def _load_topology_contents() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_TOPOLOGY_CONTENTS_KEY, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _save_topology_contents(data: Dict[str, Any]) -> None:
+    payload = data if isinstance(data, dict) else {}
+    _save_json_config(OPS_TOPOLOGY_CONTENTS_KEY, payload, description="Ops 拓扑内容分片")
+
+
+def _scope_binding_key(topology_id: str, node_id: str) -> str:
+    return f"{str(topology_id or '').strip()}::{str(node_id or '').strip()}"
+
+
+def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    item = row if isinstance(row, dict) else {}
+    env_key = _normalize_env_key(item.get("env_key"))
+    topology_id = str(item.get("topology_id") or "").strip() or ("topology-" + uuid.uuid4().hex[:10])
+    return {
+        "topology_id": topology_id,
+        "project_id": str(item.get("project_id") or "").strip(),
+        "env_key": env_key,
+        "env_label": _env_label(env_key),
+        "name": str(item.get("name") or topology_id).strip(),
+        "version_label": str(item.get("version_label") or "").strip(),
+        "owner": str(item.get("owner") or "").strip(),
+        "description": str(item.get("description") or "").strip(),
+        "blueprint_id": str(item.get("blueprint_id") or "").strip(),
+        "copied_from_topology_id": str(item.get("copied_from_topology_id") or "").strip(),
+        "is_default": bool(item.get("is_default", False)),
+        "status": str(item.get("status") or "draft").strip().lower(),
+        "created_at": str(item.get("created_at") or _now_iso()),
+        "updated_at": str(item.get("updated_at") or item.get("created_at") or _now_iso()),
+    }
+
+
+def _default_topology_content_from_nodes(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    base = _load_topology(rows)
+    if not isinstance(base.get("meta"), dict):
+        base["meta"] = {}
+    base["meta"]["layout_mode"] = "structured"
+    return base
+
+
+def _topology_seed_content(project_id: str, env_key: str) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    rows = _load_nodes()
+    scoped: List[Dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        if pid and str(item.get("project_id") or "").strip() != pid:
+            continue
+        item_env = _normalize_env_key(item.get("env") or "")
+        if item_env and env and item_env != env:
+            continue
+        scoped.append(item)
+    return _default_topology_content_from_nodes(scoped)
+
+
+def _migrate_topology_storage_if_needed() -> None:
+    rows = _load_topology_registry()
+    contents = _load_topology_contents()
+    if rows and contents:
+        return
+
+    all_nodes = _load_nodes()
+    project_ids = sorted({str(x.get("project_id") or "").strip() for x in all_nodes if isinstance(x, dict) and str(x.get("project_id") or "").strip()})
+    if not project_ids:
+        project_ids = [""]
+
+    registry_rows: List[Dict[str, Any]] = rows if isinstance(rows, list) else []
+    content_map: Dict[str, Any] = contents if isinstance(contents, dict) else {}
+    topology_by_scope: Dict[str, str] = {}
+    now = _now_iso()
+    for project_id in project_ids:
+        scoped_nodes = [x for x in all_nodes if isinstance(x, dict) and str(x.get("project_id") or "").strip() == project_id] if project_id else list(all_nodes)
+        scoped_envs = sorted({_normalize_env_key(x.get("env") or "") for x in scoped_nodes if isinstance(x, dict)}) or ["production"]
+        for env_key in scoped_envs:
+            env_nodes = []
+            for item in scoped_nodes:
+                if not isinstance(item, dict):
+                    continue
+                item_env = _normalize_env_key(item.get("env") or "")
+                if item_env and item_env != env_key:
+                    continue
+                env_nodes.append(item)
+            topology_id = f"topology-{(project_id or 'default').replace('/', '-').replace(' ', '-').lower() or 'default'}-{env_key}-default"
+            topology_by_scope[f"{project_id}::{env_key}"] = topology_id
+            if not any(str((x or {}).get("topology_id") or "") == topology_id for x in registry_rows if isinstance(x, dict)):
+                registry_rows.append(
+                    _normalize_topology_registry_row(
+                        {
+                            "topology_id": topology_id,
+                            "project_id": project_id,
+                            "env_key": env_key,
+                            "name": _env_label(env_key) + "主拓扑",
+                            "version_label": "v1.0.0",
+                            "owner": "system",
+                            "description": "从历史单拓扑配置迁移",
+                            "is_default": True,
+                            "status": "running" if env_key == "production" else "draft",
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    )
+                )
+            content_map[topology_id] = _default_topology_content_from_nodes(env_nodes)
+
+    if registry_rows:
+        _save_topology_registry(registry_rows)
+    if content_map:
+        _save_topology_contents(content_map)
+
+    binding_store = _load_node_agent_bindings()
+    if isinstance(binding_store, dict) and binding_store and not any("::" in str(k or "") for k in binding_store.keys()):
+        converted: Dict[str, Any] = {}
+        for node_id, agent_id in binding_store.items():
+            node_text = str(node_id or "").strip()
+            if not node_text:
+                continue
+            raw_node = next((x for x in all_nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == node_text), None)
+            project_id = str((raw_node or {}).get("project_id") or "").strip()
+            env_key = _normalize_env_key((raw_node or {}).get("env") or "")
+            topology_id = topology_by_scope.get(f"{project_id}::{env_key}") or topology_by_scope.get(f"{project_id}::production") or next(iter(content_map.keys()), "")
+            converted[_scope_binding_key(topology_id, node_text)] = agent_id
+        if converted:
+            _save_node_agent_bindings(converted)
+
+    service_binding_store = _load_node_service_bindings()
+    if isinstance(service_binding_store, dict) and service_binding_store and not any("::" in str(k or "") for k in service_binding_store.keys()):
+        converted_services: Dict[str, Any] = {}
+        for node_id, service_id in service_binding_store.items():
+            node_text = str(node_id or "").strip()
+            if not node_text:
+                continue
+            raw_node = next((x for x in all_nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == node_text), None)
+            project_id = str((raw_node or {}).get("project_id") or "").strip()
+            env_key = _normalize_env_key((raw_node or {}).get("env") or "")
+            topology_id = topology_by_scope.get(f"{project_id}::{env_key}") or topology_by_scope.get(f"{project_id}::production") or next(iter(content_map.keys()), "")
+            converted_services[_scope_binding_key(topology_id, node_text)] = service_id
+        if converted_services:
+            _save_node_service_bindings(converted_services)
+
+    runtime_rows = _load_runtime_runs()
+    runtime_changed = False
+    for row in runtime_rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("topology_id") or "").strip():
+            continue
+        project_id = str(row.get("project_id") or "").strip()
+        env_key = _normalize_env_key(row.get("env_key") or "")
+        topology_id = topology_by_scope.get(f"{project_id}::{env_key}") or topology_by_scope.get(f"{project_id}::production") or next(iter(content_map.keys()), "")
+        row["env_key"] = env_key or "production"
+        row["topology_id"] = topology_id
+        runtime_changed = True
+    if runtime_changed:
+        _save_runtime_runs(runtime_rows)
+
+
+def _list_topologies(project_id: str = "", env_key: str = "") -> List[Dict[str, Any]]:
+    _migrate_topology_storage_if_needed()
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    out: List[Dict[str, Any]] = []
+    for item in _load_topology_registry():
+        if not isinstance(item, dict):
+            continue
+        row = _normalize_topology_registry_row(item)
+        if pid and row.get("project_id") != pid:
+            continue
+        if env and row.get("env_key") != env:
+            continue
+        out.append(row)
+    out.sort(key=lambda x: (x.get("project_id") or "", x.get("env_key") or "", 0 if x.get("is_default") else 1, x.get("updated_at") or ""), reverse=False)
+    return out
+
+
+def _ensure_topology_for_scope(project_id: str, env_key: str) -> Dict[str, Any]:
+    _migrate_topology_storage_if_needed()
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    rows = _load_topology_registry()
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        row = _normalize_topology_registry_row(item)
+        if row.get("project_id") == pid and row.get("env_key") == env and row.get("is_default"):
+            return row
+    row = _normalize_topology_registry_row(
+        {
+            "topology_id": "topology-" + uuid.uuid4().hex[:10],
+            "project_id": pid,
+            "env_key": env,
+            "name": _env_label(env) + "主拓扑",
+            "version_label": "v1.0.0",
+            "owner": str(session.get("user") or "system"),
+            "description": "自动创建的默认拓扑",
+            "is_default": True,
+            "status": "running" if env == "production" else "draft",
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+    )
+    rows.append(row)
+    _save_topology_registry(rows)
+    contents = _load_topology_contents()
+    contents[row["topology_id"]] = _topology_seed_content(pid, env)
+    _save_topology_contents(contents)
+    return row
+
+
+def _resolve_topology_context(project_id: str = "", env_key: str = "", topology_id: str = "") -> Dict[str, Any]:
+    _migrate_topology_storage_if_needed()
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    rows = _list_topologies(pid, env)
+    target = None
+    if tid:
+        for item in rows:
+            if str(item.get("topology_id") or "") == tid:
+                target = item
+                break
+    if target is None:
+        for item in rows:
+            if item.get("is_default"):
+                target = item
+                break
+    if target is None and rows:
+        target = rows[0]
+    if target is None:
+        target = _ensure_topology_for_scope(pid, env or "production")
+        rows = _list_topologies(pid, env or "production")
+    contents = _load_topology_contents()
+    topo = contents.get(str(target.get("topology_id") or "")) if isinstance(contents.get(str(target.get("topology_id") or "")), dict) else {}
+    if not topo:
+        topo = _topology_seed_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
+        contents[str(target.get("topology_id") or "")] = topo
+        _save_topology_contents(contents)
+    return {
+        "topology": topo,
+        "row": target,
+        "topologies": rows,
+    }
+
+
+def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: str = "") -> Dict[str, Any]:
+    ctx = _resolve_topology_context(project_id, env_key, topology_id)
+    topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    viewport = meta.get("viewport") if isinstance(meta.get("viewport"), dict) else {}
+    normalized_nodes: List[Dict[str, Any]] = []
+    seen = set()
+    for item in nodes:
+        if not isinstance(item, dict):
+            continue
+        nid = str(item.get("id") or "").strip()
+        if not nid or nid in seen:
+            continue
+        seen.add(nid)
+        role = str(item.get("role") or "business")
+        kind = _infer_node_kind(role, str(item.get("kind") or ""))
+        ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+        ui["ports"] = _normalize_ports(kind, ui.get("ports"))
+        normalized_nodes.append(
+            {
+                "id": nid,
+                "name": str(item.get("name") or nid),
+                "server_id": str(item.get("server_id") or nid),
+                "project_id": str(item.get("project_id") or ctx.get("row", {}).get("project_id") or ""),
+                "env": str(item.get("env") or ctx.get("row", {}).get("env_key") or "production"),
+                "role": role,
+                "kind": kind,
+                "desc": str(item.get("desc") or ""),
+                "bizStatus": str(item.get("bizStatus") or "normal"),
+                "owner": str(item.get("owner") or ""),
+                "node_category": str(item.get("node_category") or ""),
+                "node_type": str(item.get("node_type") or ""),
+                "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
+                "ui": ui,
+                "x": float(item.get("x") or ui.get("x") or 0),
+                "y": float(item.get("y") or ui.get("y") or 0),
+            }
+        )
+    valid_ids = {str(x.get("id") or "") for x in normalized_nodes if isinstance(x, dict)}
+    normalized_edges: List[Dict[str, Any]] = []
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        frm = str(edge.get("from") or "").strip()
+        to = str(edge.get("to") or "").strip()
+        if not frm or not to or frm not in valid_ids or to not in valid_ids:
+            continue
+        normalized_edges.append(
+            {
+                "id": str(edge.get("id") or f"edge-{uuid.uuid4().hex[:10]}"),
+                "from": frm,
+                "to": to,
+                "from_port": str(edge.get("from_port") or "out-1"),
+                "to_port": str(edge.get("to_port") or "in-1"),
+                "type": str(edge.get("type") or "depends_on"),
+                "note": str(edge.get("note") or ""),
+                "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
+            }
+        )
+    return {
+        "nodes": normalized_nodes,
+        "edges": normalized_edges,
+        "meta": {
+            "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+            "version": int(meta.get("version") or 1),
+            "updated_at": str(meta.get("updated_at") or ""),
+            "layout_mode": str(meta.get("layout_mode") or "structured"),
+        },
+        "registry": ctx.get("row"),
+        "topologies": ctx.get("topologies") if isinstance(ctx.get("topologies"), list) else [],
+    }
+
+
+def _save_topology_scoped(project_id: str, env_key: str, topology_id: str, topology: Dict[str, Any]) -> Dict[str, Any]:
+    ctx = _resolve_topology_context(project_id, env_key, topology_id)
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    tid = str(row.get("topology_id") or topology_id or "").strip()
+    normalized = _load_topology_scoped(str(row.get("project_id") or project_id or ""), str(row.get("env_key") or env_key or ""), tid)
+    incoming_nodes = topology.get("nodes") if isinstance(topology.get("nodes"), list) else []
+    incoming_edges = topology.get("edges") if isinstance(topology.get("edges"), list) else []
+    incoming_meta = topology.get("meta") if isinstance(topology.get("meta"), dict) else {}
+
+    node_index = {str(x.get("id") or ""): x for x in (normalized.get("nodes") or []) if isinstance(x, dict)}
+    for item in incoming_nodes:
+        if not isinstance(item, dict):
+            continue
+        nid = str(item.get("id") or "").strip()
+        if not nid:
+            continue
+        src = node_index.get(nid) or {
+            "id": nid,
+            "name": str(item.get("name") or nid),
+            "server_id": str(item.get("server_id") or nid),
+            "project_id": str(row.get("project_id") or project_id or ""),
+            "env": str(row.get("env_key") or env_key or "production"),
+            "role": "business",
+            "kind": "standard",
+            "desc": "",
+            "bizStatus": "normal",
+            "owner": "",
+            "tags": [],
+            "ui": {},
+            "x": 0.0,
+            "y": 0.0,
+        }
+        src["name"] = str(item.get("name") or src.get("name") or nid)
+        src["server_id"] = str(item.get("server_id") or src.get("server_id") or nid)
+        src["role"] = str(item.get("role") or src.get("role") or "business")
+        src["kind"] = _infer_node_kind(str(src.get("role") or "business"), str(item.get("kind") or src.get("kind") or ""))
+        src["desc"] = str(item.get("desc") or src.get("desc") or "")
+        src["bizStatus"] = str(item.get("bizStatus") or src.get("bizStatus") or "normal")
+        src["owner"] = str(item.get("owner") or src.get("owner") or "")
+        src["node_category"] = str(item.get("node_category") or src.get("node_category") or "")
+        src["node_type"] = str(item.get("node_type") or src.get("node_type") or "")
+        src["tags"] = item.get("tags") if isinstance(item.get("tags"), list) else (src.get("tags") if isinstance(src.get("tags"), list) else [])
+        src["ui"] = item.get("ui") if isinstance(item.get("ui"), dict) else (src.get("ui") if isinstance(src.get("ui"), dict) else {})
+        src["ui"]["ports"] = _normalize_ports(str(src.get("kind") or "standard"), src["ui"].get("ports"))
+        try:
+            src["x"] = float(item.get("x"))
+        except Exception:
+            pass
+        try:
+            src["y"] = float(item.get("y"))
+        except Exception:
+            pass
+        src["project_id"] = str(row.get("project_id") or project_id or "")
+        src["env"] = str(row.get("env_key") or env_key or "production")
+        node_index[nid] = src
+
+    valid_ids = set(node_index.keys())
+    merged_edges: List[Dict[str, Any]] = []
+    for edge in incoming_edges:
+        if not isinstance(edge, dict):
+            continue
+        frm = str(edge.get("from") or "").strip()
+        to = str(edge.get("to") or "").strip()
+        if not frm or not to or frm == to or frm not in valid_ids or to not in valid_ids:
+            continue
+        merged_edges.append(
+            {
+                "id": str(edge.get("id") or f"edge-{uuid.uuid4().hex[:10]}"),
+                "from": frm,
+                "to": to,
+                "from_port": str(edge.get("from_port") or "out-1"),
+                "to_port": str(edge.get("to_port") or "in-1"),
+                "type": str(edge.get("type") or "depends_on"),
+                "note": str(edge.get("note") or ""),
+                "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
+            }
+        )
+    viewport = incoming_meta.get("viewport") if isinstance(incoming_meta.get("viewport"), dict) else {}
+    payload = {
+        "nodes": list(node_index.values()),
+        "edges": merged_edges,
+        "meta": {
+            "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+            "version": int(incoming_meta.get("version") or normalized.get("meta", {}).get("version") or 1),
+            "updated_at": _now_iso(),
+            "layout_mode": str(incoming_meta.get("layout_mode") or normalized.get("meta", {}).get("layout_mode") or "structured"),
+        },
+        "updated_at": _now_iso(),
+    }
+    contents = _load_topology_contents()
+    contents[tid] = payload
+    _save_topology_contents(contents)
+
+    rows = _load_topology_registry()
+    for idx, item in enumerate(rows):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("topology_id") or "") != tid:
+            continue
+        merged = _normalize_topology_registry_row(item)
+        merged["updated_at"] = _now_iso()
+        rows[idx] = merged
+        break
+    _save_topology_registry(rows)
+    saved = dict(payload)
+    saved["registry"] = _resolve_topology_context(str(row.get("project_id") or ""), str(row.get("env_key") or ""), tid).get("row")
+    return saved
+
+
+def _topology_gateway_node(project_id: str = "", env_key: str = "") -> Dict[str, Any]:
+    return (
+        _resolve_node(project_id=str(project_id or "").strip(), env=_normalize_env_key(env_key))
+        or _resolve_node(project_id=str(project_id or "").strip())
+        or _resolve_node()
+        or {}
+    )
+
+
+def _build_runtime_node_from_topology_node(project_id: str, env_key: str, topo_node: Dict[str, Any], topology_id: str = "") -> Dict[str, Any]:
+    base = dict(_topology_gateway_node(project_id, env_key))
+    node = topo_node if isinstance(topo_node, dict) else {}
+    node_id = str(node.get("id") or "").strip()
+    base["id"] = node_id
+    base["name"] = str(node.get("name") or node_id or base.get("name") or "")
+    base["project_id"] = str(project_id or base.get("project_id") or "")
+    base["env"] = _normalize_env_key(env_key or node.get("env") or base.get("env") or "")
+    base["server_id"] = str(node.get("server_id") or node_id or base.get("server_id") or "")
+    base["owner"] = str(node.get("owner") or base.get("owner") or "")
+    base["role"] = str(node.get("role") or base.get("role") or "business")
+    base["description"] = str(node.get("desc") or node.get("description") or base.get("description") or "")
+    base["topology_id"] = str(topology_id or "")
+    return base
+
+
+def _cluster_type_for_role(role: str) -> str:
+    mapping = {
+        "gateway": "Gateway",
+        "business": "Game",
+        "pressure": "Pressure",
+        "database": "Db",
+        "cache": "Cache",
+        "mq": "Mq",
+        "search": "Search",
+        "scheduler": "Scheduler",
+        "admin": "Admin",
+        "edge": "Gateway",
+        "analytics": "Analytics",
+        "ops": "Ops",
+        "transport": "Tcp",
+    }
+    key = str(role or "").strip().lower()
+    return mapping.get(key, key.title() or "Game")
+
+
+def _cluster_category_for_role(role: str) -> str:
+    key = str(role or "").strip().lower()
+    if key in ("database", "cache", "mq", "search"):
+        return "middleware"
+    if key in ("pressure",):
+        return "test"
+    if key in ("gateway", "edge", "transport"):
+        return "network"
+    return "application"
+
+
+def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str) -> Dict[str, Any]:
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    topo = {
+        "nodes": scoped.get("nodes") if isinstance(scoped.get("nodes"), list) else [],
+        "edges": scoped.get("edges") if isinstance(scoped.get("edges"), list) else [],
+        "meta": scoped.get("meta") if isinstance(scoped.get("meta"), dict) else {},
+    }
+    row = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    agent_bindings = _load_scope_agent_bindings(topology_id)
+    service_bindings = _load_scope_service_bindings(topology_id)
+    services = _services_for_project(project_id)
+    services_map = {str(x.get("service_id") or "").strip(): x for x in services if isinstance(x, dict)}
+    agents_map = {str(x.get("agent_id") or "").strip(): x for x in _agents_v2_for_project(project_id) if isinstance(x, dict)}
+    edge_in: Dict[str, List[str]] = {}
+    edge_out: Dict[str, List[str]] = {}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        frm = str(edge.get("from") or "").strip()
+        to = str(edge.get("to") or "").strip()
+        if not frm or not to:
+            continue
+        edge_out.setdefault(frm, []).append(to)
+        edge_in.setdefault(to, []).append(frm)
+    cluster_servers: List[Dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = str(node.get("id") or "").strip()
+        role = str(node.get("role") or "business").strip().lower()
+        service_id = str(service_bindings.get(node_id) or "").strip()
+        service = services_map.get(service_id) if service_id else None
+        agent_id = str(agent_bindings.get(node_id) or (service or {}).get("agent_id") or "").strip()
+        agent = agents_map.get(agent_id) if agent_id else None
+        endpoints = []
+        if isinstance(service, dict) and isinstance(service.get("endpoints"), list):
+            endpoints = service.get("endpoints") or []
+        elif isinstance(agent, dict) and isinstance(((agent.get("network") or {}).get("endpoints")), list):
+            endpoints = ((agent.get("network") or {}).get("endpoints")) or []
+        endpoint = str(endpoints[0] or "").strip() if endpoints else ""
+        endpoint_host = endpoint.split(":")[0].strip() if endpoint and ":" in endpoint else endpoint
+        service_port = int((service or {}).get("service_port") or (service or {}).get("remote_game_server_port") or 0)
+        remote_port = int((service or {}).get("remote_game_server_port") or service_port or 0)
+        if not service_port and isinstance(agent, dict):
+            service_port = int(agent.get("remote_game_server_port") or agent.get("port") or 0)
+        runtime_status = str((service or {}).get("status") or (service or {}).get("run_state") or (agent or {}).get("status") or (agent or {}).get("run_state") or "UNKNOWN").upper()
+        cluster_servers.append(
+            {
+                "ServerId": str(node.get("server_id") or node_id),
+                "DisplayName": str(node.get("name") or node_id),
+                "Type": _cluster_type_for_role(role),
+                "Role": role,
+                "Category": _cluster_category_for_role(role),
+                "Description": str(node.get("desc") or ""),
+                "UpstreamServerIds": [str(getattr_node.get("server_id") or getattr_node.get("id") or "") if isinstance(getattr_node, dict) else "" for getattr_node in [next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == sid), None) for sid in (edge_in.get(node_id) or [])] if str((getattr_node or {}).get("id") or "")],
+                "DownstreamServerIds": [str(getattr_node.get("server_id") or getattr_node.get("id") or "") if isinstance(getattr_node, dict) else "" for getattr_node in [next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == sid), None) for sid in (edge_out.get(node_id) or [])] if str((getattr_node or {}).get("id") or "")],
+                "Host": endpoint_host or ("0.0.0.0" if role in ("gateway", "transport", "edge") else "127.0.0.1"),
+                "ProbeHost": endpoint_host or "127.0.0.1",
+                "Port": service_port or remote_port or 0,
+                "State": "Online" if runtime_status in ("ONLINE", "READY", "RUNNING", "SUCCESS") else "Offline",
+                "Metadata": {
+                    "ProjectId": str(project_id or ""),
+                    "EnvKey": _normalize_env_key(env_key),
+                    "TopologyId": str(topology_id or ""),
+                    "TopologyName": str(row.get("name") or ""),
+                    "VersionLabel": str(row.get("version_label") or ""),
+                    "NodeId": node_id,
+                    "AgentId": agent_id,
+                    "ServiceId": str((service or {}).get("service_id") or ""),
+                    "AgentWs": str(endpoint or ""),
+                    "RemoteGameServerPort": str(remote_port or service_port or ""),
+                },
+            }
+        )
+    return {
+        "project_id": str(project_id or ""),
+        "env_key": _normalize_env_key(env_key),
+        "topology_id": str(topology_id or ""),
+        "topology_name": str(row.get("name") or ""),
+        "version_label": str(row.get("version_label") or ""),
+        "cluster": {
+            "MaintenanceMessage": "Managed by Ops topology workbench.",
+            "EnableHotReload": True,
+            "Servers": cluster_servers,
+        },
+    }
+
+
+def _sync_topology_to_game_server(project_id: str, env_key: str, topology_id: str, actor: str) -> Dict[str, Any]:
+    gateway_node = _topology_gateway_node(project_id, env_key)
+    if not gateway_node:
+        return {"ok": False, "error": "missing_ops_gateway_node", "message": "未找到可用的 Ops 网关节点"}
+    payload = _topology_to_cluster_payload(project_id, env_key, topology_id)
+    result = _ops_gateway.apply_topology(
+        gateway_node,
+        payload=payload,
+        actor=actor,
+        reason="topology save sync",
+        ticket_id="OPS-TOPO-" + uuid.uuid4().hex[:8],
+    )
+    return {
+        "ok": bool(result.get("success")),
+        "message": str(result.get("message") or ""),
+        "status": int(result.get("status") or 0),
+        "data": result.get("data") if isinstance(result.get("data"), dict) else {},
+        "payload": payload,
+    }
+
+
+def _load_scope_agent_bindings(topology_id: str) -> Dict[str, str]:
+    data = _load_node_agent_bindings()
+    out: Dict[str, str] = {}
+    tid = str(topology_id or "").strip()
+    for key, value in (data.items() if isinstance(data, dict) else []):
+        text = str(key or "").strip()
+        if not text or not str(value or "").strip():
+            continue
+        if "::" in text:
+            scope_id, node_id = text.split("::", 1)
+            if scope_id != tid:
+                continue
+            out[node_id] = str(value or "").strip()
+        elif not tid:
+            out[text] = str(value or "").strip()
+    return out
+
+
+def _save_scope_agent_binding(topology_id: str, node_id: str, agent_id: str) -> Dict[str, Any]:
+    data = _load_node_agent_bindings()
+    if not isinstance(data, dict):
+        data = {}
+    key = _scope_binding_key(topology_id, node_id)
+    if agent_id:
+        data[key] = agent_id
+    else:
+        data.pop(key, None)
+    _save_node_agent_bindings(data)
+    return data
+
+
+def _load_scope_service_bindings(topology_id: str) -> Dict[str, str]:
+    data = _load_node_service_bindings()
+    out: Dict[str, str] = {}
+    tid = str(topology_id or "").strip()
+    for key, value in (data.items() if isinstance(data, dict) else []):
+        text = str(key or "").strip()
+        if not text or not str(value or "").strip():
+            continue
+        if "::" in text:
+            scope_id, node_id = text.split("::", 1)
+            if scope_id != tid:
+                continue
+            out[node_id] = str(value or "").strip()
+        elif not tid:
+            out[text] = str(value or "").strip()
+    return out
+
+
+def _save_scope_service_binding(topology_id: str, node_id: str, service_id: str) -> Dict[str, Any]:
+    data = _load_node_service_bindings()
+    if not isinstance(data, dict):
+        data = {}
+    key = _scope_binding_key(topology_id, node_id)
+    if service_id:
+        data[key] = service_id
+    else:
+        data.pop(key, None)
+    _save_node_service_bindings(data)
+    return data
+
+
+def _runtime_active_for_scope(project_id: str, env_key: str, topology_id: str) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    rows = _load_runtime_runs()
+    latest_start = None
+    latest_stop = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if pid and str(row.get("project_id") or "") != pid:
+            continue
+        if env and _normalize_env_key(row.get("env_key") or "") != env:
+            continue
+        if tid and str(row.get("topology_id") or "") != tid:
+            continue
+        op = str(row.get("op") or "").lower()
+        st = str(row.get("status") or "").lower()
+        if op == "start" and st in ("running", "success", "queued"):
+            if latest_start is None:
+                latest_start = row
+        if op == "stop" and st in ("running", "success", "queued"):
             if latest_stop is None:
                 latest_stop = row
     if not latest_start:
@@ -5228,24 +5972,252 @@ def ops_platform_agents_cleanup_expired():
     )
 
 
+@bp.route("/api/ops-platform/topologies")
+@admin_required("gm_ops")
+def ops_platform_topologies():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    rows = _list_topologies(project_id, env_key)
+    env_values = []
+    seen_env = set()
+    for item in _default_env_options() + [{"env_key": str(x.get("env_key") or ""), "label": str(x.get("env_label") or _env_label(x.get("env_key") or ""))} for x in rows]:
+        key = _normalize_env_key(item.get("env_key") or "")
+        if not key or key in seen_env:
+            continue
+        seen_env.add(key)
+        env_values.append({"env_key": key, "label": str(item.get("label") or _env_label(key))})
+    return jsonify({"ok": True, "project_id": project_id, "env_key": env_key, "count": len(rows), "topologies": rows, "environments": env_values})
+
+
+@bp.route("/api/ops-platform/topologies/detail")
+@admin_required("gm_ops")
+def ops_platform_topologies_detail():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
+    return jsonify(
+        {
+            "ok": True,
+            "project_id": str(registry.get("project_id") or project_id or ""),
+            "env_key": str(registry.get("env_key") or env_key or ""),
+            "topology_id": tid,
+            "registry": registry,
+            "topology": {
+                "nodes": scoped.get("nodes") if isinstance(scoped.get("nodes"), list) else [],
+                "edges": scoped.get("edges") if isinstance(scoped.get("edges"), list) else [],
+                "meta": scoped.get("meta") if isinstance(scoped.get("meta"), dict) else {},
+            },
+            "bindings": _load_scope_agent_bindings(tid),
+            "service_bindings": _load_scope_service_bindings(tid),
+        }
+    )
+
+
+@bp.route("/api/ops-platform/topologies/create", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topologies_create():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    name = str(payload.get("name") or "").strip()
+    if not project_id:
+        return jsonify({"ok": False, "error": "missing_project_id"}), 400
+    if not name:
+        return jsonify({"ok": False, "error": "missing_name"}), 400
+    topology_id = "topology-" + uuid.uuid4().hex[:10]
+    rows = _load_topology_registry()
+    is_first_for_env = not any(
+        isinstance(x, dict)
+        and str(x.get("project_id") or "").strip() == project_id
+        and _normalize_env_key(x.get("env_key") or "") == env_key
+        for x in rows
+    )
+    row = _normalize_topology_registry_row(
+        {
+            "topology_id": topology_id,
+            "project_id": project_id,
+            "env_key": env_key,
+            "name": name,
+            "version_label": "v1.0.0",
+            "owner": str(session.get("user") or "admin"),
+            "description": str(payload.get("description") or "").strip(),
+            "blueprint_id": str(payload.get("blueprint_id") or "").strip(),
+            "is_default": is_first_for_env,
+            "status": "draft",
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+    )
+    rows.append(row)
+    _save_topology_registry(rows)
+    contents = _load_topology_contents()
+    contents[topology_id] = {"nodes": [], "edges": [], "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}, "version": 1, "updated_at": _now_iso(), "layout_mode": "structured"}}
+    _save_topology_contents(contents)
+    log_audit("ops_platform_topology_create", f"project={project_id}; env={env_key}; topology={topology_id}")
+    return jsonify({"ok": True, "topology_id": topology_id, "registry": row, "topologies": _list_topologies(project_id, env_key)})
+
+
+@bp.route("/api/ops-platform/topologies/copy", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topologies_copy():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    source_topology_id = str(payload.get("source_topology_id") or payload.get("topology_id") or "").strip()
+    name = str(payload.get("name") or "").strip()
+    if not project_id or not source_topology_id or not name:
+        return jsonify({"ok": False, "error": "missing_required_fields"}), 400
+    scoped = _load_topology_scoped(project_id, env_key, source_topology_id)
+    source_row = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    if not source_row:
+        return jsonify({"ok": False, "error": "topology_not_found"}), 404
+    topology_id = "topology-" + uuid.uuid4().hex[:10]
+    row = _normalize_topology_registry_row(
+        {
+            "topology_id": topology_id,
+            "project_id": project_id,
+            "env_key": str(source_row.get("env_key") or env_key or "production"),
+            "name": name,
+            "version_label": "v1.0.0",
+            "owner": str(session.get("user") or "admin"),
+            "description": str(payload.get("description") or source_row.get("description") or ""),
+            "blueprint_id": str(source_row.get("blueprint_id") or ""),
+            "copied_from_topology_id": source_topology_id,
+            "is_default": False,
+            "status": "draft",
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+    )
+    rows = _load_topology_registry()
+    rows.append(row)
+    _save_topology_registry(rows)
+    src_topo = {
+        "nodes": scoped.get("nodes") if isinstance(scoped.get("nodes"), list) else [],
+        "edges": scoped.get("edges") if isinstance(scoped.get("edges"), list) else [],
+        "meta": scoped.get("meta") if isinstance(scoped.get("meta"), dict) else {},
+    }
+    copied_nodes = []
+    for node in src_topo.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        item = dict(node)
+        item.pop("agent_id", None)
+        copied_nodes.append(item)
+    contents = _load_topology_contents()
+    contents[topology_id] = {
+        "nodes": copied_nodes,
+        "edges": list(src_topo.get("edges") or []),
+        "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}, "version": 1, "updated_at": _now_iso(), "layout_mode": "structured"},
+    }
+    _save_topology_contents(contents)
+    log_audit("ops_platform_topology_copy", f"project={project_id}; env={env_key}; source={source_topology_id}; target={topology_id}")
+    return jsonify({"ok": True, "topology_id": topology_id, "registry": row, "topologies": _list_topologies(project_id, env_key)})
+
+
+@bp.route("/api/ops-platform/topologies/set-default", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topologies_set_default():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    topology_id = str(payload.get("topology_id") or "").strip()
+    if not topology_id:
+        return jsonify({"ok": False, "error": "missing_topology_id"}), 400
+    rows = _load_topology_registry()
+    target = None
+    for item in rows:
+        if isinstance(item, dict) and str(item.get("topology_id") or "") == topology_id:
+            target = _normalize_topology_registry_row(item)
+            break
+    if not target:
+        return jsonify({"ok": False, "error": "topology_not_found"}), 404
+    for idx, item in enumerate(rows):
+        if not isinstance(item, dict):
+            continue
+        row = _normalize_topology_registry_row(item)
+        if row.get("project_id") == target.get("project_id") and row.get("env_key") == target.get("env_key"):
+            row["is_default"] = str(row.get("topology_id") or "") == topology_id
+            row["updated_at"] = _now_iso()
+            rows[idx] = row
+    _save_topology_registry(rows)
+    log_audit("ops_platform_topology_set_default", f"topology={topology_id}")
+    return jsonify({"ok": True, "registry": target, "topologies": _list_topologies(str(target.get('project_id') or ''), str(target.get('env_key') or ''))})
+
+
+@bp.route("/api/ops-platform/topologies/delete", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topologies_delete():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    topology_id = str(payload.get("topology_id") or "").strip()
+    if not topology_id:
+        return jsonify({"ok": False, "error": "missing_topology_id"}), 400
+    rows = _load_topology_registry()
+    target = None
+    for item in rows:
+        if isinstance(item, dict) and str(item.get("topology_id") or "") == topology_id:
+            target = _normalize_topology_registry_row(item)
+            break
+    if not target:
+        return jsonify({"ok": False, "error": "topology_not_found"}), 404
+    same_scope = [x for x in rows if isinstance(x, dict) and str(x.get("project_id") or "").strip() == str(target.get("project_id") or "") and _normalize_env_key(x.get("env_key") or "") == str(target.get("env_key") or "")]
+    if len(same_scope) <= 1:
+        return jsonify({"ok": False, "error": "last_topology_for_scope", "message": "当前环境至少要保留一个拓扑"}), 409
+    if bool(target.get("is_default")):
+        return jsonify({"ok": False, "error": "default_topology_requires_transfer", "message": "默认拓扑需先转移默认"}), 409
+    active = _runtime_active_for_scope(str(target.get("project_id") or ""), str(target.get("env_key") or ""), topology_id)
+    if active.get("active"):
+        return jsonify({"ok": False, "error": "topology_run_active", "message": "当前拓扑仍有活动中的运行/测试任务"}), 409
+    rows = [x for x in rows if not (isinstance(x, dict) and str(x.get("topology_id") or "") == topology_id)]
+    _save_topology_registry(rows)
+    contents = _load_topology_contents()
+    contents.pop(topology_id, None)
+    _save_topology_contents(contents)
+    agent_bindings = _load_node_agent_bindings()
+    if isinstance(agent_bindings, dict):
+        for key in list(agent_bindings.keys()):
+            if str(key or "").startswith(topology_id + "::"):
+                agent_bindings.pop(key, None)
+        _save_node_agent_bindings(agent_bindings)
+    service_bindings = _load_node_service_bindings()
+    if isinstance(service_bindings, dict):
+        for key in list(service_bindings.keys()):
+            if str(key or "").startswith(topology_id + "::"):
+                service_bindings.pop(key, None)
+        _save_node_service_bindings(service_bindings)
+    log_audit("ops_platform_topology_delete", f"topology={topology_id}")
+    return jsonify({"ok": True, "topologies": _list_topologies(str(target.get('project_id') or ''), str(target.get('env_key') or ''))})
+
+
 @bp.route("/api/ops-platform/topology/node/bindings")
 @admin_required("gm_ops")
 def ops_platform_node_bindings():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
-    bindings = _load_node_agent_bindings()
-    service_bindings = _load_node_service_bindings()
-    rows = _load_nodes()
-    valid_nodes = set(str(x.get("id") or "") for x in rows if isinstance(x, dict))
-    out: Dict[str, str] = {}
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
+    bindings = _load_scope_agent_bindings(tid)
+    service_bindings = _load_scope_service_bindings(tid)
+    valid_nodes = set(str(x.get("id") or "") for x in (scoped.get("nodes") or []) if isinstance(x, dict))
+    out: Dict[str, str] = {str(nid): str(aid) for nid, aid in bindings.items() if str(nid or "").strip() in valid_nodes and str(aid or "").strip()}
     out_services: Dict[str, str] = {}
-    for nid, aid in bindings.items():
-        n = str(nid or "").strip()
-        a = str(aid or "").strip()
-        if not n or not a or n not in valid_nodes:
-            continue
-        out[n] = a
     valid_services = set(
         str(x.get("service_id") or "").strip()
         for x in _services_for_project(project_id)
@@ -5259,7 +6231,7 @@ def ops_platform_node_bindings():
         if valid_services and s not in valid_services:
             continue
         out_services[n] = s
-    return jsonify({"ok": True, "project_id": project_id, "bindings": out, "service_bindings": out_services})
+    return jsonify({"ok": True, "project_id": project_id, "env_key": str(registry.get("env_key") or env_key or ""), "topology_id": tid, "bindings": out, "service_bindings": out_services})
 
 
 @bp.route("/api/ops-platform/topology/node/bind-agent", methods=["POST"])
@@ -5269,16 +6241,16 @@ def ops_platform_bind_node_agent():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     node_id = str(payload.get("node_id") or "").strip()
     agent_id = str(payload.get("agent_id") or "").strip()
     if not node_id:
         return jsonify({"ok": False, "error": "missing_node_id"}), 400
-    rows = _load_nodes()
-    node = None
-    for x in rows:
-        if isinstance(x, dict) and str(x.get("id") or "") == node_id:
-            node = x
-            break
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
+    node = next((x for x in (scoped.get("nodes") or []) if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
     if not node:
         return jsonify({"ok": False, "error": "node_not_found"}), 404
     reg = _load_agent_registry_v2()
@@ -5291,8 +6263,8 @@ def ops_platform_bind_node_agent():
             return jsonify({"ok": False, "error": "OPS_AGENT_NOT_IN_PROJECT", "error_code": "OPS_AGENT_NOT_IN_PROJECT"}), 409
         if str(ag.get("probe_status") or "").upper() != "PASS":
             return jsonify({"ok": False, "error": "OPS_AGENT_PROBE_REQUIRED", "error_code": "OPS_AGENT_PROBE_REQUIRED", "message": "Agent 尚未通过联通测试，禁止绑定"}), 412
-    bindings = _load_node_agent_bindings()
-    service_bindings = _load_node_service_bindings()
+    bindings = _load_scope_agent_bindings(tid)
+    service_bindings = _load_scope_service_bindings(tid)
     if agent_id:
         bindings[node_id] = agent_id
         # Backward-compat: if service primary missing, map by node->service candidate under this agent.
@@ -5310,10 +6282,12 @@ def ops_platform_bind_node_agent():
     else:
         bindings.pop(node_id, None)
         service_bindings.pop(node_id, None)
-    _save_node_agent_bindings(bindings)
-    _save_node_service_bindings(service_bindings)
+    _save_scope_agent_binding(tid, node_id, agent_id)
+    _save_scope_service_binding(tid, node_id, str(service_bindings.get(node_id) or ""))
+    if not agent_id:
+        _save_scope_service_binding(tid, node_id, "")
     log_audit("ops_platform_bind_node_agent", f"node={node_id}; agent={agent_id}")
-    return jsonify({"ok": True, "node_id": node_id, "agent_id": agent_id, "bindings": bindings, "service_bindings": service_bindings})
+    return jsonify({"ok": True, "node_id": node_id, "agent_id": agent_id, "topology_id": tid, "bindings": bindings, "service_bindings": service_bindings})
 
 
 @bp.route("/api/ops-platform/topology/node/bind-service", methods=["POST"])
@@ -5324,16 +6298,16 @@ def ops_platform_bind_node_service():
     if not service_id:
         return jsonify({"ok": False, "error": "missing_service_id"}), 400
     project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     node_id = str(payload.get("node_id") or "").strip()
     if not node_id:
         return jsonify({"ok": False, "error": "missing_node_id"}), 400
 
-    rows = _load_nodes()
-    node = None
-    for x in rows:
-        if isinstance(x, dict) and str(x.get("id") or "") == node_id:
-            node = x
-            break
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
+    node = next((x for x in (scoped.get("nodes") or []) if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
     if not node:
         return jsonify({"ok": False, "error": "node_not_found"}), 404
 
@@ -5361,18 +6335,19 @@ def ops_platform_bind_node_service():
     if str(ag.get("probe_status") or "").upper() != "PASS":
         return jsonify({"ok": False, "error": "OPS_AGENT_PROBE_REQUIRED", "error_code": "OPS_AGENT_PROBE_REQUIRED", "message": "Agent 尚未通过联通测试，禁止绑定"}), 412
 
-    bindings = _load_node_agent_bindings()
-    service_bindings = _load_node_service_bindings()
+    bindings = _load_scope_agent_bindings(tid)
+    service_bindings = _load_scope_service_bindings(tid)
     bindings[node_id] = agent_id
     service_bindings[node_id] = service_id
-    _save_node_agent_bindings(bindings)
-    _save_node_service_bindings(service_bindings)
+    _save_scope_agent_binding(tid, node_id, agent_id)
+    _save_scope_service_binding(tid, node_id, service_id)
     log_audit("ops_platform_bind_node_service", f"node={node_id}; service={service_id}; agent={agent_id}")
     return jsonify({
         "ok": True,
         "node_id": node_id,
         "agent_id": agent_id,
         "service_id": service_id,
+        "topology_id": tid,
         "binding_mode": "service_primary",
         "bindings": bindings,
         "service_bindings": service_bindings,
@@ -5387,21 +6362,22 @@ def ops_platform_topology_node_start_remote():
     payload = request.get_json(silent=True) or {}
     node_id = str(payload.get("node_id") or "").strip()
     project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     if not node_id:
         return jsonify({"ok": False, "error": "missing_node_id"}), 400
-    nodes = _load_nodes()
-    node = None
-    for x in nodes:
-        if isinstance(x, dict) and str(x.get("id") or "") == node_id:
-            node = x
-            break
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
+    topo_node = next((x for x in (scoped.get("nodes") or []) if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
+    node = _build_runtime_node_from_topology_node(project_id, str(registry.get("env_key") or env_key or ""), topo_node or {}, tid) if topo_node else None
     if not node:
         return jsonify({"ok": False, "error": "node_not_found"}), 404
     if project_id and str(node.get("project_id") or "") and str(node.get("project_id") or "") != project_id:
         return jsonify({"ok": False, "error": "project_mismatch"}), 409
 
-    bindings = _load_node_agent_bindings()
-    service_bindings = _load_node_service_bindings()
+    bindings = _load_scope_agent_bindings(tid)
+    service_bindings = _load_scope_service_bindings(tid)
     bound_service_id = str(payload.get("service_id") or service_bindings.get(node_id) or "").strip()
     agent_id = str(bindings.get(node_id) or "")
     if bound_service_id and not agent_id:
@@ -5477,15 +6453,21 @@ def ops_platform_topology_auto_bind_agents():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     payload = request.get_json(silent=True) or {}
     project_id = str(payload.get("project_id") or "").strip()
-    topo = _load_topology(_load_nodes())
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
     node_ids = [str(n.get("id") or "") for n in (topo.get("nodes") or []) if isinstance(n, dict) and str(n.get("id") or "")]
     reg = _load_agent_registry_v2()
-    bindings = _load_node_agent_bindings()
+    bindings = _load_scope_agent_bindings(tid)
     bound = 0
     skipped = 0
+    failed = 0
     detail: List[Dict[str, Any]] = []
     for nid in node_ids:
         matched = None
+        fail_reason = ""
         for aid, row in reg.items():
             if not isinstance(row, dict):
                 continue
@@ -5494,20 +6476,27 @@ def ops_platform_topology_auto_bind_agents():
             if str(row.get("node_id") or "") != nid:
                 continue
             if str(row.get("probe_status") or "").upper() != "PASS":
+                fail_reason = "probe_not_pass"
                 continue
             if str(row.get("effective_status") or row.get("status") or "").upper() not in ("ONLINE", "READY", "RUNNING"):
+                fail_reason = "agent_not_online"
                 continue
             matched = str(aid or "")
             break
         if matched:
             bindings[nid] = matched
+            _save_scope_agent_binding(tid, nid, matched)
             bound += 1
-            detail.append({"node_id": nid, "agent_id": matched, "ok": True})
+            detail.append({"node_id": nid, "agent_id": matched, "ok": True, "result": "bound"})
         else:
-            skipped += 1
-            detail.append({"node_id": nid, "agent_id": "", "ok": False})
-    _save_node_agent_bindings(bindings)
-    return jsonify({"ok": True, "project_id": project_id, "bound_count": bound, "skipped_count": skipped, "bindings": bindings, "detail": detail})
+            candidates = [row for row in reg.values() if isinstance(row, dict) and str(row.get("node_id") or "") == nid]
+            if candidates:
+                failed += 1
+                detail.append({"node_id": nid, "agent_id": "", "ok": False, "result": "failed", "reason": fail_reason or "agent_not_usable"})
+            else:
+                skipped += 1
+                detail.append({"node_id": nid, "agent_id": "", "ok": False, "result": "skipped", "reason": "no_candidate"})
+    return jsonify({"ok": True, "project_id": project_id, "env_key": str(registry.get("env_key") or env_key or ""), "topology_id": tid, "bound_count": bound, "skipped_count": skipped, "failed_count": failed, "bindings": bindings, "detail": detail})
 
 
 @bp.route("/api/ops-platform/change-governance/summary")
@@ -5575,13 +6564,20 @@ def ops_platform_topology():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
-    all_nodes = _load_nodes()
-    if project_id:
-        nodes = [x for x in all_nodes if str(x.get("project_id") or "").strip() == project_id]
-    else:
-        nodes = list(all_nodes)
-    topo = _load_topology(nodes)
-    return jsonify({"ok": True, "project_id": project_id, "topology": topo, "node_count": len(nodes)})
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    return jsonify({
+        "ok": True,
+        "project_id": str(registry.get("project_id") or project_id or ""),
+        "env_key": str(registry.get("env_key") or env_key or ""),
+        "topology_id": str(registry.get("topology_id") or topology_id or ""),
+        "registry": registry,
+        "topologies": topo.get("topologies") if isinstance(topo.get("topologies"), list) else [],
+        "topology": {"nodes": topo.get("nodes") or [], "edges": topo.get("edges") or [], "meta": topo.get("meta") or {}},
+        "node_count": len(topo.get("nodes") or []),
+    })
 
 
 @bp.route("/api/ops-platform/topology/save", methods=["POST"])
@@ -5590,64 +6586,22 @@ def ops_platform_topology_save():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     topo = payload.get("topology") if isinstance(payload.get("topology"), dict) else {}
-    normalized = _load_topology(_load_nodes())
-    incoming_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
-    incoming_edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
-    incoming_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
-
-    node_index = {str(x.get("id") or ""): x for x in (normalized.get("nodes") or []) if isinstance(x, dict)}
-    for item in incoming_nodes:
-        if not isinstance(item, dict):
-            continue
-        nid = str(item.get("id") or "").strip()
-        if not nid or nid not in node_index:
-            continue
-        src = node_index[nid]
-        src["role"] = str(item.get("role") or src.get("role") or "business")
-        src["kind"] = _infer_node_kind(str(src.get("role") or "business"), str(item.get("kind") or src.get("kind") or ""))
-        src["desc"] = str(item.get("desc") or src.get("desc") or "")
-        src["bizStatus"] = str(item.get("bizStatus") or src.get("bizStatus") or "normal")
-        src["owner"] = str(item.get("owner") or src.get("owner") or "")
-        src["tags"] = item.get("tags") if isinstance(item.get("tags"), list) else (src.get("tags") if isinstance(src.get("tags"), list) else [])
-        src["ui"] = item.get("ui") if isinstance(item.get("ui"), dict) else (src.get("ui") if isinstance(src.get("ui"), dict) else {})
-        src["ui"]["ports"] = _normalize_ports(str(src.get("kind") or "standard"), src["ui"].get("ports"))
-        try:
-            src["x"] = float(item.get("x"))
-            src["y"] = float(item.get("y"))
-        except Exception:
-            pass
-        if isinstance(src.get("ui"), dict):
-            if "x" not in src["ui"]:
-                src["ui"]["x"] = src.get("x", 0)
-            if "y" not in src["ui"]:
-                src["ui"]["y"] = src.get("y", 0)
-
-    valid_ids = set(node_index.keys())
-    merged_edges: List[Dict[str, Any]] = []
-    for edge in incoming_edges:
-        if not isinstance(edge, dict):
-            continue
-        frm = str(edge.get("from") or "").strip()
-        to = str(edge.get("to") or "").strip()
-        if not frm or not to or frm not in valid_ids or to not in valid_ids or frm == to:
-            continue
-        merged_edges.append(
-            {
-                "id": str(edge.get("id") or f"edge-{uuid.uuid4().hex[:10]}"),
-                "from": frm,
-                "to": to,
-                "from_port": str(edge.get("from_port") or "out-1"),
-                "to_port": str(edge.get("to_port") or "in-1"),
-                "type": str(edge.get("type") or "depends_on"),
-                "note": str(edge.get("note") or ""),
-                "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
-            }
-        )
-    final_topo = {"nodes": list(node_index.values()), "edges": merged_edges, "meta": incoming_meta if isinstance(incoming_meta, dict) else {}}
-    saved = _save_topology(final_topo)
-    log_audit("ops_platform_topology_save", f"nodes={len(final_topo.get('nodes') or [])}; edges={len(merged_edges)}")
-    return jsonify({"ok": True, "message": "Topology saved", "topology": saved})
+    ctx = _resolve_topology_context(project_id, env_key, topology_id)
+    registry = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
+    sync_result = _sync_topology_to_game_server(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), str(session.get("user") or "admin"))
+    log_audit("ops_platform_topology_save", f"project={registry.get('project_id') or project_id}; env={registry.get('env_key') or env_key}; topology={registry.get('topology_id') or topology_id}; nodes={len((saved.get('nodes') or []))}; edges={len((saved.get('edges') or []))}")
+    return jsonify({
+        "ok": True,
+        "message": "Topology saved",
+        "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}},
+        "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry,
+        "sync": sync_result,
+    })
 
 
 @bp.route("/api/ops-platform/topology/node/update", methods=["POST"])
@@ -5656,12 +6610,16 @@ def ops_platform_topology_node_update():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     node_id = str(payload.get("node_id") or "").strip()
     patch = payload.get("patch") if isinstance(payload.get("patch"), dict) else {}
     if not node_id:
         return jsonify({"ok": False, "error": "missing node_id"}), 400
 
-    topo = _load_topology(_load_nodes())
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
     target = None
     for item in topo.get("nodes") or []:
         if isinstance(item, dict) and str(item.get("id") or "") == node_id:
@@ -5672,6 +6630,8 @@ def ops_platform_topology_node_update():
 
     if "role" in patch:
         target["role"] = str(patch.get("role") or "business")
+    if "name" in patch:
+        target["name"] = str(patch.get("name") or target.get("id") or "")
     if "kind" in patch:
         target["kind"] = _infer_node_kind(str(target.get("role") or "business"), str(patch.get("kind") or ""))
     if "desc" in patch:
@@ -5698,24 +6658,104 @@ def ops_platform_topology_node_update():
         target["ui"] = {}
     target["kind"] = _infer_node_kind(str(target.get("role") or "business"), str(target.get("kind") or ""))
     target["ui"]["ports"] = _normalize_ports(str(target.get("kind") or "standard"), target["ui"].get("ports"))
-    saved = _save_topology(topo)
-
-    rows = _load_nodes()
-    changed = False
-    for item in rows:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("id") or "") == node_id:
-            item["owner"] = target.get("owner") or item.get("owner") or ""
-            item["role"] = target.get("role") or item.get("role") or "business"
-            item["description"] = target.get("desc") or item.get("description") or ""
-            changed = True
-            break
-    if changed:
-        _save_nodes(rows)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
 
     log_audit("ops_platform_topology_node_update", f"node={node_id}")
-    return jsonify({"ok": True, "message": "鑺傜偣灞炴€у凡鏇存柊", "topology": saved})
+    return jsonify({"ok": True, "message": "节点属性已更新", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
+
+
+@bp.route("/api/ops-platform/topology/node/clone", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_node_clone():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
+    node_id = str(payload.get("node_id") or "").strip()
+    if not node_id:
+        return jsonify({"ok": False, "error": "missing_node_id"}), 400
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    src = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
+    if not src:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+    clone = copy.deepcopy(src)
+    new_id = f"{node_id}-copy-{uuid.uuid4().hex[:4]}"
+    clone["id"] = new_id
+    clone["name"] = f"{str(src.get('name') or node_id)} 副本"
+    clone["server_id"] = str(src.get("server_id") or new_id)
+    ui = clone.get("ui") if isinstance(clone.get("ui"), dict) else {}
+    try:
+        clone["x"] = float(src.get("x") or ui.get("x") or 120) + 48.0
+    except Exception:
+        clone["x"] = 168.0
+    try:
+        clone["y"] = float(src.get("y") or ui.get("y") or 120) + 48.0
+    except Exception:
+        clone["y"] = 168.0
+    ui["x"] = clone["x"]
+    ui["y"] = clone["y"]
+    clone["ui"] = ui
+    nodes.append(clone)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
+    log_audit("ops_platform_topology_node_clone", f"node={node_id}; clone={new_id}")
+    return jsonify({"ok": True, "message": "节点已复制", "node_id": new_id, "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
+
+
+@bp.route("/api/ops-platform/topology/node/disable", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_node_disable():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
+    node_id = str(payload.get("node_id") or "").strip()
+    disabled = bool(payload.get("disabled", True))
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    target = next((x for x in (topo.get("nodes") or []) if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
+    if not target:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+    ui = target.get("ui") if isinstance(target.get("ui"), dict) else {}
+    ui["disabled"] = disabled
+    target["ui"] = ui
+    target["bizStatus"] = "offline" if disabled else "normal"
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
+    log_audit("ops_platform_topology_node_disable", f"node={node_id}; disabled={disabled}")
+    return jsonify({"ok": True, "message": "节点状态已更新", "disabled": disabled, "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
+
+
+@bp.route("/api/ops-platform/topology/node/logs")
+@admin_required("gm_ops")
+def ops_platform_topology_node_logs():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    node_id = str(request.args.get("node_id") or "").strip()
+    limit = max(1, min(200, int(request.args.get("limit") or 40)))
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    node = next((x for x in (topo.get("nodes") or []) if isinstance(x, dict) and str(x.get("id") or "") == node_id), None)
+    if not node:
+        return jsonify({"ok": False, "error": "node_not_found"}), 404
+    jobs = [x for x in reversed(_load_agent_jobs()) if isinstance(x, dict) and str(x.get("node_id") or "") == node_id][:limit]
+    events = [x for x in _load_json_config(OPS_EVENT_LOG_KEY, []) if isinstance(x, dict) and str(x.get("node_id") or "") == node_id]
+    events = list(reversed(events[-limit:]))
+    bindings = _load_scope_agent_bindings(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""))
+    return jsonify({
+        "ok": True,
+        "node": node,
+        "agent_id": str(bindings.get(node_id) or ""),
+        "jobs": jobs,
+        "events": events,
+    })
 
 
 def _ops_topology_meta_structured(topo: Dict[str, Any]) -> None:
@@ -5816,14 +6856,18 @@ def ops_platform_structured_add_existing_target():
     payload = request.get_json(silent=True) or {}
     frm = str(payload.get("from_node_id") or payload.get("from") or "").strip()
     to = str(payload.get("to_node_id") or payload.get("to") or "").strip()
-    topo = _load_topology(_load_nodes())
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
     ok, result, status = _ops_structured_append_edge(topo, frm, to)
     if not ok:
         return jsonify(result), status
     _ops_topology_meta_structured(topo)
-    saved = _save_topology(topo)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
     log_audit("ops_platform_structured_add_existing_target", f"{frm}->{to}")
-    return jsonify({"ok": True, "message": "已添加下游连线", "edge": result, "topology": saved})
+    return jsonify({"ok": True, "message": "已添加下游连线", "edge": result, "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
 
 
 @bp.route("/api/ops-platform/topology/structured/add-new-target", methods=["POST"])
@@ -5835,6 +6879,8 @@ def ops_platform_structured_add_new_target():
     frm = str(payload.get("from_node_id") or payload.get("from") or "").strip()
     preset_id = str(payload.get("preset_id") or "").strip()
     project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     if not frm or not preset_id:
         return jsonify({"ok": False, "error": "missing_required_fields", "message": "缺少源节点或模板"}), 400
     preset = None
@@ -5845,66 +6891,46 @@ def ops_platform_structured_add_new_target():
     if not preset:
         return jsonify({"ok": False, "error": "preset_not_found", "message": "节点模板不存在"}), 404
 
-    rows = _load_nodes()
-    src_node = next((x for x in rows if isinstance(x, dict) and str(x.get("id") or "") == frm), None)
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    src_node = next((x for x in (topo.get("nodes") or []) if isinstance(x, dict) and str(x.get("id") or "") == frm), None)
     if not src_node:
         return jsonify({"ok": False, "error": "node not found", "message": "源节点不存在"}), 404
     role = str(preset.get("role") or "business")
     node_kind = _infer_node_kind(role, str(preset.get("kind") or ""))
-    candidate = _normalize_node(
-        {
-            "id": str(payload.get("id") or "").strip() or f"{preset_id}-{uuid.uuid4().hex[:6]}",
-            "name": str(payload.get("name") or preset.get("name") or preset_id),
-            "server_id": "",
-            "project_id": project_id,
-            "owner": str(payload.get("owner") or "ops-admin"),
-            "role": role,
-            "node_category": str(preset.get("category") or ""),
-            "node_type": str(preset.get("node_type") or ""),
-            "description": str(payload.get("description") or preset.get("default_desc") or ""),
-            "biz_status": "normal",
-            "allowed_upstream_roles": list(preset.get("fixed_upstream_roles") or []),
-            "allowed_downstream_roles": list(preset.get("fixed_downstream_roles") or []),
-            "daemon_profile": str(preset.get("daemon_profile") or ""),
-            "enabled": True,
-            "tags": [str(preset.get("category") or ""), role],
-        }
-    )
+    candidate = {
+        "id": str(payload.get("id") or "").strip() or f"{preset_id}-{uuid.uuid4().hex[:6]}",
+        "name": str(payload.get("name") or preset.get("name") or preset_id),
+        "server_id": str(payload.get("server_id") or "").strip() or f"{preset_id}-{uuid.uuid4().hex[:6]}",
+        "project_id": project_id,
+        "env": str(registry.get("env_key") or env_key or "production"),
+        "owner": str(payload.get("owner") or "ops-admin"),
+        "role": role,
+        "node_category": str(preset.get("category") or ""),
+        "node_type": str(preset.get("node_type") or ""),
+        "desc": str(payload.get("description") or preset.get("default_desc") or ""),
+        "bizStatus": "normal",
+        "tags": [str(preset.get("category") or ""), role],
+        "x": 160.0,
+        "y": 160.0,
+        "ui": {"x": 160.0, "y": 160.0, "w": 220, "h": 90, "color": "#0f172a", "locked": False, "ports": _normalize_ports(node_kind, preset.get("default_ports"))},
+    }
     if not _can_link_nodes(src_node, candidate):
         return jsonify({"ok": False, "error": "invalid_edge_by_role", "error_code": "OPS_EDGE_ROLE_FORBIDDEN", "message": "该模板不能作为当前节点的下游"}), 409
     new_id = str(candidate.get("id") or "").strip()
-    if any(isinstance(x, dict) and str(x.get("id") or "") == new_id for x in rows):
+    if any(isinstance(x, dict) and str(x.get("id") or "") == new_id for x in (topo.get("nodes") or [])):
         return jsonify({"ok": False, "error": "node_id_exists", "message": f"节点ID已存在: {new_id}"}), 409
-    rows.append(candidate)
-    _save_nodes(rows)
-    _set_daemon_state(new_id, {"status": "ADDED", "last_action": "create", "last_error": "", "pid": 0})
-
-    topo = _load_topology(rows)
     topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
     topo["nodes"] = topo_nodes
     if not any(isinstance(n, dict) and str(n.get("id") or "") == new_id for n in topo_nodes):
-        topo_nodes.append(
-            {
-                "id": new_id,
-                "role": role,
-                "kind": node_kind,
-                "desc": str(candidate.get("description") or ""),
-                "bizStatus": "normal",
-                "owner": str(candidate.get("owner") or ""),
-                "tags": list(candidate.get("tags") or []),
-                "ui": {"x": 160.0, "y": 160.0, "w": 240, "h": 104, "color": "#0f172a", "ports": _normalize_ports(node_kind, preset.get("default_ports"))},
-            }
-        )
+        topo_nodes.append(candidate)
     ok, result, status = _ops_structured_append_edge(topo, frm, new_id)
     if not ok:
-        # Roll back the created node if the edge fails validation after persistence.
-        rows = [x for x in _load_nodes() if not (isinstance(x, dict) and str(x.get("id") or "") == new_id)]
-        _save_nodes(rows)
         return jsonify(result), status
     _ops_topology_meta_structured(topo)
-    saved = _save_topology(topo)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
     log_audit("ops_platform_structured_add_new_target", f"{frm}->{new_id}; preset={preset_id}")
-    return jsonify({"ok": True, "message": "已添加下游节点", "node": candidate, "edge": result, "topology": saved})
+    return jsonify({"ok": True, "message": "已添加下游节点", "node": candidate, "edge": result, "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
 
 
 @bp.route("/api/ops-platform/topology/structured/delete-node", methods=["POST"])
@@ -5925,6 +6951,9 @@ def ops_platform_topology_edge_upsert():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     frm = str(payload.get("from") or "").strip()
     to = str(payload.get("to") or "").strip()
     from_port = str(payload.get("from_port") or "out-1").strip()
@@ -5934,7 +6963,8 @@ def ops_platform_topology_edge_upsert():
     if not frm or not to or frm == to:
         return jsonify({"ok": False, "error": "invalid edge endpoints"}), 400
 
-    topo = _load_topology(_load_nodes())
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
     edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
     topo["edges"] = edges
     valid = set([str(x.get("id") or "") for x in topo.get("nodes") or [] if isinstance(x, dict)])
@@ -6000,9 +7030,9 @@ def ops_platform_topology_edge_upsert():
     if not updated:
         edges.append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": etype, "note": note})
 
-    saved = _save_topology(topo)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
     log_audit("ops_platform_topology_edge_upsert", f"{frm}->{to}; type={etype}")
-    resp = {"ok": True, "message": "连线已保存", "topology": saved}
+    resp = {"ok": True, "message": "连线已保存", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry}
     return jsonify(resp)
 
 
@@ -6012,11 +7042,15 @@ def ops_platform_topology_edge_delete():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     edge_id = str(payload.get("edge_id") or "").strip()
     if not edge_id:
         return jsonify({"ok": False, "error": "missing edge_id"}), 400
 
-    topo = _load_topology(_load_nodes())
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
     if _is_critical_topology_edge(topo, edge_id):
         return jsonify({
             "ok": False,
@@ -6029,9 +7063,9 @@ def ops_platform_topology_edge_delete():
     after = len(topo.get("edges") or [])
     if after == before:
         return jsonify({"ok": False, "error": "edge not found"}), 404
-    saved = _save_topology(topo)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
     log_audit("ops_platform_topology_edge_delete", f"edge={edge_id}")
-    return jsonify({"ok": True, "message": "Edge deleted", "topology": saved})
+    return jsonify({"ok": True, "message": "Edge deleted", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
 
 
 def _can_reach_without_node(edges: List[Dict[str, Any]], src: str, dst: str, blocked: str) -> bool:
@@ -6148,11 +7182,16 @@ def ops_platform_topology_node_delete():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "Missing ops execute permission"}), 403
     payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     node_id = str(payload.get("node_id") or "").strip()
     if not node_id:
         return jsonify({"ok": False, "error": "missing node_id"}), 400
 
-    topo = _load_topology(_load_nodes())
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "")
     node_ids = {str(x.get("id") or "") for x in (topo.get("nodes") or []) if isinstance(x, dict)}
     if node_id not in node_ids:
         return jsonify({"ok": False, "error": "node not found"}), 404
@@ -6162,19 +7201,19 @@ def ops_platform_topology_node_delete():
     before_edges = len(topo.get("edges") or [])
     topo["nodes"] = [x for x in (topo.get("nodes") or []) if not (isinstance(x, dict) and str(x.get("id") or "") == node_id)]
     topo["edges"] = [x for x in (topo.get("edges") or []) if not (isinstance(x, dict) and (str(x.get("from") or "") == node_id or str(x.get("to") or "") == node_id))]
-    saved = _save_topology(topo)
+    saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), tid, topo)
 
-    rows = _load_nodes()
-    rows = [x for x in rows if not (isinstance(x, dict) and str(x.get("id") or "") == node_id)]
-    _save_nodes(rows)
-
-    bindings = _load_node_agent_bindings()
+    bindings = _load_scope_agent_bindings(tid)
     if node_id in bindings:
         bindings.pop(node_id, None)
-        _save_node_agent_bindings(bindings)
+        _save_scope_agent_binding(tid, node_id, "")
+    service_bindings = _load_scope_service_bindings(tid)
+    if node_id in service_bindings:
+        service_bindings.pop(node_id, None)
+        _save_scope_service_binding(tid, node_id, "")
 
     log_audit("ops_platform_topology_node_delete", f"node={node_id}; removed_edges={before_edges - len(saved.get('edges') or [])}")
-    return jsonify({"ok": True, "message": "Node deleted", "topology": saved, "bindings": bindings})
+    return jsonify({"ok": True, "message": "Node deleted", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "bindings": bindings, "service_bindings": service_bindings, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
 
 
 @bp.route("/api/ops-platform/node-presets")
@@ -6222,6 +7261,8 @@ def ops_platform_apply_blueprint():
     payload = request.get_json(silent=True) or {}
     bid = str(payload.get("blueprint_id") or "").strip()
     project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     replace_existing = bool(payload.get("replace_existing", True))
     if not bid:
         return jsonify({"ok": False, "error": "missing_blueprint_id"}), 400
@@ -6236,21 +7277,11 @@ def ops_platform_apply_blueprint():
 
     presets = _load_node_presets()
     preset_map = {str(p.get("preset_id") or ""): p for p in presets if isinstance(p, dict)}
-    nodes = _load_nodes()
-    topo = _load_topology(nodes)
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
     if replace_existing:
-        # Clear currently displayed topology scope before applying blueprint.
-        # Scope rule: remove all nodes currently in topology canvas, then reset canvas.
-        current_topo_ids = set()
-        for item in (topo.get("nodes") or []):
-            if isinstance(item, dict):
-                nid = str(item.get("id") or "").strip()
-                if nid:
-                    current_topo_ids.add(nid)
-        if current_topo_ids:
-            nodes = [n for n in nodes if isinstance(n, dict) and str(n.get("id") or "") not in current_topo_ids]
         topo = {"nodes": [], "edges": [], "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}, "version": 1, "updated_at": _now_iso()}}
-    existing_ids = set(str(n.get("id") or "") for n in (nodes or []) if isinstance(n, dict))
+    existing_ids = set(str(n.get("id") or "") for n in (topo.get("nodes") or []) if isinstance(n, dict))
     created_node_ids: List[str] = []
     created_by_preset: Dict[str, List[str]] = {}
 
@@ -6270,38 +7301,23 @@ def ops_platform_apply_blueprint():
             existing_ids.add(new_id)
             role = str(preset.get("role") or "business")
             node_kind = _infer_node_kind(role, str(preset.get("kind") or ""))
-            new_node = _normalize_node(
-                {
-                    "id": new_id,
-                    "name": f"{str(preset.get('name') or preset_id)}-{idx + 1}",
-                    "project_id": project_id,
-                    "server_id": new_id,
-                    "owner": "ops-admin",
-                    "role": role,
-                    "node_category": str(preset.get("category") or ""),
-                    "node_type": str(preset.get("node_type") or ""),
-                    "description": str(preset.get("default_desc") or ""),
-                    "biz_status": "normal",
-                    "allowed_upstream_roles": list(preset.get("fixed_upstream_roles") or []),
-                    "allowed_downstream_roles": list(preset.get("fixed_downstream_roles") or []),
-                    "daemon_profile": str(preset.get("daemon_profile") or ""),
-                    "tags": [str(preset.get("category") or ""), role],
-                }
-            )
-            nodes.append(new_node)
             created_node_ids.append(new_id)
             created_by_preset.setdefault(preset_id, []).append(new_id)
             topo["nodes"].append(
                 {
                     "id": new_id,
+                    "name": f"{str(preset.get('name') or preset_id)}-{idx + 1}",
+                    "server_id": new_id,
+                    "project_id": project_id,
+                    "env": str(registry.get("env_key") or env_key or "production"),
                     "role": role,
                     "kind": node_kind,
-                    "desc": str(new_node.get("description") or ""),
+                    "desc": str(preset.get("default_desc") or ""),
                     "bizStatus": "normal",
-                    "owner": str(new_node.get("owner") or ""),
+                    "owner": "ops-admin",
                     "x": 160.0,
                     "y": 160.0,
-                    "tags": list(new_node.get("tags") or []),
+                    "tags": [str(preset.get("category") or ""), role],
                     "ui": {"x": 160.0, "y": 160.0, "w": 220, "h": 90, "color": "#0f172a", "locked": False, "ports": _normalize_ports(node_kind, None)},
                 }
             )
@@ -6359,10 +7375,9 @@ def ops_platform_apply_blueprint():
                 }
             )
 
-    _save_nodes(nodes)
-    saved_topo = _save_topology(topo)
+    saved_topo = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
     log_audit("ops_platform_apply_blueprint", f"blueprint={bid}; created={len(created_node_ids)}; project={project_id}")
-    return jsonify({"ok": True, "blueprint_id": bid, "created_count": len(created_node_ids), "created_node_ids": created_node_ids, "topology": saved_topo})
+    return jsonify({"ok": True, "blueprint_id": bid, "created_count": len(created_node_ids), "created_node_ids": created_node_ids, "topology": {"nodes": saved_topo.get("nodes") or [], "edges": saved_topo.get("edges") or [], "meta": saved_topo.get("meta") or {}}, "registry": saved_topo.get("registry") if isinstance(saved_topo.get("registry"), dict) else registry})
 
 
 @bp.route("/api/ops-platform/node/add-from-preset", methods=["POST"])
@@ -6988,24 +8003,21 @@ def ops_platform_runtime_flow_control():
     if op not in ("start", "stop"):
         return jsonify({"ok": False, "error": "invalid_op", "message": "op must be start or stop"}), 400
     project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
     actor = str(session.get("user") or "admin")
     policy = _load_agent_policy()
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
+    scoped_project_id = str(registry.get("project_id") or project_id or "")
+    scoped_env_key = str(registry.get("env_key") or env_key or "production")
+    scoped_topology_id = str(registry.get("topology_id") or topology_id or "")
+    current_active = _runtime_active_for_scope(scoped_project_id, scoped_env_key, scoped_topology_id)
+    if op == "start" and current_active.get("active"):
+        return jsonify({"ok": False, "error": "topology_run_active", "message": "当前拓扑已有运行中的流程", "run_id": str(current_active.get("run_id") or "")}), 409
 
-    all_nodes = _load_nodes()
-    all_nodes_map = {str(n.get("id") or ""): n for n in all_nodes if isinstance(n, dict) and n.get("id")}
-    topo = _load_topology(all_nodes)
     topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
-    node_ids: List[str] = []
-    for n in topo_nodes:
-        if not isinstance(n, dict):
-            continue
-        nid = str(n.get("id") or "").strip()
-        if not nid:
-            continue
-        raw = all_nodes_map.get(nid) or {}
-        if project_id and str(raw.get("project_id") or "") != project_id:
-            continue
-        node_ids.append(nid)
+    node_ids: List[str] = [str(n.get("id") or "").strip() for n in topo_nodes if isinstance(n, dict) and str(n.get("id") or "").strip()]
     if not node_ids:
         return jsonify({"ok": False, "error": "empty_topology", "message": "当前项目没有可执行节点"}), 400
 
@@ -7014,12 +8026,13 @@ def ops_platform_runtime_flow_control():
     now = _now_iso()
     logs: List[Dict[str, Any]] = []
     items: List[Dict[str, Any]] = []
-    bindings = _load_node_agent_bindings()
+    bindings = _load_scope_agent_bindings(scoped_topology_id)
     reg_v2 = _load_agent_registry_v2()
     fresh_sec = max(20, int(policy.get("agent_online_fresh_sec") or 120))
 
     for nid in node_ids:
-        node = all_nodes_map.get(nid) or _resolve_node(node_id=nid)
+        topo_node = next((x for x in topo_nodes if isinstance(x, dict) and str(x.get("id") or "") == nid), None)
+        node = _build_runtime_node_from_topology_node(scoped_project_id, scoped_env_key, topo_node or {}, scoped_topology_id) if topo_node else None
         if not node:
             logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": "节点不存在，已跳过"})
             continue
@@ -7118,7 +8131,10 @@ def ops_platform_runtime_flow_control():
 
     run_obj = {
         "run_id": run_id,
-        "project_id": project_id,
+        "project_id": scoped_project_id,
+        "env_key": scoped_env_key,
+        "topology_id": scoped_topology_id,
+        "topology_name": str(registry.get("name") or ""),
         "op": op,
         "status": "queued",
         "created_at": now,
@@ -7127,7 +8143,7 @@ def ops_platform_runtime_flow_control():
         "logs": logs,
     }
     _upsert_runtime_run(run_obj)
-    return jsonify({"ok": True, "run_id": run_id, "status": run_obj.get("status"), "items": items, "logs": logs})
+    return jsonify({"ok": True, "run_id": run_id, "status": run_obj.get("status"), "project_id": scoped_project_id, "env_key": scoped_env_key, "topology_id": scoped_topology_id, "items": items, "logs": logs})
 
 
 @bp.route("/api/ops-platform/runtime/flow-status")
@@ -7203,6 +8219,10 @@ def ops_platform_runtime_flow_status():
     return jsonify({
         "ok": True,
         "run_id": run_obj.get("run_id"),
+        "project_id": str(run_obj.get("project_id") or ""),
+        "env_key": str(run_obj.get("env_key") or ""),
+        "topology_id": str(run_obj.get("topology_id") or ""),
+        "topology_name": str(run_obj.get("topology_name") or ""),
         "op": run_obj.get("op"),
         "status": run_obj.get("status"),
         "done": done,
@@ -7220,8 +8240,12 @@ def ops_platform_runtime_active():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
-    info = _runtime_active_for_project(project_id)
-    return jsonify({"ok": True, "project_id": project_id, "active": bool(info.get("active")), "run_id": str(info.get("run_id") or ""), "status": str(info.get("status") or ""), "reason": str(info.get("reason") or "")})
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    ctx = _resolve_topology_context(project_id, env_key, topology_id)
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    info = _runtime_active_for_scope(str(row.get("project_id") or project_id or ""), str(row.get("env_key") or env_key or ""), str(row.get("topology_id") or topology_id or ""))
+    return jsonify({"ok": True, "project_id": str(row.get("project_id") or project_id or ""), "env_key": str(row.get("env_key") or env_key or ""), "topology_id": str(row.get("topology_id") or topology_id or ""), "active": bool(info.get("active")), "run_id": str(info.get("run_id") or ""), "status": str(info.get("status") or ""), "reason": str(info.get("reason") or "")})
 
 
 @bp.route("/api/ops-platform/agent/register", methods=["POST"])
@@ -7792,7 +8816,9 @@ def ops_platform_actions_page():
 @admin_required("gm_ops")
 def ops_platform_topology_page():
     project_id = str(request.args.get("project_id") or "").strip()
-    content = _render_local_template("ops_topology_workbench.html", project_id=project_id)
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    content = _render_local_template("ops_topology_workbench.html", project_id=project_id, env_key=env_key, topology_id=topology_id)
     return _render_page(content, "拓扑与配置编排")
 
 
