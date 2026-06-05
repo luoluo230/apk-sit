@@ -58,6 +58,17 @@
 - 管理中心与详情页都使用最新静态资源版本号，避免旧缓存命中。
 - 改动后必须核对真实运行入口、服务进程和最终浏览器结果。
 
+## 本轮补完范围
+
+- 列表页彻底移除 `SHOWCASE_AGENTS` 假卡片，改为真实 `/api/ops-platform/agents` 逻辑 Agent 聚合结果渲染。
+- 列表页 CPU / MEM / DISK 仅显示真实 `metrics.control` 或 `device_metrics_snapshot.control`，缺值显示 `--`。
+- 列表页 Agent 卡右侧增加“管理服务器”列表，仅显示 `server/service id + 状态`，用于减少卡片大留白。
+- 列表页每张 Agent 卡右上角三点菜单补齐：查看详情、立即探测、重启 Agent、编辑 Agent、查看日志。
+- 详情页“服务与进程”模块补齐真实服务实例操作：启动、停止、重启、编辑、查看状态、查看日志。
+- 详情页服务操作必须具备二次确认弹窗：启动、停止、重启、删除服务器。
+- 详情页服务表头补齐 `新增服务器` / `删除服务器`，新增走 `/api/ops-platform/services/upsert`，删除走新增的 `/api/ops-platform/services/delete`。
+- 删除语义固定为真删 Agent `services[]` 中的正式实例；兼容聚合服务必须显式阻断并返回明确信息。
+
 ## 本轮设计分析补充
 
 ### 页面壳与宽度

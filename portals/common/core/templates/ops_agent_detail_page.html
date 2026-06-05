@@ -1,8 +1,8 @@
-<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260604-agent-faithful-v1">
+<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260605-agent-real-ops-v2">
 <div class="agent-screen agent-screen--detail" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
   <aside class="agent-shell-sidebar agent-shell-sidebar--detail">
     <div class="agent-shell-brand agent-shell-brand--detail">
-      <div class="agent-shell-brand-mark">◌</div>
+      <div class="agent-shell-brand-mark">G</div>
       <div class="agent-shell-brand-copy">
         <div class="agent-shell-brand-title">运维平台</div>
         <div class="agent-shell-brand-sub">GameOps Console</div>
@@ -42,11 +42,11 @@
           <span>动作执行</span>
         </a>
         <a class="agent-shell-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">∿</span>
+          <span class="agent-shell-nav-icon">≈</span>
           <span>任务诊断</span>
         </a>
         <a class="agent-shell-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">≈</span>
+          <span class="agent-shell-nav-icon">⌁</span>
           <span>节点诊断</span>
         </a>
       </div>
@@ -55,7 +55,7 @@
       <div class="agent-shell-nav-title">治理与合规</div>
       <div class="agent-shell-nav-group">
         <a class="agent-shell-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">⋈</span>
+          <span class="agent-shell-nav-icon">↻</span>
           <span>变更治理</span>
         </a>
         <a class="agent-shell-nav-item" href="/admin/approval">
@@ -66,7 +66,7 @@
     </nav>
 
     <button class="agent-shell-sidebar-toggle" type="button">
-      <span class="agent-shell-nav-icon">↢</span>
+      <span class="agent-shell-nav-icon">←</span>
       <span>收起菜单</span>
     </button>
   </aside>
@@ -75,11 +75,11 @@
     <header class="agent-detail-topbar">
       <div class="agent-detail-topbar-fill"></div>
       <div class="agent-detail-topbar-right">
-        <span class="agent-detail-toplink">⊚ 帮助中心</span>
-        <span class="agent-detail-notice">◌ <i>12</i></span>
+        <span class="agent-detail-toplink">帮助中心</span>
+        <span class="agent-detail-notice">◔<i>12</i></span>
         <span class="agent-shell-avatar">运</span>
         <span class="agent-shell-user">运维管理员</span>
-        <span class="agent-shell-user-arrow">⌄</span>
+        <span class="agent-shell-user-arrow">▾</span>
       </div>
     </header>
 
@@ -94,19 +94,20 @@
         <div class="agent-detail-title-block">
           <div class="agent-detail-title-line">
             <span class="agent-detail-badge">G</span>
-            <h1 id="detailAgentName">remote-device-127001</h1>
-            <span id="detailStatusPill" class="agent-state-pill agent-state-pill--ok">运行中</span>
+            <h1 id="detailAgentName">Agent</h1>
+            <span id="detailStatusPill" class="agent-state-pill agent-state-pill--info">加载中</span>
             <button id="detailOpenControl" class="agent-detail-linkout" type="button" title="返回管理中心">↗</button>
           </div>
-          <div id="detailMetaLine" class="agent-detail-meta-line">ID: agent-ops-cn-1 ｜ 分组: 华东-游戏服务 ｜ 环境: 生产环境 ｜ 版本: 1.3.2 ｜ 最近心跳: 2 秒前 ｜ 安装时间: 2026-06-01 11:14:15</div>
+          <div id="detailMetaLine" class="agent-detail-meta-line">正在加载 Agent 元信息...</div>
         </div>
         <div class="agent-detail-actions">
           <button id="detailEditBtn" class="agent-btn agent-btn--outline" type="button">编辑</button>
           <button id="detailRestartBtn" class="agent-btn agent-btn--outline" type="button">重启 Agent</button>
           <div class="agent-dropdown">
-            <button id="detailMoreBtn" class="agent-btn agent-btn--ghost" type="button">更多操作 ⌄</button>
+            <button id="detailMoreBtn" class="agent-btn agent-btn--ghost" type="button">更多操作 ▾</button>
             <div id="detailMoreMenu" class="agent-dropdown-menu is-hidden">
               <button id="detailMoreProbe" type="button">立即探测</button>
+              <button id="detailMoreLogs" type="button">查看日志</button>
               <button id="detailMoreRefresh" type="button">刷新详情</button>
             </div>
           </div>
@@ -146,14 +147,22 @@
             <h3>编辑 Agent</h3>
             <button id="detailCloseEdit" class="agent-btn agent-btn--outline agent-btn--small" type="button">关闭</button>
           </div>
-          <p class="agent-modal-sub">编辑内容会写回当前 Agent 注册信息</p>
+          <p class="agent-modal-sub">编辑内容会写回当前 Agent 注册信息。</p>
           <div class="agent-form-grid">
             <label><span>Agent ID</span><input id="detailEditAgentId" type="text" readonly></label>
             <label><span>设备 ID</span><input id="detailEditDeviceId" type="text"></label>
             <label><span>IP 地址</span><input id="detailEditHostIp" type="text"></label>
             <label><span>显示名称</span><input id="detailEditDisplayName" type="text"></label>
             <label><span>Agent 端口</span><input id="detailEditPort" type="number" min="1" max="65535"></label>
-            <label><span>运行状态</span><select id="detailEditRunState"><option value="">保持不变</option><option value="ONLINE">ONLINE</option><option value="DEGRADED">DEGRADED</option><option value="OFFLINE">OFFLINE</option></select></label>
+            <label>
+              <span>运行状态</span>
+              <select id="detailEditRunState">
+                <option value="">保持不变</option>
+                <option value="ONLINE">ONLINE</option>
+                <option value="DEGRADED">DEGRADED</option>
+                <option value="OFFLINE">OFFLINE</option>
+              </select>
+            </label>
             <label class="agent-form-grid-wide"><span>备注</span><textarea id="detailEditDesc" rows="3"></textarea></label>
           </div>
           <div class="agent-modal-actions">
@@ -163,8 +172,56 @@
           </div>
         </div>
       </div>
+
+      <div id="serviceEditModal" class="agent-modal is-hidden" aria-hidden="true">
+        <div class="agent-modal-card">
+          <div class="agent-modal-head">
+            <h3 id="serviceEditTitle">新增服务器</h3>
+            <button id="serviceCloseEdit" class="agent-btn agent-btn--outline agent-btn--small" type="button">关闭</button>
+          </div>
+          <p class="agent-modal-sub" id="serviceEditSub">服务实例会写入当前 Agent 的 services[] 配置。</p>
+          <div class="agent-form-grid">
+            <label><span>服务 ID</span><input id="serviceFormServiceId" type="text"></label>
+            <label><span>显示名称</span><input id="serviceFormDisplayName" type="text"></label>
+            <label><span>服务类型</span><input id="serviceFormType" type="text" placeholder="gateway / game / chat"></label>
+            <label><span>服务端口</span><input id="serviceFormPort" type="number" min="0" max="65535"></label>
+            <label><span>远端游戏服端口</span><input id="serviceFormRemotePort" type="number" min="0" max="65535"></label>
+            <label><span>节点 ID</span><input id="serviceFormNodeId" type="text"></label>
+            <label class="agent-form-grid-wide"><span>备注</span><textarea id="serviceFormDesc" rows="3"></textarea></label>
+          </div>
+          <div class="agent-modal-actions">
+            <button id="serviceSaveEdit" class="agent-btn agent-btn--primary" type="button">保存</button>
+            <button id="serviceCancelEdit" class="agent-btn agent-btn--ghost" type="button">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="serviceConfirmModal" class="agent-modal is-hidden" aria-hidden="true">
+        <div class="agent-modal-card agent-modal-card--small">
+          <div class="agent-modal-head">
+            <h3 id="serviceConfirmTitle">确认操作</h3>
+            <button id="serviceConfirmClose" class="agent-btn agent-btn--outline agent-btn--small" type="button">关闭</button>
+          </div>
+          <p id="serviceConfirmBody" class="agent-modal-sub">请确认是否继续执行该操作。</p>
+          <div class="agent-modal-actions">
+            <button id="serviceConfirmSubmit" class="agent-btn agent-btn--primary" type="button">确认</button>
+            <button id="serviceConfirmCancel" class="agent-btn agent-btn--ghost" type="button">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="serviceLogModal" class="agent-modal is-hidden" aria-hidden="true">
+        <div class="agent-modal-card">
+          <div class="agent-modal-head">
+            <h3 id="serviceLogTitle">服务日志</h3>
+            <button id="serviceLogClose" class="agent-btn agent-btn--outline agent-btn--small" type="button">关闭</button>
+          </div>
+          <p id="serviceLogSub" class="agent-modal-sub">查看最近一次日志操作回执。</p>
+          <pre id="serviceLogContent" class="agent-detail-code"></pre>
+        </div>
+      </div>
     </main>
   </section>
 </div>
-<script src="/static/ops_platform_api.js?v=20260604-agent-faithful-v1"></script>
-<script src="/static/ops_platform_agent_detail.js?v=20260604-agent-faithful-v1"></script>
+<script src="/static/ops_platform_api.js?v=20260605-agent-real-ops-v2"></script>
+<script src="/static/ops_platform_agent_detail.js?v=20260605-agent-real-ops-v2"></script>

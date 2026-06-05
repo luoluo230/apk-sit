@@ -4511,6 +4511,86 @@ def ops_platform_services_upsert():
     return jsonify({"ok": True, "service": svc_obj})
 
 
+@bp.route("/api/ops-platform/services/delete", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_services_delete():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    service_id = str(payload.get("service_id") or "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "missing_agent_id"}), 400
+    if not service_id:
+        return jsonify({"ok": False, "error": "missing_service_id"}), 400
+
+    reg = _load_agent_registry_v2()
+    hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+    if not hit:
+        return jsonify({"ok": False, "error": "agent_not_found"}), 404
+    if project_id:
+        ag_project = str(hit.get("project_id") or "").strip()
+        if ag_project and ag_project != project_id:
+            return jsonify({"ok": False, "error": "OPS_AGENT_NOT_IN_PROJECT", "error_code": "OPS_AGENT_NOT_IN_PROJECT"}), 409
+
+    services = hit.get("services") if isinstance(hit.get("services"), list) else []
+    remove_index = -1
+    removed_service: Dict[str, Any] = {}
+    for idx, svc in enumerate(services):
+        if not isinstance(svc, dict):
+            continue
+        if str(svc.get("service_id") or "").strip() == service_id:
+            remove_index = idx
+            removed_service = dict(svc)
+            break
+
+    if remove_index < 0:
+        logical_service = next(
+            (
+                svc for svc in _services_for_project(project_id)
+                if isinstance(svc, dict)
+                and str(svc.get("service_id") or "").strip() == service_id
+                and str(svc.get("agent_id") or "").strip() == agent_id
+            ),
+            None,
+        )
+        logical_source = str((logical_service or {}).get("source") or "").strip().lower()
+        if logical_source in ("agent.compat", "logical.agent.compat"):
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "OPS_SERVICE_DELETE_COMPAT_BLOCKED",
+                    "error_code": "OPS_SERVICE_DELETE_COMPAT_BLOCKED",
+                    "message": "该服务实例来自兼容聚合，需先转为正式服务实例或从源节点移除",
+                }
+            ), 409
+        return jsonify({"ok": False, "error": "service_not_found", "error_code": "OPS_SERVICE_NOT_FOUND"}), 404
+
+    services.pop(remove_index)
+    hit["services"] = services
+    hit["updated_at"] = _now_iso()
+    reg[agent_id] = _normalize_agent_descriptor_v2(hit)
+
+    bindings = _load_node_service_bindings() or {}
+    removed_binding_nodes = [str(node_id or "").strip() for node_id, bound_service_id in bindings.items() if str(bound_service_id or "").strip() == service_id]
+    for node_id in removed_binding_nodes:
+        bindings.pop(node_id, None)
+
+    _save_node_service_bindings(bindings)
+    _save_agent_registry_v2(reg)
+    log_audit("ops_platform_services_delete", f"agent_id={agent_id}; service_id={service_id}; bindings={','.join(removed_binding_nodes)}")
+    return jsonify(
+        {
+            "ok": True,
+            "agent_id": agent_id,
+            "service_id": service_id,
+            "service": removed_service,
+            "removed_binding_nodes": removed_binding_nodes,
+        }
+    )
+
+
 @bp.route("/api/ops-platform/services/action", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_services_action():
