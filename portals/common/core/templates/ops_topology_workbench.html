@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite3">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite16">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -182,17 +182,17 @@
 
         <section class="topology-center-panel">
           <div id="topologyLoadHint" class="topology-load-hint loading">正在加载拓扑核心数据...</div>
-          <div class="topology-canvas-topbar">
-            <button id="canvasQuickUndo" class="topology-canvas-icon-btn" type="button" title="撤销"><svg viewBox="0 0 24 24"><path d="M7 7h8a4 4 0 010 8H9M7 11l-3-3 3-3"/></svg></button>
-            <button id="canvasQuickRedo" class="topology-canvas-icon-btn" type="button" title="重做"><svg viewBox="0 0 24 24"><path d="M17 7H9a4 4 0 000 8h6M17 11l3-3-3-3"/></svg></button>
-            <button id="canvasQuickFocus" class="topology-canvas-icon-btn" type="button" title="适应画布"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
-            <select id="canvasZoomSelect" class="sel topology-zoom-select"><option value="100">100%</option><option value="75">75%</option><option value="50">50%</option><option value="125">125%</option></select>
-            <button id="canvasViewGrid" class="topology-canvas-float-btn" type="button">网格</button>
-            <button id="canvasViewAlign" class="topology-canvas-float-btn" type="button">对齐</button>
-          </div>
           <div class="topology-canvas-wrap">
             <div id="canvasShell" class="topology-pro-canvas">
               <div class="ops-grid-bg"></div>
+              <div class="topology-canvas-float-left">
+                <button id="canvasQuickUndo" class="topology-canvas-icon-btn" type="button" title="撤销"><svg viewBox="0 0 24 24"><path d="M7 7h8a4 4 0 010 8H9M7 11l-3-3 3-3"/></svg></button>
+                <button id="canvasQuickRedo" class="topology-canvas-icon-btn" type="button" title="重做"><svg viewBox="0 0 24 24"><path d="M17 7H9a4 4 0 000 8h6M17 11l3-3-3-3"/></svg></button>
+                <button id="canvasQuickFocus" class="topology-canvas-icon-btn" type="button" title="适应画布"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+              </div>
+              <select id="canvasZoomSelect" class="sel topology-zoom-select tw-hidden"><option value="100">100%</option><option value="75">75%</option><option value="50">50%</option><option value="125">125%</option></select>
+              <button id="canvasViewGrid" class="topology-canvas-float-btn tw-hidden" type="button">网格</button>
+              <button id="canvasViewAlign" class="topology-canvas-float-btn tw-hidden" type="button">对齐</button>
               <div class="topology-canvas-zoombar">
                 <button id="zoomInBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
                 <button id="zoomOutBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
@@ -200,8 +200,8 @@
                 <button id="zoomLockBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0110 0v3M6 11h12v9H6v-9z"/></svg></button>
               </div>
               <div id="scene" class="scene">
-                <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
                 <div id="nodeLayer" class="nodes"></div>
+                <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
               </div>
               <div id="marquee" class="topology-marquee"></div>
               <div class="topology-mini-map-card"><canvas id="topologyMiniMap" width="160" height="100"></canvas></div>
@@ -444,4 +444,4 @@
 </div>
 
 <script src="/static/ops_platform_api.js?v=20260606-topology-api-fix1"></script>
-<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite9"></script>
+<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite16"></script>

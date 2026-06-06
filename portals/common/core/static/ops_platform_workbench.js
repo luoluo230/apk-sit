@@ -32,21 +32,21 @@
     analytics: "析",
   };
   const ROLE_COLOR = {
-    gateway: { border: "#3b82f6", bg1: "#eff6ff", bg2: "#ffffff", glow: "rgba(59,130,246,.22)" },
-    auth: { border: "#22c55e", bg1: "#ecfdf5", bg2: "#ffffff", glow: "rgba(34,197,94,.22)" },
-    business: { border: "#a855f7", bg1: "#faf5ff", bg2: "#ffffff", glow: "rgba(168,85,247,.24)" },
-    game: { border: "#a855f7", bg1: "#faf5ff", bg2: "#ffffff", glow: "rgba(168,85,247,.24)" },
-    pressure: { border: "#f59e0b", bg1: "#fffbeb", bg2: "#ffffff", glow: "rgba(245,158,11,.22)" },
-    database: { border: "#10b981", bg1: "#ecfdf5", bg2: "#ffffff", glow: "rgba(16,185,129,.2)" },
-    cache: { border: "#14b8a6", bg1: "#f0fdfa", bg2: "#ffffff", glow: "rgba(20,184,166,.2)" },
-    mq: { border: "#8b5cf6", bg1: "#f5f3ff", bg2: "#ffffff", glow: "rgba(139,92,246,.2)" },
-    search: { border: "#f97316", bg1: "#fff7ed", bg2: "#ffffff", glow: "rgba(249,115,22,.2)" },
-    scheduler: { border: "#6366f1", bg1: "#eef2ff", bg2: "#ffffff", glow: "rgba(99,102,241,.2)" },
-    admin: { border: "#eab308", bg1: "#fefce8", bg2: "#ffffff", glow: "rgba(234,179,8,.22)" },
-    ops: { border: "#eab308", bg1: "#fefce8", bg2: "#ffffff", glow: "rgba(234,179,8,.22)" },
-    edge: { border: "#ef4444", bg1: "#fef2f2", bg2: "#ffffff", glow: "rgba(239,68,68,.22)" },
-    transport: { border: "#ef4444", bg1: "#fef2f2", bg2: "#ffffff", glow: "rgba(239,68,68,.22)" },
-    analytics: { border: "#06b6d4", bg1: "#ecfeff", bg2: "#ffffff", glow: "rgba(6,182,212,.2)" },
+    gateway: { border: "#1890ff", bg1: "#e6f7ff", bg2: "#ffffff", glow: "rgba(24,144,255,.18)" },
+    auth: { border: "#52c41a", bg1: "#f6ffed", bg2: "#ffffff", glow: "rgba(82,196,26,.18)" },
+    business: { border: "#722ed1", bg1: "#f9f0ff", bg2: "#ffffff", glow: "rgba(114,46,209,.18)" },
+    game: { border: "#722ed1", bg1: "#f9f0ff", bg2: "#ffffff", glow: "rgba(114,46,209,.18)" },
+    pressure: { border: "#faad14", bg1: "#fffbe6", bg2: "#ffffff", glow: "rgba(250,173,20,.18)" },
+    database: { border: "#13c2c2", bg1: "#e6fffb", bg2: "#ffffff", glow: "rgba(19,194,194,.18)" },
+    cache: { border: "#13c2c2", bg1: "#e6fffb", bg2: "#ffffff", glow: "rgba(19,194,194,.16)" },
+    mq: { border: "#722ed1", bg1: "#f9f0ff", bg2: "#ffffff", glow: "rgba(114,46,209,.16)" },
+    search: { border: "#fa8c16", bg1: "#fff7e6", bg2: "#ffffff", glow: "rgba(250,140,22,.16)" },
+    scheduler: { border: "#597ef7", bg1: "#f0f5ff", bg2: "#ffffff", glow: "rgba(89,126,247,.16)" },
+    admin: { border: "#faad14", bg1: "#fffbe6", bg2: "#ffffff", glow: "rgba(250,173,20,.18)" },
+    ops: { border: "#faad14", bg1: "#fffbe6", bg2: "#ffffff", glow: "rgba(250,173,20,.18)" },
+    edge: { border: "#ff4d4f", bg1: "#fff1f0", bg2: "#ffffff", glow: "rgba(255,77,79,.18)" },
+    transport: { border: "#ff4d4f", bg1: "#fff1f0", bg2: "#ffffff", glow: "rgba(255,77,79,.18)" },
+    analytics: { border: "#1890ff", bg1: "#e6f7ff", bg2: "#ffffff", glow: "rgba(24,144,255,.16)" },
   };
   const KINDS = ["entry", "standard", "terminal"];
   function roleColor(role) {
@@ -203,7 +203,10 @@
   }
 
   function undoTopology() {
-    if (state.history.past.length <= 1) return;
+    if (state.history.past.length <= 1) {
+      toast("没有可撤销的操作", "warn");
+      return;
+    }
     const current = state.history.past.pop();
     state.history.future.unshift(current);
     const prev = state.history.past[state.history.past.length - 1];
@@ -213,7 +216,10 @@
   }
 
   function redoTopology() {
-    if (!state.history.future.length) return;
+    if (!state.history.future.length) {
+      toast("没有可重做的操作", "warn");
+      return;
+    }
     const next = state.history.future.shift();
     state.history.past.push(next);
     restoreTopologySnapshot(next);
@@ -364,8 +370,83 @@
     if (kind) return kind;
     return inferKind(node.role, node.kind) || "standard";
   }
-  function roleBadge(role) {
-    return ROLE_BADGES[String(role || "").toLowerCase()] || "点";
+  function resolveIconRole(nodeOrRole) {
+    if (nodeOrRole && typeof nodeOrRole === "object") {
+      const role = String(nodeOrRole.role || "").toLowerCase();
+      const id = String(nodeOrRole.id || "").toLowerCase();
+      const name = String(nodeOrRole.name || "").toLowerCase();
+      if (role === "auth" || id.includes("auth") || name.includes("auth") || name.includes("认证")) return "auth";
+      if (role === "transport" || role === "tcp" || role === "edge" || id.includes("tcp") || id.includes("transport") || name.includes("tcp") || name.includes("传输")) return "transport";
+      if (role === "gateway" || id.includes("gateway") || name.includes("gateway") || name.includes("网关")) return "gateway";
+      if (role === "admin" || role === "ops" || id.includes("ops") || name.includes("ops") || name.includes("运维")) return "admin";
+      if (role === "business" || role === "game" || id.includes("game") || name.includes("game") || name.includes("游戏")) return "business";
+      if (role === "database" || role === "db" || id.includes("db") || id.includes("mongo") || id.includes("mysql") || name.includes("database")) return "database";
+      if (role === "cache" || id.includes("cache") || id.includes("redis") || name.includes("cache") || name.includes("缓存")) return "cache";
+      if (role === "mq" || id.includes("mq") || id.includes("kafka") || name.includes("消息")) return "mq";
+      if (role === "scheduler" || id.includes("scheduler") || name.includes("调度")) return "scheduler";
+      if (role === "pressure" || id.includes("pressure") || name.includes("压测")) return "pressure";
+      if (role === "search" || id.includes("search") || name.includes("检索")) return "search";
+      if (role === "analytics" || id.includes("analytics") || name.includes("分析")) return "analytics";
+      return role || "business";
+    }
+    return String(nodeOrRole || "business").toLowerCase();
+  }
+
+  function roleIconSvg(role, opts) {
+    const key = resolveIconRole(role);
+    const tile = opts == null || opts.tile !== false;
+    const icons = {
+      gateway: tile
+        ? '<rect x="4" y="4" width="16" height="16" rx="8" fill="currentColor" opacity=".14"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 4.5c2.8 2.4 4.5 5.6 4.5 7.5S14.8 17.1 12 19.5 7.5 14.1 7.5 12 9.2 6.9 12 4.5z" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+        : '<circle cx="12" cy="12" r="9"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>',
+      auth: tile
+        ? '<path d="M12 2.8l7.5 4.2v5.8c0 4.1-2.6 7.6-6.1 8.9a1.6 1.6 0 01-1.3 0C8.6 20.4 6 16.9 6 12.8V7l6-4.2z" fill="currentColor" opacity=".16"/><path d="M12 3l8 4v6c0 4.6-2.8 8.4-6.5 9.9a2 2 0 01-1 0C7.8 21.4 5 17.6 5 13V7l7-4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 12.2l2 2 3.8-4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+        : '<path d="M12 3l8 4v6c0 4.6-2.8 8.4-6.5 9.9a2 2 0 01-1 0C7.8 21.4 5 17.6 5 13V7l7-4z"/><path d="M9 12l2 2 4-4"/>',
+      business: tile
+        ? '<rect x="5" y="8" width="14" height="9" rx="4" fill="currentColor" opacity=".16"/><path d="M8 12h3M10.5 10.5v3M15.5 12.5h.01M17.5 11h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9 8.5V7a3 3 0 016 0v1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="5" y="8" width="14" height="9" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+        : '<line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><path d="M17.32 5H6.68a4 4 0 00-3.978 3.59A4.984 4.984 0 006 9v.01A7 7 0 106 9.29"/>',
+      game: tile
+        ? '<rect x="5" y="8" width="14" height="9" rx="4" fill="currentColor" opacity=".16"/><path d="M8 12h3M10.5 10.5v3M15.5 12.5h.01M17.5 11h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9 8.5V7a3 3 0 016 0v1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="5" y="8" width="14" height="9" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+        : '<line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><path d="M17.32 5H6.68a4 4 0 00-3.978 3.59A4.984 4.984 0 006 9v.01A7 7 0 106 9.29"/>',
+      admin: tile
+        ? '<circle cx="12" cy="12" r="3.2" fill="currentColor"/><path d="M12 1.8v2.4M12 19.8v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M1.8 12h2.4M19.8 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+        : '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
+      ops: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
+      transport: tile
+        ? '<rect x="3" y="5" width="18" height="5.5" rx="1.5" fill="currentColor" opacity=".16"/><rect x="3" y="13" width="18" height="5.5" rx="1.5" fill="currentColor" opacity=".16"/><rect x="3" y="5" width="18" height="5.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="13" width="18" height="5.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="7" cy="7.8" r=".9" fill="currentColor"/><circle cx="7" cy="15.8" r=".9" fill="currentColor"/>'
+        : '<rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/><path d="M6 6h.01M6 17h.01"/>',
+      edge: '<rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/><path d="M6 6h.01M6 17h.01"/>',
+      tcp: '<rect x="2" y="3" width="20" height="7" rx="1.5"/><rect x="2" y="14" width="20" height="7" rx="1.5"/><path d="M6 6h.01M6 17h.01"/>',
+      database: tile
+        ? '<ellipse cx="12" cy="7" rx="7" ry="2.8" fill="currentColor" opacity=".18"/><path d="M5 7v10c0 1.5 3.1 2.7 7 2.7s7-1.2 7-2.7V7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 12c0 1.5 3.1 2.7 7 2.7s7-1.2 7-2.7" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+        : '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
+      cache: tile
+        ? '<rect x="5" y="7" width="14" height="11" rx="2" fill="currentColor" opacity=".16"/><path d="M8 7V5h8v2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="5" y="7" width="14" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12h7M8.5 15h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+        : '<path d="M4 7h16v12H4z"/><path d="M8 7V4h8v3"/><path d="M8 11h8M8 15h5"/>',
+      mq: tile
+        ? '<rect x="4" y="6" width="16" height="5" rx="1.5" fill="currentColor" opacity=".16"/><rect x="4" y="14" width="12" height="5" rx="1.5" fill="currentColor" opacity=".16"/><rect x="4" y="6" width="16" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="14" width="12" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+        : '<path d="M4 6h16v5H4z"/><path d="M4 15h12v5H4z"/><path d="M18 15h2v5h-2z"/>',
+      search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+      scheduler: tile
+        ? '<circle cx="12" cy="12" r="8" fill="currentColor" opacity=".14"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5v4.8l3.2 1.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+        : '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+      pressure: '<path d="M4 19h16"/><path d="M7 15l3-4 3 3 4-6 3 4"/>',
+      analytics: '<path d="M4 19h16"/><path d="M7 15V9M12 15V7M17 15v-5"/>',
+    };
+    const body = icons[key] || icons.business;
+    if (tile) {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true">' + body + "</svg>";
+    }
+    const strokeAttrs = 'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"';
+    return '<svg viewBox="0 0 24 24" ' + strokeAttrs + ' aria-hidden="true">' + body + "</svg>";
+  }
+
+  function roleBadge(nodeOrRole) {
+    return roleIconSvg(nodeOrRole, { tile: true });
+  }
+
+  function iconAccent(nodeOrRole) {
+    return roleColor(resolveIconRole(nodeOrRole));
   }
   function nodeDisplayTitle(node) {
     if (!node) return "-";
@@ -1172,17 +1253,23 @@
     });
     const shell = $("canvasShell");
     if (!shell || !Number.isFinite(minX)) return;
-    const pad = 40;
+    const pad = 72;
     const cw = shell.clientWidth || 960;
     const ch = shell.clientHeight || 520;
     const gw = Math.max(1, maxX - minX + pad * 2);
     const gh = Math.max(1, maxY - minY + pad * 2);
-    const zoom = Math.min(1, Math.min(cw / gw, ch / gh));
+    const zoom = Math.min(1.1, Math.max(0.32, Math.min(cw / gw, ch / gh)));
     const x = Math.round((cw - gw * zoom) / 2 - (minX - pad) * zoom);
     const y = Math.round((ch - gh * zoom) / 2 - (minY - pad) * zoom);
     if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
     state.topology.meta.viewport = { x, y, zoom };
     renderScene();
+  }
+
+  function scheduleFitGraphToViewport() {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => fitGraphToViewport());
+    });
   }
 
   function layoutStructuredGraph() {
@@ -1230,8 +1317,8 @@
     };
     const startX = 96;
     const startY = 96;
-    const rankGap = 300;
-    const rowGap = 136;
+    const rankGap = 268;
+    const rowGap = 128;
     Object.keys(ranks).map(Number).sort((a, b) => a - b).forEach((r) => {
       const rows = ranks[r].sort((a, b) => {
         const rr = roleIndex(a.role) - roleIndex(b.role);
@@ -1254,8 +1341,12 @@
 
   function structuredAnchor(node, side) {
     if (!node || !node.ui) return { x: 0, y: 0 };
-    const x = Number(node.ui.x || 0) + (side === "out" ? Number(node.ui.w || 240) : 0);
-    const y = Number(node.ui.y || 0) + Number(node.ui.h || 104) / 2;
+    const w = Number(node.ui.w || 240);
+    const h = Number(node.ui.h || 104);
+    const x0 = Number(node.ui.x || 0);
+    const y0 = Number(node.ui.y || 0);
+    const x = side === "out" ? x0 + w + 4 : x0;
+    const y = y0 + h / 2;
     return { x, y };
   }
 
@@ -1267,28 +1358,42 @@
     const b = structuredMode() ? structuredAnchor(bNode, "in") : portAnchor(bNode, "in", edge.to_port);
     const offset = linkOffset(edge);
     const minGap = 96;
-    const midX = Math.round((a.x + b.x) / 2);
-    const turnX = b.x > a.x ? Math.max(a.x + minGap, midX) : a.x + minGap;
+    const ax = Math.round(a.x);
     const ay = Math.round(a.y + offset);
+    const bx = Math.round(b.x);
     const by = Math.round(b.y + offset);
+    const midX = Math.round((ax + bx) / 2);
+    const turnX = bx > ax ? Math.max(ax + minGap, midX) : ax + minGap;
     if (structuredMode()) {
-      edge.ui = Object.assign({}, edge.ui || {}, {
-        route: [
-          { x: Math.round(a.x), y: Math.round(a.y) },
-          { x: turnX, y: Math.round(a.y) },
-          { x: turnX, y: Math.round(b.y) },
-          { x: Math.round(b.x), y: Math.round(b.y) },
-        ],
-      });
-      return "M " + Math.round(a.x) + " " + Math.round(a.y)
-        + " H " + turnX
-        + " V " + Math.round(b.y)
-        + " H " + Math.round(b.x);
+      const approachGap = 24;
+      const entryX = bx - approachGap;
+      let pathD;
+      if (Math.abs(by - ay) <= 2) {
+        const stopX = bx > ax ? Math.max(ax + 12, Math.min(entryX, bx - 4)) : bx;
+        pathD = "M " + ax + " " + ay + " H " + stopX + " H " + bx;
+        edge.ui = Object.assign({}, edge.ui || {}, {
+          route: [{ x: ax, y: ay }, { x: stopX, y: ay }, { x: bx, y: ay }],
+        });
+      } else {
+        let vx = turnX;
+        if (bx > ax) vx = Math.min(vx, entryX - 4);
+        pathD = "M " + ax + " " + ay + " H " + vx + " V " + by + " H " + entryX + " H " + bx;
+        edge.ui = Object.assign({}, edge.ui || {}, {
+          route: [
+            { x: ax, y: ay },
+            { x: vx, y: ay },
+            { x: vx, y: by },
+            { x: entryX, y: by },
+            { x: bx, y: by },
+          ],
+        });
+      }
+      return pathD;
     }
-    return "M " + Math.round(a.x) + " " + ay
+    return "M " + ax + " " + ay
       + " H " + turnX
       + " V " + by
-      + " H " + Math.round(b.x);
+      + " H " + bx;
   }
 
   function edgeMid(edge) {
@@ -1298,10 +1403,19 @@
     const a = structuredMode() ? structuredAnchor(aNode, "out") : portAnchor(aNode, "out", edge.from_port);
     const b = structuredMode() ? structuredAnchor(bNode, "in") : portAnchor(bNode, "in", edge.to_port);
     const offset = linkOffset(edge);
+    const ax = Math.round(a.x);
+    const ay = Math.round(a.y + offset);
+    const bx = Math.round(b.x);
+    const by = Math.round(b.y + offset);
     const minGap = 96;
-    const midX = Math.round((a.x + b.x) / 2);
-    const turnX = b.x > a.x ? Math.max(a.x + minGap, midX) : a.x + minGap;
-    return { x: turnX, y: Math.round((a.y + b.y) / 2 + offset) };
+    const midX = Math.round((ax + bx) / 2);
+    const turnX = bx > ax ? Math.max(ax + minGap, midX) : ax + minGap;
+    if (structuredMode()) {
+      const entryX = bx - 24;
+      if (Math.abs(by - ay) <= 2) return { x: Math.round((ax + bx) / 2), y: ay };
+      return { x: Math.round((entryX + bx) / 2), y: by };
+    }
+    return { x: turnX, y: Math.round((ay + by) / 2) };
   }
 
   function normalizeTopology() {
@@ -1395,9 +1509,10 @@
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#eef4ff";
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, w, h);
-    const nodes = state.topology.nodes || [];
+    const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
+    const edges = state.topology.edges || [];
     if (!nodes.length) return;
     let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
     nodes.forEach((n) => {
@@ -1411,14 +1526,36 @@
     const worldW = Math.max(1, maxX - minX + pad * 2);
     const worldH = Math.max(1, maxY - minY + pad * 2);
     const scale = Math.min(w / worldW, h / worldH);
+    const nodePos = {};
+    edges.forEach((edge) => {
+      const a = getNode(edge.from);
+      const b = getNode(edge.to);
+      if (!a || !b) return;
+      const au = a.ui || {};
+      const bu = b.ui || {};
+      const ax = ((au.x || 0) - minX + pad) * scale + Math.max(4, (au.w || 180) * scale) / 2;
+      const ay = ((au.y || 0) - minY + pad) * scale + Math.max(3, (au.h || 96) * scale) / 2;
+      const bx = ((bu.x || 0) - minX + pad) * scale + Math.max(4, (bu.w || 180) * scale) / 2;
+      const by = ((bu.y || 0) - minY + pad) * scale + Math.max(3, (bu.h || 96) * scale) / 2;
+      ctx.strokeStyle = "#91d5ff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    });
     nodes.forEach((n) => {
       const ui = n.ui || {};
       const x = ((ui.x || 0) - minX + pad) * scale;
       const y = ((ui.y || 0) - minY + pad) * scale;
-      const nw = Math.max(4, (ui.w || 180) * scale);
-      const nh = Math.max(3, (ui.h || 96) * scale);
-      ctx.fillStyle = roleColor(n.role);
+      const nw = Math.max(6, (ui.w || 180) * scale);
+      const nh = Math.max(4, (ui.h || 96) * scale);
+      nodePos[n.id] = { x, y, w: nw, h: nh };
+      ctx.fillStyle = (ROLE_COLOR[String(n.role || "").toLowerCase()] || {}).bg1 || "#ffffff";
       ctx.fillRect(x, y, nw, nh);
+      ctx.strokeStyle = roleColor(n.role);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, nw - 1, nh - 1);
     });
     const rect = shell.getBoundingClientRect();
     const v = view();
@@ -1426,9 +1563,11 @@
     const vy = (-v.y / v.zoom - minY + pad) * scale;
     const vw = (rect.width / v.zoom) * scale;
     const vh = (rect.height / v.zoom) * scale;
-    ctx.strokeStyle = "#2563eb";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(vx, vy, vw, vh);
+    ctx.fillStyle = "rgba(24, 144, 255, 0.08)";
+    ctx.fillRect(vx, vy, vw, vh);
+    ctx.strokeStyle = "rgba(24, 144, 255, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vx + 0.5, vy + 0.5, vw - 1, vh - 1);
     canvas.onclick = (ev) => {
       const r = canvas.getBoundingClientRect();
       const cx = ev.clientX - r.left;
@@ -1722,12 +1861,14 @@
 
   function refreshLeftPanelChrome(leftTab) {
     const tabName = leftTab || state.activeLeftTab || "tools";
+    const app = document.querySelector(".ops-topology-app");
+    if (app) app.setAttribute("data-left-tab", tabName);
     document.querySelectorAll("[data-log-set]").forEach((box) => {
       const set = box.getAttribute("data-log-set");
       box.classList.toggle("is-hidden", set === "nodes" ? tabName !== "nodes" : tabName === "nodes");
     });
-    const topbar = document.querySelector(".topology-canvas-topbar");
-    if (topbar) topbar.classList.toggle("is-visible", tabName === "nodes");
+    const topbar = document.querySelector(".topology-canvas-float-left");
+    if (topbar) topbar.classList.remove("is-hidden");
     const card = $("nodeInspectorCard");
     if (card) {
       card.setAttribute("data-inspector-layout", tabName === "nodes" ? "nodes" : "tools");
@@ -1905,14 +2046,15 @@
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
     marker.setAttribute("id", "edge-arrow-marker");
     marker.setAttribute("viewBox", "0 0 10 10");
-    marker.setAttribute("refX", "8");
+    marker.setAttribute("refX", "10");
     marker.setAttribute("refY", "5");
-    marker.setAttribute("markerWidth", "5");
-    marker.setAttribute("markerHeight", "5");
+    marker.setAttribute("markerWidth", "10");
+    marker.setAttribute("markerHeight", "10");
+    marker.setAttribute("markerUnits", "userSpaceOnUse");
     marker.setAttribute("orient", "auto");
     const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
     head.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
-    head.setAttribute("fill", "context-stroke");
+    head.setAttribute("fill", "#2563eb");
     marker.appendChild(head);
     defs.appendChild(marker);
     svg.appendChild(defs);
@@ -1944,7 +2086,7 @@
       path.setAttribute("class", "edge" + hl + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
       const src = getNode(edge.from);
       if (!flow && !hl && !fail) {
-        path.style.stroke = isEditMode() ? "#1890ff" : roleColor(src && src.role);
+        path.style.stroke = isEditMode() ? "#2563eb" : roleColor(src && src.role);
       }
       path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       svg.appendChild(hit);
@@ -1972,14 +2114,15 @@
         if (isEditMode()) {
           const del = document.createElementNS("http://www.w3.org/2000/svg", "g");
           del.setAttribute("class", "edge-remove");
-          del.setAttribute("transform", "translate(" + Math.round(m.x) + "," + Math.round(m.y - 42) + ")");
+          del.setAttribute("transform", "translate(" + Math.round(m.x) + "," + Math.round(m.y - 10) + ")");
           del.setAttribute("title", "删除连线");
           const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          c.setAttribute("r", "10");
+          c.setAttribute("r", "9");
           const minus = document.createElementNS("http://www.w3.org/2000/svg", "text");
           minus.setAttribute("text-anchor", "middle");
           minus.setAttribute("y", "4");
-          minus.textContent = "-";
+          minus.setAttribute("font-size", "14");
+          minus.textContent = "−";
           del.appendChild(c);
           del.appendChild(minus);
           del.onclick = (ev) => { ev.stopPropagation(); confirmStructuredDeleteEdge(edge.id); };
@@ -2089,7 +2232,7 @@
         + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游" aria-label="从 ' + esc(displayTitle) + ' 添加下游"></button>' : "")
         + '<div class="node-shell">'
         +   '<div class="node-card-head">'
-        +     '<span class="node-badge">' + esc(roleBadge(n.role)) + '</span>'
+        +     '<span class="node-badge" style="--ico-accent:' + esc(iconAccent(n)) + '">' + roleBadge(n) + '</span>'
         +     '<div class="node-heading-block">'
         +       '<div class="node-title">' + esc(displayTitle) + '</div>'
         +       '<div class="node-desc">' + esc(descLine) + '</div>'
@@ -2140,7 +2283,7 @@
       const stLabel = flowSt ? (flowSt === "RUNNING" ? "运行中" : flowSt) : (STATUS_LABELS[st] || st || "运行中");
       const stCls = flowSt === "FAILED" ? "state-err" : (flowSt === "RUNNING" || flowSt === "SUCCESS" ? "state-ok" : "state-info");
       return '<tr data-node-row="' + esc(n.id) + '">'
-        + '<td><span class="node-row-name"><span class="node-row-ico">' + esc(roleBadge(n.role)) + '</span>' + esc(nodeDisplayTitle(n)) + '</span></td>'
+        + '<td><span class="node-row-name"><span class="node-row-ico" style="--ico-accent:' + esc(iconAccent(n)) + '">' + roleBadge(n) + '</span>' + esc(nodeDisplayTitle(n)) + '</span></td>'
         + '<td>' + esc(roleLabel(n.role)) + '</td>'
         + '<td><span class="state-pill ' + bindCls + '">' + esc(bindLabel) + '</span></td>'
         + '<td><span class="state-pill ' + stCls + '">' + esc(stLabel) + '</span></td>'
@@ -2246,7 +2389,7 @@
     });
     presetBox.innerHTML = presets.length ? "" : '<div class="preset-empty">当前节点没有可添加的下游类型</div>';
     const grouped = {};
-    presets.forEach((p) => { const g = presetGroup(p.role); if (!grouped[g]) grouped[g] = []; grouped[g].push(p); });
+    presets.forEach((p) => { const g = presetGroup(p); if (!grouped[g]) grouped[g] = []; grouped[g].push(p); });
     Object.keys(grouped).sort().forEach((g) => {
       const sec = document.createElement("div");
       sec.className = "structured-menu-group";
@@ -2300,19 +2443,35 @@
     applyStructuredTopologyResponse(d, "连线已删除");
   }
 
-  function presetGroup(role) {
-    const r = String(role || "").toLowerCase();
-    if (["gateway", "edge"].includes(r)) return "网关与入口";
-    if (["business", "scheduler", "admin", "analytics"].includes(r)) return "业务服务";
+  function presetGroup(p) {
+    const r = String((typeof p === "string" ? p : (p && p.role)) || "").toLowerCase();
+    if (["gateway", "edge", "transport", "tcp"].includes(r)) return "网关与入口";
+    if (["auth", "business", "admin", "analytics"].includes(r)) return "业务服务";
     if (["database", "cache", "search"].includes(r)) return "运维基础";
-    if (["mq", "pressure"].includes(r)) return "中间件";
+    if (["mq", "pressure", "scheduler"].includes(r)) return "中间件";
     return "其他";
   }
 
-  function presetIcon(role) {
-    const r = String(role || "").toLowerCase();
-    const map = { gateway: "G", auth: "A", game: "P", business: "P", database: "D", cache: "C", mq: "M", edge: "E", scheduler: "S" };
-    return map[r] || "N";
+  const PRESET_GROUP_ORDER = ["网关与入口", "业务服务", "运维基础", "中间件", "其他"];
+
+  function presetTileLabel(p) {
+    const role = String((p && p.role) || "").toLowerCase();
+    const pid = String((p && p.preset_id) || "").toLowerCase();
+    if (role === "gateway" || pid.includes("gateway")) return "Gateway";
+    if (role === "auth" || pid.includes("auth")) return "Auth";
+    if (role === "business") return "Game";
+    if (role === "admin" || pid.includes("ops")) return "Ops";
+    if (role === "transport" || pid.includes("tcp")) return "TCP";
+    if (role === "database") return pid.includes("mysql") ? "MySQL" : "DB";
+    if (role === "cache") return "Cache";
+    if (role === "mq") return "MQ";
+    if (role === "scheduler") return "Scheduler";
+    if (role === "pressure") return "Pressure";
+    return String(p.name || p.preset_id || "-");
+  }
+
+  function presetIcon(role, opts) {
+    return roleIconSvg(role, Object.assign({ tile: true }, opts || {}));
   }
 
   function renderPresets() {
@@ -2331,29 +2490,30 @@
     box.innerHTML = "";
     if (quickBar) quickBar.innerHTML = "";
     const rows = (state.presets || []).filter((p) => {
-      const group = presetGroup(p.role);
+      const group = presetGroup(p);
       const hay = (String(p.name || "") + " " + String(p.role || "") + " " + String(p.preset_id || "")).toLowerCase();
       return (!kw || hay.includes(kw)) && (!category || group === category);
     });
 
     if (quickBar) {
-      quickBar.innerHTML = '<div class="topology-section-title sm">快速模板</div><div class="topology-quick-row"></div>';
+      quickBar.innerHTML = '<div class="topology-section-title sm">快捷模板</div><div class="topology-quick-row"></div>';
       const row = quickBar.querySelector(".topology-quick-row");
       const quickPick = [
-        { key: "gateway", match: (p) => String(p.role || "").toLowerCase() === "gateway" },
-        { key: "auth", match: (p) => String(p.role || "").toLowerCase() === "auth" },
-        { key: "game", match: (p) => String(p.role || "").toLowerCase() === "business" },
-        { key: "database", match: (p) => String(p.preset_id || "").toLowerCase() === "mongo_db" || String(p.name || "").toLowerCase().includes("mongo") },
+        { label: "Gateway", match: (p) => String(p.role || "").toLowerCase() === "gateway" },
+        { label: "Auth", match: (p) => String(p.role || "").toLowerCase() === "auth" },
+        { label: "Game", match: (p) => String(p.role || "").toLowerCase() === "business" },
+        { label: "DB", match: (p) => String(p.preset_id || "").toLowerCase() === "mongo_db" || String(p.name || "").toLowerCase().includes("mongo") },
       ];
-      quickPick.forEach(({ key, match }) => {
+      quickPick.forEach(({ label, match }) => {
         const hit = (state.presets || []).find(match);
         if (!hit || !row) return;
         const card = document.createElement("button");
         card.type = "button";
         card.className = "topology-quick-card" + (state.activePresetId === hit.preset_id ? " active" : "");
-        const quickLabel = key === "database" ? "DB" : (hit.name || key);
-        card.innerHTML = '<span class="quick-ico">' + esc(presetIcon(hit.role)) + '</span><span class="quick-name">' + esc(quickLabel) + '</span><span class="quick-desc">' + esc(hit.default_desc || roleLabel(hit.role)) + '</span>';
+        card.innerHTML = '<span class="quick-ico" style="--ico-accent:' + esc(iconAccent(hit)) + '">' + presetIcon(hit.role, { tile: true }) + '</span>'
+          + '<span class="quick-text"><span class="quick-name">' + esc(label) + '</span></span>';
         card.onclick = () => { state.activePresetId = hit.preset_id; renderPresets(); };
+        card.ondblclick = async (ev) => { ev.preventDefault(); state.activePresetId = hit.preset_id; await addPresetAt(centerWorld()); };
         row.appendChild(card);
       });
     }
@@ -2361,29 +2521,42 @@
     if (!rows.length) { box.innerHTML = '<div class="preset-empty">没有匹配模板</div>'; return; }
 
     const groups = {};
-    rows.forEach((p) => { const g = presetGroup(p.role); if (!groups[g]) groups[g] = []; groups[g].push(p); });
+    rows.forEach((p) => { const g = presetGroup(p); if (!groups[g]) groups[g] = []; groups[g].push(p); });
 
-    Object.keys(groups).forEach((g) => {
+    PRESET_GROUP_ORDER.filter((g) => groups[g] && groups[g].length).forEach((g) => {
       const sec = document.createElement("div");
       sec.className = "preset-group";
       const collapsed = !!state.presetCollapsed[g];
       const hd = document.createElement("div");
       hd.className = "preset-group-hd";
-      hd.innerHTML = "<span>" + (collapsed ? "▶" : "▼") + " " + esc(g) + '</span><span class="preset-group-count">' + groups[g].length + "</span>";
+      hd.innerHTML = "<span class=\"preset-group-title\">" + (collapsed ? "▸" : "▾") + " " + esc(g) + '</span><span class="preset-group-count">' + groups[g].length + "</span>";
       hd.onclick = () => { state.presetCollapsed[g] = !state.presetCollapsed[g]; renderPresets(); };
       sec.appendChild(hd);
 
       if (!collapsed) {
+        const grid = document.createElement("div");
+        grid.className = "preset-group-grid";
+        grid.setAttribute("data-group", g);
         groups[g].forEach((p) => {
           const card = document.createElement("div");
-          card.className = "preset-card" + (state.activePresetId === p.preset_id ? " active" : "");
+          card.className = "preset-tile" + (state.activePresetId === p.preset_id ? " active" : "");
           card.draggable = true;
-          card.innerHTML = '<span class="preset-ico">' + esc(presetIcon(p.role)) + '</span><div class="preset-body"><div class="name">' + esc(p.name || "-") + '</div><div class="meta">' + esc(roleLabel(p.role)) + '</div></div><button type="button" class="add-btn">+</button>';
+          const accent = iconAccent(p);
+          card.innerHTML = '<button type="button" class="preset-tile-add" title="添加到画布">+</button>'
+            + '<div class="preset-tile-main">'
+            +   '<span class="preset-tile-ico" style="--ico-accent:' + esc(accent) + '">' + presetIcon(p.role, { tile: true }) + '</span>'
+            +   '<span class="preset-tile-text">'
+            +     '<span class="preset-tile-name">' + esc(presetTileLabel(p)) + '</span>'
+            +     '<span class="preset-tile-meta">' + esc(roleLabel(p.role)) + '</span>'
+            +   "</span>"
+            + "</div>";
           card.onclick = () => { state.activePresetId = p.preset_id; renderPresets(); };
           card.ondragstart = (e) => e.dataTransfer.setData("text/plain", p.preset_id);
-          card.querySelector(".add-btn").onclick = async (ev) => { ev.stopPropagation(); state.activePresetId = p.preset_id; await addPresetAt(centerWorld()); };
-          sec.appendChild(card);
+          const addBtn = card.querySelector(".preset-tile-add");
+          if (addBtn) addBtn.onclick = async (ev) => { ev.stopPropagation(); state.activePresetId = p.preset_id; await addPresetAt(centerWorld()); };
+          grid.appendChild(card);
         });
+        sec.appendChild(grid);
       }
 
       box.appendChild(sec);
@@ -2639,11 +2812,13 @@
       subline.style.display = "";
     }
     if (badge) {
-      const palette = ROLE_COLOR[String(node.role || "").toLowerCase()] || ROLE_COLOR.business;
-      badge.textContent = roleBadge(node.role);
+      const iconRole = resolveIconRole(node);
+      const palette = ROLE_COLOR[iconRole] || ROLE_COLOR.business;
+      badge.innerHTML = roleBadge(node);
+      badge.style.setProperty("--ico-accent", palette.border);
       badge.style.color = palette.border;
-      badge.style.borderColor = palette.bg2;
-      badge.style.background = "linear-gradient(180deg," + palette.bg1 + "," + "#ffffff)";
+      badge.style.borderColor = "color-mix(in srgb, " + palette.border + " 28%, white)";
+      badge.style.background = "color-mix(in srgb, " + palette.border + " 12%, white)";
     }
     if (pill) {
       pill.textContent = STATUS_LABELS[node.bizStatus] || node.bizStatus || "运行中";
@@ -3270,15 +3445,15 @@
     normalizeTopology();
     applyDesignStructuredLayout();
     layoutStructuredGraph();
-    if (isDesignReferenceTopology()) fitGraphToViewport();
     renderScene();
+    redrawGraph();
+    scheduleFitGraphToViewport();
     state.history.past = [snapshotTopology()];
     state.history.future = [];
     updateHistoryButtons();
     renderScopeSelectors();
     await loadProjectOptions();
     renderScopeSelectors();
-    redrawGraph();
     renderPresets();
     renderRuntimeNodeList();
     fillTestNodeOptions();
@@ -3358,14 +3533,72 @@
     setTopologyHint(warns.length ? ("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
   }
 
+  async function applyBlueprintFromToolbar() {
+    const bid = String((($("flowBlueprintSelect") || {}).value || "")).trim();
+    if (!bid) { toast("请选择蓝图模板", "warn"); return; }
+    const chosen = state.blueprints.find((x) => String(x.blueprint_id) === bid);
+    const confirmText = "应用蓝图后会替换当前画布中的全部节点与连线。\n\n蓝图：" + (chosen ? chosen.name : bid) + "\n\n确认继续？";
+    if (!window.confirm(confirmText)) return;
+    const d = await OpsApi.applyTopologyBlueprint(Object.assign(currentScope(), { blueprint_id: bid, replace_existing: true }));
+    if (!d.ok) { toast(d.message || d.error || "应用蓝图失败", "error"); return; }
+    toast("蓝图已应用", "ok");
+    await loadAll();
+  }
+
+  function handleToolButtonClick(btn) {
+    if (!btn || !btn.id) return;
+    document.querySelectorAll(".topology-tool-btn").forEach((b) => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    switch (btn.id) {
+      case "toolSelect":
+        toast("已切换到选择工具", "ok");
+        break;
+      case "toolConnect":
+        if (isTestMode()) { toast("测试模式禁止重新布局", "warn"); return; }
+        layoutStructuredGraph();
+        redrawGraph();
+        toast("已按结构化规则重新排布", "ok");
+        break;
+      case "toolUndoInline":
+        undoTopology();
+        break;
+      case "toolRedoInline":
+        redoTopology();
+        break;
+      case "toolResetInline":
+        fitGraphToViewport();
+        renderScene();
+        toast("视图已适应画布", "ok");
+        break;
+      case "toolSaveInline":
+        if ($("toolSave")) $("toolSave").onclick && $("toolSave").onclick();
+        break;
+      case "btnApplyBlueprint":
+        applyBlueprintFromToolbar();
+        break;
+      case "btnAutoBindAgents":
+        autoBindAgents();
+        break;
+      default:
+        break;
+    }
+  }
+
   function bindEvents() {
     bindLeftTabs();
     bindInspectorTabs();
     bindLogTabs();
     bindTopologyManagerTabs();
     setInspectorEmpty(true);
-    ROLE_OPTIONS.forEach((v) => $("insNodeRole").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + esc(roleLabel(v)) + '</option>'));
-    STATUS_OPTIONS.forEach((v) => $("insNodeBizStatus").insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
+    let fitTimer = null;
+    window.addEventListener("resize", () => {
+      if (fitTimer) clearTimeout(fitTimer);
+      fitTimer = setTimeout(() => { fitGraphToViewport(); }, 120);
+    });
+    const insRole = $("insNodeRole");
+    if (insRole) ROLE_OPTIONS.forEach((v) => insRole.insertAdjacentHTML("beforeend", '<option value="' + v + '">' + esc(roleLabel(v)) + '</option>'));
+    const insStatus = $("insNodeBizStatus");
+    if (insStatus) STATUS_OPTIONS.forEach((v) => insStatus.insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
     if ($("insNodeColor")) $("insNodeColor").oninput = () => syncColorSwatch($("insNodeColor").value);
     if ($("btnAddNodeTag")) {
       $("btnAddNodeTag").onclick = () => {
@@ -3428,7 +3661,8 @@
       if ($("deploymentLogMirror")) $("deploymentLogMirror").innerHTML = "";
     };
 
-    $("presetSearch").oninput = renderPresets;
+    const presetSearchEl = $("presetSearch");
+    if (presetSearchEl) presetSearchEl.oninput = renderPresets;
     if ($("presetCategoryFilter")) $("presetCategoryFilter").onchange = renderPresets;
     document.querySelectorAll("#presetCategoryChips .topology-chip").forEach((chip) => {
       chip.onclick = () => {
@@ -3451,27 +3685,40 @@
       redrawGraph();
     };
 
-    $("toolAuto").onclick = () => {
+    const toolAutoEl = $("toolAuto");
+    if (toolAutoEl) toolAutoEl.onclick = () => {
       if (isTestMode()) { toast("测试模式禁止自动布局", "warn"); return; }
       layoutStructuredGraph();
       redrawGraph();
       toast("已按结构化规则重新排布", "ok");
     };
 
-    if ($("toolAlign")) $("toolAlign").onclick = () => alignNodesToGrid();
-    if ($("toolConnect")) $("toolConnect").onclick = () => $("toolAuto").click();
-    if ($("toolCanvasZoom")) $("toolCanvasZoom").onclick = () => $("toolReset").click();
-    ["toolUndo", "toolUndoInline", "canvasQuickUndo"].forEach((id) => {
+    const toolList = document.querySelector(".topology-tool-list");
+    if (toolList) {
+      toolList.addEventListener("click", (ev) => {
+        const btn = ev.target.closest(".topology-tool-btn");
+        if (!btn) return;
+        ev.preventDefault();
+        handleToolButtonClick(btn);
+      });
+    }
+    if ($("toolCanvasZoom")) $("toolCanvasZoom").onclick = () => {
+      fitGraphToViewport();
+      renderScene();
+    };
+    ["toolUndo", "canvasQuickUndo"].forEach((id) => {
       const el = $(id);
       if (el) el.onclick = () => undoTopology();
     });
-    ["toolRedo", "toolRedoInline", "canvasQuickRedo"].forEach((id) => {
+    ["toolRedo", "canvasQuickRedo"].forEach((id) => {
       const el = $(id);
       if (el) el.onclick = () => redoTopology();
     });
-    if ($("toolResetInline")) $("toolResetInline").onclick = () => $("toolReset") && $("toolReset").click();
-    if ($("toolSaveInline")) $("toolSaveInline").onclick = () => $("toolSave") && $("toolSave").click();
-    if ($("canvasQuickFocus")) $("canvasQuickFocus").onclick = () => $("toolReset") && $("toolReset").click();
+    if ($("canvasQuickFocus")) $("canvasQuickFocus").onclick = () => {
+      fitGraphToViewport();
+      renderScene();
+      toast("视图已适应画布", "ok");
+    };
     if ($("canvasZoomSelect")) {
       $("canvasZoomSelect").onchange = () => {
         const pct = Number($("canvasZoomSelect").value || 100) / 100;
@@ -3500,12 +3747,6 @@
     }
     if ($("btnTopologyNotify")) {
       $("btnTopologyNotify").onclick = () => toast("暂无新通知", "ok");
-    }
-    if ($("toolSelect")) {
-      $("toolSelect").onclick = () => {
-        document.querySelectorAll(".topology-tool-btn").forEach((b) => b.classList.remove("is-active"));
-        $("toolSelect").classList.add("is-active");
-      };
     }
     if ($("topologyCreateName")) {
       $("topologyCreateName").oninput = updateCreateCharCounts;
@@ -3555,7 +3796,10 @@
         }
       };
     }
-    if ($("zoomResetBtn")) $("zoomResetBtn").onclick = () => $("toolReset").click();
+    if ($("zoomResetBtn")) $("zoomResetBtn").onclick = () => {
+      fitGraphToViewport();
+      renderScene();
+    };
     if ($("zoomInBtn")) $("zoomInBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.min(2.5, Number(view().zoom || 1) * 1.1); renderScene(); };
     if ($("zoomOutBtn")) $("zoomOutBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.max(0.3, Number(view().zoom || 1) * 0.9); renderScene(); };
     if ($("btnValidateTopology")) $("btnValidateTopology").onclick = () => {
@@ -3569,30 +3813,26 @@
     };
     if ($("btnTopologyMore")) $("btnTopologyMore").onclick = openTopologyManager;
 
-    $("toolReset").onclick = () => { state.topology.meta.viewport = { x: 0, y: 0, zoom: 1 }; renderScene(); };
+    const toolResetEl = $("toolReset");
+    if (toolResetEl) toolResetEl.onclick = () => {
+      fitGraphToViewport();
+      renderScene();
+      toast("视图已适应画布", "ok");
+    };
 
-    $("toolSave").onclick = async () => {
+    const toolSaveEl = $("toolSave");
+    if (toolSaveEl) toolSaveEl.onclick = async () => {
       if (isTestMode()) { toast("测试模式禁止保存拓扑", "warn"); return; }
       const d = await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
       toast((d && d.ok !== false) ? "拓扑已保存" : ((d && d.message) || "保存失败"), (d && d.ok !== false) ? "ok" : "error");
       if (d && d.ok !== false) logMode("拓扑保存成功");
     };
 
-    $("btnApplyBlueprint").onclick = async () => {
-      const bid = String((($("flowBlueprintSelect") || {}).value || "")).trim();
-      if (!bid) { toast("请选择蓝图模板", "warn"); return; }
-      const chosen = state.blueprints.find((x) => String(x.blueprint_id) === bid);
-      const confirmText = "应用蓝图后会替换当前画布中的全部节点与连线。\n\n蓝图：" + (chosen ? chosen.name : bid) + "\n\n确认继续？";
-      if (!window.confirm(confirmText)) return;
-      const d = await OpsApi.applyTopologyBlueprint(Object.assign(currentScope(), { blueprint_id: bid, replace_existing: true }));
-      if (!d.ok) { toast(d.message || d.error || "应用蓝图失败", "error"); return; }
-      toast("蓝图已应用", "ok");
-      await loadAll();
-    };
-    if ($("btnAutoBindAgents")) $("btnAutoBindAgents").onclick = autoBindAgents;
 
-    $("btnSaveNode").onclick = saveNode;
-    $("btnDeleteNode").onclick = deleteNode;
+    const btnSaveNodeEl = $("btnSaveNode");
+    if (btnSaveNodeEl) btnSaveNodeEl.onclick = saveNode;
+    const btnDeleteNodeEl = $("btnDeleteNode");
+    if (btnDeleteNodeEl) btnDeleteNodeEl.onclick = deleteNode;
     if ($("btnDeleteNodeNodes")) $("btnDeleteNodeNodes").onclick = deleteNode;
     if ($("btnCopyEndpoint")) {
       $("btnCopyEndpoint").onclick = async () => {
