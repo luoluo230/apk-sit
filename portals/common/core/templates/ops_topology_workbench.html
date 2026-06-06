@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite34">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite35">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -143,10 +143,13 @@
                 <label class="topology-radio"><input type="radio" name="testScope" value="full" checked> 完整架构</label>
                 <label class="topology-radio"><input type="radio" name="testScope" value="segment"> 中间链路段</label>
               </div>
-              <label class="topology-field-label">起点节点</label>
-              <select id="testStartNode" class="sel"></select>
-              <label class="topology-field-label">终点节点</label>
-              <select id="testEndNode" class="sel"></select>
+              <div id="testSegmentFields" class="topology-test-segment-fields is-hidden">
+                <label class="topology-field-label">起点节点</label>
+                <select id="testStartNode" class="sel"></select>
+                <label class="topology-field-label">终点节点</label>
+                <select id="testEndNode" class="sel"></select>
+                <div id="testPathHint" class="topology-test-path-hint"></div>
+              </div>
               <div class="topology-inline-actions">
                 <button id="btnTestSmoke" class="btn primary" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg>单元测试</button>
                 <button id="btnTestStress" class="btn" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M4 18h16M6 14l3-4 3 3 4-6 2 3"/></svg>压力测试</button>
@@ -469,5 +472,5 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite34"></script>
-<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite34"></script>
+<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite35"></script>
+<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite35"></script>

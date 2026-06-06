@@ -520,6 +520,48 @@
     return picked ? String(picked.value || "full") : "full";
   }
 
+  function isTestSegmentScope() {
+    return isTestMode() && getTestScope() === "segment";
+  }
+
+  function testNodeOptionLabel(node) {
+    if (!node) return "-";
+    const id = String(node.id || "").trim();
+    const name = String(node.name || "").trim();
+    if (!id) return name || "-";
+    if (name && name !== id) return id + " · " + name;
+    return id;
+  }
+
+  function setTestPathHint(message) {
+    const hint = $("testPathHint");
+    if (!hint) return;
+    hint.textContent = String(message || "");
+  }
+
+  function syncTestScopeUI() {
+    const showSegment = isTestSegmentScope();
+    const segFields = $("testSegmentFields");
+    if (segFields) segFields.classList.toggle("is-hidden", !showSegment);
+    const shell = document.querySelector(".ops-topology-app");
+    if (shell) shell.classList.toggle("test-scope-segment", showSegment);
+    if (showSegment) {
+      fillTestNodeOptions();
+      computePathHighlight();
+    } else if (isTestMode()) {
+      setTestPathHint("");
+      clearTestHighlight();
+    }
+  }
+
+  function syncToolButtonsForMode() {
+    const editable = isEditMode();
+    ["toolConnect", "toolUndoInline", "toolRedoInline", "toolSaveInline", "btnApplyBlueprint", "btnAutoBindAgents"].forEach((id) => {
+      const el = $(id);
+      if (el) el.disabled = !editable;
+    });
+  }
+
   function logDeployment(message, level) {
     const box = $("deploymentLogMirror");
     if (!box) return;
@@ -2426,9 +2468,11 @@
       path.setAttribute("fill", "none");
       path.setAttribute("marker-end", "url(#edge-arrow-marker)");
       const hl = state.highlight.edges.has(edge.id) ? " hl" : "";
+      const segmentHl = isTestSegmentScope() && state.highlight.edges.size > 0;
+      const dim = segmentHl && !state.highlight.edges.has(edge.id) ? " path-dim" : "";
       const flow = state.flowViz.edges.has(edge.id) ? " flow" : "";
       const fail = (state.flowViz.statusByNode[String(edge.to)] && ["FAILED", "TIMEOUT", "CANCELED"].includes(String(state.flowViz.statusByNode[String(edge.to)]).toUpperCase())) ? " fail" : "";
-      path.setAttribute("class", "edge" + hl + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
+      path.setAttribute("class", "edge" + hl + dim + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
       const src = getNode(edge.from);
       if (!flow && !hl && !fail) {
         path.style.stroke = isEditMode() ? "#2563eb" : roleColor(src && src.role);
@@ -2556,12 +2600,14 @@
 
       const hasIn = (state.topology.edges || []).some((e) => String(e.to) === String(n.id));
       const agentLine = aid ? ('<div class="node-agent-line">Agent: ' + esc(aid) + '</div>') : "";
+      const segmentHl = isTestSegmentScope() && state.highlight.nodes.size > 0;
 
       const el = document.createElement("div");
       el.className = "node structured-node tw-node"
         + (hasIn ? " has-in-port" : "")
         + (state.selection.nodes.has(n.id) ? " sel" : "")
-        + (state.highlight.nodes.has(n.id) ? " hl" : "")
+        + (segmentHl && state.highlight.nodes.has(n.id) ? " hl" : "")
+        + (segmentHl && !state.highlight.nodes.has(n.id) ? " path-dim" : "")
         + (isFlow ? " flow-active" : "")
         + (["FAILED", "TIMEOUT", "CANCELED"].includes(flowSt) ? " flow-fail" : "")
         + (flowSt === "SUCCESS" ? " flow-ok" : "")
@@ -3839,18 +3885,23 @@
 
   function computePathHighlight() {
     if (!isTestMode()) { clearTestHighlight(); return; }
-    const scope = getTestScope();
-    const startNode = $("testStartNode").value || "";
-    const endNode = $("testEndNode").value || "";
-    if (scope === "full") {
-      state.highlight = {
-        nodes: new Set((state.topology.nodes || []).map((n) => n.id)),
-        edges: new Set((state.topology.edges || []).map((e) => e.id)),
-      };
-      redrawGraph();
+    if (!isTestSegmentScope()) {
+      setTestPathHint("");
+      clearTestHighlight();
       return;
     }
-    if (!startNode || !endNode) { clearTestHighlight(); return; }
+    const startNode = $("testStartNode").value || "";
+    const endNode = $("testEndNode").value || "";
+    if (!startNode || !endNode) {
+      setTestPathHint("请选择起点和终点节点");
+      clearTestHighlight();
+      return;
+    }
+    if (startNode === endNode) {
+      setTestPathHint("起点和终点不能相同");
+      clearTestHighlight();
+      return;
+    }
     const edges = state.topology.edges || [];
     const adj = {};
     edges.forEach((e) => {
@@ -3872,7 +3923,11 @@
         q.push(nx);
       });
     }
-    if (!found) { clearTestHighlight(); return; }
+    if (!found) {
+      setTestPathHint("未找到从 " + startNode + " 到 " + endNode + " 的连通路径");
+      clearTestHighlight();
+      return;
+    }
     const nodes = new Set();
     const hlEdges = new Set();
     let cursor = endNode;
@@ -3882,6 +3937,7 @@
       cursor = prev[cursor].node;
       nodes.add(cursor);
     }
+    setTestPathHint("已高亮链路段：" + Array.from(nodes).join(" → "));
     state.highlight = { nodes, edges: hlEdges };
     redrawGraph();
   }
@@ -3895,13 +3951,12 @@
     const prevStart = startSel.value || "";
     const prevEnd = endSel.value || "";
     const ids = nodes.map((n) => String(n.id || "")).filter(Boolean);
-    const options = nodes.map((n) => {
-      const title = nodeDisplayTitle(n);
-      return '<option value="' + esc(n.id) + '">' + esc(title) + "</option>";
-    }).join("");
+    const options = nodes.map((n) => (
+      '<option value="' + esc(n.id) + '">' + esc(testNodeOptionLabel(n)) + "</option>"
+    )).join("");
 
-    startSel.innerHTML = '<option value="">起点节点</option>' + options;
-    endSel.innerHTML = '<option value="">终点节点</option>' + options;
+    startSel.innerHTML = '<option value="">请选择起点节点</option>' + options;
+    endSel.innerHTML = '<option value="">请选择终点节点</option>' + options;
 
     const hasPrevStart = prevStart && ids.indexOf(prevStart) >= 0;
     const hasPrevEnd = prevEnd && ids.indexOf(prevEnd) >= 0;
@@ -3909,7 +3964,7 @@
     let nextEnd = hasPrevEnd ? prevEnd : "";
 
     if (!nextStart) nextStart = ids.includes("gateway-01") ? "gateway-01" : (ids[0] || "");
-    if (!nextEnd) nextEnd = ids.includes("tcp-01") ? "tcp-01" : (ids.length > 1 ? ids[ids.length - 1] : ids[0] || "");
+    if (!nextEnd) nextEnd = ids.includes("tcp-01") ? "tcp-01" : (ids.find((id) => id !== nextStart) || ids[0] || "");
     if (ids.length > 1 && nextStart === nextEnd) {
       nextEnd = ids.find((id) => id !== nextStart) || nextEnd;
     }
@@ -3987,11 +4042,17 @@
     refreshRightPanelMode();
     refreshLogDemoForChrome();
     syncLayoutSpacingControls();
+    syncToolButtonsForMode();
     if (state.mode === "test") {
       seedTestModeRuntimeDemo();
-      computePathHighlight();
+      syncTestScopeUI();
     } else {
+      setTestPathHint("");
       clearTestHighlight();
+      const shell = document.querySelector(".ops-topology-app");
+      if (shell) shell.classList.remove("test-scope-segment");
+      const segFields = $("testSegmentFields");
+      if (segFields) segFields.classList.add("is-hidden");
     }
     if (state.mode === "edit") {
       clearFlowViz(true, "applyModeUI-edit-mode");
@@ -4190,18 +4251,21 @@
     btn.classList.add("is-active");
     switch (btn.id) {
       case "toolSelect":
-        toast("已切换到选择工具", "ok");
         break;
       case "toolConnect":
-        if (isTestMode()) { toast("测试模式禁止重新布局", "warn"); return; }
-        layoutStructuredGraph();
+        if (!isEditMode()) { toast("仅编辑模式可重新布局", "warn"); return; }
+        if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+        state.topology.meta.layout_locked = false;
+        layoutStructuredGraph({ force: true });
         redrawGraph();
         toast("已按结构化规则重新排布", "ok");
         break;
       case "toolUndoInline":
+        if (!isEditMode()) { toast("仅编辑模式可撤销", "warn"); return; }
         undoTopology();
         break;
       case "toolRedoInline":
+        if (!isEditMode()) { toast("仅编辑模式可重做", "warn"); return; }
         redoTopology();
         break;
       case "toolResetInline":
@@ -4210,12 +4274,15 @@
         toast("视图已适应画布", "ok");
         break;
       case "toolSaveInline":
+        if (isTestMode()) { toast("测试模式禁止保存拓扑", "warn"); return; }
         if ($("toolSave")) $("toolSave").onclick && $("toolSave").onclick();
         break;
       case "btnApplyBlueprint":
+        if (!isEditMode()) { toast("仅编辑模式可应用蓝图", "warn"); return; }
         applyBlueprintFromToolbar();
         break;
       case "btnAutoBindAgents":
+        if (!isEditMode()) { toast("仅编辑模式可自动绑定", "warn"); return; }
         autoBindAgents();
         break;
       default:
@@ -4727,7 +4794,7 @@
       else toast("请先点击选择一条连线", "warn");
     };
     document.querySelectorAll('input[name="testScope"]').forEach((inp) => {
-      inp.onchange = computePathHighlight;
+      inp.onchange = syncTestScopeUI;
     });
     if ($("testStartNode")) $("testStartNode").onchange = computePathHighlight;
     if ($("testEndNode")) $("testEndNode").onchange = computePathHighlight;
