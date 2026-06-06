@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite16">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite31">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -106,7 +106,7 @@
               <button id="btnApplyBlueprint" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 3h7v4h-7v-4z"/></svg></span><span class="tool-label">蓝图模板</span></button>
               <button id="btnAutoBindAgents" class="topology-tool-btn" type="button"><span class="tool-ico"><svg viewBox="0 0 24 24"><path d="M8 12h8M12 8v8M5 5l14 14"/></svg></span><span class="tool-label">自动绑定</span></button>
             </div>
-            <select id="flowBlueprintSelect" class="sel tw-hidden"><option value="">请选择流程模板</option></select>
+            <label class="topology-blueprint-row"><span>蓝图模板</span><select id="flowBlueprintSelect" class="sel"><option value="">请选择蓝图模板</option></select></label>
             <button id="toolReset2" class="btn tw-hidden" type="button">重置视图</button>
             <button id="btnDeleteEdgeInline" class="btn tw-hidden" type="button">删除连线</button>
             <span id="edgeSelectionHint" class="tw-hidden">未选中连线</span>
@@ -266,7 +266,7 @@
                   <label class="topology-field" data-layout="nodes"><span>节点 ID</span><input id="insNodeId" class="inp" readonly></label>
                   <label class="topology-field" data-field="status"><span>状态</span><select id="insNodeBizStatus" class="sel"></select></label>
                   <label class="topology-field" data-layout="nodes"><span>所属分组</span><input id="insNodeOwner" class="inp" placeholder="游戏服务"></label>
-                  <label class="topology-field" data-field="color"><span>颜色</span><div class="topology-color-field"><span id="insNodeColorSwatch" class="topology-color-swatch"></span><input id="insNodeColor" class="inp" placeholder="#722ed1"></div></label>
+                  <label class="topology-field" data-field="color"><span>颜色</span><div class="topology-color-field"><label class="topology-color-picker-wrap" title="打开调色板"><input id="insNodeColorPicker" class="topology-color-picker-input" type="color" value="#722ed1"></label><div id="insNodeColorPresets" class="topology-color-presets" role="listbox" aria-label="节点颜色预设"></div><input id="insNodeColor" type="hidden" value="#722ed1"></div></label>
                 </div>
                 <label class="topology-field" data-layout="tools"><span>语义类型</span><input id="insNodeKindDisplay" class="inp" readonly placeholder="game"></label>
                 <select id="insNodeKind" class="sel is-hidden" aria-hidden="true"><option value="standard">standard</option><option value="entry">entry</option><option value="terminal">terminal</option><option value="game">game</option></select>
@@ -331,7 +331,8 @@
               </div>
             </div>
             <div class="topology-inspector-actions topology-inspector-actions-tools">
-              <button id="btnStartRemoteNode" class="btn primary" type="button">启动服务</button>
+              <button id="btnSaveNodeTools" class="btn primary" type="button">保存节点</button>
+              <button id="btnStartRemoteNode" class="btn" type="button">启动服务</button>
               <button id="btnRestartNode" class="btn" type="button">重启服务</button>
               <button id="btnViewNodeLogs" class="btn" type="button">查看日志</button>
               <button id="btnProbeNode" class="btn" type="button">探测节点</button>
@@ -378,14 +379,26 @@
 </div>
 
 <div id="structuredAddModal" class="topology-modal hidden">
-  <div class="topology-modal-card">
+  <div class="topology-modal-card topology-modal-structured-add">
     <div class="topology-modal-header">
       <div><div class="topology-modal-title" id="structuredAddTitle">添加下游节点</div><div class="topology-modal-sub">系统会按照角色和语义规则过滤合法下游。</div></div>
       <button id="structuredAddClose" class="topology-modal-close" type="button">×</button>
     </div>
-    <div class="topology-modal-grid">
-      <div><div class="topology-modal-section-title">添加已有节点为下游</div><div id="structuredExistingList" class="topology-menu-list"></div></div>
-      <div><div class="topology-modal-section-title">基于模板创建新下游</div><div id="structuredPresetList" class="topology-menu-list"></div></div>
+    <div class="topology-modal-grid topology-structured-add-grid">
+      <div class="topology-structured-add-pane">
+        <div class="topology-modal-section-head">
+          <div class="topology-modal-section-title">添加已有节点为下游</div>
+          <span id="structuredExistingCount" class="structured-add-section-count hidden"></span>
+        </div>
+        <div id="structuredExistingList" class="topology-structured-add-list"></div>
+      </div>
+      <div class="topology-structured-add-pane">
+        <div class="topology-modal-section-head">
+          <div class="topology-modal-section-title">基于模板创建新下游</div>
+          <span id="structuredPresetCount" class="structured-add-section-count hidden"></span>
+        </div>
+        <div id="structuredPresetList" class="topology-structured-add-list"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -443,5 +456,5 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260606-topology-api-fix1"></script>
-<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite16"></script>
+<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite30"></script>
+<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite30"></script>

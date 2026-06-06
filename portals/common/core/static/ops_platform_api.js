@@ -31,7 +31,7 @@
       error: raw || 'request_failed',
       error_code: code,
       level: mapped ? mapped.level : (status>=500?'error':'warn'),
-      message: (mapped && mapped.message) || (payload && payload.message) || raw || '请求失败',
+      message: (payload && payload.message) || (mapped && mapped.message) || raw || '请求失败',
       _http_status: status || 0,
       _raw: payload || null
     };

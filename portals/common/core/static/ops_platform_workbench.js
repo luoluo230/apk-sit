@@ -1,5 +1,5 @@
 (function () {
-  const ROLE_OPTIONS = ["gateway", "business", "pressure", "database", "cache", "mq", "search", "scheduler", "admin", "edge", "analytics"];
+  const ROLE_OPTIONS = ["gateway", "auth", "business", "pressure", "database", "cache", "mq", "search", "scheduler", "admin", "edge", "transport", "analytics"];
   const STATUS_OPTIONS = ["normal", "observe", "degraded", "error", "offline"];
   const STATUS_LABELS = { normal: "运行中", observe: "观察中", degraded: "降级中", error: "异常", offline: "离线" };
   const ROLE_LABELS = {
@@ -14,6 +14,8 @@
     scheduler: "调度服务",
     admin: "运维服务",
     edge: "边缘节点",
+    transport: "传输服务",
+    tcp: "TCP 传输",
     analytics: "数据分析",
   };
   const ROLE_BADGES = {
@@ -53,6 +55,44 @@
     const key = String(role || "").toLowerCase();
     const p = ROLE_COLOR[key] || ROLE_COLOR.business || { border: "#3b82f6" };
     return p.border || "#3b82f6";
+  }
+
+  function hexRgb(hex) {
+    const h = normalizeHexColor(hex, "#722ed1").slice(1);
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  }
+
+  function nodeCustomColor(node) {
+    const raw = String((node && node.ui && node.ui.color) || "").trim();
+    if (!raw || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw)) return "";
+    return normalizeHexColor(raw, "");
+  }
+
+  function nodePalette(node) {
+    const roleKey = String((node && node.role) || "").toLowerCase();
+    const fallback = ROLE_COLOR[roleKey] || ROLE_COLOR.business || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#ffffff", glow: "rgba(37,99,235,.18)" };
+    const custom = nodeCustomColor(node);
+    if (!custom) return fallback;
+    const { r, g, b } = hexRgb(custom);
+    return {
+      border: custom,
+      bg1: "rgb(" + Math.round(r * 0.08 + 255 * 0.92) + "," + Math.round(g * 0.08 + 255 * 0.92) + "," + Math.round(b * 0.08 + 255 * 0.92) + ")",
+      bg2: "#ffffff",
+      glow: "rgba(" + r + "," + g + "," + b + ",0.18)",
+    };
+  }
+
+  function nodeAccentColor(nodeOrRole) {
+    if (nodeOrRole && typeof nodeOrRole === "object") {
+      const custom = nodeCustomColor(nodeOrRole);
+      if (custom) return custom;
+      return roleColor(nodeOrRole.role);
+    }
+    return roleColor(nodeOrRole);
   }
   const $ = (id) => document.getElementById(id);
   const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (s) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[s]));
@@ -355,12 +395,90 @@
 
   function view() { return ((state.topology.meta || {}).viewport || { x: 0, y: 0, zoom: 1 }); }
   function getNode(id) { return (state.topology.nodes || []).find((n) => n.id === id) || null; }
+
+  function selectedNodeId() {
+    const card = $("nodeInspectorCard");
+    const fromCard = card ? String(card.getAttribute("data-selected-node-id") || "").trim() : "";
+    if (fromCard) return fromCard;
+    const fromIns = String((($("insNodeId") || {}).value || "")).trim();
+    if (fromIns) return fromIns;
+    const sel = Array.from(state.selection.nodes || []);
+    return sel.length ? String(sel[0] || "").trim() : "";
+  }
+
+  function nodeCoords(node) {
+    const n = node || {};
+    const ui = n.ui || {};
+    const x = ui.x != null ? ui.x : n.x;
+    const y = ui.y != null ? ui.y : n.y;
+    return {
+      x: Number(x != null && x !== "" ? x : 0),
+      y: Number(y != null && y !== "" ? y : 0),
+    };
+  }
+
+  function serverNodeToClient(sn, fallback) {
+    const fb = fallback || {};
+    const fbUi = fb.ui || {};
+    const srvUi = (sn && sn.ui) || {};
+    const coords = nodeCoords(sn && Object.keys(sn).length ? sn : fb);
+    const role = String((sn && sn.role) || fb.role || "business");
+    const kind = inferKind(role, (sn && sn.kind) || fb.kind);
+    return {
+      id: String((sn && sn.id) || fb.id || ""),
+      name: String((sn && sn.name) || fb.name || ""),
+      role,
+      kind,
+      desc: String((sn && sn.desc != null) ? sn.desc : (fb.desc || "")),
+      bizStatus: String((sn && sn.bizStatus) || fb.bizStatus || "normal"),
+      owner: String((sn && sn.owner) || fb.owner || ""),
+      group: String((sn && sn.group) || fb.group || ""),
+      tags: Array.isArray(sn && sn.tags) ? sn.tags : (Array.isArray(fb.tags) ? fb.tags : []),
+      notes: String((sn && sn.notes) || fb.notes || ""),
+      ui: {
+        ...fbUi,
+        ...srvUi,
+        x: coords.x,
+        y: coords.y,
+        w: Number(srvUi.w || fbUi.w || 240),
+        h: Number(srvUi.h || fbUi.h || 104),
+        color: String(srvUi.color || fbUi.color || "#0f172a"),
+        ports: normalizePorts(kind, srvUi.ports || fbUi.ports),
+        remote: (srvUi.remote && typeof srvUi.remote === "object") ? srvUi.remote : (fbUi.remote || {}),
+        network: (srvUi.network && typeof srvUi.network === "object") ? srvUi.network : (fbUi.network || {}),
+        disabled: !!(srvUi.disabled != null ? srvUi.disabled : fbUi.disabled),
+        locked: !!(srvUi.locked != null ? srvUi.locked : fbUi.locked),
+        list_only: !!(srvUi.list_only != null ? srvUi.list_only : fbUi.list_only),
+      },
+    };
+  }
+
+  function mergeServerNode(nodeId, serverNodes) {
+    const nid = String(nodeId || "").trim();
+    if (!nid || !Array.isArray(serverNodes)) return false;
+    const sn = serverNodes.find((x) => String((x || {}).id || "") === nid);
+    if (!sn) return false;
+    const idx = (state.topology.nodes || []).findIndex((n) => String(n.id) === nid);
+    if (idx < 0) return false;
+    state.topology.nodes[idx] = serverNodeToClient(sn, state.topology.nodes[idx]);
+    return true;
+  }
   function runtimeName(id) {
     const n = getNode(id);
     return String((n && (n.name || n.node_name || n.title || n.id)) || id || "-");
   }
   function roleLabel(role) {
     return ROLE_LABELS[String(role || "").toLowerCase()] || String(role || "未分类节点");
+  }
+  function ensureRoleOption(role) {
+    const sel = $("insNodeRole");
+    if (!sel || !role) return;
+    const val = String(role).toLowerCase();
+    if (Array.from(sel.options || []).some((op) => String(op.value) === val)) return;
+    const op = document.createElement("option");
+    op.value = val;
+    op.textContent = roleLabel(val);
+    sel.appendChild(op);
   }
   function semanticTypeLabel(node) {
     if (!node) return "standard";
@@ -446,7 +564,7 @@
   }
 
   function iconAccent(nodeOrRole) {
-    return roleColor(resolveIconRole(nodeOrRole));
+    return nodeAccentColor(nodeOrRole);
   }
   function nodeDisplayTitle(node) {
     if (!node) return "-";
@@ -1108,10 +1226,11 @@
 
   function inferKind(role, current) {
     const c = String(current || "").toLowerCase();
+    if (c === "game") return "standard";
     if (KINDS.includes(c)) return c;
     const r = String(role || "").toLowerCase();
     if (["gateway", "edge"].includes(r)) return "entry";
-    if (["database", "cache", "mq", "search"].includes(r)) return "terminal";
+    if (["database", "cache", "mq", "search", "transport"].includes(r)) return "terminal";
     return "standard";
   }
 
@@ -1299,10 +1418,15 @@
     }
     let maxRank = Object.keys(rank).reduce((m, k) => Math.max(m, rank[k] || 0), 0);
     nodes.forEach((n) => {
-      if (rank[n.id] == null) {
-        maxRank += 1;
-        rank[n.id] = maxRank;
+      if (rank[n.id] != null) return;
+      const role = String(n.role || "").toLowerCase();
+      const biz = nodes.find((x) => String(x.role || "").toLowerCase() === "business" && rank[x.id] != null);
+      if (["database", "cache", "search", "mq"].includes(role) && biz) {
+        rank[n.id] = (rank[biz.id] || 0) + 1;
+        return;
       }
+      maxRank += 1;
+      rank[n.id] = maxRank;
     });
     const ranks = {};
     nodes.forEach((n) => {
@@ -1412,10 +1536,29 @@
     const turnX = bx > ax ? Math.max(ax + minGap, midX) : ax + minGap;
     if (structuredMode()) {
       const entryX = bx - 24;
-      if (Math.abs(by - ay) <= 2) return { x: Math.round((ax + bx) / 2), y: ay };
-      return { x: Math.round((entryX + bx) / 2), y: by };
+      if (Math.abs(by - ay) <= 2) return { x: Math.round((ax + bx) / 2), y: ay, horizontal: true };
+      return { x: Math.round((entryX + bx) / 2), y: by, horizontal: true };
     }
-    return { x: turnX, y: Math.round((ay + by) / 2) };
+    const vertical = Math.abs(by - ay) > Math.abs(bx - ax);
+    return { x: turnX, y: Math.round((ay + by) / 2), horizontal: !vertical };
+  }
+
+  function edgeDecorSlots(edge) {
+    const m = edgeMid(edge);
+    if (!m) return null;
+    const gap = 14;
+    const deleteR = 9;
+    const labelH = 18;
+    if (m.horizontal !== false) {
+      return {
+        delete: { x: m.x, y: m.y - gap - deleteR },
+        label: { x: m.x, y: m.y + gap, h: labelH },
+      };
+    }
+    return {
+      delete: { x: m.x - gap - deleteR, y: m.y },
+      label: { x: m.x + gap, y: m.y, h: labelH },
+    };
   }
 
   function normalizeTopology() {
@@ -1450,6 +1593,7 @@
       const role = String(prev.role || raw.role || "business");
       const kind = inferKind(role, prev.kind || raw.kind);
       const ui = prev.ui || {};
+      const coords = nodeCoords(prev);
       return {
         id,
         name: String(prev.name || raw.name || id),
@@ -1460,14 +1604,17 @@
         owner: String(prev.owner || raw.owner || ""),
         group: String(prev.group || raw.group || ""),
         tags: Array.isArray(prev.tags) ? prev.tags : [],
+        notes: String(prev.notes || ""),
         ui: {
-          x: Number(ui.x != null ? ui.x : 90 + (i % 5) * 280),
-          y: Number(ui.y != null ? ui.y : 100 + Math.floor(i / 5) * 170),
+          x: Number.isFinite(coords.x) ? coords.x : (90 + (i % 5) * 280),
+          y: Number.isFinite(coords.y) ? coords.y : (100 + Math.floor(i / 5) * 170),
           w: Number(ui.w || 240),
           h: Number(ui.h || 96),
           color: String(ui.color || "#0f172a"),
           ports: normalizePorts(kind, ui.ports),
-          list_only: !!(ui.list_only || raw.list_only || (raw.ui && raw.ui.list_only)),
+          list_only: (id === "db-01" && String(((state.topology && state.topology.meta) || {}).design_reference || "") === "v4")
+            ? false
+            : !!(ui.list_only || raw.list_only || (raw.ui && raw.ui.list_only)),
           locked: !!ui.locked,
           disabled: !!ui.disabled,
           remote: (ui.remote && typeof ui.remote === "object") ? ui.remote : {},
@@ -1958,10 +2105,10 @@
         pane.classList.toggle("active", pane.id === "basicInfoPanel");
       });
     }
-    const nid = String(($("insNodeId") || {}).value || "").trim();
+    const nid = String(($("insNodeId") || {}).value || "").trim() || selectedNodeId();
     if (nid) {
       const n = getNode(nid);
-      if (n && $("insNodeDesc")) $("insNodeDesc").value = nodeDesignDesc(n, layout);
+      if (n && $("insNodeDesc")) $("insNodeDesc").value = String(n.desc || "");
     }
   }
 
@@ -2091,21 +2238,24 @@
       path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       svg.appendChild(hit);
       svg.appendChild(path);
-      const m = edgeMid(edge);
-      if (m) {
+      const slots = edgeDecorSlots(edge);
+      if (slots) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "g");
         label.setAttribute("class", "edge-route-label");
         const txtValue = compactEdgeLabel(edge);
-        const labelWidth = Math.max(44, Math.min(96, txtValue.length * 7 + 14));
+        const labelWidth = Math.max(44, Math.min(120, txtValue.length * 7 + 14));
+        const labelX = Math.round(slots.label.x);
+        const labelTop = Math.round(slots.label.y);
+        const labelH = slots.label.h || 18;
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        rect.setAttribute("x", String(Math.round(m.x - labelWidth / 2)));
-        rect.setAttribute("y", String(Math.round(m.y - 24)));
+        rect.setAttribute("x", String(labelX - labelWidth / 2));
+        rect.setAttribute("y", String(labelTop));
         rect.setAttribute("width", String(labelWidth));
-        rect.setAttribute("height", "18");
+        rect.setAttribute("height", String(labelH));
         rect.setAttribute("rx", "9");
         const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        txt.setAttribute("x", String(Math.round(m.x)));
-        txt.setAttribute("y", String(Math.round(m.y - 11)));
+        txt.setAttribute("x", String(labelX));
+        txt.setAttribute("y", String(labelTop + Math.round(labelH * 0.72)));
         txt.setAttribute("text-anchor", "middle");
         txt.textContent = txtValue;
         label.appendChild(rect);
@@ -2114,7 +2264,7 @@
         if (isEditMode()) {
           const del = document.createElementNS("http://www.w3.org/2000/svg", "g");
           del.setAttribute("class", "edge-remove");
-          del.setAttribute("transform", "translate(" + Math.round(m.x) + "," + Math.round(m.y - 10) + ")");
+          del.setAttribute("transform", "translate(" + Math.round(slots.delete.x) + "," + Math.round(slots.delete.y) + ")");
           del.setAttribute("title", "删除连线");
           const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
           c.setAttribute("r", "9");
@@ -2191,7 +2341,7 @@
       const stLabel = agHealth.cls === "err" ? "心跳过期" : (agHealth.cls === "warn" ? "Agent异常" : (STATUS_LABELS[st] || st));
       const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
       const isFlow = state.flowViz.nodes.has(n.id);
-      const palette = ROLE_COLOR[String(n.role || "").toLowerCase()] || { border: "#9ab6e5", bg1: "#ffffff", bg2: "#ffffff", glow: "rgba(37,99,235,.18)" };
+      const palette = nodePalette(n);
       const runtimeItem = runtime[n.id] || {};
       const displayTitle = nodeDisplayTitle(n);
       const metaId = String(runtimeItem.server_id || n.server_id || n.id || "-");
@@ -2304,31 +2454,114 @@
     });
   }
 
+  const FALLBACK_ROLE_RULES = {
+    gateway: { up: ["edge", "lb", "admin"], down: ["business", "pressure", "auth"] },
+    auth: { up: ["gateway", "edge"], down: ["business"] },
+    business: { up: ["gateway", "scheduler", "admin", "auth"], down: ["database", "cache", "mq", "search", "transport"] },
+    admin: { up: ["gateway", "edge"], down: ["business"] },
+    transport: { up: ["business", "gateway"], down: [] },
+    pressure: { up: ["gateway", "admin"], down: ["business"] },
+    database: { up: ["business", "scheduler", "admin"], down: [] },
+    cache: { up: ["business", "gateway", "scheduler"], down: [] },
+    mq: { up: ["business", "gateway", "scheduler"], down: ["business", "analytics"] },
+    scheduler: { up: ["admin"], down: ["business", "database", "cache", "mq"] },
+    search: { up: ["business", "gateway", "scheduler"], down: [] },
+    analytics: { up: ["business", "gateway", "scheduler"], down: [] },
+    edge: { up: [], down: ["gateway"] },
+  };
+
+  function presetRoleRules(role) {
+    const r = String(role || "").toLowerCase();
+    const up = new Set();
+    const down = new Set();
+    (state.presets || []).forEach((p) => {
+      if (String(p.role || "").toLowerCase() !== r) return;
+      (p.fixed_upstream_roles || []).forEach((x) => up.add(String(x).toLowerCase()));
+      (p.fixed_downstream_roles || []).forEach((x) => down.add(String(x).toLowerCase()));
+    });
+    const fb = FALLBACK_ROLE_RULES[r];
+    if (fb) {
+      (fb.up || []).forEach((x) => up.add(String(x).toLowerCase()));
+      (fb.down || []).forEach((x) => down.add(String(x).toLowerCase()));
+    }
+    return { allowed_upstream_roles: [...up], allowed_downstream_roles: [...down] };
+  }
+
+  function connectRuleMeta(nodeLike) {
+    const role = String((nodeLike && nodeLike.role) || "business").toLowerCase();
+    const presetRules = presetRoleRules(role);
+    return {
+      role,
+      kind: inferKind(role, nodeLike && nodeLike.kind),
+      allowed_upstream_roles: presetRules.allowed_upstream_roles,
+      allowed_downstream_roles: presetRules.allowed_downstream_roles,
+    };
+  }
+
+  function linkRoleBlockReason(fromNodeId, toLike) {
+    const fromNode = getNode(fromNodeId);
+    if (!fromNode || !toLike) return "节点不存在";
+    const fromMeta = connectRuleMeta(fromNode);
+    const toMeta = connectRuleMeta(toLike);
+    const allowDown = fromMeta.allowed_downstream_roles || [];
+    const allowUp = toMeta.allowed_upstream_roles || [];
+    if (allowDown.length && toMeta.role && !allowDown.includes(toMeta.role)) {
+      return "「" + fromMeta.role + "」不允许连接「" + toMeta.role + "」（可连下游：" + allowDown.join(", ") + "）";
+    }
+    if (allowUp.length && fromMeta.role && !allowUp.includes(fromMeta.role)) {
+      return "「" + toMeta.role + "」不接受来自「" + fromMeta.role + "」（可接受上游：" + allowUp.join(", ") + "）";
+    }
+    return "";
+  }
+
+  function portLinkCount(nodeId, side, portId) {
+    return (state.topology.edges || []).filter((e) => {
+      if (side === "out") return String(e.from) === String(nodeId) && String(e.from_port || "out-1") === portId;
+      return String(e.to) === String(nodeId) && String(e.to_port || "in-1") === portId;
+    }).length;
+  }
+
+  function hasStructuredFreePort(nodeId, side) {
+    const n = getNode(nodeId);
+    if (!n) return false;
+    const kind = inferKind(n.role, n.kind);
+    const ports = normalizePorts(kind, (n.ui || {}).ports);
+    const rows = ports[side] || [];
+    for (let i = 0; i < rows.length; i += 1) {
+      const p = rows[i];
+      const pid = String(p.id || "");
+      const maxLinks = Math.max(1, Number(p.max_links || 1));
+      if (pid && portLinkCount(nodeId, side, pid) < maxLinks) return true;
+    }
+    const maxPorts = (kind === "entry" || kind === "terminal") ? 8 : 6;
+    return rows.length < maxPorts;
+  }
+
   function canStructuredConnect(fromNodeId, toLike) {
     const fromNode = getNode(fromNodeId);
     if (!fromNode || !toLike) return { ok: false, msg: "节点不存在" };
     const toId = String(toLike.id || "");
     if (toId && toId === fromNodeId) return { ok: false, msg: "不能连接同一个节点" };
-    const fromMeta = rawNodeMeta(fromNodeId);
-    const fromRole = String(fromMeta.role || fromNode.role || "");
-    const toRole = String(toLike.role || "");
-    const toKind = inferKind(toRole, toLike.kind);
-    if (fromNode.kind === "terminal" || toKind === "entry") return { ok: false, msg: "节点语义方向不允许连接" };
-    const allowDown = Array.isArray(fromMeta.allowed_downstream_roles) ? fromMeta.allowed_downstream_roles.map(String) : [];
-    const allowUp = Array.isArray(toLike.allowed_upstream_roles)
-      ? toLike.allowed_upstream_roles.map(String)
-      : (Array.isArray(toLike.fixed_upstream_roles) ? toLike.fixed_upstream_roles.map(String) : []);
-    if (allowDown.length && toRole && !allowDown.includes(toRole)) return { ok: false, msg: "当前节点规则不允许该下游角色" };
-    if (allowUp.length && fromRole && !allowUp.includes(fromRole)) return { ok: false, msg: "目标节点不接受该上游角色" };
+    const fromMeta = connectRuleMeta(fromNode);
+    const toMeta = connectRuleMeta(toLike);
+    if (fromMeta.kind === "terminal" || toMeta.kind === "entry") return { ok: false, msg: "节点语义方向不允许连接" };
+    const roleMsg = linkRoleBlockReason(fromNodeId, toLike);
+    if (roleMsg) return { ok: false, msg: roleMsg };
     if (toId && (state.topology.edges || []).some((e) => String(e.from) === String(fromNodeId) && String(e.to) === toId)) {
       return { ok: false, msg: "两个节点之间已存在连线" };
+    }
+    if (toId && !hasStructuredFreePort(fromNodeId, "out")) {
+      return { ok: false, msg: "源节点输出端口已满，请先释放或扩展端口" };
+    }
+    if (toId && !hasStructuredFreePort(toId, "in")) {
+      return { ok: false, msg: "目标节点输入端口已满" };
     }
     return { ok: true };
   }
 
   function legalExistingTargetsForNode(nodeId) {
     return (state.topology.nodes || [])
-      .filter((n) => n && n.id && n.id !== nodeId)
+      .filter((n) => n && n.id && n.id !== nodeId && !(n.ui || {}).list_only)
       .map((n) => ({ node: n, check: canStructuredConnect(nodeId, n) }))
       .filter((x) => x.check.ok)
       .map((x) => x.node);
@@ -2340,8 +2573,6 @@
         id: "",
         role: p.role,
         kind: p.kind,
-        allowed_upstream_roles: p.fixed_upstream_roles || [],
-        allowed_downstream_roles: p.fixed_downstream_roles || [],
       }).ok);
   }
 
@@ -2364,6 +2595,41 @@
     return true;
   }
 
+  function structuredAddTileHtml(source, title, meta) {
+    const accent = iconAccent(source);
+    const iconHtml = source && source.preset_id
+      ? presetIcon(source.role, { tile: true })
+      : roleBadge(source);
+    return '<span class="structured-add-tile-ico" style="--ico-accent:' + esc(accent) + '">' + iconHtml + "</span>"
+      + '<span class="structured-add-tile-text">'
+      + '<span class="structured-add-tile-name">' + esc(title) + "</span>"
+      + '<span class="structured-add-tile-meta">' + esc(meta) + "</span>"
+      + "</span>"
+      + '<span class="structured-add-tile-action" aria-hidden="true">+</span>';
+  }
+
+  function appendStructuredAddTile(parent, source, title, meta, onClick) {
+    const accent = iconAccent(source);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "structured-add-tile";
+    btn.style.setProperty("--tile-accent", accent);
+    btn.innerHTML = structuredAddTileHtml(source, title, meta);
+    btn.onclick = onClick;
+    parent.appendChild(btn);
+  }
+
+  function setStructuredAddCount(el, count) {
+    if (!el) return;
+    if (!count) {
+      el.textContent = "";
+      el.classList.add("hidden");
+      return;
+    }
+    el.textContent = String(count);
+    el.classList.remove("hidden");
+  }
+
   function openStructuredAddMenu(nodeId) {
     if (!isEditMode()) { toast("运行/测试模式不可修改结构", "warn"); return; }
     const node = getNode(nodeId);
@@ -2373,38 +2639,61 @@
     const title = $("structuredAddTitle");
     const existingBox = $("structuredExistingList");
     const presetBox = $("structuredPresetList");
+    const existingCount = $("structuredExistingCount");
+    const presetCount = $("structuredPresetCount");
     if (!modal || !existingBox || !presetBox) return;
     if (title) title.textContent = "从 “" + runtimeName(nodeId) + "” 添加下游";
     const existing = legalExistingTargetsForNode(nodeId);
     const presets = legalPresetsForNode(nodeId);
-    existingBox.innerHTML = existing.length ? "" : '<div class="preset-empty">当前拓扑中没有可连接的已有节点</div>';
-    existing.forEach((n) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "structured-menu-item";
-      item.innerHTML = '<div class="structured-menu-item-title">' + esc(nodeDisplayTitle(n)) + '</div>'
-        + '<div class="structured-menu-item-sub">' + esc(roleLabel(n.role) + " · " + semanticTypeLabel(n)) + '</div>';
-      item.onclick = () => structuredAddExistingTarget(nodeId, n.id);
-      existingBox.appendChild(item);
-    });
-    presetBox.innerHTML = presets.length ? "" : '<div class="preset-empty">当前节点没有可添加的下游类型</div>';
-    const grouped = {};
-    presets.forEach((p) => { const g = presetGroup(p); if (!grouped[g]) grouped[g] = []; grouped[g].push(p); });
-    Object.keys(grouped).sort().forEach((g) => {
-      const sec = document.createElement("div");
-      sec.className = "structured-menu-group";
-      sec.innerHTML = '<div class="structured-menu-group-title">' + esc(g) + '</div>';
-      grouped[g].forEach((p) => {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "structured-menu-item";
-        item.innerHTML = '<div class="structured-menu-item-title">' + esc(p.name || p.preset_id || "-") + '</div>'
-          + '<div class="structured-menu-item-sub">' + esc(roleLabel(p.role) + " · " + inferKind(p.role, p.kind)) + '</div>';
-        item.onclick = () => structuredAddNewTarget(nodeId, p.preset_id);
-        sec.appendChild(item);
+    setStructuredAddCount(existingCount, existing.length);
+    setStructuredAddCount(presetCount, presets.length);
+    existingBox.innerHTML = "";
+    if (!existing.length) {
+      existingBox.innerHTML = '<div class="structured-add-empty">当前拓扑中没有可连接的已有节点</div>';
+    } else {
+      const grid = document.createElement("div");
+      grid.className = "structured-add-grid";
+      existing.forEach((n) => {
+        appendStructuredAddTile(
+          grid,
+          n,
+          nodeDisplayTitle(n),
+          roleLabel(n.role) + " · " + semanticTypeLabel(n),
+          () => structuredAddExistingTarget(nodeId, n.id)
+        );
       });
-      presetBox.appendChild(sec);
-    });
+      existingBox.appendChild(grid);
+    }
+    presetBox.innerHTML = "";
+    if (!presets.length) {
+      presetBox.innerHTML = '<div class="structured-add-empty">当前节点没有可添加的下游类型</div>';
+    } else {
+      const grouped = {};
+      presets.forEach((p) => { const g = presetGroup(p); if (!grouped[g]) grouped[g] = []; grouped[g].push(p); });
+      PRESET_GROUP_ORDER.filter((g) => grouped[g] && grouped[g].length).forEach((g) => {
+        const sec = document.createElement("div");
+        sec.className = "structured-add-group";
+        const hd = document.createElement("div");
+        hd.className = "structured-add-group-hd";
+        hd.innerHTML = '<span class="structured-add-group-title">' + esc(g) + '</span>'
+          + '<span class="structured-add-group-count">' + grouped[g].length + "</span>";
+        sec.appendChild(hd);
+        const grid = document.createElement("div");
+        grid.className = "structured-add-grid";
+        grid.setAttribute("data-group", g);
+        grouped[g].forEach((p) => {
+          appendStructuredAddTile(
+            grid,
+            p,
+            p.name || presetTileLabel(p),
+            roleLabel(p.role) + " · " + inferKind(p.role, p.kind),
+            () => structuredAddNewTarget(nodeId, p.preset_id)
+          );
+        });
+        sec.appendChild(grid);
+        presetBox.appendChild(sec);
+      });
+    }
     modal.classList.remove("hidden");
     setModalOpen(true);
   }
@@ -2417,7 +2706,17 @@
   }
 
   async function structuredAddExistingTarget(fromNodeId, toNodeId) {
+    const check = canStructuredConnect(fromNodeId, getNode(toNodeId) || { id: toNodeId });
+    if (!check.ok) {
+      toast(check.msg || "当前节点不能作为下游", "warn");
+      return;
+    }
     const d = await OpsApi.structuredAddExistingTarget(Object.assign(currentScope(), { from_node_id: fromNodeId, to_node_id: toNodeId }));
+    if (!d || d.ok === false) {
+      toast((d && (d.message || d.error)) || "添加下游连线失败", "error");
+      appendJsonDetail("添加已有下游失败原始响应", d || {});
+      return;
+    }
     if (applyStructuredTopologyResponse(d, "已连接已有下游节点")) closeStructuredAddMenu();
   }
 
@@ -2702,10 +3001,64 @@
   }
 
   function syncColorSwatch(value) {
-    const sw = $("insNodeColorSwatch");
-    if (!sw) return;
-    const c = String(value || "#722ed1").trim() || "#722ed1";
-    sw.style.background = c;
+    setInspectorNodeColor(value, { preview: false });
+  }
+
+  function colorPresetOptions() {
+    const seen = new Set();
+    const out = [];
+    Object.keys(ROLE_COLOR).forEach((key) => {
+      const color = String((ROLE_COLOR[key] || {}).border || "").trim();
+      if (!color || seen.has(color.toLowerCase())) return;
+      seen.add(color.toLowerCase());
+      out.push({ key, color, label: ROLE_LABELS[key] || key });
+    });
+    return out;
+  }
+
+  function setInspectorNodeColor(hex, options) {
+    const opts = options || {};
+    const c = normalizeHexColor(hex, roleColor("business"));
+    const hidden = $("insNodeColor");
+    const picker = $("insNodeColorPicker");
+    if (hidden) hidden.value = c;
+    if (picker) picker.value = c;
+    document.querySelectorAll(".topology-color-preset").forEach((btn) => {
+      const btnColor = normalizeHexColor(btn.getAttribute("data-color") || "", "");
+      btn.classList.toggle("is-active", btnColor === c);
+      btn.setAttribute("aria-selected", btnColor === c ? "true" : "false");
+    });
+    if (opts.preview !== false) previewSelectedNodeColor(c);
+  }
+
+  function previewSelectedNodeColor(hex) {
+    const id = selectedNodeId();
+    if (!id || !isEditMode()) return;
+    const n = getNode(id);
+    if (!n) return;
+    n.ui = n.ui || {};
+    n.ui.color = hex;
+    redrawGraph();
+  }
+
+  function renderColorPresets() {
+    const box = $("insNodeColorPresets");
+    if (!box) return;
+    box.innerHTML = colorPresetOptions().map((item) => (
+      '<button type="button" class="topology-color-preset" data-color="' + esc(item.color) + '" title="' + esc(item.label) + '" aria-label="' + esc(item.label) + '" style="background:' + esc(item.color) + ';"></button>'
+    )).join("");
+    box.querySelectorAll(".topology-color-preset").forEach((btn) => {
+      btn.onclick = () => setInspectorNodeColor(btn.getAttribute("data-color") || "");
+    });
+  }
+
+  function normalizeHexColor(raw, fallback) {
+    const s = String(raw || "").trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+      return ("#" + s[1] + s[1] + s[2] + s[2] + s[3] + s[3]).toLowerCase();
+    }
+    return String(fallback || "#0f172a");
   }
 
   function renderTagChips(tags) {
@@ -2813,7 +3166,7 @@
     }
     if (badge) {
       const iconRole = resolveIconRole(node);
-      const palette = ROLE_COLOR[iconRole] || ROLE_COLOR.business;
+      const palette = nodePalette(node);
       badge.innerHTML = roleBadge(node);
       badge.style.setProperty("--ico-accent", palette.border);
       badge.style.color = palette.border;
@@ -2831,17 +3184,21 @@
     if (!n) return;
     state.selection.nodes = new Set([nodeId]);
     state.selection.edgeId = "";
+    const card = $("nodeInspectorCard");
+    if (card) card.setAttribute("data-selected-node-id", String(nodeId));
     if ($("insNodeName")) $("insNodeName").value = String(n.name || n.id || "");
-    $("insNodeId").value = n.id;
-    $("insNodeRole").value = n.role;
-    $("insNodeBizStatus").value = n.bizStatus;
-    $("insNodeKind").value = n.kind || inferKind(n.role, n.kind);
+    const insId = $("insNodeId");
+    if (insId) insId.value = n.id;
+    ensureRoleOption(n.role);
+    const insRole = $("insNodeRole");
+    if (insRole) insRole.value = n.role;
+    if ($("insNodeBizStatus")) $("insNodeBizStatus").value = n.bizStatus;
+    if ($("insNodeKind")) $("insNodeKind").value = n.kind || inferKind(n.role, n.kind);
     if ($("insNodeKindDisplay")) $("insNodeKindDisplay").value = semanticTypeLabel(n);
-    $("insNodeOwner").value = n.group || (n.id === "game-01" ? "游戏服务" : roleLabel(n.role));
-    $("insNodeDesc").value = nodeDesignDesc(n, (state.activeLeftTab || "tools") === "nodes" ? "nodes" : "tools");
+    if ($("insNodeOwner")) $("insNodeOwner").value = n.group || (n.id === "game-01" ? "游戏服务" : roleLabel(n.role));
+    if ($("insNodeDesc")) $("insNodeDesc").value = String(n.desc || "");
     if ($("insNodeNotes")) $("insNodeNotes").value = String(n.notes || n.ui?.notes || "");
-    $("insNodeColor").value = n.ui.color || "#722ed1";
-    syncColorSwatch($("insNodeColor").value);
+    if ($("insNodeColor")) setInspectorNodeColor(nodeCustomColor(n) || roleColor(n.role) || "#722ed1", { preview: false });
     $("insNodeTags").value = (n.tags || []).join(",");
     renderTagChips(n.tags || []);
     const remotePort = String((((n.ui || {}).remote || {}).port || "") || (n.id === "game-01" ? "9501" : ""));
@@ -2922,6 +3279,8 @@
 
   function closeNodeEditor() {
     state.selection.nodes.clear();
+    const card = $("nodeInspectorCard");
+    if (card) card.removeAttribute("data-selected-node-id");
     if ($("insNodeName")) $("insNodeName").value = "";
     ["insNodeId", "insNodePortsSummary", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor", "insNodeKindDisplay", "insNodeRemotePortBasic", "insNodeEndpointsBasic", "insNodeDeployVersionBasic", "insNodeServiceSummary", "insNodeNotes"].forEach((id) => {
       const el = $(id);
@@ -2944,35 +3303,76 @@
     if (!isEditMode()) { toast("仅编辑模式可保存节点属性", "warn"); return; }
     syncInspectorPortFieldsFromBasic();
     syncInspectorAgentMainFromBasic();
-    const id = $("insNodeId").value;
+    const id = selectedNodeId();
+    if (!id) { toast("请先选中要保存的节点", "warn"); return; }
     const n = getNode(id);
-    if (!n) return;
+    if (!n) { toast("节点不存在或已被删除", "error"); return; }
+    const layoutPos = nodeCoords(n);
     n.name = String((($("insNodeName") || {}).value || n.name || n.id || "")).trim() || n.id;
-    n.role = $("insNodeRole").value || n.role;
-    n.bizStatus = $("insNodeBizStatus").value || n.bizStatus;
+    n.role = ($("insNodeRole") && $("insNodeRole").value) || n.role;
+    n.bizStatus = ($("insNodeBizStatus") && $("insNodeBizStatus").value) || n.bizStatus;
     const kindDisplay = String(($("insNodeKindDisplay") || {}).value || "").trim();
-    n.kind = kindDisplay === "game" ? "game" : inferKind(n.role, $("insNodeKind").value || n.kind);
+    n.kind = kindDisplay === "game" ? "game" : inferKind(n.role, ($("insNodeKind") && $("insNodeKind").value) || n.kind);
     const card = $("nodeInspectorCard");
     const nodesLayout = card && card.getAttribute("data-inspector-layout") === "nodes";
     if (nodesLayout) {
-      n.group = String($("insNodeOwner").value || n.group || "");
+      n.group = String(($("insNodeOwner") || {}).value || n.group || "");
       if ($("insNodeOwnerDisplay")) n.owner = String($("insNodeOwnerDisplay").value || n.owner || "运维团队");
     }
-    n.desc = $("insNodeDesc").value || n.desc;
+    n.desc = ($("insNodeDesc") && $("insNodeDesc").value) || n.desc;
     if ($("insNodeNotes")) n.notes = String($("insNodeNotes").value || "").trim();
     n.tags = String(($("insNodeTags") || {}).value || "").split(",").map((x) => x.trim()).filter(Boolean);
-    n.ui.color = String($("insNodeColor").value || n.ui.color || "#0f172a");
+    const colorRaw = String(($("insNodeColor") && $("insNodeColor").value) || "").trim();
+    if (colorRaw && !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(colorRaw)) {
+      toast("颜色格式无效，请使用 #RGB 或 #RRGGBB", "warn");
+      return;
+    }
+    n.ui = n.ui || {};
+    n.ui.color = normalizeHexColor(colorRaw || n.ui.color, n.ui.color || "#0f172a");
     n.ui.remote = n.ui.remote || {};
-    const remotePort = Number($("insNodeRemotePort").value || 0);
+    const remotePort = Number(($("insNodeRemotePort") && $("insNodeRemotePort").value) || 0);
     n.ui.remote.port = (Number.isFinite(remotePort) && remotePort > 0) ? remotePort : 0;
-    const epText = String($("insNodeEndpoints").value || "").trim();
+    const epText = String(($("insNodeEndpoints") && $("insNodeEndpoints").value) || "").trim();
     n.ui.network = { endpoints: epText ? epText.split(",").map((x) => x.trim()).filter(Boolean) : [] };
     n.ui.ports = normalizePorts(n.kind, n.ui.ports);
+    n.ui.x = layoutPos.x;
+    n.ui.y = layoutPos.y;
 
-    const nodeRes = await OpsApi.updateNode(Object.assign(currentScope(), { node_id: id, name: n.name, role: n.role, kind: n.kind, desc: n.desc, bizStatus: n.bizStatus, owner: n.owner, x: n.ui.x, y: n.ui.y, ui: n.ui, tags: n.tags }));
-    if (!nodeRes.ok) { toast(nodeRes.message || "保存节点失败", "error"); return; }
+    const patch = {
+      name: n.name,
+      role: n.role,
+      kind: n.kind,
+      desc: n.desc,
+      bizStatus: n.bizStatus,
+      owner: n.owner,
+      x: layoutPos.x,
+      y: layoutPos.y,
+      ui: Object.assign({}, n.ui, { x: layoutPos.x, y: layoutPos.y }),
+      tags: n.tags,
+    };
+    const nodeRes = await OpsApi.updateNode(Object.assign(currentScope(), { node_id: id, patch }));
+    if (!nodeRes || nodeRes.ok === false) {
+      toast((nodeRes && (nodeRes.message || nodeRes.error)) || "保存节点失败", "error");
+      appendJsonDetail("节点保存失败 " + id, nodeRes || {});
+      return;
+    }
+    if (nodeRes.topology && nodeRes.topology.nodes) {
+      mergeServerNode(id, nodeRes.topology.nodes);
+    } else {
+      const hit = getNode(id);
+      if (hit) {
+        hit.name = n.name;
+        hit.role = n.role;
+        hit.kind = n.kind;
+        hit.desc = n.desc;
+        hit.bizStatus = n.bizStatus;
+        hit.owner = n.owner;
+        hit.tags = n.tags;
+        hit.ui = patch.ui;
+      }
+    }
 
-    const aid = String((($("insNodePrimaryAgentBasic") && $("insNodePrimaryAgentBasic").value) || $("insNodePrimaryAgent").value || ""));
+    const aid = String((($("insNodePrimaryAgentBasic") && $("insNodePrimaryAgentBasic").value) || ($("insNodePrimaryAgent") && $("insNodePrimaryAgent").value) || ""));
     const serviceId = String(($("insNodeService") || {}).value || "").trim();
     let bindRes;
     if (serviceId && OpsApi.bindNodeService) {
@@ -2980,17 +3380,20 @@
     } else {
       bindRes = await OpsApi.bindNodeAgent(Object.assign(currentScope(), { node_id: id, agent_id: aid }));
     }
-    if (!bindRes.ok) { toast(bindRes.message || bindRes.error || "绑定失败", "error"); return; }
+    if (!bindRes || bindRes.ok === false) {
+      toast((bindRes && (bindRes.message || bindRes.error)) || "绑定失败", "error");
+      appendJsonDetail("节点绑定失败 " + id, bindRes || {});
+      return;
+    }
 
     state.nodeBindings = bindRes.bindings || state.nodeBindings;
     state.serviceBindings = bindRes.service_bindings || state.serviceBindings;
     pushHistory();
-    await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
     toast("节点与绑定信息已保存", "ok");
     logMode("节点保存成功: " + id);
-    logDeployment("节点 " + id + " 绑定已更新", "info");
-    closeNodeEditor();
-    drawNodes();
+    logDeployment("节点 " + id + " 属性与绑定已更新", "info");
+    openNodeEditor(id);
+    redrawGraph();
     renderRuntimeNodeList();
   }
 
@@ -3397,9 +3800,10 @@
     }
 
     const lock = state.mode !== "edit";
-    ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColor", "insNodeOwner", "insNodePrimaryAgent", "insNodePrimaryAgentBasic", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeRemotePortBasic", "insNodeEndpoints", "insNodeEndpointsBasic", "insNodeNotes"]
+    ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColorPicker", "insNodeOwner", "insNodePrimaryAgent", "insNodePrimaryAgentBasic", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeRemotePortBasic", "insNodeEndpoints", "insNodeEndpointsBasic", "insNodeNotes"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
-    ["btnPortInAdd", "btnPortOutAdd", "btnPortInRemove", "btnPortOutRemove", "btnDeleteSelectedPort", "btnDeleteNode", "btnSaveNode"]
+    document.querySelectorAll(".topology-color-preset").forEach((btn) => { btn.disabled = lock; });
+    ["btnPortInAdd", "btnPortOutAdd", "btnPortInRemove", "btnPortOutRemove", "btnDeleteSelectedPort", "btnDeleteNode", "btnSaveNode", "btnSaveNodeTools"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
   }
 
@@ -3533,8 +3937,36 @@
     setTopologyHint(warns.length ? ("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
   }
 
+  async function pickBlueprintId() {
+    let bid = String((($("flowBlueprintSelect") || {}).value || "")).trim();
+    if (bid) return bid;
+    const list = state.blueprints || [];
+    if (!list.length) return "";
+    if (list.length === 1) return String(list[0].blueprint_id || "");
+    const lines = list.map((b, i) => (i + 1) + ". " + String(b.name || b.blueprint_id || "-"));
+    const raw = window.prompt("请选择要应用的蓝图（输入序号）:\n" + lines.join("\n"), "1");
+    if (raw == null) return "";
+    const idx = Number(String(raw).trim()) - 1;
+    if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return "";
+    return String(list[idx].blueprint_id || "");
+  }
+
+  async function showRuntimeDetails() {
+    if (!state.runtimeRunId) {
+      toast("当前没有进行中的运行任务", "warn");
+      appendJsonDetail("运行详情", { ok: false, message: "no_active_run", mode: state.mode, topology_id: state.topologyId });
+      return;
+    }
+    const d = await OpsApi.runtimeFlowStatus(state.runtimeRunId);
+    const box = $("nodeLogModalBody");
+    const modal = $("nodeLogModal");
+    if (box) box.textContent = JSON.stringify(d || { ok: false, error: "empty_response" }, null, 2);
+    if (modal) modal.classList.remove("hidden");
+    setModalOpen(true);
+  }
+
   async function applyBlueprintFromToolbar() {
-    const bid = String((($("flowBlueprintSelect") || {}).value || "")).trim();
+    const bid = await pickBlueprintId();
     if (!bid) { toast("请选择蓝图模板", "warn"); return; }
     const chosen = state.blueprints.find((x) => String(x.blueprint_id) === bid);
     const confirmText = "应用蓝图后会替换当前画布中的全部节点与连线。\n\n蓝图：" + (chosen ? chosen.name : bid) + "\n\n确认继续？";
@@ -3599,7 +4031,10 @@
     if (insRole) ROLE_OPTIONS.forEach((v) => insRole.insertAdjacentHTML("beforeend", '<option value="' + v + '">' + esc(roleLabel(v)) + '</option>'));
     const insStatus = $("insNodeBizStatus");
     if (insStatus) STATUS_OPTIONS.forEach((v) => insStatus.insertAdjacentHTML("beforeend", '<option value="' + v + '">' + (STATUS_LABELS[v] || v) + '</option>'));
-    if ($("insNodeColor")) $("insNodeColor").oninput = () => syncColorSwatch($("insNodeColor").value);
+    renderColorPresets();
+    if ($("insNodeColorPicker")) {
+      $("insNodeColorPicker").oninput = () => setInspectorNodeColor($("insNodeColorPicker").value || "");
+    }
     if ($("btnAddNodeTag")) {
       $("btnAddNodeTag").onclick = () => {
         const raw = window.prompt("输入标签名称", "");
@@ -3831,6 +4266,8 @@
 
     const btnSaveNodeEl = $("btnSaveNode");
     if (btnSaveNodeEl) btnSaveNodeEl.onclick = saveNode;
+    const btnSaveNodeToolsEl = $("btnSaveNodeTools");
+    if (btnSaveNodeToolsEl) btnSaveNodeToolsEl.onclick = saveNode;
     const btnDeleteNodeEl = $("btnDeleteNode");
     if (btnDeleteNodeEl) btnDeleteNodeEl.onclick = deleteNode;
     if ($("btnDeleteNodeNodes")) $("btnDeleteNodeNodes").onclick = deleteNode;
@@ -3878,8 +4315,8 @@
     if ($("insNodeEndpointsBasic")) {
       $("insNodeEndpointsBasic").oninput = () => syncInspectorPortFieldsFromBasic();
     }
-    $("btnStartRemoteNode").onclick = async () => {
-      const nid = String($("insNodeId").value || "").trim();
+    if ($("btnStartRemoteNode")) $("btnStartRemoteNode").onclick = async () => {
+      const nid = String((($("insNodeId") || {}).value || "")).trim();
       if (!nid) return;
       const r = await startRemoteForNode(nid);
       if (!r || r.ok === false) {
@@ -3890,12 +4327,12 @@
       toast("远端启动已提交", "ok");
       logMode("节点远端启动提交成功: " + nid + " job_id=" + (r.job_id || "-"));
     };
-    $("btnDeleteSelectedPort").onclick = deleteSelectedPort;
-    $("btnPortInAdd").onclick = () => addPort("in");
-    $("btnPortOutAdd").onclick = () => addPort("out");
-    $("btnPortInRemove").onclick = () => removePort("in");
-    $("btnPortOutRemove").onclick = () => removePort("out");
-    $("btnDeleteEdge").onclick = async () => {
+    if ($("btnDeleteSelectedPort")) $("btnDeleteSelectedPort").onclick = deleteSelectedPort;
+    if ($("btnPortInAdd")) $("btnPortInAdd").onclick = () => addPort("in");
+    if ($("btnPortOutAdd")) $("btnPortOutAdd").onclick = () => addPort("out");
+    if ($("btnPortInRemove")) $("btnPortInRemove").onclick = () => removePort("in");
+    if ($("btnPortOutRemove")) $("btnPortOutRemove").onclick = () => removePort("out");
+    if ($("btnDeleteEdge")) $("btnDeleteEdge").onclick = async () => {
       const id = state.selection.edgeId;
       if (!id) { toast("请先选中一条连线", "warn"); return; }
       await confirmStructuredDeleteEdge(id);
@@ -3942,10 +4379,16 @@
         saveModeState();
       };
     }
-    $("btnRunStartAll").onclick = () => runFullLifecycle(true);
-    $("btnRunStopAll").onclick = () => runFullLifecycle(false);
-    $("btnTestSmoke").onclick = () => runSmokeOrStress(false);
-    $("btnTestStress").onclick = () => runSmokeOrStress(true);
+    if ($("btnRunStartAll")) $("btnRunStartAll").onclick = () => runFullLifecycle(true);
+    if ($("btnRunStopAll")) $("btnRunStopAll").onclick = () => runFullLifecycle(false);
+    if ($("btnTestSmoke")) $("btnTestSmoke").onclick = () => runSmokeOrStress(false);
+    if ($("btnTestStress")) $("btnTestStress").onclick = () => runSmokeOrStress(true);
+    if ($("btnRuntimeDetails")) {
+      $("btnRuntimeDetails").onclick = (ev) => {
+        ev.preventDefault();
+        showRuntimeDetails();
+      };
+    }
     if ($("btnCopyNode")) $("btnCopyNode").onclick = async () => {
       const nid = String(($("insNodeId") || {}).value || "").trim();
       if (!nid) return;
@@ -4048,17 +4491,18 @@
         }
       };
     }
-    $("btnDeleteEdgeInline").onclick = () => {
+    if ($("btnDeleteEdgeInline")) $("btnDeleteEdgeInline").onclick = () => {
       if (state.selection.edgeId) confirmStructuredDeleteEdge(state.selection.edgeId);
       else toast("请先点击选择一条连线", "warn");
     };
     document.querySelectorAll('input[name="testScope"]').forEach((inp) => {
       inp.onchange = computePathHighlight;
     });
-    $("testStartNode").onchange = computePathHighlight;
-    $("testEndNode").onchange = computePathHighlight;
+    if ($("testStartNode")) $("testStartNode").onchange = computePathHighlight;
+    if ($("testEndNode")) $("testEndNode").onchange = computePathHighlight;
 
     const shell = $("canvasShell");
+    if (!shell) return;
     shell.addEventListener("wheel", (ev) => {
       ev.preventDefault();
       const v = view();

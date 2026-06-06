@@ -1623,7 +1623,7 @@ def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _design_reference_topology_content(project_id: str = "", env_key: str = "production") -> Dict[str, Any]:
-    """设计稿标准 5 节点 demo 拓扑：Gateway / Auth / Ops / Game / TCP Transport。"""
+    """设计稿标准 6 节点 demo 拓扑：Gateway / Auth / Ops / Game / TCP Transport / Database。"""
     gateway_ports = {
         "in": [],
         "out": [
@@ -1695,7 +1695,7 @@ def _design_reference_topology_content(project_id: str = "", env_key: str = "pro
             remote_port=9501, endpoints=["10.0.1.15:9501"],
         ),
         _node("tcp-01", "TCP Transport", "transport", "传输服务", 820, 328, "#f5222d", "terminal"),
-        _node("db-01", "Database", "database", "Mongo 主存储", 0, 0, "#13c2c2", tags=["storage"], list_only=True),
+        _node("db-01", "Database", "database", "Mongo 主存储", 560, 280, "#13c2c2", tags=["storage"]),
     ]
     edges = [
         {"id": "edge-gw-auth", "from": "gateway-01", "to": "auth-01", "from_port": "out-1", "to_port": "in-1", "type": "http", "note": "http:80"},
@@ -1733,7 +1733,7 @@ def _needs_design_reference_upgrade(topo: Any) -> bool:
                 return True
             if nid == "db-01":
                 ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
-                if not ui.get("list_only"):
+                if ui.get("list_only"):
                     return True
         edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
         notes = {str(e.get("note") or "") for e in edges if isinstance(e, dict)}
@@ -1741,17 +1741,6 @@ def _needs_design_reference_upgrade(topo: Any) -> bool:
             return True
         if "db-01" not in {str(n.get("id") or "") for n in nodes if isinstance(n, dict)}:
             return True
-        if meta.get("layout_locked") is True:
-            return True
-        for item in nodes:
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("id") or "") != "gateway-01":
-                continue
-            ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
-            gx = float(ui.get("x") if ui.get("x") is not None else item.get("x") or 0)
-            if abs(gx - 72.0) < 1.0:
-                return True
         return False
     if str(meta.get("design_reference") or "") in ("v1", "v2", "v3", ""):
         return True
@@ -2074,6 +2063,9 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
         role = str(item.get("role") or "business")
         kind = _infer_node_kind(role, str(item.get("kind") or ""))
         ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+        if ui.get("list_only"):
+            ui = dict(ui)
+            ui.pop("list_only", None)
         ui["ports"] = _normalize_ports(kind, ui.get("ports"))
         normalized_nodes.append(
             {
@@ -2211,14 +2203,17 @@ def _save_topology_scoped(project_id: str, env_key: str, topology_id: str, topol
             }
         )
     viewport = incoming_meta.get("viewport") if isinstance(incoming_meta.get("viewport"), dict) else {}
+    prev_meta = normalized.get("meta") if isinstance(normalized.get("meta"), dict) else {}
     payload = {
         "nodes": list(node_index.values()),
         "edges": merged_edges,
         "meta": {
             "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
-            "version": int(incoming_meta.get("version") or normalized.get("meta", {}).get("version") or 1),
+            "version": int(incoming_meta.get("version") or prev_meta.get("version") or 1),
             "updated_at": _now_iso(),
-            "layout_mode": str(incoming_meta.get("layout_mode") or normalized.get("meta", {}).get("layout_mode") or "structured"),
+            "layout_mode": str(incoming_meta.get("layout_mode") or prev_meta.get("layout_mode") or "structured"),
+            "layout_locked": bool(incoming_meta.get("layout_locked") if "layout_locked" in incoming_meta else prev_meta.get("layout_locked")),
+            "design_reference": str(incoming_meta.get("design_reference") or prev_meta.get("design_reference") or ""),
         },
         "updated_at": _now_iso(),
     }
@@ -4372,16 +4367,46 @@ def _is_process_running(pid: int) -> bool:
         return False
 
 
-def _can_link_nodes(from_node: Dict[str, Any], to_node: Dict[str, Any]) -> bool:
-    from_role = str(from_node.get("role") or "").strip()
-    to_role = str(to_node.get("role") or "").strip()
-    allow_down = from_node.get("allowed_downstream_roles") if isinstance(from_node.get("allowed_downstream_roles"), list) else []
-    allow_up = to_node.get("allowed_upstream_roles") if isinstance(to_node.get("allowed_upstream_roles"), list) else []
+def _preset_role_rules(role: str) -> Dict[str, List[str]]:
+    r = str(role or "").strip().lower()
+    up: set = set()
+    down: set = set()
+    for preset in _load_node_presets():
+        if str(preset.get("role") or "").strip().lower() != r:
+            continue
+        for item in (preset.get("fixed_upstream_roles") or []):
+            up.add(str(item))
+        for item in (preset.get("fixed_downstream_roles") or []):
+            down.add(str(item))
+    return {"allowed_upstream_roles": sorted(up), "allowed_downstream_roles": sorted(down)}
+
+
+def _connect_rule_meta(node: Dict[str, Any]) -> Dict[str, Any]:
+    row = dict(node or {})
+    role = str(row.get("role") or "business").strip().lower()
+    preset_rules = _preset_role_rules(role)
+    row["role"] = role
+    row["allowed_upstream_roles"] = list(preset_rules["allowed_upstream_roles"])
+    row["allowed_downstream_roles"] = list(preset_rules["allowed_downstream_roles"])
+    return row
+
+
+def _link_role_block_reason(from_node: Dict[str, Any], to_node: Dict[str, Any]) -> str:
+    frm = _connect_rule_meta(from_node or {})
+    to = _connect_rule_meta(to_node or {})
+    from_role = str(frm.get("role") or "").strip().lower()
+    to_role = str(to.get("role") or "").strip().lower()
+    allow_down = [str(x).strip().lower() for x in (frm.get("allowed_downstream_roles") or []) if str(x).strip()]
+    allow_up = [str(x).strip().lower() for x in (to.get("allowed_upstream_roles") or []) if str(x).strip()]
     if allow_down and to_role and to_role not in allow_down:
-        return False
+        return f"「{from_role}」不允许连接「{to_role}」（可连下游：{', '.join(allow_down)}）"
     if allow_up and from_role and from_role not in allow_up:
-        return False
-    return True
+        return f"「{to_role}」不接受来自「{from_role}」（可接受上游：{', '.join(allow_up)}）"
+    return ""
+
+
+def _can_link_nodes(from_node: Dict[str, Any], to_node: Dict[str, Any]) -> bool:
+    return not _link_role_block_reason(from_node, to_node)
 
 
 def _infer_node_kind(role: str, explicit_kind: str = "") -> str:
@@ -7163,6 +7188,14 @@ def _ops_topology_edge_list(topo: Dict[str, Any]) -> List[Dict[str, Any]]:
     return edges
 
 
+def _effective_node_kind(node: Dict[str, Any]) -> str:
+    role = str((node or {}).get("role") or "business")
+    explicit = str((node or {}).get("kind") or "").strip().lower()
+    if explicit in ("entry", "standard", "terminal"):
+        return explicit
+    return _infer_node_kind(role, "")
+
+
 def _ops_port_max(port: Dict[str, Any]) -> int:
     try:
         return max(1, int(port.get("max_links") or 1))
@@ -7187,7 +7220,7 @@ def _ops_next_port_id(ports: List[Dict[str, Any]], side: str) -> str:
 
 def _ops_ensure_free_port(topo_node: Dict[str, Any], side: str, edges: List[Dict[str, Any]]) -> str:
     node_id = str(topo_node.get("id") or "")
-    kind = str(topo_node.get("kind") or _infer_node_kind(str(topo_node.get("role") or "business"), ""))
+    kind = _effective_node_kind(topo_node)
     ui = topo_node.get("ui") if isinstance(topo_node.get("ui"), dict) else {}
     ports_obj = _normalize_ports(kind, ui.get("ports"))
     rows = ports_obj.get(side) if isinstance(ports_obj.get(side), list) else []
@@ -7217,12 +7250,11 @@ def _ops_structured_append_edge(topo: Dict[str, Any], frm: str, to: str) -> Tupl
     tn = node_map.get(to)
     if not fn or not tn:
         return False, {"ok": False, "error": "node not found", "message": "节点不存在"}, 404
-    from_node = _resolve_node(node_id=frm) or fn
-    to_node = _resolve_node(node_id=to) or tn
-    if not _can_link_nodes(from_node, to_node):
-        return False, {"ok": False, "error": "invalid_edge_by_role", "error_code": "OPS_EDGE_ROLE_FORBIDDEN", "message": "当前节点角色规则不允许该连线"}, 409
-    fkind = str(fn.get("kind") or _infer_node_kind(str(fn.get("role") or from_node.get("role") or ""), ""))
-    tkind = str(tn.get("kind") or _infer_node_kind(str(tn.get("role") or to_node.get("role") or ""), ""))
+    if not _can_link_nodes(fn, tn):
+        reason = _link_role_block_reason(fn, tn) or "当前节点角色规则不允许该连线"
+        return False, {"ok": False, "error": "invalid_edge_by_role", "error_code": "OPS_EDGE_ROLE_FORBIDDEN", "message": reason}, 409
+    fkind = _effective_node_kind(fn)
+    tkind = _effective_node_kind(tn)
     if fkind == "terminal" or tkind == "entry":
         return False, {"ok": False, "error": "node_kind_violation", "error_code": "OPS_NODE_KIND_VIOLATION", "message": "节点语义方向不允许该连线"}, 409
     if any(isinstance(e, dict) and str(e.get("from") or "") == frm and str(e.get("to") or "") == to for e in edges):
@@ -7231,6 +7263,11 @@ def _ops_structured_append_edge(topo: Dict[str, Any], frm: str, to: str) -> Tupl
     to_port = _ops_ensure_free_port(tn, "in", edges)
     if not from_port or not to_port:
         return False, {"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "节点端口数量已达上限"}, 409
+    tn_ui = tn.get("ui") if isinstance(tn.get("ui"), dict) else {}
+    if tn_ui.get("list_only"):
+        tn_ui = dict(tn_ui)
+        tn_ui["list_only"] = False
+        tn["ui"] = tn_ui
     edge = {"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": "depends_on", "note": "structured-auto", "ui": {}}
     edges.append(edge)
     return True, edge, 200
@@ -7358,20 +7395,18 @@ def ops_platform_topology_edge_upsert():
     valid = set([str(x.get("id") or "") for x in topo.get("nodes") or [] if isinstance(x, dict)])
     if frm not in valid or to not in valid:
         return jsonify({"ok": False, "error": "node not found"}), 404
-    from_node = _resolve_node(node_id=frm) or {}
-    to_node = _resolve_node(node_id=to) or {}
-    if not _can_link_nodes(from_node, to_node):
+    topo_nodes = {str(x.get("id") or ""): x for x in (topo.get("nodes") or []) if isinstance(x, dict)}
+    fn = topo_nodes.get(frm) or {}
+    tn = topo_nodes.get(to) or {}
+    if not _can_link_nodes(fn, tn):
         return jsonify({
             "ok": False,
             "error": "invalid_edge_by_role",
             "error_code": "OPS_EDGE_ROLE_FORBIDDEN",
             "message": "当前节点角色规则不允许该连线",
         }), 409
-    topo_nodes = {str(x.get("id") or ""): x for x in (topo.get("nodes") or []) if isinstance(x, dict)}
-    fn = topo_nodes.get(frm) or {}
-    tn = topo_nodes.get(to) or {}
-    fkind = str(fn.get("kind") or _infer_node_kind(str(fn.get("role") or from_node.get("role") or ""), ""))
-    tkind = str(tn.get("kind") or _infer_node_kind(str(tn.get("role") or to_node.get("role") or ""), ""))
+    fkind = str(fn.get("kind") or _infer_node_kind(str(fn.get("role") or ""), ""))
+    tkind = str(tn.get("kind") or _infer_node_kind(str(tn.get("role") or ""), ""))
     if fkind == "terminal" or tkind == "entry":
         return jsonify({"ok": False, "error": "node_kind_violation", "error_code": "OPS_NODE_KIND_VIOLATION", "message": "Node kind direction is not allowed"}), 400
     fports = _normalize_ports(fkind, ((fn.get("ui") or {}).get("ports") if isinstance(fn.get("ui"), dict) else None))
