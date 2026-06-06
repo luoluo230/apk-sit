@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite31">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite34">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -198,6 +198,19 @@
                 <button id="zoomOutBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
                 <button id="zoomResetBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
                 <button id="zoomLockBtn" class="topology-canvas-icon-btn" type="button"><svg viewBox="0 0 24 24"><path d="M7 11V8a5 5 0 0110 0v3M6 11h12v9H6v-9z"/></svg></button>
+              </div>
+              <div class="topology-canvas-spacing-bar" aria-label="节点间距">
+                <div class="topology-spacing-title">节点间距</div>
+                <label class="topology-spacing-row">
+                  <span class="topology-spacing-label">横向</span>
+                  <input id="layoutRankGapRange" class="topology-spacing-range" type="range" min="160" max="480" step="4" value="268">
+                  <span id="layoutRankGapValue" class="topology-spacing-value">268</span>
+                </label>
+                <label class="topology-spacing-row">
+                  <span class="topology-spacing-label">竖向</span>
+                  <input id="layoutRowGapRange" class="topology-spacing-range" type="range" min="80" max="240" step="4" value="128">
+                  <span id="layoutRowGapValue" class="topology-spacing-value">128</span>
+                </label>
               </div>
               <div id="scene" class="scene">
                 <div id="nodeLayer" class="nodes"></div>
@@ -456,5 +469,5 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite30"></script>
-<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite30"></script>
+<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite34"></script>
+<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite34"></script>

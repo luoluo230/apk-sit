@@ -1712,6 +1712,7 @@ def _design_reference_topology_content(project_id: str = "", env_key: str = "pro
             "layout_mode": "structured",
             "layout_locked": False,
             "design_reference": "v4",
+            "layout_spacing": {"rank_gap": 268, "row_gap": 128},
             "updated_at": _now_iso(),
         },
     }
@@ -2044,6 +2045,22 @@ def _resolve_topology_context(project_id: str = "", env_key: str = "", topology_
     }
 
 
+def _normalize_layout_spacing(raw: Any) -> Dict[str, int]:
+    row = raw if isinstance(raw, dict) else {}
+    try:
+        rank_gap = int(row.get("rank_gap") or 268)
+    except Exception:
+        rank_gap = 268
+    try:
+        row_gap = int(row.get("row_gap") or 128)
+    except Exception:
+        row_gap = 128
+    return {
+        "rank_gap": max(160, min(480, rank_gap)),
+        "row_gap": max(80, min(240, row_gap)),
+    }
+
+
 def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: str = "") -> Dict[str, Any]:
     ctx = _resolve_topology_context(project_id, env_key, topology_id)
     topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
@@ -2109,17 +2126,21 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
                 "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
             }
         )
+    out_meta: Dict[str, Any] = {
+        "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+        "version": int(meta.get("version") or 1),
+        "updated_at": str(meta.get("updated_at") or ""),
+        "layout_mode": str(meta.get("layout_mode") or "structured"),
+        "layout_locked": bool(meta.get("layout_locked")),
+        "design_reference": str(meta.get("design_reference") or ""),
+    }
+    if isinstance(meta.get("layout_spacing"), dict) or meta.get("layout_spacing_customized"):
+        out_meta["layout_spacing"] = _normalize_layout_spacing(meta.get("layout_spacing"))
+        out_meta["layout_spacing_customized"] = bool(meta.get("layout_spacing_customized"))
     return {
         "nodes": normalized_nodes,
         "edges": normalized_edges,
-        "meta": {
-            "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
-            "version": int(meta.get("version") or 1),
-            "updated_at": str(meta.get("updated_at") or ""),
-            "layout_mode": str(meta.get("layout_mode") or "structured"),
-            "layout_locked": bool(meta.get("layout_locked")),
-            "design_reference": str(meta.get("design_reference") or ""),
-        },
+        "meta": out_meta,
         "registry": ctx.get("row"),
         "topologies": ctx.get("topologies") if isinstance(ctx.get("topologies"), list) else [],
     }
@@ -2204,17 +2225,29 @@ def _save_topology_scoped(project_id: str, env_key: str, topology_id: str, topol
         )
     viewport = incoming_meta.get("viewport") if isinstance(incoming_meta.get("viewport"), dict) else {}
     prev_meta = normalized.get("meta") if isinstance(normalized.get("meta"), dict) else {}
+    spacing = incoming_meta.get("layout_spacing") if isinstance(incoming_meta.get("layout_spacing"), dict) else prev_meta.get("layout_spacing")
+    spacing_customized = bool(
+        incoming_meta.get("layout_spacing_customized")
+        if "layout_spacing_customized" in incoming_meta
+        else prev_meta.get("layout_spacing_customized")
+    )
+    if isinstance(incoming_meta.get("layout_spacing"), dict):
+        spacing_customized = True
+    meta_out: Dict[str, Any] = {
+        "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+        "version": int(incoming_meta.get("version") or prev_meta.get("version") or 1),
+        "updated_at": _now_iso(),
+        "layout_mode": str(incoming_meta.get("layout_mode") or prev_meta.get("layout_mode") or "structured"),
+        "layout_locked": bool(incoming_meta.get("layout_locked") if "layout_locked" in incoming_meta else prev_meta.get("layout_locked")),
+        "design_reference": str(incoming_meta.get("design_reference") or prev_meta.get("design_reference") or ""),
+    }
+    if spacing_customized:
+        meta_out["layout_spacing"] = _normalize_layout_spacing(spacing)
+        meta_out["layout_spacing_customized"] = True
     payload = {
         "nodes": list(node_index.values()),
         "edges": merged_edges,
-        "meta": {
-            "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
-            "version": int(incoming_meta.get("version") or prev_meta.get("version") or 1),
-            "updated_at": _now_iso(),
-            "layout_mode": str(incoming_meta.get("layout_mode") or prev_meta.get("layout_mode") or "structured"),
-            "layout_locked": bool(incoming_meta.get("layout_locked") if "layout_locked" in incoming_meta else prev_meta.get("layout_locked")),
-            "design_reference": str(incoming_meta.get("design_reference") or prev_meta.get("design_reference") or ""),
-        },
+        "meta": meta_out,
         "updated_at": _now_iso(),
     }
     contents = _load_topology_contents()
@@ -7173,8 +7206,14 @@ def ops_platform_topology_node_logs():
 
 def _ops_topology_meta_structured(topo: Dict[str, Any]) -> None:
     meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    spacing = meta.get("layout_spacing") if isinstance(meta.get("layout_spacing"), dict) else None
+    spacing_customized = bool(meta.get("layout_spacing_customized"))
     meta["layout_mode"] = "structured"
     meta["updated_at"] = _now_iso()
+    if spacing is not None:
+        meta["layout_spacing"] = _normalize_layout_spacing(spacing)
+    if spacing_customized:
+        meta["layout_spacing_customized"] = True
     topo["meta"] = meta
 
 

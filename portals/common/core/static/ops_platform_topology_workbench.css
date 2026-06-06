@@ -1627,6 +1627,68 @@
   background: #f5f5f5;
 }
 
+.ops-topology-app .topology-canvas-spacing-bar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 6;
+  width: 196px;
+  padding: 8px 10px;
+  border-radius: var(--tw-radius);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--tw-border);
+  box-shadow: var(--tw-shadow);
+}
+
+.ops-topology-app .topology-spacing-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tw-sub);
+  margin-bottom: 6px;
+}
+
+.ops-topology-app .topology-spacing-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 36px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ops-topology-app .topology-spacing-row:first-of-type {
+  margin-top: 0;
+}
+
+.ops-topology-app .topology-spacing-label {
+  font-size: 12px;
+  color: var(--tw-text);
+  white-space: nowrap;
+}
+
+.ops-topology-app .topology-spacing-range {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--tw-primary);
+  cursor: pointer;
+}
+
+.ops-topology-app .topology-spacing-range:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ops-topology-app .topology-spacing-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tw-primary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-topology-app .topology-canvas-spacing-bar.is-disabled {
+  opacity: 0.72;
+}
+
 .ops-topology-app .topology-mini-map-card {
   position: absolute;
   left: 12px;

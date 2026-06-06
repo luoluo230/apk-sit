@@ -51,6 +51,202 @@
     analytics: { border: "#1890ff", bg1: "#e6f7ff", bg2: "#ffffff", glow: "rgba(24,144,255,.16)" },
   };
   const KINDS = ["entry", "standard", "terminal"];
+  const LAYOUT_SPACING_DEFAULTS = { rank_gap: 268, row_gap: 128 };
+  const LAYOUT_SPACING_LIMITS = {
+    rank_gap: { min: 160, max: 480 },
+    row_gap: { min: 80, max: 240 },
+  };
+  function clampLayoutSpacing(key, value) {
+    const lim = LAYOUT_SPACING_LIMITS[key] || { min: 0, max: 9999 };
+    const fallback = LAYOUT_SPACING_DEFAULTS[key] || lim.min;
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(lim.min, Math.min(lim.max, Math.round(num)));
+  }
+
+  function layoutSpacing() {
+    const raw = (((state.topology || {}).meta || {}).layout_spacing) || {};
+    return {
+      rank_gap: clampLayoutSpacing("rank_gap", raw.rank_gap),
+      row_gap: clampLayoutSpacing("row_gap", raw.row_gap),
+    };
+  }
+
+  function hasSavedNodeLayout() {
+    const nodes = ((state.topology || {}).nodes) || [];
+    const visible = nodes.filter((n) => !(n.ui || {}).list_only);
+    if (!visible.length) return false;
+    return visible.every((n) => {
+      const ui = n.ui || {};
+      return Number.isFinite(Number(ui.x)) && Number.isFinite(Number(ui.y));
+    });
+  }
+
+  function medianInt(values, fallback) {
+    const nums = (values || []).map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0);
+    if (!nums.length) return fallback;
+    nums.sort((a, b) => a - b);
+    const mid = Math.floor(nums.length / 2);
+    const val = nums.length % 2 ? nums[mid] : Math.round((nums[mid - 1] + nums[mid]) / 2);
+    return Number.isFinite(val) && val > 0 ? val : fallback;
+  }
+
+  function inferLayoutSpacingFromNodes() {
+    const nodes = (((state.topology || {}).nodes) || []).filter((n) => !(n.ui || {}).list_only);
+    const byRank = {};
+    nodes.forEach((n) => {
+      const ui = n.ui || {};
+      const rank = ui.rank != null && Number.isFinite(Number(ui.rank))
+        ? Number(ui.rank)
+        : Math.round((Number(ui.x || 0) - 96) / LAYOUT_SPACING_DEFAULTS.rank_gap);
+      if (!byRank[rank]) byRank[rank] = [];
+      byRank[rank].push(n);
+    });
+    const ranks = Object.keys(byRank).map(Number).sort((a, b) => a - b);
+    const rankGaps = [];
+    for (let i = 1; i < ranks.length; i += 1) {
+      const prevX = Number((byRank[ranks[i - 1]][0].ui || {}).x);
+      const curX = Number((byRank[ranks[i]][0].ui || {}).x);
+      if (Number.isFinite(prevX) && Number.isFinite(curX)) rankGaps.push(curX - prevX);
+    }
+    const rowGaps = [];
+    ranks.forEach((rank) => {
+      const rows = byRank[rank].slice().sort((a, b) => Number((a.ui || {}).y) - Number((b.ui || {}).y));
+      for (let i = 1; i < rows.length; i += 1) {
+        const prevY = Number((rows[i - 1].ui || {}).y);
+        const curY = Number((rows[i].ui || {}).y);
+        if (Number.isFinite(prevY) && Number.isFinite(curY)) rowGaps.push(curY - prevY);
+      }
+    });
+    return {
+      rank_gap: clampLayoutSpacing("rank_gap", medianInt(rankGaps, LAYOUT_SPACING_DEFAULTS.rank_gap)),
+      row_gap: clampLayoutSpacing("row_gap", medianInt(rowGaps, LAYOUT_SPACING_DEFAULTS.row_gap)),
+    };
+  }
+
+  function syncLayoutSpacingFromTopology() {
+    if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+    const meta = state.topology.meta;
+    if (meta.layout_spacing && typeof meta.layout_spacing === "object") {
+      meta.layout_spacing = {
+        rank_gap: clampLayoutSpacing("rank_gap", meta.layout_spacing.rank_gap),
+        row_gap: clampLayoutSpacing("row_gap", meta.layout_spacing.row_gap),
+      };
+      return;
+    }
+    if (hasSavedNodeLayout()) {
+      meta.layout_spacing = inferLayoutSpacingFromNodes();
+      return;
+    }
+    persistLayoutSpacingMeta(null);
+  }
+
+  function shouldPreserveTopologyLayoutOnLoad() {
+    const meta = ((state.topology || {}).meta) || {};
+    if (meta.layout_locked) return true;
+    return hasSavedNodeLayout();
+  }
+
+  function syncLayoutSpacingControls() {
+    const sp = layoutSpacing();
+    const rankEl = $("layoutRankGapRange");
+    const rowEl = $("layoutRowGapRange");
+    const rankVal = $("layoutRankGapValue");
+    const rowVal = $("layoutRowGapValue");
+    const bar = document.querySelector(".topology-canvas-spacing-bar");
+    const editable = isEditMode() && structuredMode();
+    if (rankEl) {
+      rankEl.value = String(sp.rank_gap);
+      rankEl.disabled = !editable;
+    }
+    if (rowEl) {
+      rowEl.value = String(sp.row_gap);
+      rowEl.disabled = !editable;
+    }
+    if (rankVal) rankVal.textContent = String(sp.rank_gap);
+    if (rowVal) rowVal.textContent = String(sp.row_gap);
+    if (bar) bar.classList.toggle("is-disabled", !editable);
+  }
+
+  function persistLayoutSpacingMeta(patch) {
+    if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+    const cur = layoutSpacing();
+    state.topology.meta.layout_spacing = {
+      rank_gap: clampLayoutSpacing("rank_gap", patch && patch.rank_gap != null ? patch.rank_gap : cur.rank_gap),
+      row_gap: clampLayoutSpacing("row_gap", patch && patch.row_gap != null ? patch.row_gap : cur.row_gap),
+    };
+    if (patch && (patch.rank_gap != null || patch.row_gap != null)) {
+      state.topology.meta.layout_spacing_customized = true;
+    }
+  }
+
+  let layoutSpacingRelayoutTimer = null;
+
+  function flushLayoutSpacingRelayout(opts) {
+    if (layoutSpacingRelayoutTimer) {
+      clearTimeout(layoutSpacingRelayoutTimer);
+      layoutSpacingRelayoutTimer = null;
+    }
+    if (!isEditMode()) return;
+    persistLayoutSpacingMeta(null);
+    state.topology.meta.layout_locked = false;
+    layoutStructuredGraph({ force: true });
+    if (!(opts && opts.skipHistory)) pushHistory();
+    redrawGraph();
+    syncLayoutSpacingControls();
+  }
+
+  function queueLayoutSpacingRelayout(patch) {
+    persistLayoutSpacingMeta(patch);
+    if (layoutSpacingRelayoutTimer) clearTimeout(layoutSpacingRelayoutTimer);
+    layoutSpacingRelayoutTimer = setTimeout(() => {
+      layoutSpacingRelayoutTimer = null;
+      if (!isEditMode()) return;
+      state.topology.meta.layout_locked = false;
+      layoutStructuredGraph({ force: true });
+      pushHistory();
+      redrawGraph();
+      syncLayoutSpacingControls();
+    }, 120);
+  }
+
+  function applyLayoutSpacing(patch, opts) {
+    if (!isEditMode()) {
+      toast("运行/测试模式不可调整节点间距", "warn");
+      syncLayoutSpacingControls();
+      return;
+    }
+    if (layoutSpacingRelayoutTimer) {
+      clearTimeout(layoutSpacingRelayoutTimer);
+      layoutSpacingRelayoutTimer = null;
+    }
+    persistLayoutSpacingMeta(patch || {});
+    state.topology.meta.layout_locked = false;
+    layoutStructuredGraph({ force: true });
+    if (!(opts && opts.skipHistory)) pushHistory();
+    redrawGraph();
+    syncLayoutSpacingControls();
+  }
+
+  async function saveTopologyNow() {
+    if (isTestMode()) {
+      toast("测试模式禁止保存拓扑", "warn");
+      return null;
+    }
+    flushLayoutSpacingRelayout({ skipHistory: true });
+    syncLayoutSpacingFromTopology();
+    if (hasSavedNodeLayout()) {
+      state.topology.meta.layout_spacing_customized = true;
+      state.topology.meta.layout_locked = true;
+    }
+    const d = await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
+    if (d && d.ok !== false && d.topology && d.topology.meta) {
+      state.topology.meta = Object.assign({}, state.topology.meta || {}, d.topology.meta || {});
+      syncLayoutSpacingControls();
+    }
+    return d;
+  }
+
   function roleColor(role) {
     const key = String(role || "").toLowerCase();
     const p = ROLE_COLOR[key] || ROLE_COLOR.business || { border: "#3b82f6" };
@@ -1355,6 +1551,7 @@
 
   function applyDesignStructuredLayout() {
     if (!isDesignReferenceTopology() || !state.topology || !state.topology.meta) return;
+    if (shouldPreserveTopologyLayoutOnLoad()) return;
     state.topology.meta.layout_locked = false;
     layoutStructuredGraph();
   }
@@ -1391,11 +1588,14 @@
     });
   }
 
-  function layoutStructuredGraph() {
+  function layoutStructuredGraph(options) {
     if (!state.topology || !Array.isArray(state.topology.nodes)) return;
     if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
-    if (state.topology.meta.layout_locked) return;
+    if (state.topology.meta.layout_locked && !(options && options.force)) return;
     state.topology.meta.layout_mode = "structured";
+    const spacing = layoutSpacing();
+    const rankGap = spacing.rank_gap;
+    const rowGap = spacing.row_gap;
     const nodes = state.topology.nodes || [];
     const byId = {};
     nodes.forEach((n) => { if (n && n.id) byId[n.id] = n; });
@@ -1441,8 +1641,6 @@
     };
     const startX = 96;
     const startY = 96;
-    const rankGap = 268;
-    const rowGap = 128;
     Object.keys(ranks).map(Number).sort((a, b) => a - b).forEach((r) => {
       const rows = ranks[r].sort((a, b) => {
         const rr = roleIndex(a.role) - roleIndex(b.role);
@@ -2874,7 +3072,7 @@
       if (n) {
         n.ui.x = Math.round(worldPos.x / 8) * 8;
         n.ui.y = Math.round(worldPos.y / 8) * 8;
-        await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
+        await saveTopologyNow();
         redrawGraph(); renderRuntimeNodeList();
         logMode("新增节点成功: " + d.node.id);
       }
@@ -3788,6 +3986,7 @@
     }
     refreshRightPanelMode();
     refreshLogDemoForChrome();
+    syncLayoutSpacingControls();
     if (state.mode === "test") {
       seedTestModeRuntimeDemo();
       computePathHighlight();
@@ -3829,6 +4028,8 @@
     }
 
     state.topology = topo.topology || { nodes: [], edges: [], meta: { viewport: { x: 0, y: 0, zoom: 1 } } };
+    if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+    syncLayoutSpacingFromTopology();
     state.topologyRegistry = topo.registry || null;
     state.topologies = Array.isArray(topo.topologies) ? topo.topologies : [];
     if (topo.topology_id) state.topologyId = String(topo.topology_id || state.topologyId);
@@ -3847,8 +4048,13 @@
     if (!state.activePresetId && state.presets.length) state.activePresetId = state.presets[0].preset_id;
 
     normalizeTopology();
-    applyDesignStructuredLayout();
-    layoutStructuredGraph();
+    const preserveLayout = shouldPreserveTopologyLayoutOnLoad();
+    if (preserveLayout) {
+      if (state.topology.meta.layout_locked == null) state.topology.meta.layout_locked = true;
+    } else {
+      applyDesignStructuredLayout();
+      layoutStructuredGraph();
+    }
     renderScene();
     redrawGraph();
     scheduleFitGraphToViewport();
@@ -3863,6 +4069,7 @@
     fillTestNodeOptions();
     applyModeUI();
     renderTopologyManagerList();
+    syncLayoutSpacingControls();
     syncQueryString();
     seedDesignDemoLogs();
     const initialNodeId = preferredNodeId();
@@ -3901,7 +4108,7 @@
         })).concat((nodes.nodes || []).filter((raw) => !(state.topology.nodes || []).some((n) => String(n.id) === String(raw.id))))
         : nodes.nodes;
       normalizeTopology();
-      layoutStructuredGraph();
+      if (!shouldPreserveTopologyLayoutOnLoad()) layoutStructuredGraph();
     } else {
       warns.push("节点清单");
     }
@@ -4016,6 +4223,28 @@
     }
   }
 
+  function bindLayoutSpacingControls() {
+    const rankEl = $("layoutRankGapRange");
+    const rowEl = $("layoutRowGapRange");
+    if (!rankEl || !rowEl || rankEl.dataset.bound === "1") {
+      syncLayoutSpacingControls();
+      return;
+    }
+    rankEl.dataset.bound = "1";
+    rowEl.dataset.bound = "1";
+    rankEl.addEventListener("input", () => {
+      const rank_gap = clampLayoutSpacing("rank_gap", rankEl.value);
+      if ($("layoutRankGapValue")) $("layoutRankGapValue").textContent = String(rank_gap);
+      queueLayoutSpacingRelayout({ rank_gap });
+    });
+    rowEl.addEventListener("input", () => {
+      const row_gap = clampLayoutSpacing("row_gap", rowEl.value);
+      if ($("layoutRowGapValue")) $("layoutRowGapValue").textContent = String(row_gap);
+      queueLayoutSpacingRelayout({ row_gap });
+    });
+    syncLayoutSpacingControls();
+  }
+
   function bindEvents() {
     bindLeftTabs();
     bindInspectorTabs();
@@ -4123,7 +4352,9 @@
     const toolAutoEl = $("toolAuto");
     if (toolAutoEl) toolAutoEl.onclick = () => {
       if (isTestMode()) { toast("测试模式禁止自动布局", "warn"); return; }
-      layoutStructuredGraph();
+      if (!state.topology.meta || typeof state.topology.meta !== "object") state.topology.meta = {};
+      state.topology.meta.layout_locked = false;
+      layoutStructuredGraph({ force: true });
       redrawGraph();
       toast("已按结构化规则重新排布", "ok");
     };
@@ -4237,6 +4468,7 @@
     };
     if ($("zoomInBtn")) $("zoomInBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.min(2.5, Number(view().zoom || 1) * 1.1); renderScene(); };
     if ($("zoomOutBtn")) $("zoomOutBtn").onclick = () => { state.topology.meta.viewport.zoom = Math.max(0.3, Number(view().zoom || 1) * 0.9); renderScene(); };
+    bindLayoutSpacingControls();
     if ($("btnValidateTopology")) $("btnValidateTopology").onclick = () => {
       const result = validateTopologyLocal();
       if (result.ok) {
@@ -4257,8 +4489,7 @@
 
     const toolSaveEl = $("toolSave");
     if (toolSaveEl) toolSaveEl.onclick = async () => {
-      if (isTestMode()) { toast("测试模式禁止保存拓扑", "warn"); return; }
-      const d = await OpsApi.saveTopology(Object.assign(currentScope(), { topology: state.topology }));
+      const d = await saveTopologyNow();
       toast((d && d.ok !== false) ? "拓扑已保存" : ((d && d.message) || "保存失败"), (d && d.ok !== false) ? "ok" : "error");
       if (d && d.ok !== false) logMode("拓扑保存成功");
     };
