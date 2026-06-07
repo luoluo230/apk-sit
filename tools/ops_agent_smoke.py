@@ -101,7 +101,7 @@ def step_login(base: str) -> Tuple[bool, str, List[Dict[str, Any]]]:
 AGENT_DEFS = [
     {"node_id": "gateway-cn-1",   "port": 19101, "role": "gateway",   "desc": "网关 Agent"},
     {"node_id": "business-cn-1",  "port": 19102, "role": "business",  "desc": "业务 Agent"},
-    {"node_id": "mysql-cn-1",     "port": 19103, "role": "database",  "desc": "MySQL Agent"},
+    {"node_id": "mongo-cn-1",     "port": 19103, "role": "database",  "desc": "Mongo Agent"},
     {"node_id": "redis-cn-1",     "port": 19104, "role": "cache",     "desc": "Redis Agent"},
 ]
 

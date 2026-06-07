@@ -2,9 +2,14 @@
   const root = document.querySelector(".agent-screen--control");
   if (!root || !window.OpsApi) return;
 
+  let queryProject = "";
+  try {
+    queryProject = String(new URLSearchParams(location.search).get("project_id") || "");
+  } catch (_) {}
+
   const POLL_MS = 2000;
   const state = {
-    projectId: String(root.dataset.projectId || ""),
+    projectId: String(root.dataset.projectId || queryProject || "GomeKu"),
     agents: [],
     rows: [],
     filteredRows: [],
@@ -21,9 +26,18 @@
       status: "",
       query: "",
       serviceStatus: "",
-      fresh: "active_120",
+      fresh: "all",
     },
   };
+
+  if (state.projectId !== "GomeKu") {
+    state.projectId = "GomeKu";
+    try {
+      const q = new URLSearchParams(location.search);
+      q.set("project_id", "GomeKu");
+      window.history.replaceState({}, "", location.pathname + "?" + q.toString());
+    } catch (_) {}
+  }
 
   const nodes = {
     summary: document.getElementById("agentSummaryCards"),
@@ -224,7 +238,7 @@
 
   function filteredByFresh(row) {
     if (state.filters.fresh === "all") return true;
-    if (!Number.isFinite(row.freshAge)) return false;
+    if (!Number.isFinite(row.freshAge)) return state.filters.fresh === "all";
     if (state.filters.fresh === "active_120") return row.freshAge <= 120;
     if (state.filters.fresh === "active_600") return row.freshAge <= 600;
     return true;
@@ -727,7 +741,7 @@
       state.filters.serviceStatus = String(nodes.filterServiceStatus.value || "");
     };
     nodes.filterFresh.onchange = function () {
-      state.filters.fresh = String(nodes.filterFresh.value || "active_120");
+      state.filters.fresh = String(nodes.filterFresh.value || "all");
     };
 
     document.getElementById("btnApplyFilter").onclick = function () {
@@ -735,11 +749,11 @@
       render();
     };
     document.getElementById("btnResetFilter").onclick = function () {
-      state.filters = { status: "", query: "", serviceStatus: "", fresh: "active_120" };
+      state.filters = { status: "", query: "", serviceStatus: "", fresh: "all" };
       nodes.filterStatus.value = "";
       nodes.filterQuery.value = "";
       nodes.filterServiceStatus.value = "";
-      nodes.filterFresh.value = "active_120";
+      nodes.filterFresh.value = "all";
       state.page = 1;
       render();
     };

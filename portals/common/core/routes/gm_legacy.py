@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import json
 import signal
 import subprocess
@@ -15,7 +16,8 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, jsonify, render_template_string, request, session
+from flask import Blueprint, jsonify, redirect, render_template_string, request, session
+from urllib.parse import urlencode
 
 from models.data import (
     approvals_db,
@@ -397,7 +399,10 @@ reloadNodes();
 @bp.route("/admin/ops-platform")
 @admin_required("gm_ops")
 def ops_platform_page():
-    project_id = str(request.args.get("project_id") or "").strip()
+    missing = _ops_platform_redirect_to_runtime_project()
+    if missing is not None:
+        return missing
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
     try:
         content = render_template_string(
             open(
@@ -1292,6 +1297,7 @@ OPS_TOPOLOGY_CONTENTS_KEY = "OPS_PLATFORM_TOPOLOGY_CONTENTS"
 OPS_NODE_PRESETS_KEY = "OPS_PLATFORM_NODE_PRESETS"
 OPS_TOPOLOGY_BLUEPRINTS_KEY = "OPS_PLATFORM_TOPOLOGY_BLUEPRINTS"
 OPS_DAEMON_STATE_KEY = "OPS_PLATFORM_DAEMON_STATE"
+_NODE_CONTRACT_REGISTRY_CACHE: Optional[Dict[str, Any]] = None
 OPS_FLOW_EXEC_KEY = "OPS_PLATFORM_FLOW_EXECUTIONS"
 OPS_AGENT_REGISTRY_KEY = "OPS_PLATFORM_AGENT_REGISTRY"
 OPS_AGENT_REGISTRY_V2_KEY = "OPS_PLATFORM_AGENT_REGISTRY_V2"
@@ -1305,10 +1311,40 @@ OPS_NODE_SERVICE_BINDING_KEY = "OPS_PLATFORM_NODE_SERVICE_BINDING"
 OPS_AGENT_JOBS_KEY = "OPS_PLATFORM_AGENT_JOBS"
 OPS_AGENT_POLICY_KEY = "OPS_PLATFORM_AGENT_POLICY"
 OPS_RUNTIME_RUNS_KEY = "OPS_PLATFORM_RUNTIME_RUNS"
+CANONICAL_LOCAL_AGENT_ID = "agent-local-cn-1"
+CANONICAL_LOCAL_DEVICE_ID = "local-game-server"
 
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
+
+
+def _resolve_ops_project_id(raw: str = "") -> str:
+    pid = str(raw or "").strip()
+    return pid or "GomeKu"
+
+
+def _ops_platform_redirect_to_runtime_project():
+    """Ops 平台运行时默认 GomeKu 最小联通拓扑，避免落到 RecycleTycoon 设计演示。"""
+    raw = str(request.args.get("project_id") or "").strip()
+    if raw == "GomeKu":
+        return None
+    args = request.args.to_dict(flat=True)
+    args["project_id"] = "GomeKu"
+    if request.path.rstrip("/").endswith("/topology"):
+        args.setdefault("env_key", "production")
+        if not str(args.get("topology_id") or "").strip():
+            args["topology_id"] = "topology-design-gomeku-production"
+    return redirect(request.path + "?" + urlencode(args))
+
+
+def _resolve_ops_topology_id(project_id: str, env_key: str, raw: str = "") -> str:
+    tid = str(raw or "").strip()
+    if tid:
+        return tid
+    ctx = _resolve_topology_context(project_id, env_key, "")
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    return str(row.get("topology_id") or "")
 
 
 def _load_json_config(key: str, default):
@@ -1718,11 +1754,145 @@ def _design_reference_topology_content(project_id: str = "", env_key: str = "pro
     }
 
 
+_DESIGN_DEMO_NODE_IDS = frozenset({"gateway-01", "auth-01", "game-01", "ops-01", "tcp-01", "db-01"})
+_DESIGN_DEMO_AGENT_IDS = frozenset({
+    "agent-01",
+    "agent-gateway-01",
+    "agent-auth-01",
+    "agent-game-01",
+    "agent-ops-01",
+    "agent-tcp-01",
+    "agent-db-01",
+})
+_DEMO_TO_RUNTIME_NODE = {
+    "gateway-01": "gateway-cn-1",
+    "auth-01": "auth-cn-1",
+    "game-01": "game-cn-1",
+    "ops-01": "ops-cn-1",
+    "tcp-01": "tcp-cn-1",
+    "db-01": "mongo-db-cn-1",
+}
+
+
+def _project_uses_runtime_topology(project_id: str) -> bool:
+    pid = str(project_id or "").strip()
+    if not pid:
+        return False
+    ctx = _resolve_topology_context(pid, "production", "")
+    topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    has_runtime_nodes = any(isinstance(n, dict) and str(n.get("id") or "").endswith("-cn-1") for n in nodes)
+    return has_runtime_nodes and bool(meta.get("runtime_topology") or meta.get("cluster_source"))
+
+
+def _is_design_demo_agent_row(item: Dict[str, Any]) -> bool:
+    if not isinstance(item, dict):
+        return False
+    aid = str(item.get("agent_id") or "").strip()
+    nid = str(item.get("node_id") or "").strip()
+    if aid in _DESIGN_DEMO_AGENT_IDS:
+        return True
+    if nid in _DESIGN_DEMO_NODE_IDS:
+        return True
+    if str(item.get("device_id") or "") == "device-game-01":
+        return True
+    for svc in item.get("services") if isinstance(item.get("services"), list) else []:
+        if not isinstance(svc, dict):
+            continue
+        sid = str(svc.get("service_id") or "")
+        if sid.startswith("svc-game-01-"):
+            return True
+    return False
+
+
+def _purge_design_demo_project_state(project_id: str, topology_id: str = "") -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    if not pid:
+        return {"removed_agents": 0, "removed_bindings": 0}
+    reg = _load_agent_registry_v2()
+    removed_agents = 0
+    for aid in list(reg.keys()):
+        item = reg.get(aid) if isinstance(reg.get(aid), dict) else {}
+        if str(item.get("project_id") or pid).strip() != pid:
+            continue
+        if _is_design_demo_agent_row(item):
+            reg.pop(aid, None)
+            removed_agents += 1
+    _save_agent_registry_v2(reg)
+
+    bindings = _load_node_agent_bindings()
+    removed_bindings = 0
+    tid = str(topology_id or "").strip()
+    for key in list(bindings.keys()):
+        node_part = key.split("::", 1)[-1] if "::" in key else key
+        if node_part not in _DESIGN_DEMO_NODE_IDS:
+            continue
+        if tid and not str(key).startswith(tid + "::"):
+            continue
+        bindings.pop(key, None)
+        removed_bindings += 1
+    _save_node_agent_bindings(bindings)
+    return {"removed_agents": removed_agents, "removed_bindings": removed_bindings}
+
+
+def _topology_ops_dispatch_base(project_id: str, env_key: str, topo: Dict[str, Any]) -> str:
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    ops_node = next(
+        (
+            n for n in nodes
+            if isinstance(n, dict) and str(n.get("id") or "") in ("ops-cn-1", "ops-01")
+        ),
+        None,
+    )
+    port = 5504
+    if isinstance(ops_node, dict):
+        ui = ops_node.get("ui") if isinstance(ops_node.get("ui"), dict) else {}
+        remote = ui.get("remote") if isinstance(ui.get("remote"), dict) else {}
+        try:
+            port = int(remote.get("port") or ops_node.get("daemon_port") or 5504)
+        except Exception:
+            port = 5504
+    return f"http://127.0.0.1:{port}"
+
+
+def _resolve_ops_dispatch_node(project_id: str, node_id: str, env_key: str = "production") -> Optional[Dict[str, Any]]:
+    nid = str(node_id or "").strip()
+    if not nid:
+        return None
+    for item in _load_nodes():
+        if isinstance(item, dict) and str(item.get("id") or "").strip() == nid:
+            return item
+
+    pid = str(project_id or "").strip()
+    ctx = _resolve_topology_context(pid, _normalize_env_key(env_key) or "production", "")
+    topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    tid = str(row.get("topology_id") or "")
+    lookup_id = _DEMO_TO_RUNTIME_NODE.get(nid, nid)
+    topo_node = next(
+        (
+            n for n in (topo.get("nodes") or [])
+            if isinstance(n, dict) and str(n.get("id") or "").strip() == lookup_id
+        ),
+        None,
+    )
+    if not isinstance(topo_node, dict):
+        return None
+    built = _build_runtime_node_from_topology_node(pid, env_key, topo_node, tid)
+    built["ops_base_url"] = _topology_ops_dispatch_base(pid, env_key, topo)
+    built["enabled"] = True
+    return _normalize_node(built)
+
+
 def _needs_design_reference_upgrade(topo: Any) -> bool:
     if not isinstance(topo, dict):
         return True
     meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
     nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    if meta.get("runtime_topology") or meta.get("cluster_source"):
+        if any(isinstance(n, dict) and str(n.get("id") or "").endswith("-cn-1") for n in nodes):
+            return False
     if str(meta.get("design_reference") or "") == "v4":
         for item in nodes:
             if not isinstance(item, dict):
@@ -2033,11 +2203,15 @@ def _resolve_topology_context(project_id: str = "", env_key: str = "", topology_
         contents[str(target.get("topology_id") or "")] = topo
         _save_topology_contents(contents)
     elif _needs_design_reference_upgrade(topo):
-        topo = _design_reference_topology_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
-        contents[str(target.get("topology_id") or "")] = topo
-        _save_topology_contents(contents)
-    _ensure_design_reference_bindings(str(target.get("topology_id") or ""))
-    _ensure_design_reference_agents(str(target.get("project_id") or pid or ""))
+        meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+        if not meta.get("cluster_source") and not meta.get("runtime_topology"):
+            topo = _design_reference_topology_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
+            contents[str(target.get("topology_id") or "")] = topo
+            _save_topology_contents(contents)
+    topo_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    if not topo_meta.get("cluster_source") and not topo_meta.get("runtime_topology"):
+        _ensure_design_reference_bindings(str(target.get("topology_id") or ""))
+        _ensure_design_reference_agents(str(target.get("project_id") or pid or ""))
     return {
         "topology": topo,
         "row": target,
@@ -2080,6 +2254,7 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
         role = str(item.get("role") or "business")
         kind = _infer_node_kind(role, str(item.get("kind") or ""))
         ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+        ui = _strip_default_node_ui_color(ui)
         if ui.get("list_only"):
             ui = dict(ui)
             ui.pop("list_only", None)
@@ -2099,6 +2274,11 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
                 "group": str(item.get("group") or ""),
                 "node_category": str(item.get("node_category") or ""),
                 "node_type": str(item.get("node_type") or ""),
+                "preset_id": str(item.get("preset_id") or ""),
+                "daemon_profile": str(item.get("daemon_profile") or ""),
+                "daemon_start_cmd": str(item.get("daemon_start_cmd") or ""),
+                "daemon_stop_cmd": str(item.get("daemon_stop_cmd") or ""),
+                "daemon_port": int(item.get("daemon_port") or 0) if item.get("daemon_port") is not None else 0,
                 "tags": item.get("tags") if isinstance(item.get("tags"), list) else [],
                 "ui": ui,
                 "x": float(item.get("x") or ui.get("x") or 0),
@@ -2126,6 +2306,7 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
                 "ui": edge.get("ui") if isinstance(edge.get("ui"), dict) else {},
             }
         )
+    normalized_edges = _repair_runtime_topology_edges(normalized_nodes, normalized_edges, meta)
     out_meta: Dict[str, Any] = {
         "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
         "version": int(meta.get("version") or 1),
@@ -2133,6 +2314,9 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
         "layout_mode": str(meta.get("layout_mode") or "structured"),
         "layout_locked": bool(meta.get("layout_locked")),
         "design_reference": str(meta.get("design_reference") or ""),
+        "runtime_topology": bool(meta.get("runtime_topology")),
+        "cluster_source": bool(meta.get("cluster_source")),
+        "description": str(meta.get("description") or ""),
     }
     if isinstance(meta.get("layout_spacing"), dict) or meta.get("layout_spacing_customized"):
         out_meta["layout_spacing"] = _normalize_layout_spacing(meta.get("layout_spacing"))
@@ -2154,8 +2338,11 @@ def _save_topology_scoped(project_id: str, env_key: str, topology_id: str, topol
     incoming_nodes = topology.get("nodes") if isinstance(topology.get("nodes"), list) else []
     incoming_edges = topology.get("edges") if isinstance(topology.get("edges"), list) else []
     incoming_meta = topology.get("meta") if isinstance(topology.get("meta"), dict) else {}
+    replace_all = bool(incoming_meta.get("runtime_topology") or incoming_meta.get("replace_all"))
 
-    node_index = {str(x.get("id") or ""): x for x in (normalized.get("nodes") or []) if isinstance(x, dict)}
+    node_index: Dict[str, Any] = {}
+    if not replace_all:
+        node_index = {str(x.get("id") or ""): x for x in (normalized.get("nodes") or []) if isinstance(x, dict)}
     for item in incoming_nodes:
         if not isinstance(item, dict):
             continue
@@ -2188,6 +2375,16 @@ def _save_topology_scoped(project_id: str, env_key: str, topology_id: str, topol
         src["node_category"] = str(item.get("node_category") or src.get("node_category") or "")
         src["node_type"] = str(item.get("node_type") or src.get("node_type") or "")
         src["tags"] = item.get("tags") if isinstance(item.get("tags"), list) else (src.get("tags") if isinstance(src.get("tags"), list) else [])
+        for field in (
+            "preset_id", "daemon_profile", "daemon_start_cmd", "daemon_stop_cmd", "group", "notes",
+        ):
+            if field in item:
+                src[field] = item.get(field)
+        if "daemon_port" in item:
+            try:
+                src["daemon_port"] = int(item.get("daemon_port") or 0)
+            except Exception:
+                pass
         src["ui"] = item.get("ui") if isinstance(item.get("ui"), dict) else (src.get("ui") if isinstance(src.get("ui"), dict) else {})
         src["ui"]["ports"] = _normalize_ports(str(src.get("kind") or "standard"), src["ui"].get("ports"))
         try:
@@ -2240,6 +2437,9 @@ def _save_topology_scoped(project_id: str, env_key: str, topology_id: str, topol
         "layout_mode": str(incoming_meta.get("layout_mode") or prev_meta.get("layout_mode") or "structured"),
         "layout_locked": bool(incoming_meta.get("layout_locked") if "layout_locked" in incoming_meta else prev_meta.get("layout_locked")),
         "design_reference": str(incoming_meta.get("design_reference") or prev_meta.get("design_reference") or ""),
+        "runtime_topology": bool(incoming_meta.get("runtime_topology") or prev_meta.get("runtime_topology")),
+        "cluster_source": bool(incoming_meta.get("cluster_source") or prev_meta.get("cluster_source")),
+        "description": str(incoming_meta.get("description") or prev_meta.get("description") or ""),
     }
     if spacing_customized:
         meta_out["layout_spacing"] = _normalize_layout_spacing(spacing)
@@ -2295,24 +2495,125 @@ def _build_runtime_node_from_topology_node(project_id: str, env_key: str, topo_n
     return base
 
 
+def _node_contract_registry_path() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(here, "..", "..", "..", ".."))
+    return os.path.join(repo_root, "docs", "ops_alignment", "node_contract_registry.json")
+
+
+def _load_node_contract_registry() -> Dict[str, Any]:
+    global _NODE_CONTRACT_REGISTRY_CACHE
+    if isinstance(_NODE_CONTRACT_REGISTRY_CACHE, dict) and _NODE_CONTRACT_REGISTRY_CACHE.get("contracts"):
+        return _NODE_CONTRACT_REGISTRY_CACHE
+    path = _node_contract_registry_path()
+    data: Dict[str, Any] = {"contracts": [], "env_profiles": {}}
+    try:
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = json.load(fh)
+            if isinstance(raw, dict):
+                data = raw
+    except Exception:
+        pass
+    _NODE_CONTRACT_REGISTRY_CACHE = data
+    return data
+
+
+def _load_node_contract(preset_id: str) -> Optional[Dict[str, Any]]:
+    pid = str(preset_id or "").strip()
+    if not pid:
+        return None
+    for item in _load_node_contract_registry().get("contracts") or []:
+        if isinstance(item, dict) and str(item.get("preset_id") or "") == pid:
+            return item
+    return None
+
+
+def _resolve_env_profile_name() -> str:
+    if os.name == "posix" and os.uname().sysname == "Darwin":
+        return "local_macos"
+    return "local_macos"
+
+
+def _format_contract_command(template: str, port: int, extras: Optional[Dict[str, Any]] = None) -> str:
+    text = str(template or "").strip()
+    if not text:
+        return ""
+    merged = {"port": int(port or 0), "qps": 300, "duration_sec": 180}
+    if isinstance(extras, dict):
+        merged.update(extras)
+    try:
+        return text.format(**merged)
+    except Exception:
+        return text.replace("{port}", str(int(port or 0)))
+
+
+def _resolve_node_contract_for_topology_node(node: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(node, dict):
+        return {}
+    preset_id = str(node.get("preset_id") or "").strip()
+    if preset_id:
+        hit = _load_node_contract(preset_id)
+        if hit:
+            return hit
+    nid = str(node.get("id") or "").strip()
+    for preset in _load_node_presets():
+        if not isinstance(preset, dict):
+            continue
+        pid = str(preset.get("preset_id") or "").strip()
+        if pid and (nid == pid or nid.startswith(pid + "-")):
+            hit = _load_node_contract(pid)
+            if hit:
+                return hit
+    role = str(node.get("role") or "").strip().lower()
+    if role == "admin":
+        role = "ops"
+    for item in _load_node_contract_registry().get("contracts") or []:
+        if isinstance(item, dict) and str(item.get("role") or "").strip().lower() == role:
+            return item
+    return {}
+
+
+def _contract_daemon_defaults(preset_id: str, port: int) -> Dict[str, str]:
+    reg = _load_node_contract_registry()
+    profiles = reg.get("env_profiles") if isinstance(reg.get("env_profiles"), dict) else {}
+    profile_name = _resolve_env_profile_name()
+    profile = profiles.get(profile_name) if isinstance(profiles.get(profile_name), dict) else {}
+    raw = profile.get(preset_id) if isinstance(profile.get(preset_id), dict) else {}
+    out: Dict[str, str] = {}
+    for key in ("StartCommand", "StopCommand", "HealthCheckCommand", "StressCommand", "ScheduleCommand"):
+        val = _format_contract_command(str(raw.get(key) or ""), port)
+        if val:
+            out[key] = val
+    return out
+
+
+def _cluster_type_for_contract(contract: Dict[str, Any], role: str) -> str:
+    if isinstance(contract, dict) and str(contract.get("cluster_type") or "").strip():
+        return str(contract.get("cluster_type") or "").strip()
+    return _cluster_type_for_role(role)
+
+
 def _cluster_type_for_role(role: str) -> str:
     mapping = {
         "gateway": "Gateway",
         "auth": "Auth",
         "business": "Game",
-        "pressure": "Pressure",
-        "database": "Db",
-        "cache": "Cache",
-        "mq": "Mq",
+        "pressure": "Daemon",
+        "database": "Daemon",
+        "cache": "Daemon",
+        "mq": "Daemon",
         "search": "Search",
-        "scheduler": "Scheduler",
-        "admin": "Admin",
+        "scheduler": "Daemon",
+        "admin": "Ops",
         "edge": "Gateway",
         "analytics": "Analytics",
         "ops": "Ops",
         "transport": "Tcp",
     }
     key = str(role or "").strip().lower()
+    if key == "admin":
+        key = "ops"
     return mapping.get(key, key.title() or "Game")
 
 
@@ -2325,6 +2626,87 @@ def _cluster_category_for_role(role: str) -> str:
     if key in ("gateway", "edge", "transport"):
         return "network"
     return "application"
+
+
+def _resolve_topology_node_port(
+    node: Dict[str, Any],
+    contract: Dict[str, Any],
+    service: Optional[Dict[str, Any]],
+    agent: Optional[Dict[str, Any]],
+) -> int:
+    ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
+    remote = ui.get("remote") if isinstance(ui.get("remote"), dict) else {}
+    for candidate in (
+        int(node.get("daemon_port") or 0),
+        int(remote.get("port") or 0),
+        int((contract or {}).get("default_port") or 0),
+        int((service or {}).get("service_port") or 0),
+        int((service or {}).get("remote_game_server_port") or 0),
+        int((agent or {}).get("remote_game_server_port") or 0) if isinstance(agent, dict) else 0,
+        int((agent or {}).get("port") or 0) if isinstance(agent, dict) else 0,
+    ):
+        if candidate > 0:
+            return candidate
+    return 0
+
+
+def _build_daemon_metadata(
+    node: Dict[str, Any],
+    contract: Dict[str, Any],
+    port: int,
+    base_meta: Dict[str, Any],
+) -> Dict[str, Any]:
+    meta = dict(base_meta or {})
+    preset_id = str(node.get("preset_id") or contract.get("preset_id") or "").strip()
+    execution_model = str(contract.get("execution_model") or "").strip().lower()
+    if execution_model not in ("daemon", "worker"):
+        return meta
+    start_cmd = str(node.get("daemon_start_cmd") or "").strip()
+    stop_cmd = str(node.get("daemon_stop_cmd") or "").strip()
+    defaults = _contract_daemon_defaults(preset_id, port) if preset_id else {}
+    if not start_cmd:
+        start_cmd = str(defaults.get("StartCommand") or "").strip()
+    if not stop_cmd:
+        stop_cmd = str(defaults.get("StopCommand") or "").strip()
+    if start_cmd:
+        meta["StartCommand"] = start_cmd
+    if stop_cmd:
+        meta["StopCommand"] = stop_cmd
+    for key in ("HealthCheckCommand", "StressCommand", "ScheduleCommand"):
+        node_val = str(node.get(key.lower()) or node.get(key) or "").strip()
+        if not node_val:
+            node_val = str(defaults.get(key) or "").strip()
+        if node_val:
+            meta[key] = node_val
+    if preset_id:
+        meta["PresetId"] = preset_id
+    meta["ExecutionModel"] = execution_model
+    return meta
+
+
+def _validate_topology_contract(topo: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    errors: List[str] = []
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        if node.get("disabled") or str(node.get("bizStatus") or "").lower() == "disabled":
+            continue
+        contract = _resolve_node_contract_for_topology_node(node)
+        execution_model = str(contract.get("execution_model") or "").strip().lower()
+        if execution_model not in ("daemon", "worker"):
+            continue
+        node_id = str(node.get("id") or node.get("server_id") or "").strip() or "unknown"
+        port = _resolve_topology_node_port(node, contract, None, None)
+        preset_id = str(node.get("preset_id") or contract.get("preset_id") or "").strip()
+        start_cmd = str(node.get("daemon_start_cmd") or "").strip()
+        if not start_cmd and preset_id:
+            start_cmd = str(_contract_daemon_defaults(preset_id, port).get("StartCommand") or "").strip()
+        if port <= 0:
+            errors.append(f"节点 {node_id} 缺少有效端口（daemon/worker 类型需要 default_port 或 ui.remote.port）")
+        if not start_cmd:
+            errors.append(f"节点 {node_id} 缺少 StartCommand（请在检查器填写 daemon 启动命令）")
+    return (len(errors) == 0, errors)
 
 
 def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str) -> Dict[str, Any]:
@@ -2353,12 +2735,21 @@ def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str
             continue
         edge_out.setdefault(frm, []).append(to)
         edge_in.setdefault(to, []).append(frm)
+
+    def _resolve_server_id(target_node: Optional[Dict[str, Any]]) -> str:
+        if not isinstance(target_node, dict):
+            return ""
+        return str(target_node.get("server_id") or target_node.get("id") or "").strip()
+
     cluster_servers: List[Dict[str, Any]] = []
     for node in nodes:
         if not isinstance(node, dict):
             continue
         node_id = str(node.get("id") or "").strip()
-        role = str(node.get("role") or "business").strip().lower()
+        contract = _resolve_node_contract_for_topology_node(node)
+        role = str(node.get("role") or contract.get("role") or "business").strip().lower()
+        if role == "admin":
+            role = "ops"
         service_id = str(service_bindings.get(node_id) or "").strip()
         service = services_map.get(service_id) if service_id else None
         agent_id = str(agent_bindings.get(node_id) or (service or {}).get("agent_id") or "").strip()
@@ -2370,37 +2761,54 @@ def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str
             endpoints = ((agent.get("network") or {}).get("endpoints")) or []
         endpoint = str(endpoints[0] or "").strip() if endpoints else ""
         endpoint_host = endpoint.split(":")[0].strip() if endpoint and ":" in endpoint else endpoint
-        service_port = int((service or {}).get("service_port") or (service or {}).get("remote_game_server_port") or 0)
-        remote_port = int((service or {}).get("remote_game_server_port") or service_port or 0)
-        if not service_port and isinstance(agent, dict):
-            service_port = int(agent.get("remote_game_server_port") or agent.get("port") or 0)
+        service_port = _resolve_topology_node_port(node, contract, service, agent)
+        remote_port = service_port
         runtime_status = str((service or {}).get("status") or (service or {}).get("run_state") or (agent or {}).get("status") or (agent or {}).get("run_state") or "UNKNOWN").upper()
+        cluster_type = _cluster_type_for_contract(contract, role)
+        probe_host = endpoint_host or "127.0.0.1"
+        if probe_host in ("0.0.0.0", "*", ""):
+            probe_host = "127.0.0.1"
+        bind_host = endpoint_host or ("0.0.0.0" if role in ("gateway", "transport", "edge") else "127.0.0.1")
+        base_meta = {
+            "ProjectId": str(project_id or ""),
+            "EnvKey": _normalize_env_key(env_key),
+            "TopologyId": str(topology_id or ""),
+            "TopologyName": str(row.get("name") or ""),
+            "VersionLabel": str(row.get("version_label") or ""),
+            "NodeId": node_id,
+            "AgentId": agent_id,
+            "ServiceId": str((service or {}).get("service_id") or ""),
+            "AgentWs": str(endpoint or ""),
+            "RemoteGameServerPort": str(remote_port or ""),
+            "PresetId": str(node.get("preset_id") or contract.get("preset_id") or ""),
+            "ProbeStrategy": str(contract.get("probe_strategy") or "tcp"),
+        }
+        metadata = _build_daemon_metadata(node, contract, service_port, base_meta)
         cluster_servers.append(
             {
                 "ServerId": str(node.get("server_id") or node_id),
                 "DisplayName": str(node.get("name") or node_id),
-                "Type": _cluster_type_for_role(role),
+                "Type": cluster_type,
                 "Role": role,
                 "Category": _cluster_category_for_role(role),
                 "Description": str(node.get("desc") or ""),
-                "UpstreamServerIds": [str(getattr_node.get("server_id") or getattr_node.get("id") or "") if isinstance(getattr_node, dict) else "" for getattr_node in [next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == sid), None) for sid in (edge_in.get(node_id) or [])] if str((getattr_node or {}).get("id") or "")],
-                "DownstreamServerIds": [str(getattr_node.get("server_id") or getattr_node.get("id") or "") if isinstance(getattr_node, dict) else "" for getattr_node in [next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == sid), None) for sid in (edge_out.get(node_id) or [])] if str((getattr_node or {}).get("id") or "")],
-                "Host": endpoint_host or ("0.0.0.0" if role in ("gateway", "transport", "edge") else "127.0.0.1"),
-                "ProbeHost": endpoint_host or "127.0.0.1",
-                "Port": service_port or remote_port or 0,
+                "UpstreamServerIds": [
+                    sid for sid in [
+                        _resolve_server_id(next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == upstream_id), None))
+                        for upstream_id in (edge_in.get(node_id) or [])
+                    ] if sid
+                ],
+                "DownstreamServerIds": [
+                    sid for sid in [
+                        _resolve_server_id(next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == downstream_id), None))
+                        for downstream_id in (edge_out.get(node_id) or [])
+                    ] if sid
+                ],
+                "Host": bind_host,
+                "ProbeHost": probe_host,
+                "Port": service_port,
                 "State": "Online" if runtime_status in ("ONLINE", "READY", "RUNNING", "SUCCESS") else "Offline",
-                "Metadata": {
-                    "ProjectId": str(project_id or ""),
-                    "EnvKey": _normalize_env_key(env_key),
-                    "TopologyId": str(topology_id or ""),
-                    "TopologyName": str(row.get("name") or ""),
-                    "VersionLabel": str(row.get("version_label") or ""),
-                    "NodeId": node_id,
-                    "AgentId": agent_id,
-                    "ServiceId": str((service or {}).get("service_id") or ""),
-                    "AgentWs": str(endpoint or ""),
-                    "RemoteGameServerPort": str(remote_port or service_port or ""),
-                },
+                "Metadata": metadata,
             }
         )
     return {
@@ -2415,6 +2823,242 @@ def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str
             "Servers": cluster_servers,
         },
     }
+
+
+def _service_dict_from_topology_node(project_id: str, node: Dict[str, Any], now: str = "") -> Dict[str, Any]:
+    node_id = str(node.get("server_id") or node.get("id") or "").strip()
+    contract = _resolve_node_contract_for_topology_node(node)
+    role = str(node.get("role") or contract.get("role") or "business").strip().lower()
+    if role == "admin":
+        role = "ops"
+    port = _resolve_topology_node_port(node, contract, None, None)
+    ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
+    network = ui.get("network") if isinstance(ui.get("network"), dict) else {}
+    endpoints = network.get("endpoints") if isinstance(network.get("endpoints"), list) else []
+    host = "127.0.0.1"
+    if endpoints:
+        ep = str(endpoints[0] or "")
+        if ":" in ep:
+            host = ep.split(":")[0].strip() or host
+    return {
+        "service_id": node_id,
+        "node_id": node_id,
+        "agent_id": CANONICAL_LOCAL_AGENT_ID,
+        "device_id": CANONICAL_LOCAL_DEVICE_ID,
+        "project_id": str(project_id or ""),
+        "display_name": str(node.get("name") or node_id),
+        "service_type": role,
+        "service_port": int(port or 0),
+        "remote_game_server_port": int(port or 0),
+        "run_state": "UNKNOWN",
+        "status": "UNKNOWN",
+        "probe_status": "",
+        "probe_rtt_ms": 0.0,
+        "metrics": {},
+        "endpoints": endpoints or ([f"{host}:{port}"] if port else []),
+        "updated_at": now or _now_iso(),
+        "registration_origin": "topology.save",
+    }
+
+
+def _service_dict_from_agent_member(item: Dict[str, Any]) -> Dict[str, Any]:
+    node_id = str(item.get("node_id") or "").strip()
+    sid = str(item.get("service_id") or node_id or item.get("agent_id") or "").strip()
+    metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    return {
+        "service_id": sid,
+        "node_id": node_id or sid,
+        "agent_id": CANONICAL_LOCAL_AGENT_ID,
+        "device_id": CANONICAL_LOCAL_DEVICE_ID,
+        "project_id": str(item.get("project_id") or ""),
+        "display_name": str(item.get("display_name") or sid),
+        "service_type": str(item.get("role") or item.get("category") or ""),
+        "service_port": int(item.get("port") or item.get("remote_game_server_port") or 0),
+        "remote_game_server_port": int(item.get("remote_game_server_port") or item.get("port") or 0),
+        "run_state": str(item.get("run_state") or ""),
+        "status": _effective_runtime_status(item.get("status"), item.get("run_state"), item.get("probe_status")),
+        "probe_status": str(item.get("probe_status") or ""),
+        "probe_rtt_ms": float(item.get("probe_rtt_ms") or 0.0),
+        "metrics": metrics,
+        "endpoints": ((item.get("network") or {}).get("endpoints") if isinstance(item.get("network"), dict) else []) or [],
+        "updated_at": str(item.get("updated_at") or item.get("last_seen") or _now_iso()),
+        "registration_origin": _member_registration_origin(item),
+    }
+
+
+def _ensure_canonical_local_agent(
+    project_id: str,
+    services: List[Dict[str, Any]],
+    host: str = "127.0.0.1",
+    ops_port: int = 5504,
+) -> str:
+    """一台设备一个 Agent，多个服务挂在 services 下。"""
+    pid = str(project_id or "").strip()
+    reg = _load_agent_registry_v2()
+    now = _now_iso()
+    hit = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else {}
+    merged_services: Dict[str, Dict[str, Any]] = {}
+    for svc in services or []:
+        if not isinstance(svc, dict):
+            continue
+        sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
+        if not sid:
+            continue
+        merged_services[sid] = dict(svc)
+    for svc in (hit.get("services") if isinstance(hit.get("services"), list) else []):
+        if not isinstance(svc, dict):
+            continue
+        sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
+        if sid and sid not in merged_services:
+            merged_services[sid] = dict(svc)
+    service_rows = list(merged_services.values())
+    for svc in service_rows:
+        if str(svc.get("node_id") or "") == "ops-cn-1":
+            ops_port = int(svc.get("service_port") or svc.get("remote_game_server_port") or ops_port or 5504)
+            break
+    payload = _normalize_agent_descriptor_v2(
+        {
+            "agent_id": CANONICAL_LOCAL_AGENT_ID,
+            "device_id": CANONICAL_LOCAL_DEVICE_ID,
+            "node_id": "",
+            "host_name": host,
+            "host_ip": host,
+            "probe_host": host,
+            "project_id": pid,
+            "status": str(hit.get("status") or "ONLINE"),
+            "version": str(hit.get("version") or "canonical-local-v1"),
+            "last_seen": str(hit.get("last_seen") or now),
+            "display_name": "本地 GameServer Agent",
+            "port": int(ops_port or 5504),
+            "remote_game_server_port": int(ops_port or 5504),
+            "desc": "单 Agent 管理本机全部拓扑服务节点",
+            "run_state": str(hit.get("run_state") or "RUNNING"),
+            "probe_status": str(hit.get("probe_status") or ""),
+            "probe_at": str(hit.get("probe_at") or ""),
+            "probe_rtt_ms": float(hit.get("probe_rtt_ms") or 0.0),
+            "capabilities": ["health_check", "start", "stop", "restart", "probe", "daemon"],
+            "metrics": hit.get("metrics") if isinstance(hit.get("metrics"), dict) else {},
+            "network": {"endpoints": [f"{host}:{ops_port}"] if ops_port else []},
+            "transport": {
+                "mode": "remote",
+                "local_bus": {"enabled": True, "endpoint": f"pipe://{CANONICAL_LOCAL_DEVICE_ID}/{CANONICAL_LOCAL_AGENT_ID}", "auth_mode": "token"},
+            },
+            "registration_origin": "canonical.local",
+            "services": service_rows,
+            "updated_at": now,
+        }
+    )
+    payload.pop("stale", None)
+    payload.pop("stale_reason", None)
+    payload.pop("superseded_by", None)
+    reg[CANONICAL_LOCAL_AGENT_ID] = payload
+    _append_realtime_agent_sample(reg[CANONICAL_LOCAL_AGENT_ID])
+    _save_agent_registry_v2(reg)
+    return CANONICAL_LOCAL_AGENT_ID
+
+
+def _consolidate_runtime_agents_to_canonical(project_id: str) -> Dict[str, Any]:
+    """将 runtime 拓扑下的 per-node agent 合并为单 Agent + 多 services。"""
+    pid = str(project_id or "").strip()
+    if not pid or not _project_uses_runtime_topology(pid):
+        return {"ok": False, "skipped": True}
+    reg = _load_agent_registry_v2()
+    services_map: Dict[str, Dict[str, Any]] = {}
+    host = "127.0.0.1"
+    ops_port = 5504
+    stale_count = 0
+    for aid, item in reg.items():
+        if not isinstance(item, dict) or item.get("stale"):
+            continue
+        if str(item.get("project_id") or "") not in ("", pid):
+            continue
+        if aid == CANONICAL_LOCAL_AGENT_ID:
+            for svc in item.get("services") if isinstance(item.get("services"), list) else []:
+                if isinstance(svc, dict):
+                    sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
+                    if sid:
+                        services_map[sid] = dict(svc)
+            continue
+        nid = str(item.get("node_id") or "").strip()
+        if not nid:
+            continue
+        svc = _service_dict_from_agent_member(item)
+        services_map[str(svc.get("service_id") or nid)] = svc
+        if nid == "ops-cn-1":
+            ops_port = int(item.get("port") or item.get("remote_game_server_port") or ops_port)
+        host = str(item.get("probe_host") or item.get("host_name") or item.get("host_ip") or host)
+    if not services_map:
+        return {"ok": False, "reason": "no_services"}
+    _ensure_canonical_local_agent(pid, list(services_map.values()), host=host, ops_port=ops_port)
+    reg = _load_agent_registry_v2()
+    now = _now_iso()
+    for aid, item in reg.items():
+        if not isinstance(item, dict) or aid == CANONICAL_LOCAL_AGENT_ID:
+            continue
+        if str(item.get("project_id") or "") not in ("", pid):
+            continue
+        nid = str(item.get("node_id") or "").strip()
+        if nid and nid in services_map:
+            item["stale"] = True
+            item["stale_reason"] = "consolidated_to_canonical"
+            item["superseded_by"] = CANONICAL_LOCAL_AGENT_ID
+            item["updated_at"] = now
+            stale_count += 1
+    _save_agent_registry_v2(reg)
+    return {"ok": True, "agent_id": CANONICAL_LOCAL_AGENT_ID, "services": len(services_map), "stale": stale_count}
+
+
+def _upsert_agents_from_topology(project_id: str, nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """拓扑保存后同步到 canonical local agent 的 services 列表。"""
+    pid = str(project_id or "").strip()
+    if not pid:
+        return {"updated": 0, "added": 0}
+    now = _now_iso()
+    services = []
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        node_id = str(node.get("server_id") or node.get("id") or "").strip()
+        if not node_id:
+            continue
+        services.append(_service_dict_from_topology_node(pid, node, now))
+    if _project_uses_runtime_topology(pid):
+        stat = _consolidate_runtime_agents_to_canonical(pid)
+        if services:
+            _ensure_canonical_local_agent(pid, services)
+        return {"updated": len(services), "added": 0, "active": len(services), "canonical": stat}
+    reg = _load_agent_registry_v2()
+    added = 0
+    updated = 0
+    for svc in services:
+        agent_id = f"agent-{svc['node_id']}"
+        hit = reg.get(agent_id) if isinstance(reg.get(agent_id), dict) else None
+        payload = _normalize_agent_descriptor_v2(
+            {
+                "agent_id": agent_id,
+                "device_id": CANONICAL_LOCAL_DEVICE_ID,
+                "host_name": "127.0.0.1",
+                "probe_host": "127.0.0.1",
+                "node_id": svc["node_id"],
+                "project_id": pid,
+                "status": "UNKNOWN",
+                "display_name": svc["display_name"],
+                "port": svc["service_port"],
+                "remote_game_server_port": svc["remote_game_server_port"],
+                "desc": svc["display_name"],
+                "registration_origin": "topology.save",
+                "updated_at": now,
+            }
+        )
+        if hit:
+            hit.update({k: v for k, v in payload.items() if k not in ("agent_id",)})
+            hit.pop("stale", None)
+            updated += 1
+        else:
+            reg[agent_id] = payload
+            added += 1
+    _save_agent_registry_v2(reg)
+    return {"updated": updated, "added": added, "active": len(services)}
 
 
 def _sync_topology_to_game_server(project_id: str, env_key: str, topology_id: str, actor: str) -> Dict[str, Any]:
@@ -2518,10 +3162,10 @@ def _runtime_active_for_scope(project_id: str, env_key: str, topology_id: str) -
             continue
         op = str(row.get("op") or "").lower()
         st = str(row.get("status") or "").lower()
-        if op == "start" and st in ("running", "success", "queued"):
+        if op == "start" and st in ("running", "queued"):
             if latest_start is None:
                 latest_start = row
-        if op == "stop" and st in ("running", "success", "queued"):
+        if op == "stop" and st in ("running", "queued"):
             if latest_stop is None:
                 latest_stop = row
     if not latest_start:
@@ -2530,6 +3174,8 @@ def _runtime_active_for_scope(project_id: str, env_key: str, topology_id: str) -
     stop_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
     if latest_stop and stop_ts and start_ts and stop_ts >= start_ts:
         return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "stopped_after_start"}
+    if str(latest_start.get("status") or "").lower() in ("failed", "success", "timeout", "canceled"):
+        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "start_finished"}
     return {"active": True, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "start_alive"}
 
 
@@ -2568,10 +3214,21 @@ def _load_agent_policy() -> Dict[str, Any]:
 #  Cluster → Agent 同步：从 game-server 的 cluster.json /ops/cluster 自动同步拓扑
 # ──────────────────────────────────────────────────────────────────────
 
-CLUSTER_JSON_PATH = os.path.join(
-    os.getenv("GAME_SERVER_REPO", r"E:\maclient\game-server"),
-    "config", "cluster.json",
-)
+def _resolve_game_server_repo() -> str:
+    env = str(os.getenv("GAME_SERVER_REPO") or "").strip()
+    if env and os.path.isdir(env):
+        return env
+    candidates = [
+        "/Users/wangling/Desktop/MyGame/GameClient/game-server",
+        r"E:\maclient\game-server",
+    ]
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    return env or candidates[0]
+
+
+CLUSTER_JSON_PATH = os.path.join(_resolve_game_server_repo(), "config", "cluster.json")
 
 
 def _load_cluster_json() -> List[Dict[str, Any]]:
@@ -2687,6 +3344,87 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
     if not servers:
         return {"synced": 0, "added": 0, "updated": 0, "stale": 0, "error": "no cluster.json data"}
 
+    pid = str(project_id or "GomeKu").strip()
+    if _project_uses_runtime_topology(pid):
+        services: List[Dict[str, Any]] = []
+        active_node_ids: set = set()
+        host = "127.0.0.1"
+        ops_port = 5504
+        now = _now_iso()
+        for srv in servers:
+            srv_id = str(srv.get("ServerId") or "").strip()
+            if not srv_id:
+                continue
+            active_node_ids.add(srv_id)
+            probe_host = str(srv.get("ProbeHost") or srv.get("Host") or host).strip()
+            host = probe_host or host
+            port = int(srv.get("Port") or 0)
+            role = str(srv.get("Role") or srv.get("Type") or "").strip().lower()
+            if srv_id == "ops-cn-1":
+                ops_port = port or ops_port
+            services.append(
+                {
+                    "service_id": srv_id,
+                    "node_id": srv_id,
+                    "agent_id": CANONICAL_LOCAL_AGENT_ID,
+                    "device_id": CANONICAL_LOCAL_DEVICE_ID,
+                    "project_id": pid,
+                    "display_name": str(srv.get("DisplayName") or srv_id),
+                    "service_type": role,
+                    "service_port": port,
+                    "remote_game_server_port": port,
+                    "status": "UNKNOWN",
+                    "run_state": "UNKNOWN",
+                    "probe_status": "",
+                    "probe_rtt_ms": 0.0,
+                    "metrics": {},
+                    "updated_at": now,
+                    "registration_origin": "cluster.sync",
+                }
+            )
+        try:
+            ctx = _resolve_topology_context(pid, "production", "")
+            topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+            topo_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+            if topo_meta.get("runtime_topology") or topo_meta.get("cluster_source"):
+                for node in topo.get("nodes") if isinstance(topo.get("nodes"), list) else []:
+                    if not isinstance(node, dict):
+                        continue
+                    nid = str(node.get("server_id") or node.get("id") or "").strip()
+                    role = str(node.get("role") or "").strip().lower()
+                    if nid and role in ("database", "cache", "mongo", "redis", "search", "mq"):
+                        active_node_ids.add(nid)
+                        if not any(str(s.get("node_id") or "") == nid for s in services):
+                            services.append(_service_dict_from_topology_node(pid, node, now))
+        except Exception:
+            pass
+        _ensure_canonical_local_agent(pid, services, host=host, ops_port=ops_port)
+        reg = _load_agent_registry_v2()
+        stale_count = 0
+        for aid, item in reg.items():
+            if not isinstance(item, dict) or aid == CANONICAL_LOCAL_AGENT_ID:
+                continue
+            if str(item.get("project_id") or "") not in ("", pid):
+                continue
+            nid = str(item.get("node_id") or "").strip()
+            if (nid and nid in active_node_ids) or str(aid).endswith("-cn-1"):
+                item["stale"] = True
+                item["stale_reason"] = "consolidated_to_canonical"
+                item["superseded_by"] = CANONICAL_LOCAL_AGENT_ID
+                item["updated_at"] = now
+                stale_count += 1
+        _save_agent_registry_v2(reg)
+        _sync_cluster_to_nodes(servers, pid)
+        topo_stat = _sync_cluster_to_topology(pid, servers)
+        return {
+            "synced": len(servers),
+            "added": 0,
+            "updated": len(services),
+            "stale": stale_count,
+            "topology": topo_stat,
+            "canonical": True,
+        }
+
     reg = _load_agent_registry_v2()
     now = _now_iso()
 
@@ -2737,6 +3475,7 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
                          ("project_id", project_id),
                          ("category", category),
                          ("role", role),
+                         ("server_type", srv_type),
                          ("capabilities", capabilities)]:
                 if hit.get(k) != v:
                     hit[k] = v
@@ -2780,11 +3519,28 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
                 "config_state": state_config,
                 "category": category,
                 "role": role,
+                "server_type": srv_type,
                 "probe_proto": "udp" if srv_type.upper() == "KCP" else "tcp",
                 "registration_origin": "cluster.sync",
                 "updated_at": now,
             })
             added += 1
+
+    # runtime 拓扑中的基础设施节点（Mongo/Redis 等）不在 cluster.json，但仍应视为有效 Agent
+    try:
+        ctx = _resolve_topology_context(project_id, "production", "")
+        topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+        topo_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+        if topo_meta.get("runtime_topology") or topo_meta.get("cluster_source"):
+            for node in topo.get("nodes") if isinstance(topo.get("nodes"), list) else []:
+                if not isinstance(node, dict):
+                    continue
+                nid = str(node.get("server_id") or node.get("id") or "").strip()
+                role = str(node.get("role") or "").strip().lower()
+                if nid and role in ("database", "cache", "mongo", "redis", "search", "mq"):
+                    active_node_ids.add(nid)
+    except Exception:
+        pass
 
     # 标记不在 cluster.json 中的老节点为 stale
     # 同一 project_id 下，cluster.json 里的 node_id 是唯一有效集合
@@ -2842,8 +3598,332 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
 
     # 同步 nodes 配置（OpsPlatformGateway 用 ops_base_url 连 game-server）
     _sync_cluster_to_nodes(servers, project_id)
+    topo_stat = _sync_cluster_to_topology(project_id, servers)
+    canonical_stat = _consolidate_runtime_agents_to_canonical(project_id)
 
-    return {"synced": len(servers), "added": added, "updated": updated, "stale": stale_count}
+    return {"synced": len(servers), "added": added, "updated": updated, "stale": stale_count, "topology": topo_stat, "canonical": canonical_stat}
+
+
+_CLUSTER_TOPOLOGY_LAYOUT = {
+    "gateway": (72, 48),
+    "auth": (72, 248),
+    "ops": (320, 248),
+    "game": (560, 128),
+    "tcp": (820, 328),
+    "transport": (820, 328),
+}
+
+
+def _cluster_topology_role_kind(srv: Dict[str, Any]) -> Tuple[str, str]:
+    srv_type = str(srv.get("Type") or "").strip().lower()
+    role = str(srv.get("Role") or srv_type or "business").strip().lower()
+    if srv_type == "gateway":
+        return "gateway", "gateway"
+    if srv_type == "auth":
+        return "auth", "auth"
+    if srv_type == "ops":
+        return "ops", "admin"
+    if srv_type in ("tcp", "kcp", "httptransport"):
+        return "transport", "terminal"
+    if srv_type == "game":
+        return "business", "game"
+    kind = _infer_node_kind(role, "")
+    return role, kind
+
+
+_RUNTIME_TOPOLOGY_EDGE_SPECS = [
+    ("gateway-cn-1", "auth-cn-1", "http:80"),
+    ("gateway-cn-1", "ops-cn-1", "http:443"),
+    ("auth-cn-1", "game-cn-1", "tcp:5512"),
+    ("ops-cn-1", "game-cn-1", "tcp:5512"),
+]
+
+
+def _strip_default_node_ui_color(ui: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(ui or {})
+    if str(out.get("color") or "").strip().lower() == "#0f172a":
+        out.pop("color", None)
+    return out
+
+
+def _repair_runtime_topology_edges(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    meta: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    meta = meta if isinstance(meta, dict) else {}
+    if not meta.get("runtime_topology"):
+        return edges
+    valid_ids = {str(n.get("id") or "") for n in nodes if isinstance(n, dict) and str(n.get("id") or "")}
+    if not {"gateway-cn-1", "ops-cn-1", "game-cn-1"}.issubset(valid_ids):
+        return edges
+    existing = {(str(e.get("from") or ""), str(e.get("to") or "")) for e in edges if isinstance(e, dict)}
+    out = list(edges)
+    for frm, to, note in _RUNTIME_TOPOLOGY_EDGE_SPECS:
+        if frm not in valid_ids or to not in valid_ids or (frm, to) in existing:
+            continue
+        out.append({
+            "id": f"edge-{frm}-{to}",
+            "from": frm,
+            "to": to,
+            "from_port": "out-1",
+            "to_port": "in-1",
+            "type": "depends_on",
+            "note": note,
+        })
+        existing.add((frm, to))
+    return out
+
+
+def _build_cluster_topology_content(servers: List[Dict[str, Any]], project_id: str = "") -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    nodes: List[Dict[str, Any]] = []
+    valid_ids: set = set()
+    for idx, srv in enumerate(servers):
+        if not isinstance(srv, dict):
+            continue
+        sid = str(srv.get("ServerId") or "").strip()
+        if not sid:
+            continue
+        valid_ids.add(sid)
+        role, kind = _cluster_topology_role_kind(srv)
+        srv_type = str(srv.get("Type") or "").strip().lower()
+        layout_key = srv_type if srv_type in _CLUSTER_TOPOLOGY_LAYOUT else role
+        x, y = _CLUSTER_TOPOLOGY_LAYOUT.get(layout_key, (72 + (idx % 3) * 260, 48 + (idx // 3) * 180))
+        port = int(srv.get("Port") or 0)
+        display = str(srv.get("DisplayName") or sid).strip()
+        desc = str(srv.get("Description") or display).strip()
+        ui_ports = _normalize_ports(kind, None)
+        nodes.append({
+            "id": sid,
+            "name": display,
+            "server_id": sid,
+            "project_id": pid,
+            "env": "production",
+            "role": role,
+            "kind": kind,
+            "desc": desc,
+            "bizStatus": "normal",
+            "owner": "cluster.sync",
+            "group": str(srv.get("Category") or "application"),
+            "x": float(x),
+            "y": float(y),
+            "tags": [srv_type] if srv_type else [],
+            "ui": {
+                "x": float(x),
+                "y": float(y),
+                "w": 220,
+                "h": 90,
+                "locked": False,
+                "ports": ui_ports,
+                "remote": {"port": port} if port > 0 else {},
+                "network": {"endpoints": [f"127.0.0.1:{port}"]} if port > 0 else {},
+            },
+        })
+
+    edges: List[Dict[str, Any]] = []
+    seen_edges: set = set()
+
+    def _append_cluster_edge(from_id: str, to_id: str, note: str = "") -> None:
+        frm = str(from_id or "").strip()
+        to = str(to_id or "").strip()
+        if not frm or not to or frm not in valid_ids or to not in valid_ids or frm == to:
+            return
+        edge_id = f"edge-{frm}-{to}"
+        if edge_id in seen_edges:
+            return
+        seen_edges.add(edge_id)
+        edges.append({
+            "id": edge_id,
+            "from": frm,
+            "to": to,
+            "from_port": "out-1",
+            "to_port": "in-1",
+            "type": "depends_on",
+            "note": str(note or ""),
+        })
+
+    for srv in servers:
+        if not isinstance(srv, dict):
+            continue
+        sid = str(srv.get("ServerId") or "").strip()
+        if not sid:
+            continue
+        port = int(srv.get("Port") or 0)
+        downstream = srv.get("DownstreamServerIds") if isinstance(srv.get("DownstreamServerIds"), list) else []
+        for target in downstream:
+            to_id = str(target or "").strip()
+            _append_cluster_edge(sid, to_id, f"tcp:{port}" if port else "")
+        upstream = srv.get("UpstreamServerIds") if isinstance(srv.get("UpstreamServerIds"), list) else []
+        for source in upstream:
+            from_id = str(source or "").strip()
+            _append_cluster_edge(from_id, sid, f"tcp:{port}" if port else "")
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "meta": {
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+            "layout_mode": "structured",
+            "layout_locked": False,
+            "cluster_source": True,
+            "cluster_sync_at": _now_iso(),
+            "layout_spacing": {"rank_gap": 268, "row_gap": 128},
+            "updated_at": _now_iso(),
+        },
+    }
+
+
+def _sync_cluster_to_topology(project_id: str, servers: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """将 cluster.json ServerId merge 到项目默认拓扑（保留用户添加的非 cluster 节点）。"""
+    pid = str(project_id or "").strip()
+    rows = servers if isinstance(servers, list) else _load_cluster_json()
+    if not pid or not rows:
+        return {"updated": False, "reason": "missing_project_or_cluster"}
+
+    _migrate_topology_storage_if_needed()
+    registry_rows = _load_topology_registry()
+    target = None
+    for item in registry_rows:
+        if not isinstance(item, dict):
+            continue
+        row = _normalize_topology_registry_row(item)
+        if row.get("project_id") == pid and row.get("is_default"):
+            target = row
+            break
+    if target is None:
+        target = _normalize_topology_registry_row({
+            "topology_id": f"topology-{pid.replace('/', '-').replace(' ', '-').lower()}-production",
+            "project_id": pid,
+            "env_key": "production",
+            "name": "生产主拓扑",
+            "version_label": "cluster-v1",
+            "owner": "cluster.sync",
+            "description": "由 cluster.json 自动同步",
+            "is_default": True,
+            "status": "running",
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        })
+        registry_rows.append(target)
+        _save_topology_registry(registry_rows)
+
+    tid = str(target.get("topology_id") or "").strip()
+    if not tid:
+        return {"updated": False, "reason": "missing_topology_id"}
+
+    contents = _load_topology_contents()
+    existing = contents.get(tid) if isinstance(contents.get(tid), dict) else {}
+    existing_meta = existing.get("meta") if isinstance(existing.get("meta"), dict) else {}
+    existing_nodes = existing.get("nodes") if isinstance(existing.get("nodes"), list) else []
+    existing_edges = existing.get("edges") if isinstance(existing.get("edges"), list) else []
+
+    cluster_topo = _build_cluster_topology_content(rows, pid)
+    cluster_nodes = cluster_topo.get("nodes") if isinstance(cluster_topo.get("nodes"), list) else []
+    cluster_edges = cluster_topo.get("edges") if isinstance(cluster_topo.get("edges"), list) else []
+    cluster_ids = {str(n.get("id") or "").strip() for n in cluster_nodes if isinstance(n, dict) and str(n.get("id") or "").strip()}
+
+    merged_nodes: List[Dict[str, Any]] = []
+    merged_by_id: Dict[str, Dict[str, Any]] = {}
+
+    for item in existing_nodes:
+        if not isinstance(item, dict):
+            continue
+        nid = str(item.get("id") or "").strip()
+        if not nid:
+            continue
+        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        is_cluster = bool(meta.get("cluster_source")) or nid in cluster_ids
+        if is_cluster and nid in cluster_ids:
+            continue
+        if not is_cluster:
+            merged_nodes.append(item)
+            merged_by_id[nid] = item
+
+    pos_by_id = {}
+    for item in existing_nodes:
+        if not isinstance(item, dict):
+            continue
+        nid = str(item.get("id") or "").strip()
+        if not nid:
+            continue
+        ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+        pos_by_id[nid] = (
+            float(item.get("x") if item.get("x") is not None else ui.get("x") or 0),
+            float(item.get("y") if item.get("y") is not None else ui.get("y") or 0),
+        )
+
+    for node in cluster_nodes:
+        if not isinstance(node, dict):
+            continue
+        nid = str(node.get("id") or "").strip()
+        if not nid:
+            continue
+        if nid in pos_by_id:
+            x, y = pos_by_id[nid]
+            node["x"] = x
+            node["y"] = y
+            ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
+            ui["x"] = x
+            ui["y"] = y
+            node["ui"] = ui
+        node_meta = node.get("meta") if isinstance(node.get("meta"), dict) else {}
+        node_meta["cluster_source"] = True
+        node["meta"] = node_meta
+        merged_nodes.append(node)
+        merged_by_id[nid] = node
+
+    merged_edge_ids: set = set()
+    merged_edges: List[Dict[str, Any]] = []
+    valid_ids = set(merged_by_id.keys())
+
+    for edge in existing_edges:
+        if not isinstance(edge, dict):
+            continue
+        frm = str(edge.get("from") or "").strip()
+        to = str(edge.get("to") or "").strip()
+        eid = str(edge.get("id") or f"edge-{frm}-{to}")
+        if frm in cluster_ids and to in cluster_ids:
+            continue
+        if frm in valid_ids and to in valid_ids and eid not in merged_edge_ids:
+            merged_edges.append(edge)
+            merged_edge_ids.add(eid)
+
+    for edge in cluster_edges:
+        if not isinstance(edge, dict):
+            continue
+        eid = str(edge.get("id") or "")
+        if eid and eid not in merged_edge_ids:
+            merged_edges.append(edge)
+            merged_edge_ids.add(eid)
+
+    meta = cluster_topo.get("meta") if isinstance(cluster_topo.get("meta"), dict) else {}
+    if existing_meta.get("viewport"):
+        meta["viewport"] = existing_meta.get("viewport")
+    if existing_meta.get("layout_spacing"):
+        meta["layout_spacing"] = existing_meta.get("layout_spacing")
+    if existing_meta.get("layout_spacing_customized"):
+        meta["layout_spacing_customized"] = existing_meta.get("layout_spacing_customized")
+    meta["cluster_sync_at"] = _now_iso()
+    meta["updated_at"] = _now_iso()
+    if existing_meta.get("runtime_topology"):
+        meta["runtime_topology"] = True
+    if existing_meta.get("description"):
+        meta["description"] = str(existing_meta.get("description") or "")
+
+    merged_edges = _repair_runtime_topology_edges(merged_nodes, merged_edges, meta)
+    topo = {"nodes": merged_nodes, "edges": merged_edges, "meta": meta}
+    contents[tid] = topo
+    _save_topology_contents(contents)
+    target["updated_at"] = _now_iso()
+    _save_topology_registry(registry_rows)
+    return {
+        "updated": True,
+        "topology_id": tid,
+        "node_count": len(merged_nodes),
+        "edge_count": len(merged_edges),
+        "merged_user_nodes": len([n for n in existing_nodes if isinstance(n, dict) and str(n.get("id") or "") not in cluster_ids]),
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -2900,11 +3980,227 @@ def _udp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
         return {"ok": False, "rtt_ms": 0.0, "error": str(ex)}
 
 
+def _redis_ping_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
+    if not host or port <= 0:
+        return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
+    start = datetime.utcnow()
+    try:
+        proc = subprocess.run(
+            ["redis-cli", "-h", host, "-p", str(port), "ping"],
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, timeout),
+        )
+        ok = proc.returncode == 0 and "PONG" in (proc.stdout or "").upper()
+        rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        return {"ok": ok, "rtt_ms": round(rtt, 1), "error": "" if ok else (proc.stderr or proc.stdout or "redis ping failed").strip()}
+    except Exception:
+        return _tcp_probe(host, port, timeout)
+
+
 def _probe_by_protocol(host: str, port: int, proto: str = "tcp", timeout: float = 1.5) -> Dict[str, Any]:
     """根据协议类型选择探活方式。"""
-    if proto == "udp":
+    key = str(proto or "tcp").strip().lower()
+    if key in ("udp",):
         return _udp_probe(host, port, timeout)
+    if key in ("redis_ping", "redis"):
+        return _redis_ping_probe(host, port, timeout)
+    if key in ("mongo_ping", "mongo_tcp", "mongo"):
+        return _tcp_probe(host, port, timeout)
+    if key in ("kafka_tcp",):
+        return _tcp_probe(host, port, timeout)
+    if key in ("cluster_embedded",):
+        return {"ok": False, "rtt_ms": 0.0, "error": "cluster_embedded probe deferred"}
     return _tcp_probe(host, port, timeout)
+
+
+_EMBEDDED_CLUSTER_SERVER_TYPES = {"auth", "game"}
+
+
+def _cluster_state_is_online(state: Any) -> bool:
+    text = str(state or "").strip().upper()
+    return text in ("RUNNING", "READY", "ONLINE", "ACTIVE", "0", "ONLINE")
+
+
+def _is_embedded_cluster_agent(agent: Dict[str, Any]) -> bool:
+    srv_type = str(agent.get("server_type") or "").strip().lower()
+    if srv_type in _EMBEDDED_CLUSTER_SERVER_TYPES:
+        return True
+    nid = str(agent.get("node_id") or "").strip().lower()
+    return nid.startswith("auth-") or nid.startswith("game-")
+
+
+def _is_embedded_cluster_service(service: Dict[str, Any]) -> bool:
+    if not isinstance(service, dict):
+        return False
+    sid = str(service.get("service_id") or service.get("node_id") or "").strip().lower()
+    stype = str(service.get("service_type") or service.get("type") or "").strip().lower()
+    role = str(service.get("role") or "").strip().lower()
+    if sid in ("auth-cn-1", "game-cn-1"):
+        return True
+    if stype in _EMBEDDED_CLUSTER_SERVER_TYPES:
+        return True
+    if sid.startswith("auth-") or sid.startswith("game-"):
+        return True
+    return role in ("auth", "business") and ("auth" in sid or "game" in sid)
+
+
+def _resolve_service_runtime_state(
+    service: Dict[str, Any],
+    host: str = "127.0.0.1",
+    cluster_status: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """统一服务级运行态：embedded 模块走 cluster 状态，其余走 TCP + cluster 兜底。"""
+    svc = dict(service) if isinstance(service, dict) else {}
+    sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
+    port = int(svc.get("service_port") or svc.get("remote_game_server_port") or 0)
+    cs_map = cluster_status if isinstance(cluster_status, dict) else {}
+    cs = str(cs_map.get(sid) or "").strip().upper()
+    embedded = _is_embedded_cluster_service(svc)
+    probe_method = "tcp"
+    open_ok = False
+
+    if embedded:
+        probe_method = "cluster-embedded"
+        if cs and _cluster_state_is_online(cs):
+            open_ok = True
+        elif cs and not _cluster_state_is_online(cs):
+            open_ok = False
+        else:
+            # cluster 状态未知时，不凭 TCP 误判 embedded 模块离线
+            open_ok = False
+            probe_method = "cluster-embedded-deferred"
+    else:
+        open_ok = _probe_tcp_open(host, port) if port > 0 else False
+        if not open_ok and cs and _cluster_state_is_online(cs):
+            open_ok = True
+            probe_method = "cluster-fallback"
+
+    if open_ok:
+        svc["probe_status"] = "PASS"
+        svc["status"] = "RUNNING"
+        svc["run_state"] = "RUNNING"
+    elif embedded and not cs:
+        # GameServer 进程内模块：Ops/Gateway 可达时视为在线
+        if _probe_tcp_open(host, 5504) and _probe_tcp_open(host, 15050):
+            svc["probe_status"] = "PASS"
+            svc["status"] = "RUNNING"
+            svc["run_state"] = "RUNNING"
+            probe_method = "cluster-process-up"
+        else:
+            svc["probe_status"] = ""
+            svc["status"] = "UNKNOWN"
+            svc["run_state"] = "UNKNOWN"
+    else:
+        svc["probe_status"] = "FAIL"
+        svc["status"] = "STOPPED"
+        svc["run_state"] = "STOPPED"
+    svc["probe_method"] = probe_method
+    if cs:
+        svc["cluster_state"] = cs
+    return svc
+
+
+def _fetch_cluster_runtime_status(agents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, str]:
+    cluster_status: Dict[str, str] = {}
+    try:
+        gw = OpsPlatformGateway()
+        ops_node = _resolve_node(node_id="ops-cn-1")
+        if not ops_node:
+            for a in agents or []:
+                nid = str(a.get("node_id") or "").strip()
+                node_candidate = _resolve_node(node_id=nid)
+                if node_candidate and node_candidate.get("ops_base_url"):
+                    ops_node = node_candidate
+                    break
+        if not ops_node:
+            ops_node = _resolve_ops_dispatch_node("", "ops-cn-1")
+        if not ops_node:
+            return cluster_status
+        cluster_resp = gw.cluster(ops_node, actor="probe", reason="cluster-status", ticket_id="OPS-PROBE")
+        if cluster_resp and cluster_resp.get("success"):
+            cluster_data = cluster_resp.get("data") or {}
+            servers = cluster_data.get("Servers") or cluster_data.get("servers") or []
+            for srv in servers:
+                if not isinstance(srv, dict):
+                    continue
+                sid = str(srv.get("ServerId") or srv.get("serverId") or "").strip()
+                st = srv.get("State") if srv.get("State") is not None else srv.get("state")
+                if sid and st is not None:
+                    cluster_status[sid] = str(st).strip().upper()
+    except Exception:
+        pass
+    return cluster_status
+
+
+def _merge_probe_with_cluster_status(
+    probe_info: Dict[str, Any],
+    agent: Dict[str, Any],
+    cluster_status: Dict[str, str],
+) -> None:
+    """Auth/Game 等业务模块不绑独立端口，TCP 失败时用 /ops/cluster 状态判定。"""
+    nid = str(agent.get("node_id") or "").strip()
+    config_state = str(agent.get("config_state") or "").strip().upper()
+    cat = str(agent.get("category") or "").strip().lower()
+    cs = cluster_status.get(nid, "")
+    if nid and cs:
+        if _cluster_state_is_online(cs):
+            probe_info["effective_status"] = "ONLINE"
+        elif cs in ("MAINTENANCE", "1"):
+            probe_info["effective_status"] = "MAINTENANCE"
+        elif cs in ("STOPPED", "OFFLINE", "DOWN", "2") and not probe_info.get("ok"):
+            if cat in ("application", "service") and _is_embedded_cluster_agent(agent):
+                probe_info["effective_status"] = "ONLINE"
+            else:
+                probe_info["effective_status"] = "OFFLINE"
+    if config_state == "MAINTENANCE":
+        probe_info["effective_status"] = "MAINTENANCE"
+    if (
+        not probe_info.get("ok")
+        and probe_info.get("effective_status") == "ONLINE"
+        and _is_embedded_cluster_agent(agent)
+        and (not cs or _cluster_state_is_online(cs) or config_state in ("ONLINE", "0"))
+    ):
+        probe_info["ok"] = True
+        probe_info["error"] = ""
+        probe_info["probe_method"] = "cluster-embedded"
+
+
+def _probe_agents_batch(agents: List[Dict[str, Any]], timeout: float = 2.0) -> Dict[str, Dict[str, Any]]:
+    results: Dict[str, Dict[str, Any]] = {}
+    if not agents:
+        return results
+    lock = threading.Lock()
+
+    def _probe_one(agent: Dict[str, Any]) -> None:
+        aid = str(agent.get("agent_id") or "")
+        host = str(agent.get("probe_host") or agent.get("host_name") or "").strip()
+        if host in ("0.0.0.0", "*"):
+            host = "127.0.0.1"
+        port = int(agent.get("port") or agent.get("remote_game_server_port") or 0)
+        proto = str(agent.get("probe_strategy") or agent.get("probe_proto") or "tcp").strip().lower()
+        probe = _probe_by_protocol(host, port, proto=proto, timeout=timeout)
+        probe["probe_at"] = _now_iso()
+        probe["effective_status"] = "ONLINE" if probe.get("ok") else "OFFLINE"
+        with lock:
+            results[aid] = probe
+
+    threads = []
+    for agent in agents:
+        t = threading.Thread(target=_probe_one, args=(agent,))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join(timeout=max(3.0, timeout + 1.0))
+
+    cluster_status = _fetch_cluster_runtime_status(agents)
+    for agent in agents:
+        aid = str(agent.get("agent_id") or "")
+        probe_info = results.get(aid)
+        if isinstance(probe_info, dict):
+            _merge_probe_with_cluster_status(probe_info, agent, cluster_status)
+    return results
 
 
 def _probe_agents_realtime(agents: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -2924,7 +4220,7 @@ def _probe_agents_realtime(agents: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
         # 探活地址优先用 probe_host（分布式部署时填可达 IP），fallback 用 host_name
         host = str(agent.get("probe_host") or agent.get("host_name") or "").strip()
         port = int(agent.get("port") or agent.get("remote_game_server_port") or 0)
-        proto = str(agent.get("probe_proto") or "tcp").strip().lower()
+        proto = str(agent.get("probe_strategy") or agent.get("probe_proto") or "tcp").strip().lower()
         probe = _probe_by_protocol(host, port, proto=proto)
         # 根据探活结果确定 effective_status
         if probe["ok"]:
@@ -2943,43 +4239,12 @@ def _probe_agents_realtime(agents: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
     for t in threads:
         t.join(timeout=3.0)
 
-    # 尝试从 game-server /ops/cluster 拉取集群实际运行状态
-    cluster_status: Dict[str, str] = {}
-    try:
-        gw = OpsPlatformGateway()
-        # 找第一个 ops_base_url 可用的节点
-        for a in agents:
-            node_candidate = _resolve_node(node_id=str(a.get("node_id") or ""))
-            if node_candidate and node_candidate.get("ops_base_url"):
-                cluster_resp = gw.cluster(node_candidate, actor="probe", reason="realtime-status", ticket_id="OPS-REALTIME")
-                if cluster_resp and cluster_resp.get("success"):
-                    cluster_data = cluster_resp.get("data") or {}
-                    servers = cluster_data.get("Servers") or cluster_data.get("servers") or []
-                    for srv in servers:
-                        sid = str(srv.get("ServerId") or srv.get("serverId") or "").strip()
-                        st = str(srv.get("State") or srv.get("state") or "").strip().upper()
-                        if sid and st:
-                            cluster_status[sid] = st
-                break
-    except Exception:
-        pass
-
     # 合并 cluster 状态：如果 cluster.json 里配了 Maintenance 但端口通，标记为 MAINTENANCE
+    cluster_status = _fetch_cluster_runtime_status(agents)
     for aid, probe_info in results.items():
-        # 从 agent 列表反查 node_id
         for a in agents:
             if str(a.get("agent_id") or "") == aid:
-                nid = str(a.get("node_id") or "").strip()
-                config_state = str(a.get("config_state") or "").strip().upper()
-                if nid and nid in cluster_status:
-                    srv_state = cluster_status[nid]
-                    if srv_state == "MAINTENANCE":
-                        probe_info["effective_status"] = "MAINTENANCE"
-                    elif srv_state == "OFFLINE" and not probe_info["ok"]:
-                        probe_info["effective_status"] = "OFFLINE"
-                # 也考虑 config_state（cluster.json 配的 State 字段）
-                if config_state == "MAINTENANCE":
-                    probe_info["effective_status"] = "MAINTENANCE"
+                _merge_probe_with_cluster_status(probe_info, a, cluster_status)
                 break
 
     return results
@@ -3037,7 +4302,7 @@ def _probe_background_tick() -> None:
         aid = str(a.get("agent_id") or "")
         host = str(a.get("probe_host") or a.get("host_name") or "").strip()
         port = int(a.get("port") or a.get("remote_game_server_port") or 0)
-        proto = str(a.get("probe_proto") or "tcp").strip().lower()
+        proto = str(a.get("probe_strategy") or a.get("probe_proto") or "tcp").strip().lower()
         future = _probe_pool.submit(_probe_by_protocol, host, port, proto)
         futures[future] = aid
 
@@ -3055,6 +4320,8 @@ def _probe_background_tick() -> None:
             if node_candidate and node_candidate.get("ops_base_url"):
                 ops_node = node_candidate
                 break
+        if not ops_node:
+            ops_node = _resolve_node(node_id="ops-cn-1")
         if ops_node:
             # /ops/health
             try:
@@ -3074,7 +4341,7 @@ def _probe_background_tick() -> None:
                             "total_responses": tel.get("TotalResponses"),
                             "queue_depth": tel.get("QueueDepth"),
                             "reconnect_success_rate": tel.get("ReconnectSuccessRate"),
-                            "source": "real",
+                            "source": "runtime.sample",
                         }
             except Exception:
                 pass
@@ -3101,7 +4368,7 @@ def _probe_background_tick() -> None:
                                 "total_responses": srv_metrics.get("TotalResponses"),
                                 "queue_depth": srv_metrics.get("QueueDepth"),
                                 "reconnect_success_rate": srv_metrics.get("ReconnectSuccessRate"),
-                                "source": "real",
+                                "source": "runtime.sample",
                             }
             except Exception:
                 pass
@@ -3114,6 +4381,7 @@ def _probe_background_tick() -> None:
         proc_metrics = {
             "cpu_percent": round(psutil.cpu_percent(interval=0.1), 1),
             "mem_percent": round(psutil.virtual_memory().percent, 1),
+            "source": "runtime.sample",
         }
     except ImportError:
         proc_metrics = {}
@@ -3133,36 +4401,12 @@ def _probe_background_tick() -> None:
         probe_results[aid] = probe
 
     # 合并 cluster 状态 + 指标
-    # game-server 集群节点不绑独立端口，TCP probe 不通不代表 OFFLINE
-    # 用 cluster_status (来自 /ops/cluster) 判断实际状态
     for aid, probe_info in probe_results.items():
         for a in agents:
             if str(a.get("agent_id") or "") == aid:
+                _merge_probe_with_cluster_status(probe_info, a, cluster_status)
                 nid = str(a.get("node_id") or "").strip()
                 config_state = str(a.get("config_state") or "").strip().upper()
-                cat = str(a.get("category") or "").strip().lower()
-                # cluster 状态覆盖
-                if nid and nid in cluster_status:
-                    cs = cluster_status[nid]
-                    # State 枚举: 0=Online, 1=Maintenance, 2=Stopped(集群视图)
-                    # 多进程模式下 State=2 不代表真 OFFLINE，只是不在同一进程内
-                    if cs in ("RUNNING", "READY", "ONLINE", "ACTIVE", "0"):
-                        probe_info["effective_status"] = "ONLINE"
-                    elif cs == "MAINTENANCE" or cs == "1":
-                        probe_info["effective_status"] = "MAINTENANCE"
-                    elif cs in ("STOPPED", "OFFLINE", "DOWN", "2"):
-                        # 多进程模式下不信任 cluster 视图的 Stopped
-                        # 如果 TCP probe 通了，保持 ONLINE
-                        if probe_info["ok"]:
-                            pass  # 保持 TCP probe 结果
-                        else:
-                            # 不绑端口的内部节点（auth/game/cross），
-                            # 如果 game-server 进程在运行就算 ONLINE
-                            if cat in ("application", "service"):
-                                probe_info["effective_status"] = "ONLINE"
-                            else:
-                                probe_info["effective_status"] = "OFFLINE"
-                    # 其他状态保持 TCP probe 结果
                 if config_state == "MAINTENANCE":
                     probe_info["effective_status"] = "MAINTENANCE"
                 # 指标：优先 game-server 上报的，fallback 本机
@@ -3193,6 +4437,62 @@ def _probe_background_tick() -> None:
         _probe_cache_ts = _time_mod.time()
         if changed:
             _probe_change_seq += 1
+
+    # --- 4b. 更新 canonical agent 的服务级探活与指标采样 ---
+    try:
+        tick_now = _now_iso()
+        reg = _load_agent_registry_v2()
+        canonical = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else {}
+        if canonical and not canonical.get("stale"):
+            host = str(canonical.get("probe_host") or canonical.get("host_name") or "127.0.0.1").strip()
+            services = canonical.get("services") if isinstance(canonical.get("services"), list) else []
+            svc_changed = False
+            refreshed_services: List[Dict[str, Any]] = []
+            for svc in services:
+                if not isinstance(svc, dict):
+                    continue
+                resolved = _resolve_service_runtime_state(svc, host=host, cluster_status=cluster_status)
+                nid = str(resolved.get("node_id") or resolved.get("service_id") or "").strip()
+                if nid and nid in cluster_metrics:
+                    resolved["metrics"] = dict(cluster_metrics[nid])
+                    resolved["metrics"]["source"] = "runtime.sample"
+                elif resolved.get("probe_status") == "PASS" and proc_metrics:
+                    resolved["metrics"] = dict(proc_metrics)
+                    resolved["metrics"]["source"] = "runtime.sample"
+                resolved["updated_at"] = tick_now
+                refreshed_services.append(resolved)
+                svc_changed = True
+            services = refreshed_services
+            merged_control: Dict[str, Any] = _sample_local_control_metrics()
+            if proc_metrics:
+                for key, val in proc_metrics.items():
+                    if val is not None:
+                        merged_control[key] = val
+            for nid, cm in cluster_metrics.items():
+                if isinstance(cm, dict):
+                    for key in ("cpu_percent", "mem_percent", "qps", "rtt_ms", "queue_depth"):
+                        if cm.get(key) is not None:
+                            merged_control[key] = cm.get(key)
+            if merged_control:
+                merged_control["updated_at"] = tick_now
+                merged_control["source"] = "runtime.sample"
+                canonical["metrics"] = {"control": merged_control, **merged_control}
+                canonical["metrics_live"] = True
+            canonical["services"] = services
+            canonical["last_seen"] = tick_now
+            canonical["updated_at"] = tick_now
+            pr_main = probe_results.get(CANONICAL_LOCAL_AGENT_ID) or {}
+            if pr_main:
+                canonical["probe_status"] = "PASS" if pr_main.get("ok") else "FAIL"
+                canonical["probe_rtt_ms"] = float(pr_main.get("rtt_ms") or 0.0)
+            _append_realtime_agent_sample(canonical)
+            reg[CANONICAL_LOCAL_AGENT_ID] = canonical
+            _save_agent_registry_v2(reg)
+            if svc_changed:
+                with _probe_cache_lock:
+                    _probe_change_seq += 1
+    except Exception:
+        pass
 
     # --- 5. 每轮都推送（参数实时滚动） ---
     payload = _build_sse_payload(agents, probe_results)
@@ -3524,7 +4824,7 @@ def _agent_status_terminal(status: str) -> bool:
     return s in ("SUCCESS", "FAILED", "CANCELED", "TIMEOUT")
 
 
-def _parse_iso_ts(value: str) -> Optional[datetime]:
+def _parse_iso_datetime(value: str) -> Optional[datetime]:
     v = str(value or "").strip()
     if not v:
         return None
@@ -3548,7 +4848,7 @@ def _reconcile_agent_jobs(node_id: str, jobs: List[Dict[str, Any]], *, lease_tim
         if status != "RUNNING":
             continue
         lease = item.get("lease") if isinstance(item.get("lease"), dict) else {}
-        leased_at = _parse_iso_ts(str(lease.get("leased_at") or item.get("updated_at") or ""))
+        leased_at = _parse_iso_datetime(str(lease.get("leased_at") or item.get("updated_at") or ""))
         if not leased_at:
             continue
         age = (now - leased_at.replace(tzinfo=None)).total_seconds()
@@ -3755,6 +5055,14 @@ def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
         item = _normalize_agent_descriptor_v2(v)
         if pid and item.get("project_id") and item.get("project_id") != pid:
             continue
+        if pid and _project_uses_runtime_topology(pid) and _is_design_demo_agent_row(item):
+            continue
+        if pid and _project_uses_runtime_topology(pid):
+            aid = str(item.get("agent_id") or "").strip()
+            if aid != CANONICAL_LOCAL_AGENT_ID:
+                nid = str(item.get("node_id") or "").strip()
+                if nid.endswith("-cn-1") or (aid.startswith("agent-") and aid.endswith("-cn-1")):
+                    continue
         if item.get("stale"):
             continue
         item["registration_origin"] = _member_registration_origin(item)
@@ -3898,9 +5206,9 @@ def _append_realtime_agent_sample(item: Dict[str, Any]) -> None:
     if not agent_id:
         return
     sample = _extract_control_metrics(item)
-    if not any(sample.get(key) is not None for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb")):
+    if not any(sample.get(key) is not None for key in ("cpu_percent", "mem_percent", "disk_percent")):
         return
-    sample_time = str(sample.get("updated_at") or item.get("updated_at") or item.get("last_seen") or _now_iso())
+    sample_time = _now_iso()
     point = {
         "time": sample_time,
         "cpu_percent": sample.get("cpu_percent"),
@@ -4221,8 +5529,26 @@ def _device_metrics_snapshot(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, 
     return snaps
 
 
+def _enrich_preset_from_contract(preset: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(preset, dict):
+        return preset
+    pid = str(preset.get("preset_id") or "").strip()
+    contract = _load_node_contract(pid) if pid else None
+    out = dict(preset)
+    if isinstance(contract, dict):
+        if not out.get("default_port") and contract.get("default_port"):
+            out["default_port"] = int(contract.get("default_port") or 0)
+        if not out.get("probe_strategy") and contract.get("probe_strategy"):
+            out["probe_strategy"] = str(contract.get("probe_strategy") or "")
+        if contract.get("role") and str(out.get("role") or "") == "admin":
+            out["role"] = str(contract.get("role") or out.get("role") or "")
+        if contract.get("execution_model") in ("daemon", "worker"):
+            out["daemon_profile"] = "external_daemon"
+    return out
+
+
 def _default_node_presets() -> List[Dict[str, Any]]:
-    return [
+    raw = [
         {
             "preset_id": "gateway_http",
             "name": "网关服务",
@@ -4230,7 +5556,7 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "role": "gateway",
             "node_type": "gateway_server",
             "default_desc": "入口网关，承接流量并转发业务服务",
-            "fixed_upstream_roles": ["edge", "lb", "admin"],
+            "fixed_upstream_roles": ["edge", "lb", "admin", "ops"],
             "fixed_downstream_roles": ["business", "pressure", "auth"],
             "daemon_profile": "ops_native",
         },
@@ -4252,7 +5578,7 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "role": "business",
             "node_type": "business_server",
             "default_desc": "核心业务处理节点",
-            "fixed_upstream_roles": ["gateway", "scheduler", "admin", "auth"],
+            "fixed_upstream_roles": ["gateway", "scheduler", "admin", "ops", "auth"],
             "fixed_downstream_roles": ["database", "cache", "mq", "search", "transport"],
             "daemon_profile": "ops_native",
         },
@@ -4260,8 +5586,8 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "preset_id": "ops_service",
             "name": "运维服务",
             "category": "application",
-            "role": "admin",
-            "node_type": "admin_server",
+            "role": "ops",
+            "node_type": "ops_server",
             "default_desc": "运维控制与诊断服务",
             "fixed_upstream_roles": ["gateway", "edge"],
             "fixed_downstream_roles": ["business"],
@@ -4285,9 +5611,9 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "role": "pressure",
             "node_type": "pressure_server",
             "default_desc": "压测流量与性能回归节点",
-            "fixed_upstream_roles": ["gateway", "admin"],
+            "fixed_upstream_roles": ["gateway", "admin", "ops"],
             "fixed_downstream_roles": ["business"],
-            "daemon_profile": "ops_native",
+            "daemon_profile": "external_daemon",
         },
         {
             "preset_id": "redis_cache",
@@ -4307,18 +5633,7 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "role": "database",
             "node_type": "mongo_database",
             "default_desc": "业务主存储数据库",
-            "fixed_upstream_roles": ["business", "scheduler", "admin"],
-            "fixed_downstream_roles": [],
-            "daemon_profile": "external_daemon",
-        },
-        {
-            "preset_id": "mysql_db",
-            "name": "MySQL Database",
-            "category": "database",
-            "role": "database",
-            "node_type": "mysql_database",
-            "default_desc": "关系型数据库节点",
-            "fixed_upstream_roles": ["business", "scheduler", "admin"],
+            "fixed_upstream_roles": ["business", "scheduler", "admin", "ops"],
             "fixed_downstream_roles": [],
             "daemon_profile": "external_daemon",
         },
@@ -4340,11 +5655,12 @@ def _default_node_presets() -> List[Dict[str, Any]]:
             "role": "scheduler",
             "node_type": "scheduler_server",
             "default_desc": "定时任务与批处理节点",
-            "fixed_upstream_roles": ["admin"],
+            "fixed_upstream_roles": ["admin", "ops"],
             "fixed_downstream_roles": ["business", "database", "cache", "mq"],
-            "daemon_profile": "ops_native",
+            "daemon_profile": "external_daemon",
         },
     ]
+    return [_enrich_preset_from_contract(x) for x in raw]
 
 
 def _load_node_presets() -> List[Dict[str, Any]]:
@@ -4353,7 +5669,10 @@ def _load_node_presets() -> List[Dict[str, Any]]:
         out: List[Dict[str, Any]] = []
         for item in raw:
             if isinstance(item, dict) and str(item.get("preset_id") or "").strip():
-                out.append(item)
+                pid = str(item.get("preset_id") or "").strip()
+                if pid == "mysql_db":
+                    continue
+                out.append(_enrich_preset_from_contract(item))
         if out:
             if any(_text_has_mojibake(str(x.get("name") or "") + str(x.get("default_desc") or "")) for x in out):
                 presets = _default_node_presets()
@@ -4797,13 +6116,21 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
         agent["effective_status"] = str(agent.get("status") or "UNKNOWN").upper()
 
     services = [dict(s) for s in (logical_hit.get("services") or []) if isinstance(s, dict)]
+    host = str(agent.get("host_ip") or agent.get("host_name") or agent.get("probe_host") or "127.0.0.1").strip()
+    services = _refresh_services_live_state(services, host=host, project_id=project_id)
     service_ids = [str(s.get("service_id") or "").strip() for s in services if str(s.get("service_id") or "").strip()]
     member_agent_ids = [str(x or "").strip() for x in (logical_hit.get("member_agent_ids") or []) if str(x or "").strip()]
     member_node_ids = [str(x or "").strip() for x in (logical_hit.get("member_node_ids") or []) if str(x or "").strip()]
     _overlay_live_metrics(agent, member_agent_ids)
+    _inject_live_control_metrics(agent)
+    if isinstance(hit, dict) and hit:
+        hit = dict(hit)
+        _inject_live_control_metrics(hit)
+        reg[primary_agent_id] = hit
+        _append_realtime_agent_sample(hit)
+        _save_agent_registry_v2(reg)
     node_id = str(agent.get("node_id") or (member_node_ids[0] if member_node_ids else "")).strip()
-    nodes = _load_nodes()
-    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == node_id), None)
+    node = _resolve_ops_dispatch_node(project_id, node_id)
 
     jobs_all = _load_agent_jobs()
     jobs = []
@@ -4862,8 +6189,6 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
             break
 
     control_metrics = ((agent.get("metrics") or {}).get("control") if isinstance(agent.get("metrics"), dict) else {}) or {}
-    if not agent.get("metrics_live"):
-        control_metrics = {}
     service_summary = {
         "total": len(services),
         "online": len([s for s in services if _effective_runtime_status(s.get("status"), s.get("run_state"), s.get("probe_status")) in ("ONLINE", "RUNNING", "READY")]),
@@ -5266,6 +6591,32 @@ def ops_platform_overview():
     return jsonify(_build_overview(project_id=project_id))
 
 
+@bp.route("/api/ops-platform/cluster/sync", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_cluster_sync():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or request.args.get("project_id") or "GomeKu").strip()
+    repo = _resolve_game_server_repo()
+    cluster_path = CLUSTER_JSON_PATH
+    if not os.path.isfile(cluster_path):
+        return jsonify({
+            "ok": False,
+            "error": "cluster_json_missing",
+            "message": f"未找到 cluster.json: {cluster_path}",
+            "game_server_repo": repo,
+        }), 404
+    stat = _sync_cluster_to_agents(project_id)
+    return jsonify({
+        "ok": True,
+        "project_id": project_id,
+        "game_server_repo": repo,
+        "cluster_json": cluster_path,
+        "sync": stat,
+    })
+
+
 @bp.route("/api/ops-platform/deployment-catalog")
 @admin_required("gm_ops")
 def ops_platform_deployment_catalog():
@@ -5357,13 +6708,13 @@ def ops_platform_module_map():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     modules = [
-        {"id": "overview", "name": "全局总览", "href": "/admin/ops-platform", "children": ["kpi", "risk", "todo"]},
-        {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology", "children": ["node_library", "canvas", "inspector"]},
-        {"id": "action_center", "name": "动作执行中心", "href": "/admin/ops-platform/actions", "children": ["catalog", "approval", "execute", "history"]},
-        {"id": "diagnostics", "name": "诊断与体检", "href": "/admin/ops-platform/diagnostics", "children": ["rules", "filter", "export"]},
-        {"id": "events_trace", "name": "事件与追踪", "href": "/admin/ops-platform", "children": ["timeline", "trace", "audit"]},
-        {"id": "agent_control", "name": "Agent 管控", "href": "/admin/ops-platform/agent-control", "children": ["registry", "policy", "queue", "upgrade"]},
-        {"id": "change_governance", "name": "发布与变更治理", "href": "/admin/ops-platform/change-governance", "children": ["change_window", "rollback", "postcheck"]},
+        {"id": "overview", "name": "全局总览", "href": "/admin/ops-platform?project_id=GomeKu", "children": ["kpi", "risk", "todo"]},
+        {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology?project_id=GomeKu&env_key=production&topology_id=topology-design-gomeku-production", "children": ["node_library", "canvas", "inspector"]},
+        {"id": "action_center", "name": "动作执行中心", "href": "/admin/ops-platform/actions?project_id=GomeKu", "children": ["catalog", "approval", "execute", "history"]},
+        {"id": "diagnostics", "name": "诊断与体检", "href": "/admin/ops-platform/diagnostics?project_id=GomeKu", "children": ["rules", "filter", "export"]},
+        {"id": "events_trace", "name": "事件与追踪", "href": "/admin/ops-platform?project_id=GomeKu", "children": ["timeline", "trace", "audit"]},
+        {"id": "agent_control", "name": "Agent 管控", "href": "/admin/ops-platform/agent-control?project_id=GomeKu", "children": ["registry", "policy", "queue", "upgrade"]},
+        {"id": "change_governance", "name": "发布与变更治理", "href": "/admin/ops-platform/change-governance?project_id=GomeKu", "children": ["change_window", "rollback", "postcheck"]},
         {"id": "governance", "name": "权限与合规", "href": "/admin/approval", "children": ["rbac", "approval", "audit"]},
     ]
     return jsonify({"ok": True, "modules": modules})
@@ -5378,12 +6729,12 @@ def _default_topology_blueprints() -> List[Dict[str, Any]]:
             "nodes": [
                 {"preset_id": "gateway_http", "count": 1},
                 {"preset_id": "business_main", "count": 1},
-                {"preset_id": "mysql_db", "count": 1},
+                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "redis_cache", "count": 1},
             ],
             "edges": [
                 ["gateway_http", "business_main"],
-                ["business_main", "mysql_db"],
+                ["business_main", "mongo_db"],
                 ["business_main", "redis_cache"],
             ],
         },
@@ -5395,17 +6746,17 @@ def _default_topology_blueprints() -> List[Dict[str, Any]]:
                 {"preset_id": "gateway_http", "count": 1},
                 {"preset_id": "business_main", "count": 2},
                 {"preset_id": "scheduler_job", "count": 1},
-                {"preset_id": "mysql_db", "count": 1},
+                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "redis_cache", "count": 1},
                 {"preset_id": "mq_kafka", "count": 1},
             ],
             "edges": [
                 ["gateway_http", "business_main"],
-                ["business_main", "mysql_db"],
+                ["business_main", "mongo_db"],
                 ["business_main", "redis_cache"],
                 ["business_main", "mq_kafka"],
                 ["scheduler_job", "business_main"],
-                ["scheduler_job", "mysql_db"],
+                ["scheduler_job", "mongo_db"],
             ],
         },
         {
@@ -5417,19 +6768,17 @@ def _default_topology_blueprints() -> List[Dict[str, Any]]:
                 {"preset_id": "business_main", "count": 3},
                 {"preset_id": "scheduler_job", "count": 1},
                 {"preset_id": "pressure_worker", "count": 1},
-                {"preset_id": "mysql_db", "count": 1},
                 {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "redis_cache", "count": 1},
                 {"preset_id": "mq_kafka", "count": 1},
             ],
             "edges": [
                 ["gateway_http", "business_main"],
-                ["business_main", "mysql_db"],
                 ["business_main", "mongo_db"],
                 ["business_main", "redis_cache"],
                 ["business_main", "mq_kafka"],
                 ["scheduler_job", "business_main"],
-                ["scheduler_job", "mysql_db"],
+                ["scheduler_job", "mongo_db"],
                 ["pressure_worker", "business_main"],
             ],
         },
@@ -5448,7 +6797,6 @@ def _load_topology_blueprints() -> List[Dict[str, Any]]:
     rows = _default_topology_blueprints()
     _save_json_config(OPS_TOPOLOGY_BLUEPRINTS_KEY, rows, description="Ops topology blueprints")
     return rows
-    return jsonify({"ok": True, "modules": modules})
 
 
 @bp.route("/api/ops-platform/control-plane/summary")
@@ -5503,7 +6851,7 @@ def ops_platform_agents_list():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     _ensure_probe_bg_started()
-    project_id = str(request.args.get("project_id") or "").strip()
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
     status = str(request.args.get("status") or "").strip().upper()
     device_id = str(request.args.get("device_id") or "").strip()
     host_ip = str(request.args.get("host_ip") or "").strip().lower()
@@ -5512,6 +6860,12 @@ def ops_platform_agents_list():
     bindings = _load_node_agent_bindings()
     rows = _logical_agents_for_project(project_id)
     rows = [r for r in rows if not r.get("stale")]
+    cluster_status_map: Dict[str, str] = {}
+    if project_id and _project_uses_runtime_topology(project_id):
+        try:
+            cluster_status_map = _fetch_cluster_runtime_status(rows)
+        except Exception:
+            cluster_status_map = {}
     bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
         # 走缓存：不再每次请求都探活，用后台引擎缓存结果
     with _probe_cache_lock:
@@ -5603,6 +6957,15 @@ def ops_platform_agents_list():
             "host_ip": str(obj.get("host_ip") or obj.get("host_name") or ""),
             "device_id": str(obj.get("device_id") or ""),
         }
+        svc_rows = obj.get("services") if isinstance(obj.get("services"), list) else []
+        if svc_rows:
+            svc_host = str(obj.get("host_ip") or obj.get("host_name") or obj.get("probe_host") or "127.0.0.1").strip()
+            obj["services"] = _refresh_services_live_state(
+                svc_rows,
+                host=svc_host,
+                project_id=project_id,
+                cluster_status=cluster_status_map,
+            )
         out.append(obj)
     # 同设备统一快照：同一 device_id 下所有卡片显示一致口径
     grouped_snap: Dict[str, Dict[str, Any]] = {}
@@ -5633,7 +6996,7 @@ def ops_platform_agents_list():
         if mb.get("source"):
             snap["business"]["source"] = str(mb.get("source"))
         grouped_snap[did] = snap
-    for a in out:
+    for idx, a in enumerate(out):
         did = str(a.get("device_id") or "unknown-device")
         snap = grouped_snap.get(did) or {}
         a["device_metrics_snapshot"] = snap
@@ -5647,6 +7010,8 @@ def ops_platform_agents_list():
             "control": not any(mc.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")),
             "business": not any(mb.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn")),
         }
+        member_ids = [str(x or "").strip() for x in (a.get("member_agent_ids") or []) if str(x or "").strip()]
+        out[idx] = _overlay_live_metrics(a, member_ids or [str(a.get("agent_id") or "")])
     return jsonify({"ok": True, "count": len(out), "agents": out, "bindings": bindings})
 
 
@@ -6035,28 +7400,75 @@ def ops_platform_services_action():
     if not action_type:
         return jsonify({"ok": False, "error": "unsupported_action"}), 400
 
-    nodes = _load_nodes()
-    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "") == dispatch_node_id), None)
+    topology_node = _resolve_ops_dispatch_node(project_id, topology_node_id)
+    if not topology_node:
+        return jsonify({"ok": False, "error": "topology_node_not_found", "message": "未找到拓扑节点"}), 404
+
+    body_payload = {
+        "run_mode": "direct",
+        "desired_role": str(service_hit.get("service_type") or ""),
+        "desired_service_id": service_id,
+        "desired_server_id": service_id,
+        "topology_node_id": topology_node_id,
+        "switch_required": action in ("start", "restart"),
+        "launch_visible_console": bool(payload.get("launch_visible_console", action == "start")),
+    }
+    operator = str(session.get("user") or "admin")
+    ticket_id = "OPS-SVC-" + uuid.uuid4().hex[:8]
+
+    use_direct = (
+        agent_id == CANONICAL_LOCAL_AGENT_ID
+        or (_project_uses_runtime_topology(project_id) and _is_external_daemon_node(topology_node))
+        or (_project_uses_runtime_topology(project_id) and agent_id == CANONICAL_LOCAL_AGENT_ID)
+    )
+    if _project_uses_runtime_topology(project_id):
+        use_direct = True
+
+    if use_direct:
+        result = _execute_canonical_service_action(
+            project_id,
+            topology_node_id,
+            service_id,
+            action,
+            operator,
+            "服务实例标准运维动作",
+            ticket_id,
+            body_payload,
+        )
+        if not result.get("ok"):
+            return jsonify({
+                "ok": False,
+                "error": "OPS_REMOTE_START_FAILED",
+                "error_code": "OPS_REMOTE_START_FAILED",
+                "message": str(result.get("message") or "service action failed"),
+                "mode": result.get("mode") or "direct",
+            }), 502
+        return jsonify({
+            "ok": True,
+            "node_id": topology_node_id,
+            "dispatch_node_id": topology_node_id,
+            "agent_id": agent_id,
+            "service_id": service_id,
+            "action": action,
+            "mode": result.get("mode") or "direct",
+            "message": str(result.get("message") or ""),
+            "trace_id": "dir-" + uuid.uuid4().hex[:12],
+        })
+
+    dispatch_node_id = str((agent_desc or {}).get("node_id") or "").strip() or topology_node_id
+    node = _resolve_ops_dispatch_node(project_id, dispatch_node_id)
     if not node:
         return jsonify({"ok": False, "error": "dispatch_node_not_found", "error_code": "OPS_SERVICE_DISPATCH_NODE_MISSING"}), 404
     req = {
         "node_id": dispatch_node_id,
         "action_type": action_type,
         "target": service_id,
-        "ticket_id": "OPS-SVC-" + uuid.uuid4().hex[:8],
+        "ticket_id": ticket_id,
         "reason": "服务实例标准运维动作",
-        "approver": str(session.get("user") or "admin"),
+        "approver": operator,
         "run_mode": "agent",
         "via_agent": True,
-        "payload": {
-            "run_mode": "agent",
-            "desired_role": str(service_hit.get("service_type") or ""),
-            "desired_service_id": service_id,
-            "desired_server_id": service_id,
-            "topology_node_id": topology_node_id,
-            "switch_required": action in ("start", "restart"),
-            "launch_visible_console": bool(payload.get("launch_visible_console", action == "start")),
-        },
+        "payload": dict(body_payload, run_mode="agent"),
     }
     validation = _validate_ops_request(req, node)
     if not validation.get("ok"):
@@ -6149,8 +7561,7 @@ def ops_platform_agents_restart():
     if not dispatch_node_id:
         return jsonify({"ok": False, "error": "missing_dispatch_node_id", "error_code": "OPS_AGENT_DISPATCH_NODE_MISSING"}), 400
 
-    nodes = _load_nodes()
-    node = next((x for x in nodes if isinstance(x, dict) and str(x.get("id") or "").strip() == dispatch_node_id), None)
+    node = _resolve_ops_dispatch_node(project_id, dispatch_node_id)
     if not node:
         return jsonify({"ok": False, "error": "dispatch_node_not_found", "error_code": "OPS_AGENT_DISPATCH_NODE_MISSING"}), 404
 
@@ -6209,47 +7620,45 @@ def ops_platform_agents_probe_all():
     payload = request.get_json(silent=True) or {}
     project_id = str(payload.get("project_id") or "").strip()
     rows = _agents_v2_for_project(project_id)
+    probe_results = _probe_agents_batch(rows, timeout=2.0)
     reg = _load_agent_registry_v2()
     out: List[Dict[str, Any]] = []
     pass_count = 0
     fail_count = 0
     for item in rows:
         aid = str(item.get("agent_id") or "")
-        host = str(item.get("host_name") or "")
+        host = str(item.get("probe_host") or item.get("host_name") or "").strip()
         port = int(item.get("remote_game_server_port") or item.get("port") or 0)
-        if not host or port <= 0:
-            fail_count += 1
-            out.append({"agent_id": aid, "ok": False, "message": "缺少 host/port"})
-            continue
-        ok = False
-        msg = ""
-        rtt_ms = 0.0
-        start = datetime.utcnow()
-        try:
-            with socket.create_connection((host, port), timeout=2.0):
-                ok = True
-        except Exception as ex:
-            ok = False
-            msg = str(ex)
-        rtt_ms = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        pr = probe_results.get(aid) or {}
+        ok = bool(pr.get("ok"))
+        rtt_ms = float(pr.get("rtt_ms") or 0.0)
+        err = str(pr.get("error") or "")
+        method = str(pr.get("probe_method") or "tcp")
         hit = reg.get(aid) if isinstance(reg.get(aid), dict) else None
         if hit:
             hit["probe_status"] = "PASS" if ok else "FAIL"
-            hit["probe_at"] = _now_iso()
+            hit["probe_at"] = str(pr.get("probe_at") or _now_iso())
             hit["probe_rtt_ms"] = round(rtt_ms, 1)
             hit["updated_at"] = _now_iso()
+            if ok and method == "cluster-embedded":
+                hit["probe_source"] = "cluster-embedded"
             reg[aid] = _normalize_agent_descriptor_v2(hit)
         if ok:
             pass_count += 1
         else:
             fail_count += 1
+        if ok:
+            msg = "连通性正常" if method == "tcp" else "集群内嵌模块在线"
+        else:
+            msg = "连通性失败: " + (err or "unknown")
         out.append({
             "agent_id": aid,
             "host_name": host,
             "port": port,
             "ok": ok,
             "rtt_ms": round(rtt_ms, 1),
-            "message": ("连通性正常" if ok else ("连通性失败: " + (msg or "unknown"))),
+            "message": msg,
+            "probe_method": method,
         })
     _save_agent_registry_v2(reg)
     return jsonify({"ok": True, "project_id": project_id, "pass_count": pass_count, "fail_count": fail_count, "results": out})
@@ -6911,24 +8320,34 @@ def ops_platform_topology_auto_bind_agents():
     skipped = 0
     failed = 0
     detail: List[Dict[str, Any]] = []
+    canonical = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else {}
+    canonical_services = {
+        str(s.get("node_id") or s.get("service_id") or "").strip()
+        for s in (canonical.get("services") if isinstance(canonical.get("services"), list) else [])
+        if isinstance(s, dict)
+    }
+    use_canonical = bool(_project_uses_runtime_topology(project_id) and canonical and not canonical.get("stale"))
     for nid in node_ids:
         matched = None
         fail_reason = ""
-        for aid, row in reg.items():
-            if not isinstance(row, dict):
-                continue
-            if project_id and str(row.get("project_id") or "") not in ("", project_id):
-                continue
-            if str(row.get("node_id") or "") != nid:
-                continue
-            if str(row.get("probe_status") or "").upper() != "PASS":
-                fail_reason = "probe_not_pass"
-                continue
-            if str(row.get("effective_status") or row.get("status") or "").upper() not in ("ONLINE", "READY", "RUNNING"):
-                fail_reason = "agent_not_online"
-                continue
-            matched = str(aid or "")
-            break
+        if use_canonical:
+            matched = CANONICAL_LOCAL_AGENT_ID
+        elif not use_canonical:
+            for aid, row in reg.items():
+                if not isinstance(row, dict) or row.get("stale"):
+                    continue
+                if project_id and str(row.get("project_id") or "") not in ("", project_id):
+                    continue
+                if str(row.get("node_id") or "") != nid:
+                    continue
+                if str(row.get("probe_status") or "").upper() != "PASS":
+                    fail_reason = "probe_not_pass"
+                    continue
+                if str(row.get("effective_status") or row.get("status") or "").upper() not in ("ONLINE", "READY", "RUNNING"):
+                    fail_reason = "agent_not_online"
+                    continue
+                matched = str(aid or "")
+                break
         if matched:
             bindings[nid] = matched
             _save_scope_agent_binding(tid, nid, matched)
@@ -7036,17 +8455,31 @@ def ops_platform_topology_save():
     env_key = _normalize_env_key(payload.get("env_key") or "")
     topology_id = str(payload.get("topology_id") or "").strip()
     topo = payload.get("topology") if isinstance(payload.get("topology"), dict) else {}
+    valid, errors = _validate_topology_contract(topo)
+    if not valid:
+        return jsonify({"ok": False, "error": "topology_contract_invalid", "message": "；".join(errors), "errors": errors}), 400
     ctx = _resolve_topology_context(project_id, env_key, topology_id)
     registry = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
     saved = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
-    sync_result = _sync_topology_to_game_server(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), str(session.get("user") or "admin"))
+    pid = str(registry.get("project_id") or project_id or "")
+    tid = str(registry.get("topology_id") or topology_id or "")
+    agent_stat = _upsert_agents_from_topology(pid, saved.get("nodes") if isinstance(saved.get("nodes"), list) else [])
+    purge_stat = {}
+    saved_meta = saved.get("meta") if isinstance(saved.get("meta"), dict) else {}
+    if saved_meta.get("runtime_topology") or _project_uses_runtime_topology(pid):
+        purge_stat = _purge_design_demo_project_state(pid, tid)
+    sync_result = _sync_topology_to_game_server(pid, str(registry.get("env_key") or env_key or ""), tid, str(session.get("user") or "admin"))
+    canonical_stat = _consolidate_runtime_agents_to_canonical(pid)
     log_audit("ops_platform_topology_save", f"project={registry.get('project_id') or project_id}; env={registry.get('env_key') or env_key}; topology={registry.get('topology_id') or topology_id}; nodes={len((saved.get('nodes') or []))}; edges={len((saved.get('edges') or []))}")
     return jsonify({
         "ok": True,
         "message": "Topology saved",
         "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}},
         "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry,
+        "agents": agent_stat,
+        "purge": purge_stat,
         "sync": sync_result,
+        "canonical": canonical_stat,
     })
 
 
@@ -7098,6 +8531,17 @@ def ops_platform_topology_node_update():
             pass
     if "tags" in patch and isinstance(patch.get("tags"), list):
         target["tags"] = patch.get("tags")
+    if "preset_id" in patch:
+        target["preset_id"] = str(patch.get("preset_id") or "").strip()
+    if "daemon_start_cmd" in patch:
+        target["daemon_start_cmd"] = str(patch.get("daemon_start_cmd") or "").strip()
+    if "daemon_stop_cmd" in patch:
+        target["daemon_stop_cmd"] = str(patch.get("daemon_stop_cmd") or "").strip()
+    if "daemon_port" in patch:
+        try:
+            target["daemon_port"] = int(patch.get("daemon_port") or 0)
+        except Exception:
+            pass
     if "ui" in patch and isinstance(patch.get("ui"), dict):
         target["ui"] = patch.get("ui")
     if not isinstance(target.get("ui"), dict):
@@ -7763,13 +9207,19 @@ def ops_platform_apply_blueprint():
             existing_ids.add(new_id)
             role = str(preset.get("role") or "business")
             node_kind = _infer_node_kind(role, str(preset.get("kind") or ""))
+            contract = _load_node_contract(preset_id) or {}
+            default_port = int(preset.get("default_port") or contract.get("default_port") or 0)
+            daemon_defaults = _contract_daemon_defaults(preset_id, default_port) if preset_id else {}
             created_node_ids.append(new_id)
             created_by_preset.setdefault(preset_id, []).append(new_id)
+            remote_ui = {"port": default_port} if default_port > 0 else {}
+            network_ui = {"endpoints": [f"127.0.0.1:{default_port}"]} if default_port > 0 else {}
             topo["nodes"].append(
                 {
                     "id": new_id,
                     "name": f"{str(preset.get('name') or preset_id)}-{idx + 1}",
                     "server_id": new_id,
+                    "preset_id": preset_id,
                     "project_id": project_id,
                     "env": str(registry.get("env_key") or env_key or "production"),
                     "role": role,
@@ -7777,10 +9227,24 @@ def ops_platform_apply_blueprint():
                     "desc": str(preset.get("default_desc") or ""),
                     "bizStatus": "normal",
                     "owner": "ops-admin",
+                    "daemon_profile": str(preset.get("daemon_profile") or ""),
+                    "daemon_start_cmd": str(daemon_defaults.get("StartCommand") or ""),
+                    "daemon_stop_cmd": str(daemon_defaults.get("StopCommand") or ""),
+                    "daemon_port": default_port,
                     "x": 160.0,
                     "y": 160.0,
                     "tags": [str(preset.get("category") or ""), role],
-                    "ui": {"x": 160.0, "y": 160.0, "w": 220, "h": 90, "color": "#0f172a", "locked": False, "ports": _normalize_ports(node_kind, None)},
+                    "ui": {
+                        "x": 160.0,
+                        "y": 160.0,
+                        "w": 220,
+                        "h": 90,
+                        "color": "#0f172a",
+                        "locked": False,
+                        "ports": _normalize_ports(node_kind, None),
+                        "remote": remote_ui,
+                        "network": network_ui,
+                    },
                 }
             )
 
@@ -7852,7 +9316,8 @@ def ops_platform_add_node_from_preset():
     name = str(payload.get("name") or "").strip()
     server_id = str(payload.get("server_id") or "").strip()
     project_id = str(payload.get("project_id") or "").strip()
-    env = str(payload.get("env") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or payload.get("env") or "production")
+    topology_id = str(payload.get("topology_id") or "").strip()
     channel = str(payload.get("channel") or "").strip()
     owner = str(payload.get("owner") or "").strip()
     node_note = str(payload.get("description") or "").strip()
@@ -7868,10 +9333,17 @@ def ops_platform_add_node_from_preset():
     if not preset:
         return jsonify({"ok": False, "error": "preset_not_found"}), 404
 
+    contract = _load_node_contract(preset_id) or {}
+    default_port = int(preset.get("default_port") or contract.get("default_port") or 0)
+    if not daemon_start_cmd and preset_id:
+        daemon_start_cmd = str(_contract_daemon_defaults(preset_id, default_port).get("StartCommand") or "").strip()
+    if not daemon_stop_cmd and preset_id:
+        daemon_stop_cmd = str(_contract_daemon_defaults(preset_id, default_port).get("StopCommand") or "").strip()
+
     rows = _load_nodes()
     new_id = str(payload.get("id") or "").strip() or f"{preset_id}-{uuid.uuid4().hex[:6]}"
     if any(str(x.get("id") or "") == new_id for x in rows):
-        return jsonify({"ok": False, "error": "node_id_exists", "message": f"鑺傜偣ID宸插瓨鍦? {new_id}"}), 409
+        return jsonify({"ok": False, "error": "node_id_exists", "message": f"节点ID已存在: {new_id}"}), 409
 
     node = _normalize_node(
         {
@@ -7883,7 +9355,7 @@ def ops_platform_add_node_from_preset():
             "ops_write_key": str(payload.get("ops_write_key") or "").strip(),
             "ops_actor": str(payload.get("ops_actor") or "").strip(),
             "ops_role": str(payload.get("ops_role") or "SuperAdmin").strip(),
-            "server_id": server_id,
+            "server_id": server_id or new_id,
             "project_id": project_id,
             "owner": owner,
             "role": str(preset.get("role") or "business"),
@@ -7896,7 +9368,7 @@ def ops_platform_add_node_from_preset():
             "daemon_profile": str(preset.get("daemon_profile") or ""),
             "daemon_start_cmd": daemon_start_cmd,
             "daemon_stop_cmd": daemon_stop_cmd,
-            "env": env,
+            "env": env_key,
             "channel": channel,
             "enabled": True,
             "tags": [str(preset.get("category") or ""), str(preset.get("role") or "")],
@@ -7906,36 +9378,43 @@ def ops_platform_add_node_from_preset():
     _save_nodes(rows)
     _set_daemon_state(new_id, {"status": "ADDED", "last_action": "create", "last_error": "", "pid": 0})
 
-    node_kind = _infer_node_kind(str(node.get("role") or "business"), str(preset.get("kind") or ""))
-    topo = _load_topology(rows)
+    ctx = _resolve_topology_context(project_id, env_key, topology_id)
+    registry = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    topo = _load_topology_scoped(project_id, env_key, topology_id)
     topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
     topo_edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
-    topo["nodes"] = topo_nodes
-    topo["edges"] = topo_edges
+    node_kind = _infer_node_kind(str(node.get("role") or "business"), str(preset.get("kind") or ""))
     if not any(isinstance(n, dict) and str(n.get("id") or "") == new_id for n in topo_nodes):
-        default_pos = _default_topology_for_nodes(rows).get("nodes") or []
-        pos = None
-        for n in default_pos:
-            if isinstance(n, dict) and str(n.get("id") or "") == new_id:
-                pos = n
-                break
+        x = float(payload.get("x") or 20)
+        y = float(payload.get("y") or 20)
+        remote_ui = {"port": default_port} if default_port > 0 else {}
+        network_ui = {"endpoints": [f"127.0.0.1:{default_port}"]} if default_port > 0 else {}
         topo_nodes.append(
             {
                 "id": new_id,
+                "name": node.get("name") or new_id,
+                "server_id": node.get("server_id") or new_id,
+                "preset_id": preset_id,
                 "role": node.get("role") or "business",
                 "kind": node_kind,
                 "desc": node.get("description") or "",
                 "bizStatus": node.get("biz_status") or "normal",
                 "owner": node.get("owner") or "",
-                "x": (pos or {}).get("x", 20),
-                "y": (pos or {}).get("y", 20),
+                "daemon_profile": str(preset.get("daemon_profile") or ""),
+                "daemon_start_cmd": daemon_start_cmd,
+                "daemon_stop_cmd": daemon_stop_cmd,
+                "daemon_port": default_port,
+                "x": x,
+                "y": y,
                 "ui": {
-                    "x": (pos or {}).get("x", 20),
-                    "y": (pos or {}).get("y", 20),
+                    "x": x,
+                    "y": y,
                     "w": 220,
                     "h": 90,
                     "color": "#0f172a",
                     "ports": _normalize_ports(node_kind, (preset.get("default_ports") if isinstance(preset, dict) else None)),
+                    "remote": remote_ui,
+                    "network": network_ui,
                 },
             }
         )
@@ -7956,9 +9435,294 @@ def ops_platform_add_node_from_preset():
             exists = any(isinstance(e, dict) and str(e.get("from") or "") == new_id and str(e.get("to") or "") == eid for e in topo_edges)
             if not exists:
                 topo_edges.append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": new_id, "to": eid, "from_port": "out-1", "to_port": "in-1", "type": "depends_on", "note": "preset-auto"})
-    saved_topo = _save_topology(topo)
+    topo["nodes"] = topo_nodes
+    topo["edges"] = topo_edges
+    saved_topo = _save_topology_scoped(
+        str(registry.get("project_id") or project_id or ""),
+        str(registry.get("env_key") or env_key or ""),
+        str(registry.get("topology_id") or topology_id or ""),
+        topo,
+    )
     log_audit("ops_platform_node_add_from_preset", f"node={new_id}; preset={preset_id}")
-    return jsonify({"ok": True, "message": "Node added", "node": node, "topology": saved_topo})
+    return jsonify({
+        "ok": True,
+        "message": "Node added",
+        "node": node,
+        "topology": {"nodes": saved_topo.get("nodes") or [], "edges": saved_topo.get("edges") or [], "meta": saved_topo.get("meta") or {}},
+        "registry": saved_topo.get("registry") if isinstance(saved_topo.get("registry"), dict) else registry,
+    })
+
+
+def _is_external_daemon_node(node: Dict[str, Any]) -> bool:
+    if not isinstance(node, dict):
+        return False
+    profile = str(node.get("daemon_profile") or "").strip().lower()
+    role = str(node.get("role") or "").strip().lower()
+    return profile == "external_daemon" or role in ("database", "cache", "mongo", "redis")
+
+
+def _probe_tcp_open(host: str, port: int, timeout: float = 0.8) -> bool:
+    host_name = str(host or "127.0.0.1").strip() or "127.0.0.1"
+    try:
+        port_val = int(port or 0)
+    except Exception:
+        return False
+    if port_val <= 0:
+        return False
+    try:
+        with socket.create_connection((host_name, port_val), timeout=max(0.2, float(timeout))):
+            return True
+    except Exception:
+        return False
+
+
+def _launch_local_game_server(reason: str = "") -> Dict[str, Any]:
+    repo = _resolve_game_server_repo()
+    script = os.path.join(repo, "scripts", "Start-GameServer.sh")
+    if not os.path.isfile(script):
+        return {"success": False, "message": f"未找到 GameServer 启动脚本: {script}"}
+    log_dir = os.path.join(repo, "tools", "SmokeTest", "artifacts")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "apk-site-service-start.log")
+    try:
+        log_fp = open(log_path, "a", encoding="utf-8")
+        log_fp.write(f"\n[{_now_iso()}] launch reason={reason or 'service-start'}\n")
+        log_fp.flush()
+        proc = subprocess.Popen(
+            ["bash", script],
+            cwd=repo,
+            stdout=log_fp,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        return {
+            "success": True,
+            "message": "GameServer 启动脚本已在后台执行，约 30-90 秒后刷新查看状态",
+            "data": {"pid": int(proc.pid), "log": log_path, "script": script},
+        }
+    except Exception as ex:
+        return {"success": False, "message": f"启动 GameServer 失败: {ex}"}
+
+
+def _stop_local_game_server() -> Dict[str, Any]:
+    try:
+        subprocess.call(["pkill", "-f", "GameServer.GameServerApp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"success": True, "message": "已发送停止信号给 GameServer 进程"}
+    except Exception as ex:
+        return {"success": False, "message": f"停止 GameServer 失败: {ex}"}
+
+
+def _update_canonical_service_runtime(service_id: str, **fields: Any) -> None:
+    sid = str(service_id or "").strip()
+    if not sid:
+        return
+    reg = _load_agent_registry_v2()
+    canonical = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else None
+    if not canonical:
+        return
+    services = canonical.get("services") if isinstance(canonical.get("services"), list) else []
+    now = _now_iso()
+    changed = False
+    for svc in services:
+        if not isinstance(svc, dict):
+            continue
+        if str(svc.get("service_id") or svc.get("node_id") or "").strip() != sid:
+            continue
+        for key, value in fields.items():
+            if value is not None:
+                svc[key] = value
+        svc["updated_at"] = now
+        changed = True
+        break
+    if changed:
+        canonical["services"] = services
+        canonical["updated_at"] = now
+        reg[CANONICAL_LOCAL_AGENT_ID] = canonical
+        _save_agent_registry_v2(reg)
+
+
+def _fallback_local_control_metrics() -> Dict[str, Any]:
+    """psutil 不可用时的轻量采样（macOS/Linux）。"""
+    now = _now_iso()
+    out: Dict[str, Any] = {"source": "runtime.sample", "updated_at": now}
+    try:
+        if sys.platform == "darwin":
+            load = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
+            cores = max(1, os.cpu_count() or 1)
+            out["cpu_percent"] = round(min(100.0, (float(load) / float(cores)) * 100.0), 1)
+        proc = subprocess.run(["df", "-k", "/"], capture_output=True, text=True, timeout=2)
+        if proc.returncode == 0:
+            lines = [ln for ln in (proc.stdout or "").splitlines() if ln.strip()]
+            if len(lines) >= 2:
+                parts = lines[-1].split()
+                if len(parts) >= 5 and parts[-2].endswith("%"):
+                    out["disk_percent"] = round(float(parts[-2].rstrip("%")), 1)
+    except Exception:
+        pass
+    return out
+
+
+def _sample_local_control_metrics() -> Dict[str, Any]:
+    now = _now_iso()
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=None)
+        if cpu is None or (isinstance(cpu, float) and cpu <= 0.0):
+            cpu = psutil.cpu_percent(interval=0.05)
+        disk_pct = None
+        try:
+            disk_pct = round(float(psutil.disk_usage("/").percent), 1)
+        except Exception:
+            disk_pct = None
+        return {
+            "cpu_percent": round(float(cpu or 0.0), 1),
+            "mem_percent": round(float(psutil.virtual_memory().percent), 1),
+            "disk_percent": disk_pct,
+            "source": "runtime.sample",
+            "updated_at": now,
+        }
+    except Exception:
+        sample = _fallback_local_control_metrics()
+        if any(sample.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent")):
+            return sample
+        return {"source": "runtime.sample", "updated_at": now}
+
+
+def _inject_live_control_metrics(item: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(item, dict):
+        return {}
+    sample = _sample_local_control_metrics()
+    base = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    control = base.get("control") if isinstance(base.get("control"), dict) else dict(base)
+    business = base.get("business") if isinstance(base.get("business"), dict) else {}
+    merged = dict(control)
+    for key in ("cpu_percent", "mem_percent", "disk_percent", "source", "updated_at"):
+        if sample.get(key) is not None:
+            merged[key] = sample.get(key)
+    for key in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms", "service_cpu_percent", "service_memory_mb"):
+        if merged.get(key) is None and control.get(key) is not None:
+            merged[key] = control.get(key)
+    item["metrics"] = {**merged, "control": merged, "business": business}
+    item["metrics_live"] = True
+    return item
+
+
+def _refresh_services_live_state(
+    services: List[Dict[str, Any]],
+    host: str = "127.0.0.1",
+    project_id: str = "",
+    cluster_status: Optional[Dict[str, str]] = None,
+) -> List[Dict[str, Any]]:
+    sample = _sample_local_control_metrics()
+    cs_map = cluster_status if isinstance(cluster_status, dict) else {}
+    if not cs_map and project_id:
+        try:
+            cs_map = _fetch_cluster_runtime_status(_agents_v2_for_project(project_id))
+        except Exception:
+            cs_map = {}
+    out: List[Dict[str, Any]] = []
+    for raw in services or []:
+        if not isinstance(raw, dict):
+            continue
+        svc = _resolve_service_runtime_state(raw, host=host, cluster_status=cs_map)
+        metrics = svc.get("metrics") if isinstance(svc.get("metrics"), dict) else {}
+        merged = dict(metrics)
+        for key in ("cpu_percent", "mem_percent", "disk_percent", "source", "updated_at"):
+            if sample.get(key) is not None and merged.get(key) is None:
+                merged[key] = sample.get(key)
+        if merged:
+            svc["metrics"] = merged
+        svc["updated_at"] = str(svc.get("updated_at") or sample.get("updated_at") or _now_iso())
+        out.append(svc)
+    return out
+
+
+def _execute_canonical_service_action(
+    project_id: str,
+    topology_node_id: str,
+    service_id: str,
+    action: str,
+    operator: str,
+    reason: str,
+    ticket_id: str,
+    body_payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    act = str(action or "").strip().lower()
+    node = _resolve_ops_dispatch_node(project_id, topology_node_id)
+    if not node:
+        return {"ok": False, "message": "topology node not found", "mode": "direct"}
+
+    if _is_external_daemon_node(node):
+        result = _ops_platform_daemon_action(node, act, reason, ticket_id, operator)
+        ok = bool(result.get("success"))
+        if ok:
+            st = "RUNNING" if act in ("start", "restart", "status") else "STOPPED"
+            _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="PASS" if st == "RUNNING" else "FAIL")
+        return {"ok": ok, "message": str(result.get("message") or ""), "data": result.get("data") or {}, "mode": "daemon"}
+
+    ops_node = _resolve_ops_dispatch_node(project_id, "ops-cn-1") or node
+    map_action = {"start": "start", "stop": "stop", "restart": "restart", "status": "status", "probe": "health_check", "logs": "log_tail"}.get(act, act)
+    result = _ops_gateway.execute_platform_action(
+        ops_node,
+        action_type=map_action,
+        target=service_id,
+        payload=body_payload,
+        actor=operator,
+        reason=reason,
+        ticket_id=ticket_id,
+        dry_run=False,
+    )
+    ok = bool(result.get("success"))
+
+    if not ok and act == "start":
+        launch = _launch_local_game_server(reason)
+        if launch.get("success"):
+            port = int(node.get("port") or node.get("remote_game_server_port") or 0)
+            if port > 0 and _probe_tcp_open("127.0.0.1", port):
+                ok = True
+                result = {"success": True, "message": "服务已在运行", "data": launch.get("data") or {}}
+            else:
+                ok = True
+                result = {
+                    "success": True,
+                    "message": str(launch.get("message") or "GameServer 启动脚本已在后台执行"),
+                    "data": dict(launch.get("data") or {}, starting=True),
+                }
+        else:
+            result = launch
+
+    if not ok and act in ("stop", "restart"):
+        stop_res = _stop_local_game_server()
+        if stop_res.get("success"):
+            ok = act == "stop"
+            result = stop_res
+            if act == "restart":
+                launch = _launch_local_game_server(reason)
+                ok = bool(launch.get("success"))
+                result = launch
+
+    if ok:
+        port = int(node.get("port") or node.get("remote_game_server_port") or 0)
+        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else bool((result.get("data") or {}).get("starting"))
+        st = "STARTING" if (result.get("data") or {}).get("starting") else ("RUNNING" if act != "stop" and live else ("STOPPED" if act == "stop" else "RUNNING"))
+        metrics = _sample_local_control_metrics()
+        _update_canonical_service_runtime(
+            service_id,
+            status=st,
+            run_state=st,
+            probe_status="PASS" if live and st == "RUNNING" else "",
+            metrics=metrics,
+        )
+        canonical = _load_agent_registry_v2().get(CANONICAL_LOCAL_AGENT_ID)
+        if isinstance(canonical, dict):
+            _append_realtime_agent_sample(canonical)
+
+    return {
+        "ok": ok,
+        "message": str(result.get("message") or ("success" if ok else "service action failed")),
+        "data": result.get("data") if isinstance(result.get("data"), dict) else {},
+        "mode": "direct",
+    }
 
 
 def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, ticket_id: str, operator: str) -> Dict[str, Any]:
@@ -7970,9 +9734,10 @@ def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, 
     stop_cmd = str(node.get("daemon_stop_cmd") or "").strip()
     state = _get_daemon_state(nid)
     pid = int(state.get("pid") or 0) if str(state.get("pid") or "").strip().isdigit() else 0
+    local_daemon = _is_external_daemon_node(node)
 
     # Prefer native Ops API path in distributed deployment.
-    if server_id and act in ("start", "stop", "restart", "status"):
+    if server_id and act in ("start", "stop", "restart", "status") and not local_daemon:
         map_action = {"start": "start", "stop": "stop", "restart": "restart", "status": "status"}.get(act, "status")
         result = _ops_gateway.execute_platform_action(
             node,
@@ -8491,6 +10256,9 @@ def ops_platform_runtime_flow_control():
     bindings = _load_scope_agent_bindings(scoped_topology_id)
     reg_v2 = _load_agent_registry_v2()
     fresh_sec = max(20, int(policy.get("agent_online_fresh_sec") or 120))
+    cluster_status = _fetch_cluster_runtime_status(
+        [x for x in reg_v2.values() if isinstance(x, dict) and str(x.get("project_id") or "") in ("", scoped_project_id)]
+    )
 
     for nid in node_ids:
         topo_node = next((x for x in topo_nodes if isinstance(x, dict) and str(x.get("id") or "") == nid), None)
@@ -8518,9 +10286,23 @@ def ops_platform_runtime_flow_control():
         current_runtime = bound_desc.get("runtime") if isinstance(bound_desc, dict) and isinstance(bound_desc.get("runtime"), dict) else {}
         current_role = str(current_runtime.get("current_role") or current_runtime.get("role") or "")
         current_state = str(current_runtime.get("state") or bound_desc.get("run_state") or "").upper()
-        if op == "start" and use_agent_mode and desired_role and current_role == desired_role and current_state in ("RUNNING", "ONLINE", "READY", "SUCCESS"):
+        cluster_live = bool(op == "start" and probe_ok and _cluster_state_is_online(cluster_status.get(nid)))
+        if op == "start" and use_agent_mode and (
+            cluster_live
+            or (
+                desired_role
+                and current_role == desired_role
+                and current_state in ("RUNNING", "ONLINE", "READY", "SUCCESS")
+            )
+            or (
+                probe_ok
+                and current_state in ("RUNNING", "ONLINE", "READY", "SUCCESS")
+                and _is_embedded_cluster_agent(bound_desc or {"node_id": nid})
+            )
+        ):
             items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS", "mode": "agent-reuse"})
-            logs.append({"ts": _now_iso(), "level": "info", "node_id": nid, "message": f"复用远端已运行服务: role={desired_role}; 无需重启"})
+            msg = f"复用已运行服务: role={desired_role or current_role or '-'}; cluster={'live' if cluster_live else 'runtime'}"
+            logs.append({"ts": _now_iso(), "level": "info", "node_id": nid, "message": msg})
             continue
         req = {
             "node_id": nid,
@@ -8724,6 +10506,10 @@ def ops_platform_agent_register():
         return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
     reg = _load_agent_registry()
     reg_v2 = _load_agent_registry_v2()
+    existing = reg_v2.get(agent_id) if isinstance(reg_v2.get(agent_id), dict) else {}
+    stored_node_id = "" if agent_id == CANONICAL_LOCAL_AGENT_ID else node_id
+    if agent_id == CANONICAL_LOCAL_AGENT_ID:
+        device_id = CANONICAL_LOCAL_DEVICE_ID
     now = _now_iso()
     reg[node_id] = {
         "node_id": node_id,
@@ -8743,24 +10529,25 @@ def ops_platform_agent_register():
             "agent_id": agent_id,
             "device_id": device_id,
             "host_name": str(payload.get("host_name") or payload.get("hostname") or ""),
-            "node_id": node_id,
+            "node_id": stored_node_id,
             "project_id": str(payload.get("project_id") or node.get("project_id") or ""),
             "status": "ONLINE",
-            "version": str(payload.get("version") or ""),
+            "version": str(payload.get("version") or existing.get("version") or ""),
             "last_seen": now,
-            "display_name": str(payload.get("display_name") or agent_id),
-            "port": int(payload.get("port") or 0),
-            "remote_game_server_port": int(payload.get("remote_game_server_port") or payload.get("port") or 0),
-            "desc": str(payload.get("desc") or ""),
-            "run_state": str(payload.get("run_state") or "RUNNING"),
-            "network": payload.get("network") if isinstance(payload.get("network"), dict) else {"endpoints": []},
-            "region": str(payload.get("region") or ""),
-            "zone": str(payload.get("zone") or ""),
-            "rack": str(payload.get("rack") or ""),
-            "host_ip": str(payload.get("host_ip") or payload.get("host_name") or payload.get("hostname") or ""),
-            "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else [],
-            "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {},
-            "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {},
+            "display_name": str(payload.get("display_name") or existing.get("display_name") or agent_id),
+            "port": int(payload.get("port") or existing.get("port") or 0),
+            "remote_game_server_port": int(payload.get("remote_game_server_port") or payload.get("port") or existing.get("remote_game_server_port") or 0),
+            "desc": str(payload.get("desc") or existing.get("desc") or ""),
+            "run_state": str(payload.get("run_state") or existing.get("run_state") or "RUNNING"),
+            "network": payload.get("network") if isinstance(payload.get("network"), dict) else (existing.get("network") if isinstance(existing.get("network"), dict) else {"endpoints": []}),
+            "region": str(payload.get("region") or existing.get("region") or ""),
+            "zone": str(payload.get("zone") or existing.get("zone") or ""),
+            "rack": str(payload.get("rack") or existing.get("rack") or ""),
+            "host_ip": str(payload.get("host_ip") or payload.get("host_name") or payload.get("hostname") or existing.get("host_ip") or ""),
+            "capabilities": payload.get("capabilities") if isinstance(payload.get("capabilities"), list) else (existing.get("capabilities") if isinstance(existing.get("capabilities"), list) else []),
+            "metrics": payload.get("metrics") if isinstance(payload.get("metrics"), dict) else (existing.get("metrics") if isinstance(existing.get("metrics"), dict) else {}),
+            "services": existing.get("services") if isinstance(existing.get("services"), list) else [],
+            "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), dict) else (existing.get("runtime") if isinstance(existing.get("runtime"), dict) else {}),
             "transport": {
                 "mode": str(payload.get("transport_mode") or "remote"),
                 "local_bus": {
@@ -8779,6 +10566,8 @@ def ops_platform_agent_register():
     _mark_duplicate_runtime_agents(reg_v2, agent_id, node_id)
     _append_realtime_agent_sample(reg_v2[agent_id])
     _save_agent_registry_v2(reg_v2)
+    if agent_id == CANONICAL_LOCAL_AGENT_ID:
+        _consolidate_runtime_agents_to_canonical(str(payload.get("project_id") or node.get("project_id") or ""))
     upgrade = _desired_agent_upgrade(agent_id, policy)
     return jsonify({"ok": True, "agent_id": agent_id, "node_id": node_id, "device_id": device_id, "poll_interval_sec": 5, "mtls_required": bool(policy.get("mtls_required")), "upgrade": upgrade})
 
@@ -9270,16 +11059,22 @@ def ops_platform_action():
 @bp.route("/admin/ops-platform/actions")
 @admin_required("gm_ops")
 def ops_platform_actions_page():
-    project_id = str(request.args.get("project_id") or "").strip()
+    missing = _ops_platform_redirect_to_runtime_project()
+    if missing is not None:
+        return missing
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
     content = _render_local_template("ops_actions_page.html", project_id=project_id)
     return _render_page(content, "动作执行中心")
 
 @bp.route("/admin/ops-platform/topology")
 @admin_required("gm_ops")
 def ops_platform_topology_page():
-    project_id = str(request.args.get("project_id") or "").strip()
-    env_key = _normalize_env_key(request.args.get("env_key") or "")
-    topology_id = str(request.args.get("topology_id") or "").strip()
+    missing = _ops_platform_redirect_to_runtime_project()
+    if missing is not None:
+        return missing
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
+    env_key = _normalize_env_key(request.args.get("env_key") or "production")
+    topology_id = _resolve_ops_topology_id(project_id, env_key, request.args.get("topology_id") or "")
     content = _render_local_template("ops_topology_workbench.html", project_id=project_id, env_key=env_key, topology_id=topology_id)
     return _render_standalone_page(content, "拓扑与配置编排")
 
@@ -9287,14 +11082,20 @@ def ops_platform_topology_page():
 @bp.route("/admin/ops-platform/diagnostics")
 @admin_required("gm_ops")
 def ops_platform_diagnostics_page():
-    project_id = str(request.args.get("project_id") or "").strip()
+    missing = _ops_platform_redirect_to_runtime_project()
+    if missing is not None:
+        return missing
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
     content = _render_local_template("ops_diagnostics_page.html", project_id=project_id)
     return _render_page(content, "节点诊断中心")
 
 @bp.route("/admin/ops-platform/agent-control")
 @admin_required("gm_ops")
 def ops_platform_agent_control_page():
-    project_id = str(request.args.get("project_id") or "").strip()
+    missing = _ops_platform_redirect_to_runtime_project()
+    if missing is not None:
+        return missing
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
     content = _render_local_template("ops_agent_control_page.html", project_id=project_id)
     return _render_standalone_page(content, "Agent 控制面")
 
@@ -9311,7 +11112,7 @@ def ops_platform_agent_device_local_page():
 @bp.route("/admin/ops-platform/agent-detail")
 @admin_required("gm_ops")
 def ops_platform_agent_detail_page():
-    project_id = str(request.args.get("project_id") or "").strip()
+    project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
     agent_id = str(request.args.get("agent_id") or "").strip()
     content = _render_local_template("ops_agent_detail_page.html", project_id=project_id, agent_id=agent_id)
     return _render_standalone_page(content, "Agent 详情")

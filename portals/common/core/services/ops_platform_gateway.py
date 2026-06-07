@@ -78,14 +78,22 @@ class OpsPlatformGateway:
         url = f"{base}{path}"
 
         started = time.time()
+        proxies = None
+        try:
+            from urllib.parse import urlparse
+            host = (urlparse(base).hostname or "").lower()
+            if host in ("127.0.0.1", "localhost", "::1"):
+                proxies = {"http": None, "https": None}
+        except Exception:
+            proxies = None
         try:
             if method.upper() == "GET":
-                resp = requests.get(url, headers=headers, params=params or {}, timeout=self._timeout)
+                resp = requests.get(url, headers=headers, params=params or {}, timeout=self._timeout, proxies=proxies)
             else:
                 payload = json.dumps(json_body or {}, ensure_ascii=False)
                 h = dict(headers)
                 h["Content-Type"] = "application/json; charset=utf-8"
-                resp = requests.post(url, headers=h, params=params or {}, data=payload.encode("utf-8"), timeout=self._timeout)
+                resp = requests.post(url, headers=h, params=params or {}, data=payload.encode("utf-8"), timeout=self._timeout, proxies=proxies)
 
             latency_ms = int((time.time() - started) * 1000)
             try:

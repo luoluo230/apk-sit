@@ -91,6 +91,7 @@
             <h1>Agent 管控中心</h1>
           </div>
           <p>按设备分组管理 Agent，支持批量操作、状态监控与策略配置</p>
+          <div class="agent-page-scope-badge">当前项目：<strong>{{ project_id }}</strong> · 单 Agent 管理本机全部服务节点</div>
         </div>
         <div class="agent-page-hero-actions">
           <button id="btnCreateAgent" class="agent-btn agent-btn--primary" type="button">新建设备 Agent</button>
@@ -120,8 +121,8 @@
             <option value="offline">全部离线</option>
           </select>
           <select id="filterFresh" class="agent-field agent-field--select">
-            <option value="active_120" selected>仅看活跃 (120 秒内)</option>
-            <option value="all">显示全部</option>
+            <option value="all" selected>显示全部</option>
+            <option value="active_120">仅看活跃 (120 秒内)</option>
             <option value="active_600">仅看活跃 (10 分钟内)</option>
           </select>
           <button id="btnApplyFilter" class="agent-btn agent-btn--primary agent-btn--small" type="button">应用筛选</button>
@@ -210,4 +211,4 @@
   </div>
 </div>
 <script src="/static/ops_platform_api.js?v=20260605-agent-ui-fixes-v4"></script>
-<script src="/static/ops_platform_agent_control.js?v=20260605-agent-ui-fixes-v4"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260606-runtime-agent-fix4"></script>

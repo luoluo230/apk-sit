@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-rewrite35">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-layout-fix1">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -216,8 +216,8 @@
                 </label>
               </div>
               <div id="scene" class="scene">
-                <div id="nodeLayer" class="nodes"></div>
                 <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
+                <div id="nodeLayer" class="nodes"></div>
               </div>
               <div id="marquee" class="topology-marquee"></div>
               <div class="topology-mini-map-card"><canvas id="topologyMiniMap" width="160" height="100"></canvas></div>
@@ -266,9 +266,9 @@
             </div>
             <div id="inspectorTabBar" class="topology-inspector-tabs">
               <button class="topology-inspector-tab active" type="button" data-inspector-tab="basicInfoPanel">基础信息</button>
-              <button class="topology-inspector-tab" type="button" data-inspector-tab="portsPanel" data-tab-tools="端口与连线" data-tab-nodes="端口与连接">端口与连线</button>
+              <button class="topology-inspector-tab" type="button" data-inspector-tab="connectionsPanel">连接关系</button>
               <button class="topology-inspector-tab" type="button" data-inspector-tab="agentPanel">Agent 与部署</button>
-              <button class="topology-inspector-tab" type="button" data-inspector-tab="monitorPanel" data-tab-tools="监控指标" data-tab-nodes="输入输出端口">监控指标</button>
+              <button class="topology-inspector-tab" type="button" data-inspector-tab="monitorPanel">监控指标</button>
             </div>
             <div id="inspectorEmptyState" class="topology-inspector-empty">
               <div class="topology-inspector-empty-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></div>
@@ -305,21 +305,26 @@
                   <label class="topology-field"><span>节点通信地址</span><div class="topology-copy-field"><input id="insNodeEndpointsBasic" class="inp" placeholder="10.0.1.15:9501"><button id="btnCopyEndpointBasic" class="btn btn-icon-only" type="button" title="复制"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V6a2 2 0 012-2h10"/></svg></button></div></label>
                 </div>
                 <label class="topology-field" data-layout="nodes"><span>说明</span><textarea id="insNodeNotes" class="txt" rows="2" placeholder="补充说明"></textarea></label>
+                <div id="insDaemonSection" class="topology-daemon-section is-hidden" data-layout="nodes">
+                  <div class="topology-section-title sm">Daemon 配置</div>
+                  <div class="topology-field-grid">
+                    <label class="topology-field"><span>Daemon 端口</span><input id="insNodeDaemonPort" class="inp" type="number" min="1" max="65535" placeholder="6379"></label>
+                    <label class="topology-field topology-field-wide"><span>启动命令</span><input id="insNodeDaemonStart" class="inp mono" placeholder="redis-server --port 6379"></label>
+                    <label class="topology-field topology-field-wide"><span>停止命令</span><input id="insNodeDaemonStop" class="inp mono" placeholder="redis-cli shutdown"></label>
+                  </div>
+                </div>
               </div>
-              <div id="portsPanel" class="topology-inspector-pane">
-                <label class="topology-field"><span>端口摘要</span><input id="insNodePortsSummary" class="inp" readonly></label>
-                <div class="topology-io-columns">
-                  <div><div class="topology-io-title">输入端口</div><div id="inPortList" class="topology-port-list"></div></div>
-                  <div><div class="topology-io-title">输出端口</div><div id="outPortList" class="topology-port-list"></div></div>
+              <div id="connectionsPanel" class="topology-inspector-pane">
+                <div class="topology-connection-section">
+                  <div class="topology-section-title sm">上游连接</div>
+                  <div id="nodeIncomingEdges" class="topology-connection-list"><div class="topology-connection-empty">无上流连接</div></div>
                 </div>
-                <div class="topology-port-actions">
-                  <button id="btnPortInAdd" class="btn" type="button">新增输入端口</button>
-                  <button id="btnPortInRemove" class="btn" type="button">删除输入端口</button>
-                  <button id="btnPortOutAdd" class="btn" type="button">新增输出端口</button>
-                  <button id="btnPortOutRemove" class="btn" type="button">删除输出端口</button>
+                <div class="topology-connection-section">
+                  <div class="topology-section-title sm">下游连接</div>
+                  <div id="nodeOutgoingEdges" class="topology-connection-list"><div class="topology-connection-empty">无下游连接</div></div>
                 </div>
+                <p class="topology-connection-tip">结构化拓扑按节点角色自动连线，无需手动维护端口。点击连接可在画布上定位并高亮。</p>
                 <button id="btnDeleteEdge" class="btn" type="button">删除当前选中连线</button>
-                <button id="btnDeleteSelectedPort" class="btn" type="button">删除选中端口</button>
               </div>
               <div id="agentPanel" class="topology-inspector-pane">
                 <div class="topology-field-grid">
@@ -335,12 +340,7 @@
                 </div>
                 <label class="topology-field topology-field-check"><input id="insNodeVisibleConsole" type="checkbox" checked><span>远端启动时显示黑窗口</span></label>
               </div>
-              <div id="ioPortsPanel" class="topology-inspector-pane">
-                <div class="topology-io-columns">
-                  <div><div class="topology-io-title">输入端口</div><div id="inPortListIo" class="topology-port-list"></div></div>
-                  <div><div class="topology-io-title">输出端口</div><div id="outPortListIo" class="topology-port-list"></div></div>
-                </div>
-              </div>
+              <div id="ioPortsPanel" class="topology-inspector-pane is-hidden" aria-hidden="true"></div>
               <div id="monitorPanel" class="topology-inspector-pane">
                 <div id="insNodeMonitorEmpty" class="topology-monitor-empty">选中节点后，此处展示来自运行态的实时指标；无采样时显示空态。</div>
                 <div id="insNodeMonitorBody" class="topology-monitor-body"></div>
@@ -472,5 +472,5 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite35"></script>
-<script src="/static/ops_platform_workbench.js?v=20260606-topology-rewrite35"></script>
+<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite36"></script>
+<script src="/static/ops_platform_workbench.js?v=20260606-topology-service-status-fix1"></script>

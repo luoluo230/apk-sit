@@ -1,0 +1,116 @@
+{
+  "version": "1",
+  "env_profiles": {
+    "local_macos": {
+      "redis_cache": {
+        "StartCommand": "redis-server --port {port}",
+        "StopCommand": "redis-cli -p {port} shutdown nosave",
+        "HealthCheckCommand": "redis-cli -p {port} ping"
+      },
+      "mongo_db": {
+        "StartCommand": "mongod --dbpath /tmp/gomeku-mongo --port {port} --bind_ip 127.0.0.1",
+        "StopCommand": "mongosh --port {port} --eval 'db.adminCommand({shutdown:1})'",
+        "HealthCheckCommand": "mongosh --port {port} --eval 'db.runCommand({ping:1})' --quiet"
+      },
+      "mq_kafka": {
+        "StartCommand": "echo 'kafka skipped on local dev'",
+        "StopCommand": "echo 'kafka skipped'",
+        "HealthCheckCommand": "nc -z 127.0.0.1 {port}"
+      },
+      "scheduler_job": {
+        "StartCommand": "echo 'scheduler worker placeholder'",
+        "StopCommand": "echo 'scheduler stop'",
+        "HealthCheckCommand": "nc -z 127.0.0.1 {port}",
+        "ScheduleCommand": "echo schedule tick"
+      },
+      "pressure_worker": {
+        "StartCommand": "echo 'pressure worker placeholder'",
+        "StopCommand": "echo 'pressure stop'",
+        "HealthCheckCommand": "nc -z 127.0.0.1 {port}",
+        "StressCommand": "echo stress qps={qps} duration={duration_sec}"
+      }
+    }
+  },
+  "contracts": [
+    {
+      "preset_id": "gateway_http",
+      "role": "gateway",
+      "execution_model": "native",
+      "cluster_type": "Gateway",
+      "default_port": 15050,
+      "probe_strategy": "tcp"
+    },
+    {
+      "preset_id": "auth_service",
+      "role": "auth",
+      "execution_model": "embedded",
+      "cluster_type": "Auth",
+      "default_port": 0,
+      "probe_strategy": "cluster_embedded"
+    },
+    {
+      "preset_id": "business_main",
+      "role": "business",
+      "execution_model": "embedded",
+      "cluster_type": "Game",
+      "default_port": 0,
+      "probe_strategy": "cluster_embedded"
+    },
+    {
+      "preset_id": "ops_service",
+      "role": "ops",
+      "execution_model": "native",
+      "cluster_type": "Ops",
+      "default_port": 5504,
+      "probe_strategy": "tcp"
+    },
+    {
+      "preset_id": "tcp_transport",
+      "role": "transport",
+      "execution_model": "native",
+      "cluster_type": "Tcp",
+      "default_port": 5601,
+      "probe_strategy": "tcp"
+    },
+    {
+      "preset_id": "redis_cache",
+      "role": "cache",
+      "execution_model": "daemon",
+      "cluster_type": "Daemon",
+      "default_port": 6379,
+      "probe_strategy": "redis_ping"
+    },
+    {
+      "preset_id": "mongo_db",
+      "role": "database",
+      "execution_model": "daemon",
+      "cluster_type": "Daemon",
+      "default_port": 27017,
+      "probe_strategy": "mongo_ping"
+    },
+    {
+      "preset_id": "mq_kafka",
+      "role": "mq",
+      "execution_model": "daemon",
+      "cluster_type": "Daemon",
+      "default_port": 9092,
+      "probe_strategy": "kafka_tcp"
+    },
+    {
+      "preset_id": "scheduler_job",
+      "role": "scheduler",
+      "execution_model": "worker",
+      "cluster_type": "Daemon",
+      "default_port": 8088,
+      "probe_strategy": "tcp"
+    },
+    {
+      "preset_id": "pressure_worker",
+      "role": "pressure",
+      "execution_model": "worker",
+      "cluster_type": "Daemon",
+      "default_port": 8090,
+      "probe_strategy": "tcp"
+    }
+  ]
+}

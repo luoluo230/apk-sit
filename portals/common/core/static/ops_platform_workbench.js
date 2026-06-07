@@ -2,6 +2,7 @@
   const ROLE_OPTIONS = ["gateway", "auth", "business", "pressure", "database", "cache", "mq", "search", "scheduler", "admin", "edge", "transport", "analytics"];
   const STATUS_OPTIONS = ["normal", "observe", "degraded", "error", "offline"];
   const STATUS_LABELS = { normal: "运行中", observe: "观察中", degraded: "降级中", error: "异常", offline: "离线" };
+  const DEFAULT_NODE_SEED_COLOR = "#0f172a";
   const ROLE_LABELS = {
     gateway: "网关服务",
     auth: "认证服务",
@@ -144,7 +145,14 @@
   function shouldPreserveTopologyLayoutOnLoad() {
     const meta = ((state.topology || {}).meta) || {};
     if (meta.layout_locked) return true;
+    // Structured graphs derive positions from ranks; only honor saved coords when locked.
+    if (structuredMode()) return false;
     return hasSavedNodeLayout();
+  }
+
+  function nodeRenderHeight(node) {
+    const h = Number(((node || {}).ui || {}).h || 104);
+    return Math.max(h, 128);
   }
 
   function syncLayoutSpacingControls() {
@@ -265,7 +273,9 @@
   function nodeCustomColor(node) {
     const raw = String((node && node.ui && node.ui.color) || "").trim();
     if (!raw || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(raw)) return "";
-    return normalizeHexColor(raw, "");
+    const normalized = normalizeHexColor(raw, "");
+    if (normalized.toLowerCase() === DEFAULT_NODE_SEED_COLOR) return "";
+    return normalized;
   }
 
   function nodePalette(node) {
@@ -736,7 +746,7 @@
       if (role === "gateway" || id.includes("gateway") || name.includes("gateway") || name.includes("网关")) return "gateway";
       if (role === "admin" || role === "ops" || id.includes("ops") || name.includes("ops") || name.includes("运维")) return "admin";
       if (role === "business" || role === "game" || id.includes("game") || name.includes("game") || name.includes("游戏")) return "business";
-      if (role === "database" || role === "db" || id.includes("db") || id.includes("mongo") || id.includes("mysql") || name.includes("database")) return "database";
+      if (role === "database" || role === "db" || id.includes("db") || id.includes("mongo") || name.includes("database")) return "database";
       if (role === "cache" || id.includes("cache") || id.includes("redis") || name.includes("cache") || name.includes("缓存")) return "cache";
       if (role === "mq" || id.includes("mq") || id.includes("kafka") || name.includes("消息")) return "mq";
       if (role === "scheduler" || id.includes("scheduler") || name.includes("调度")) return "scheduler";
@@ -894,12 +904,46 @@
 
   function agentHealthLabel(ag) {
     if (!ag) return { cls: "warn", text: "Agent未绑定" };
-    const st = String(ag.status || "").toUpperCase();
+    const probe = String(ag.probe_status || "").toUpperCase();
+    if (probe === "FAIL") return { cls: "err", text: "连通失败" };
+    const st = String(ag.effective_status || ag.status || "").toUpperCase();
     const age = agentHeartbeatAgeSec(ag);
     const freshSec = 300;
-    if (!age && age !== 0) return { cls: "warn", text: "心跳未知" };
-    if (st === "ONLINE" && age <= freshSec) return { cls: "ok", text: "设备在线 · " + age + "s" };
-    return { cls: "err", text: "心跳过期 · " + age + "s" };
+    if (!Number.isFinite(age)) return { cls: "warn", text: "心跳未知" };
+    if (st === "OFFLINE" || age > freshSec) return { cls: "err", text: "心跳过期 · " + age + "s" };
+    if (probe === "PASS" || st === "ONLINE") return { cls: "ok", text: "探活正常 · " + age + "s" };
+    return { cls: "warn", text: "待探活 · " + age + "s" };
+  }
+
+  function serviceRuntimeStatusForNode(ag, nodeId) {
+    if (!ag || !nodeId) return null;
+    const services = Array.isArray(ag.services) ? ag.services : [];
+    const svc = services.find((s) => String((s || {}).node_id || (s || {}).service_id || "") === String(nodeId || ""));
+    if (!svc) return null;
+    const probe = String(svc.probe_status || "").toUpperCase();
+    const st = String(svc.run_state || svc.status || "").toUpperCase();
+    if (probe === "FAIL" || st === "STOPPED" || st === "OFFLINE" || st === "FAILED") {
+      return { text: "离线", cls: "err" };
+    }
+    if (probe === "PASS" || st === "RUNNING" || st === "ONLINE" || st === "READY") {
+      return { text: "运行中", cls: "ok" };
+    }
+    if (!probe || st === "UNKNOWN") return { text: "待探活", cls: "warn" };
+    return { text: "运行中", cls: "ok" };
+  }
+
+  function nodeRuntimeStatus(n, ag, aid) {
+    const st = String(n.bizStatus || "normal");
+    if (!aid) return { text: "未绑定", cls: "warn" };
+    if (!ag) return { text: "Agent缺失", cls: "err" };
+    const perSvc = serviceRuntimeStatusForNode(ag, n.id);
+    if (perSvc) return perSvc;
+    const health = agentHealthLabel(ag);
+    if (health.cls === "err") return { text: health.text.indexOf("连通") >= 0 ? "连通失败" : "离线", cls: "err" };
+    if (health.cls === "warn") return { text: "待探活", cls: "warn" };
+    if (st === "offline" || st === "error") return { text: STATUS_LABELS[st] || "异常", cls: "err" };
+    if (st === "degraded" || st === "observe") return { text: STATUS_LABELS[st] || st, cls: "warn" };
+    return { text: "运行中", cls: "ok" };
   }
 
   function saveModeState() {
@@ -1037,8 +1081,13 @@
   }
 
   function realMetricTriplet(nodeId) {
-    const ag = boundAgentForNode(nodeId);
-    const m = (ag && ag.metrics && typeof ag.metrics === "object") ? ag.metrics : null;
+    const aid = String((state.nodeBindings || {})[String(nodeId || "")] || "");
+    const ag = (state.agents || []).find((x) => String((x || {}).agent_id || "") === aid) || null;
+    if (!ag) return null;
+    const services = Array.isArray(ag.services) ? ag.services : [];
+    const svc = services.find((s) => String((s || {}).node_id || (s || {}).service_id || "") === String(nodeId || ""));
+    const mRaw = (svc && svc.metrics && typeof svc.metrics === "object") ? svc.metrics : ((ag.metrics && typeof ag.metrics === "object") ? ag.metrics : null);
+    const m = (mRaw && mRaw.control && typeof mRaw.control === "object") ? mRaw.control : mRaw;
     if (!m) return null;
     const cpu = Number(m.cpu_percent);
     const mem = Number(m.mem_percent);
@@ -1046,13 +1095,14 @@
     const rtt = Number(m.rtt_ms);
     const hasAny = Number.isFinite(cpu) || Number.isFinite(mem) || Number.isFinite(qps) || Number.isFinite(rtt);
     if (!hasAny) return null;
+    const live = String(m.source || "") === "runtime.sample" || !!ag.metrics_live;
     return {
       cpu: Number.isFinite(cpu) ? Math.max(0, Math.min(100, cpu)) : 0,
       mem: Number.isFinite(mem) ? Math.max(0, Math.min(100, mem)) : 0,
       qps: Number.isFinite(qps) ? Math.max(0, qps) : 0,
       rtt: Number.isFinite(rtt) ? Math.max(0, rtt) : 0,
-      source: "real",
-      updatedAt: String(m.updated_at || ""),
+      source: live ? "runtime.sample" : String(m.source || "real"),
+      updatedAt: String(m.updated_at || ag.last_seen || ""),
     };
   }
 
@@ -1571,6 +1621,7 @@
 
   function isDesignReferenceTopology() {
     const meta = (state.topology && state.topology.meta) || {};
+    if (meta.runtime_topology || meta.cluster_source) return false;
     return String(meta.design_reference || "") === "v4";
   }
 
@@ -1607,7 +1658,7 @@
       minX = Math.min(minX, Number(ui.x || 0));
       minY = Math.min(minY, Number(ui.y || 0));
       maxX = Math.max(maxX, Number(ui.x || 0) + Number(ui.w || 240));
-      maxY = Math.max(maxY, Number(ui.y || 0) + Number(ui.h || 104));
+      maxY = Math.max(maxY, Number(ui.y || 0) + nodeRenderHeight(n));
     });
     const shell = $("canvasShell");
     if (!shell || !Number.isFinite(minX)) return;
@@ -1694,7 +1745,7 @@
       rows.forEach((n, i) => {
         if (!n.ui || typeof n.ui !== "object") n.ui = {};
         n.ui.w = Number(n.ui.w || 240);
-        n.ui.h = Number(n.ui.h || 104);
+        n.ui.h = nodeRenderHeight(n);
         n.ui.x = startX + r * rankGap;
         n.ui.y = y0 + i * rowGap;
         n.ui.rank = r;
@@ -1706,10 +1757,10 @@
   function structuredAnchor(node, side) {
     if (!node || !node.ui) return { x: 0, y: 0 };
     const w = Number(node.ui.w || 240);
-    const h = Number(node.ui.h || 104);
+    const h = nodeRenderHeight(node);
     const x0 = Number(node.ui.x || 0);
     const y0 = Number(node.ui.y || 0);
-    const x = side === "out" ? x0 + w + 4 : x0;
+    const x = side === "out" ? x0 + w + 4 : x0 - 4;
     const y = y0 + h / 2;
     return { x, y };
   }
@@ -1784,11 +1835,32 @@
   }
 
   function edgeDecorSlots(edge) {
-    const m = edgeMid(edge);
-    if (!m) return null;
     const gap = 14;
     const deleteR = 9;
     const labelH = 18;
+    const route = (((edge || {}).ui || {}).route || []);
+    if (structuredMode() && route.length >= 2) {
+      let best = null;
+      let bestLen = 0;
+      for (let i = 0; i < route.length - 1; i += 1) {
+        const a = route[i];
+        const b = route[i + 1];
+        if (!a || !b || Math.abs(Number(a.y) - Number(b.y)) > 2) continue;
+        const len = Math.abs(Number(b.x) - Number(a.x));
+        if (len > bestLen) {
+          bestLen = len;
+          best = { x: Math.round((Number(a.x) + Number(b.x)) / 2), y: Math.round(Number(a.y)), horizontal: true };
+        }
+      }
+      if (best && bestLen >= 48) {
+        return {
+          delete: { x: best.x, y: best.y - gap - deleteR },
+          label: { x: best.x, y: best.y + gap, h: labelH },
+        };
+      }
+    }
+    const m = edgeMid(edge);
+    if (!m) return null;
     if (m.horizontal !== false) {
       return {
         delete: { x: m.x, y: m.y - gap - deleteR },
@@ -1989,8 +2061,11 @@
     const projectSel = $("projectSelector");
     if (!projectSel) return;
     const resp = await OpsApi.loadProjects("active");
-    const rows = (resp && Array.isArray(resp.projects)) ? resp.projects : [];
+    let rows = (resp && Array.isArray(resp.projects)) ? resp.projects.slice() : [];
     if (resp && resp.ok === false && !rows.length) return;
+    if (state.projectId && !rows.some((item) => String(item.id) === String(state.projectId))) {
+      rows.unshift({ id: state.projectId, name: state.projectId });
+    }
     if (!rows.length) {
       projectSel.innerHTML = '<option value="' + esc(state.projectId) + '">' + esc(projectDisplayName({ id: state.projectId, name: state.projectId })) + "</option>";
       projectSel.value = state.projectId;
@@ -2002,7 +2077,8 @@
     if (state.projectId && rows.some((item) => String(item.id) === String(state.projectId))) {
       projectSel.value = state.projectId;
     } else if (rows.length) {
-      state.projectId = String(rows[0].id || state.projectId || "");
+      const prefer = rows.find((item) => String(item.id) === "GomeKu") || rows[0];
+      state.projectId = String((prefer && prefer.id) || state.projectId || "GomeKu");
       projectSel.value = state.projectId;
     }
   }
@@ -2334,17 +2410,6 @@
     if (card) card.setAttribute("data-inspector-layout", layout);
     const roleLabelEl = document.querySelector("#basicInfoPanel .topology-field[data-field='role'] .topology-field-label");
     if (roleLabelEl) roleLabelEl.textContent = layout === "nodes" ? "节点类型" : "角色";
-    const ioTab = document.querySelector(".topology-inspector-tab[data-tab-nodes='输入输出端口']");
-    if (ioTab) ioTab.setAttribute("data-inspector-tab", layout === "nodes" ? "ioPortsPanel" : "monitorPanel");
-    if (layout === "nodes" && state.inspectorTab === "monitorPanel") {
-      state.inspectorTab = "basicInfoPanel";
-      document.querySelectorAll("[data-inspector-tab]").forEach((tab) => {
-        tab.classList.toggle("active", tab.getAttribute("data-inspector-tab") === "basicInfoPanel");
-      });
-      document.querySelectorAll(".topology-inspector-pane").forEach((pane) => {
-        pane.classList.toggle("active", pane.id === "basicInfoPanel");
-      });
-    }
     const nid = String(($("insNodeId") || {}).value || "").trim() || selectedNodeId();
     if (nid) {
       const n = getNode(nid);
@@ -2387,14 +2452,17 @@
     const panes = Array.from(document.querySelectorAll(".topology-inspector-pane"));
     if (!tabs.length || !panes.length) return;
     const activate = (name) => {
+      if (name === "portsPanel" || name === "ioPortsPanel") name = "connectionsPanel";
       state.inspectorTab = name;
       tabs.forEach((tab) => tab.classList.toggle("active", tab.getAttribute("data-inspector-tab") === name));
       panes.forEach((pane) => pane.classList.toggle("active", pane.id === name));
+      const nid = selectedNodeId();
+      if (name === "connectionsPanel" && nid) renderNodeConnections(nid);
     };
     tabs.forEach((tab) => {
       tab.onclick = () => activate(tab.getAttribute("data-inspector-tab") || "basicInfoPanel");
     });
-    activate(state.inspectorTab || "basicInfoPanel");
+    activate(state.inspectorTab === "portsPanel" ? "connectionsPanel" : (state.inspectorTab || "basicInfoPanel"));
   }
 
   function bindLogTabs() {
@@ -2557,6 +2625,9 @@
       hint.textContent = state.selection.edgeId ? ("已选中连线: " + state.selection.edgeId) : "未选中连线";
       hint.className = "state-pill " + (state.selection.edgeId ? "state-ok" : "state-info");
     }
+    const nid = selectedNodeId();
+    const connPane = $("connectionsPanel");
+    if (nid && connPane && connPane.classList.contains("active")) renderNodeConnections(nid);
   }
 
   function drawPorts(node, side) {
@@ -2579,8 +2650,9 @@
       const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
       const bindText = ag ? ("Agent： " + (ag.display_name || ag.agent_id)) : "未绑定 Agent";
       const agHealth = agentHealthLabel(ag);
+      const runtimeStatus = nodeRuntimeStatus(n, ag, aid);
       const st = String(n.bizStatus || "normal");
-      const stLabel = agHealth.cls === "err" ? "心跳过期" : (agHealth.cls === "warn" ? "Agent异常" : (STATUS_LABELS[st] || st));
+      const stLabel = runtimeStatus.text;
       const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
       const isFlow = state.flowViz.nodes.has(n.id);
       const palette = nodePalette(n);
@@ -2588,10 +2660,8 @@
       const displayTitle = nodeDisplayTitle(n);
       const metaId = String(runtimeItem.server_id || n.server_id || n.id || "-");
       const descLine = String(n.desc || "").trim() || roleLabel(n.role);
-      let statusText;
-      let statusCls;
-      statusText = STATUS_LABELS[st] || "运行中";
-      statusCls = st === "error" || st === "offline" ? "err" : (st === "degraded" || st === "observe" ? "warn" : "ok");
+      let statusText = runtimeStatus.text;
+      let statusCls = runtimeStatus.cls;
       if ((isRunMode() || isTestMode()) && isFlow) {
         const flowRunning = flowSt === "RUNNING" || flowSt === "SUCCESS";
         statusText = flowRunning ? "运行中" : (STATUS_LABELS[st] || stLabel);
@@ -2621,7 +2691,7 @@
       el.style.setProperty("--node-bg", palette.bg1 || "#ffffff");
       el.innerHTML = '<div class="node-top-accent"></div>'
         + '<div class="node-role-strip"></div>'
-        + drawPorts(n, "in") + drawPorts(n, "out")
+        + (structuredMode() ? "" : (drawPorts(n, "in") + drawPorts(n, "out")))
         + (isEditMode() ? '<button class="node-remove-btn" type="button" data-node-id="' + esc(n.id) + '" title="删除节点"></button>' : "")
         + (isEditMode() ? '<button class="node-add-btn" type="button" data-node-id="' + esc(n.id) + '" title="添加下游" aria-label="从 ' + esc(displayTitle) + ' 添加下游"></button>' : "")
         + '<div class="node-shell">'
@@ -2672,10 +2742,11 @@
       const sid = String((state.serviceBindings || {})[n.id] || "");
       const bindLabel = sid || aid ? "已绑定" : "未绑定";
       const bindCls = sid || aid ? "state-ok" : "state-warn";
-      const st = String(n.bizStatus || "normal");
+      const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
+      const runtimeStatus = nodeRuntimeStatus(n, ag, aid);
       const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
-      const stLabel = flowSt ? (flowSt === "RUNNING" ? "运行中" : flowSt) : (STATUS_LABELS[st] || st || "运行中");
-      const stCls = flowSt === "FAILED" ? "state-err" : (flowSt === "RUNNING" || flowSt === "SUCCESS" ? "state-ok" : "state-info");
+      const stLabel = flowSt ? (flowSt === "RUNNING" ? "运行中" : flowSt) : runtimeStatus.text;
+      const stCls = flowSt === "FAILED" ? "state-err" : (runtimeStatus.cls === "ok" ? "state-ok" : (runtimeStatus.cls === "err" ? "state-err" : "state-warn"));
       return '<tr data-node-row="' + esc(n.id) + '">'
         + '<td><span class="node-row-name"><span class="node-row-ico" style="--ico-accent:' + esc(iconAccent(n)) + '">' + roleBadge(n) + '</span>' + esc(nodeDisplayTitle(n)) + '</span></td>'
         + '<td>' + esc(roleLabel(n.role)) + '</td>'
@@ -3005,7 +3076,7 @@
     if (role === "business") return "Game";
     if (role === "admin" || pid.includes("ops")) return "Ops";
     if (role === "transport" || pid.includes("tcp")) return "TCP";
-    if (role === "database") return pid.includes("mysql") ? "MySQL" : "DB";
+    if (role === "database") return pid.includes("mongo") ? "Mongo DB" : "DB";
     if (role === "cache") return "Cache";
     if (role === "mq") return "MQ";
     if (role === "scheduler") return "Scheduler";
@@ -3110,7 +3181,14 @@
     if (isTestMode()) { toast("测试模式禁止新增节点", "warn"); return; }
     const p = (state.presets || []).find((x) => x.preset_id === state.activePresetId);
     if (!p) return;
-    const d = await OpsApi.addNodeFromPreset({ preset_id: String(p.preset_id || ""), name: "", server_id: "", project_id: state.projectId, owner: "", env: "prod", channel: "", description: p.default_desc || "" });
+    const d = await OpsApi.addNodeFromPreset(Object.assign(currentScope(), {
+      preset_id: String(p.preset_id || ""),
+      name: "",
+      server_id: "",
+      project_id: state.projectId,
+      owner: "",
+      description: p.default_desc || "",
+    }));
     if (!d.ok) { toast(d.message || "新增节点失败", "error"); logMode("新增节点失败: " + (d.message || d.error || "未知错误"), "error"); return; }
     await loadAll();
     if (d.node && d.node.id) {
@@ -3125,41 +3203,52 @@
     }
   }
 
-  function renderPortLists(node) {
-    const inBox = $("inPortList");
-    const outBox = $("outPortList");
-    const inIo = $("inPortListIo");
-    const outIo = $("outPortListIo");
-    if (!node) return;
-    const render = (side, box, interactive) => {
-      if (!box) return;
-      const ports = ((node.ui && node.ui.ports && node.ui.ports[side]) || []);
-      if (!ports.length) {
-        box.innerHTML = '<span class="state-pill state-warn">无 ' + side + " 端口</span>";
-        return;
-      }
-      if (interactive) {
-        box.innerHTML = ports.map((p) => {
-          const selected = state.selectedPort && state.selectedPort.side === side && String(state.selectedPort.id) === String(p.id);
-          const cls = selected ? "port-pill selected" : "port-pill";
-          return '<button type="button" class="' + cls + '" data-side="' + side + '" data-port-id="' + esc(p.id) + '">' + esc(p.label || p.id) + " (" + countLinks(node.id, side, p.id) + ")</button>";
-        }).join(" ");
-        box.querySelectorAll("[data-port-id]").forEach((btn) => {
-          btn.onclick = () => {
-            state.selectedPort = { side: btn.getAttribute("data-side"), id: btn.getAttribute("data-port-id") };
-            renderPortLists(node);
-          };
-        });
-      } else {
-        box.innerHTML = ports.map((p) => (
-          '<span class="port-pill readonly">' + esc(p.label || p.id) + "</span>"
-        )).join(" ");
-      }
+  function renderNodeConnections(nodeId) {
+    const nid = String(nodeId || "");
+    const inBox = $("nodeIncomingEdges");
+    const outBox = $("nodeOutgoingEdges");
+    if (!inBox || !outBox) return;
+    if (!nid) {
+      inBox.innerHTML = '<div class="topology-connection-empty">无上流连接</div>';
+      outBox.innerHTML = '<div class="topology-connection-empty">无下游连接</div>';
+      return;
+    }
+    const edges = state.topology.edges || [];
+    const incoming = edges.filter((e) => String(e.to) === nid);
+    const outgoing = edges.filter((e) => String(e.from) === nid);
+    const rowHtml = (edge, direction) => {
+      const peerId = direction === "in" ? edge.from : edge.to;
+      const route = direction === "in"
+        ? (String(peerId) + " → " + nid)
+        : (nid + " → " + String(peerId));
+      const note = compactEdgeLabel(edge);
+      const selected = String(state.selection.edgeId || "") === String(edge.id);
+      return '<button type="button" class="topology-connection-item' + (selected ? " is-selected" : "") + '" data-edge-id="' + esc(edge.id) + '">'
+        + '<span class="topology-connection-route">' + esc(route) + "</span>"
+        + '<span class="topology-connection-meta">' + esc(note) + "</span>"
+        + "</button>";
     };
-    render("in", inBox, true);
-    render("out", outBox, true);
-    render("in", inIo, false);
-    render("out", outIo, false);
+    inBox.innerHTML = incoming.length
+      ? incoming.map((e) => rowHtml(e, "in")).join("")
+      : '<div class="topology-connection-empty">无上流连接</div>';
+    outBox.innerHTML = outgoing.length
+      ? outgoing.map((e) => rowHtml(e, "out")).join("")
+      : '<div class="topology-connection-empty">无下游连接</div>';
+    [inBox, outBox].forEach((box) => {
+      box.querySelectorAll("[data-edge-id]").forEach((btn) => {
+        btn.onclick = () => {
+          state.selection.edgeId = btn.getAttribute("data-edge-id") || "";
+          redrawGraph();
+          renderNodeConnections(nid);
+        };
+      });
+    });
+  }
+
+  function renderPortLists(node) {
+    if (!node) return;
+    const nid = String(node.id || selectedNodeId() || "");
+    if (nid) renderNodeConnections(nid);
   }
 
   function fillServiceSelect(nodeId, agentId) {
@@ -3423,6 +3512,22 @@
     }
   }
 
+  function isInfraDaemonNode(node) {
+    if (!node) return false;
+    const profile = String(node.daemon_profile || "").trim().toLowerCase();
+    if (profile === "external_daemon") return true;
+    const role = String(node.role || "").toLowerCase();
+    return ["cache", "database", "db", "mq", "scheduler", "pressure"].includes(role);
+  }
+
+  function toggleDaemonInspector(node) {
+    const box = $("insDaemonSection");
+    if (!box) return;
+    const show = isInfraDaemonNode(node);
+    box.classList.toggle("is-hidden", !show);
+    box.setAttribute("aria-hidden", show ? "false" : "true");
+  }
+
   function openNodeEditor(nodeId) {
     const n = getNode(nodeId);
     if (!n) return;
@@ -3445,16 +3550,20 @@
     if ($("insNodeColor")) setInspectorNodeColor(nodeCustomColor(n) || roleColor(n.role) || "#722ed1", { preview: false });
     $("insNodeTags").value = (n.tags || []).join(",");
     renderTagChips(n.tags || []);
-    const remotePort = String((((n.ui || {}).remote || {}).port || "") || (n.id === "game-01" ? "9501" : ""));
+    const remotePort = String(n.daemon_port || (((n.ui || {}).remote || {}).port || "") || (n.id === "game-01" ? "9501" : ""));
     $("insNodeRemotePort").value = remotePort;
+    if ($("insNodeRemotePortBasic")) $("insNodeRemotePortBasic").value = remotePort;
+    if ($("insNodeDaemonPort")) $("insNodeDaemonPort").value = String(n.daemon_port || remotePort || "");
+    if ($("insNodeDaemonStart")) $("insNodeDaemonStart").value = String(n.daemon_start_cmd || "");
+    if ($("insNodeDaemonStop")) $("insNodeDaemonStop").value = String(n.daemon_stop_cmd || "");
+    toggleDaemonInspector(n);
     const eps = (((n.ui || {}).network || {}).endpoints || []);
     const epText = Array.isArray(eps) && eps.length ? eps.join(",") : (n.id === "game-01" ? "10.0.1.15:9501" : "");
     $("insNodeEndpoints").value = epText;
     syncInspectorPortFieldsFromMain();
-    $("insNodePortsSummary").value = "in: " + ((((n.ui || {}).ports || {}).in || []).length) + " / out: " + ((((n.ui || {}).ports || {}).out || []).length);
     state.selectedPort = null;
     fillAgentSelect(nodeId);
-    renderPortLists(n);
+    renderNodeConnections(nodeId);
     renderMonitorPanel(nodeId);
     refreshInspectorLayout(state.activeLeftTab || "tools");
     applyModeUI();
@@ -3464,7 +3573,7 @@
 
   function refreshPortSummary(node) {
     if (!node) return;
-    $("insNodePortsSummary").value = "in: " + ((((node.ui || {}).ports || {}).in || []).length) + " / out: " + ((((node.ui || {}).ports || {}).out || []).length);
+    renderNodeConnections(String(node.id || selectedNodeId() || ""));
   }
 
   function newPortId(side, ports) {
@@ -3526,7 +3635,7 @@
     const card = $("nodeInspectorCard");
     if (card) card.removeAttribute("data-selected-node-id");
     if ($("insNodeName")) $("insNodeName").value = "";
-    ["insNodeId", "insNodePortsSummary", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor", "insNodeKindDisplay", "insNodeRemotePortBasic", "insNodeEndpointsBasic", "insNodeDeployVersionBasic", "insNodeServiceSummary", "insNodeNotes"].forEach((id) => {
+    ["insNodeId", "insNodeOwner", "insNodeAgentMeta", "insNodeRemotePort", "insNodeEndpoints", "insNodeDesc", "insNodeTags", "insNodeColor", "insNodeKindDisplay", "insNodeRemotePortBasic", "insNodeEndpointsBasic", "insNodeDeployVersionBasic", "insNodeServiceSummary", "insNodeNotes"].forEach((id) => {
       const el = $(id);
       if (el) el.value = "";
     });
@@ -3536,7 +3645,7 @@
     if ($("insNodeBizStatus")) $("insNodeBizStatus").selectedIndex = 0;
     if ($("insNodePrimaryAgent")) $("insNodePrimaryAgent").innerHTML = '<option value="">未绑定</option>';
     if ($("insNodeService")) $("insNodeService").innerHTML = '<option value="">请先选择 Agent</option>';
-    renderPortLists({ ui: { ports: { in: [], out: [] } } });
+    renderPortLists({ id: "" });
     renderTagChips([]);
     renderMonitorPanel("");
     updateInspectorHeader(null);
@@ -3574,8 +3683,13 @@
     n.ui = n.ui || {};
     n.ui.color = normalizeHexColor(colorRaw || n.ui.color, n.ui.color || "#0f172a");
     n.ui.remote = n.ui.remote || {};
-    const remotePort = Number(($("insNodeRemotePort") && $("insNodeRemotePort").value) || 0);
+    const remotePort = Number(($("insNodeRemotePort") && $("insNodeRemotePort").value) || ($("insNodeDaemonPort") && $("insNodeDaemonPort").value) || 0);
     n.ui.remote.port = (Number.isFinite(remotePort) && remotePort > 0) ? remotePort : 0;
+    if (isInfraDaemonNode(n)) {
+      n.daemon_port = (Number.isFinite(remotePort) && remotePort > 0) ? remotePort : 0;
+      if ($("insNodeDaemonStart")) n.daemon_start_cmd = String($("insNodeDaemonStart").value || "").trim();
+      if ($("insNodeDaemonStop")) n.daemon_stop_cmd = String($("insNodeDaemonStop").value || "").trim();
+    }
     const epText = String(($("insNodeEndpoints") && $("insNodeEndpoints").value) || "").trim();
     n.ui.network = { endpoints: epText ? epText.split(",").map((x) => x.trim()).filter(Boolean) : [] };
     n.ui.ports = normalizePorts(n.kind, n.ui.ports);
@@ -3594,6 +3708,11 @@
       ui: Object.assign({}, n.ui, { x: layoutPos.x, y: layoutPos.y }),
       tags: n.tags,
     };
+    if (isInfraDaemonNode(n)) {
+      patch.daemon_port = n.daemon_port || n.ui.remote.port || 0;
+      patch.daemon_start_cmd = n.daemon_start_cmd || "";
+      patch.daemon_stop_cmd = n.daemon_stop_cmd || "";
+    }
     const nodeRes = await OpsApi.updateNode(Object.assign(currentScope(), { node_id: id, patch }));
     if (!nodeRes || nodeRes.ok === false) {
       toast((nodeRes && (nodeRes.message || nodeRes.error)) || "保存节点失败", "error");
@@ -4063,7 +4182,7 @@
     ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColorPicker", "insNodeOwner", "insNodePrimaryAgent", "insNodePrimaryAgentBasic", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeRemotePortBasic", "insNodeEndpoints", "insNodeEndpointsBasic", "insNodeNotes"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
     document.querySelectorAll(".topology-color-preset").forEach((btn) => { btn.disabled = lock; });
-    ["btnPortInAdd", "btnPortOutAdd", "btnPortInRemove", "btnPortOutRemove", "btnDeleteSelectedPort", "btnDeleteNode", "btnSaveNode", "btnSaveNodeTools"]
+    ["btnDeleteNode", "btnSaveNode", "btnSaveNodeTools"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
   }
 
@@ -4625,11 +4744,6 @@
       toast("远端启动已提交", "ok");
       logMode("节点远端启动提交成功: " + nid + " job_id=" + (r.job_id || "-"));
     };
-    if ($("btnDeleteSelectedPort")) $("btnDeleteSelectedPort").onclick = deleteSelectedPort;
-    if ($("btnPortInAdd")) $("btnPortInAdd").onclick = () => addPort("in");
-    if ($("btnPortOutAdd")) $("btnPortOutAdd").onclick = () => addPort("out");
-    if ($("btnPortInRemove")) $("btnPortInRemove").onclick = () => removePort("in");
-    if ($("btnPortOutRemove")) $("btnPortOutRemove").onclick = () => removePort("out");
     if ($("btnDeleteEdge")) $("btnDeleteEdge").onclick = async () => {
       const id = state.selection.edgeId;
       if (!id) { toast("请先选中一条连线", "warn"); return; }
@@ -4895,13 +5009,23 @@
   async function boot() {
     const page = document.querySelector(".ops-topology-app");
     const ds = (page && page.dataset) ? page.dataset : {};
-    state.projectId = String(ds.projectId || "");
-    state.envKey = String(ds.envKey || "production");
-    state.topologyId = String(ds.topologyId || "");
+    let queryProject = "";
+    let queryEnv = "";
+    let queryTopology = "";
     try {
-      state.acceptanceStructuredAddFrom = new URLSearchParams(location.search).get("structured_add_from") || "";
+      const q = new URLSearchParams(location.search);
+      queryProject = String(q.get("project_id") || "");
+      queryEnv = String(q.get("env_key") || "");
+      queryTopology = String(q.get("topology_id") || "");
+      state.acceptanceStructuredAddFrom = q.get("structured_add_from") || "";
     } catch (_) {
       state.acceptanceStructuredAddFrom = "";
+    }
+    state.projectId = String(ds.projectId || queryProject || "GomeKu");
+    state.envKey = String(ds.envKey || queryEnv || "production");
+    state.topologyId = String(ds.topologyId || queryTopology || "");
+    if (!state.topologyId && state.projectId === "GomeKu" && state.envKey === "production") {
+      state.topologyId = "topology-design-gomeku-production";
     }
     loadModeState();
     loadRuntimeState();

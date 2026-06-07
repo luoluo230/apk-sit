@@ -181,6 +181,7 @@
   api.restartAgent = (payload) => api.postJSON('/api/ops-platform/agents/restart', payload || {});
   api.probeAllAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-all', payload || {});
   api.probeRepairAgents = (payload) => api.postJSON('/api/ops-platform/agents/probe-repair', payload || {});
+  api.syncCluster = (payload) => api.postJSON('/api/ops-platform/cluster/sync', payload || {});
   api.startRemoteNode = (payload) => api.postJSON('/api/ops-platform/topology/node/start-remote', payload || {});
   api.loadNodeBindings = (scope) => api.getJSON(withScope('/api/ops-platform/topology/node/bindings', scope));
   api.bindNodeAgent = (payload) => api.postJSON('/api/ops-platform/topology/node/bind-agent', payload);

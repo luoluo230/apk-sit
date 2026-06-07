@@ -538,9 +538,9 @@
           '<div class="agent-detail-card-head"><strong>监控指标（最近 1 小时）</strong><span>1 小时</span></div>' +
           '<div class="agent-detail-card-body">' +
             '<div class="agent-chart-grid">' +
-              chartMarkup("CPU 使用率 (%)", "#2f6bff", charts.cpu, summary.cpuPercent === "--" ? 0 : summary.cpuPercent) +
-              chartMarkup("内存使用率 (%)", "#16c47f", charts.mem, summary.memPercent === "--" ? 0 : summary.memPercent) +
-              chartMarkup("磁盘使用率 (%)", "#8e4ef8", charts.disk, summary.diskPercent === "--" ? 0 : summary.diskPercent) +
+              chartMarkup("CPU 使用率 (%)", "#2f6bff", charts.cpu, summary.cpuPercent) +
+              chartMarkup("内存使用率 (%)", "#16c47f", charts.mem, summary.memPercent) +
+              chartMarkup("磁盘使用率 (%)", "#8e4ef8", charts.disk, summary.diskPercent) +
             "</div>" +
           "</div>" +
         "</article>" +
@@ -610,9 +610,9 @@
     const charts = lineChartData();
     const summary = summaryNumbers();
     return '<article class="agent-detail-white-card"><div class="agent-detail-card-head"><strong>监控指标（最近 1 小时）</strong><span>实时采样</span></div><div class="agent-detail-card-body"><div class="agent-chart-grid">' +
-      chartMarkup("CPU 使用率 (%)", "#2f6bff", charts.cpu, summary.cpuPercent === "--" ? 0 : summary.cpuPercent) +
-      chartMarkup("内存使用率 (%)", "#16c47f", charts.mem, summary.memPercent === "--" ? 0 : summary.memPercent) +
-      chartMarkup("磁盘使用率 (%)", "#8e4ef8", charts.disk, summary.diskPercent === "--" ? 0 : summary.diskPercent) +
+      chartMarkup("CPU 使用率 (%)", "#2f6bff", charts.cpu, summary.cpuPercent) +
+      chartMarkup("内存使用率 (%)", "#16c47f", charts.mem, summary.memPercent) +
+      chartMarkup("磁盘使用率 (%)", "#8e4ef8", charts.disk, summary.diskPercent) +
       "</div></div></article>";
   }
 

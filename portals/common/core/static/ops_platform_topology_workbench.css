@@ -4,40 +4,49 @@
  * All in-page rules prefixed with .ops-topology-app; modals use sibling selector.
  */
 
-/* ── design tokens（对齐运维纵览 ops_platform.css） ── */
+/* ── design tokens（字体/颜色对齐 Agent 管控中心 ops_platform_agent_console.css） ── */
 .ops-topology-app {
-  --tw-primary: #2563eb;
-  --tw-primary-hover: #3b82f6;
-  --tw-primary-active: #1d4ed8;
-  --tw-bg: #f3f6fb;
+  --tw-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tw-primary: #2f6bff;
+  --tw-primary-hover: #1f5dff;
+  --tw-primary-active: #1f5dff;
+  --tw-bg: #f5f7fb;
   --tw-surface: #ffffff;
   --tw-surface-soft: #f8fbff;
-  --tw-border: #dbe6f8;
-  --tw-border-soft: #e8eef8;
-  --tw-text: #0f172a;
-  --tw-sub: #64748b;
-  --tw-muted: #94a3b8;
-  --tw-font-title: 600 14px/1.5715 "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --tw-font-body: 400 14px/1.5715 "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --tw-font-caption: 400 12px/1.5 "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --tw-success: #059669;
-  --tw-danger: #dc2626;
-  --tw-warning: #d97706;
+  --tw-border: #e7edf7;
+  --tw-border-soft: #e7edf7;
+  --tw-text: #101828;
+  --tw-sub: #667085;
+  --tw-muted: #98a2b3;
+  --tw-label: #344054;
+  --tw-font-title: 800 20px/1.3 var(--tw-font);
+  --tw-font-body: 400 14px/1.5715 var(--tw-font);
+  --tw-font-caption: 700 13px/1.5 var(--tw-font);
+  --tw-success: #16c47f;
+  --tw-danger: #ff4d6d;
+  --tw-warning: #ff9f1a;
   --tw-radius-lg: 12px;
   --tw-radius: 8px;
   --tw-radius-sm: 6px;
-  --tw-shadow: 0 1px 2px rgba(2, 6, 23, 0.06), 0 6px 20px rgba(30, 64, 175, 0.05);
-  --tw-shadow-lg: 0 8px 28px rgba(2, 6, 23, 0.08), 0 2px 10px rgba(30, 64, 175, 0.06);
+  --tw-shadow: 0 10px 30px rgba(31, 41, 55, 0.05);
+  --tw-shadow-lg: 0 10px 30px rgba(31, 41, 55, 0.08);
   display: grid;
   grid-template-columns: 200px minmax(0, 1fr);
   min-height: 100vh;
-  background: linear-gradient(180deg, #f8fbff, #f2f6fd 45%, #f6f8fc);
+  background: var(--tw-bg);
   color: var(--tw-text);
-  font-family: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--tw-font);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5715;
   -webkit-font-smoothing: antialiased;
+}
+
+.ops-topology-app button,
+.ops-topology-app input,
+.ops-topology-app select,
+.ops-topology-app textarea {
+  font-family: inherit;
 }
 
 /* ── utilities ── */
@@ -59,9 +68,9 @@
   border: 1px solid var(--tw-border);
   border-radius: var(--tw-radius-sm);
   background: var(--tw-surface);
-  color: var(--tw-text);
+  color: #1d2939;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 700;
   line-height: 1;
   box-shadow: none;
   cursor: pointer;
@@ -83,14 +92,14 @@
 }
 
 .ops-topology-app .btn.primary {
-  background: linear-gradient(180deg, var(--tw-primary-hover) 0%, var(--tw-primary) 100%);
+  background: linear-gradient(180deg, var(--tw-primary) 0%, var(--tw-primary-hover) 100%);
   border-color: var(--tw-primary);
   color: #fff;
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.045);
 }
 
 .ops-topology-app .btn.primary:hover {
-  background: linear-gradient(180deg, #69c0ff 0%, var(--tw-primary-hover) 100%);
+  background: var(--tw-primary-hover);
   border-color: var(--tw-primary-hover);
   color: #fff;
 }
@@ -122,7 +131,7 @@
 .ops-topology-app .btn.btn-outline-primary:hover {
   color: var(--tw-primary-hover);
   border-color: var(--tw-primary-hover);
-  background: #eef4ff;
+  background: #eaf1ff;
 }
 
 .ops-topology-app .btn.btn-outline-danger {
@@ -230,12 +239,12 @@
 .ops-topology-app .txt:focus {
   outline: none;
   border-color: var(--tw-primary-hover);
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.18);
 }
 
 .ops-topology-app .inp::placeholder,
 .ops-topology-app .txt::placeholder {
-  color: #bfbfbf;
+  color: var(--tw-muted);
 }
 
 /* ── state pills ── */
@@ -246,7 +255,7 @@
   height: 22px;
   border-radius: var(--tw-radius-sm);
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 600;
   border: 1px solid transparent;
   line-height: 20px;
 }
@@ -258,7 +267,7 @@
 }
 
 .ops-topology-app .state-pill.state-info {
-  background: #eef4ff;
+  background: #eaf1ff;
   color: var(--tw-primary);
   border-color: #91d5ff;
 }
@@ -340,10 +349,10 @@
 }
 
 .ops-topology-app .topology-brand-title {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--tw-text);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #13203a;
 }
 
 .ops-topology-app .topology-brand-sub {
@@ -369,7 +378,7 @@
   padding: 0 12px;
   color: var(--tw-muted);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   margin-bottom: 4px;
 }
 
@@ -381,21 +390,21 @@
   align-items: center;
   color: var(--tw-text);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 600;
   text-decoration: none;
   border: 1px solid transparent;
   transition: background 0.2s, color 0.2s;
 }
 
 .ops-topology-app .topology-nav-group > a:hover {
-  background: #eef4ff;
+  background: #eaf1ff;
   color: var(--tw-primary);
 }
 
 .ops-topology-app .topology-nav-group > a.active {
-  background: #eef4ff;
+  background: #eaf1ff;
   color: var(--tw-primary);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .ops-topology-app .topology-nav-footer {
@@ -462,15 +471,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef4ff;
+  background: #eaf1ff;
   color: var(--tw-primary);
   flex-shrink: 0;
 }
 
 .ops-topology-app .topology-page-heading {
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.3;
+  font: var(--tw-font-title);
   color: var(--tw-text);
 }
 
@@ -682,7 +689,7 @@
   background: transparent;
   color: var(--tw-sub);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   margin-bottom: -1px;
   transition: color 0.2s;
@@ -695,7 +702,7 @@
 .ops-topology-app .topology-left-tab.active {
   color: var(--tw-primary);
   border-bottom-color: var(--tw-primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .ops-topology-app .topology-left-pane[data-left-panel="nodes"] {
@@ -763,7 +770,7 @@
 }
 
 .ops-topology-app .topology-tool-btn.is-active {
-  background: #eef4ff;
+  background: #eaf1ff;
   border-color: var(--tw-primary);
   color: var(--tw-primary);
   box-shadow: none;
@@ -850,7 +857,7 @@
 .ops-topology-app .topology-mode-switcher .mode-btn.active {
   background: var(--tw-surface);
   color: var(--tw-primary);
-  font-weight: 500;
+  font-weight: 700;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
@@ -1033,7 +1040,7 @@
 }
 
 .ops-topology-app .topology-chip.active {
-  background: #eef4ff;
+  background: #eaf1ff;
   border-color: var(--tw-primary);
   color: var(--tw-primary);
   font-weight: 600;
@@ -1234,7 +1241,7 @@
 
 .ops-topology-app .preset-tile-add:hover {
   border-color: var(--tw-primary);
-  background: #eef4ff;
+  background: #eaf1ff;
 }
 
 /* legacy preset-card（保留兼容，当前 render 已改用 preset-tile） */
@@ -1304,7 +1311,7 @@
 
 .ops-topology-app .preset-card .preset-add-btn:hover,
 .ops-topology-app .preset-card .add-btn:hover {
-  background: #eef4ff;
+  background: #eaf1ff;
 }
 
 .ops-topology-app .preset-card .preset-ico,
@@ -1408,7 +1415,7 @@
 
 .ops-topology-app .topology-quick-card.active {
   border-color: var(--tw-primary);
-  background: #eef4ff;
+  background: #eaf1ff;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 
@@ -1431,7 +1438,7 @@
   width: 100%;
   min-width: 0;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .ops-topology-app .topology-node-table th,
@@ -1441,11 +1448,12 @@
   border-bottom: 1px solid var(--tw-border-soft);
   white-space: nowrap;
   vertical-align: middle;
+  color: #1d2939;
 }
 
 .ops-topology-app .topology-node-table th {
   color: var(--tw-sub);
-  font-weight: 600;
+  font-weight: 700;
   background: var(--tw-surface-soft);
 }
 
@@ -1510,7 +1518,7 @@
 }
 
 .ops-topology-app .topology-canvas-icon-btn.is-active {
-  background: #eef4ff;
+  background: #eaf1ff;
   border-color: var(--tw-primary);
   color: var(--tw-primary);
 }
@@ -1540,7 +1548,7 @@
 .ops-topology-app .topology-canvas-float-btn.is-active {
   border-color: var(--tw-primary);
   color: var(--tw-primary);
-  background: #eef4ff;
+  background: #eaf1ff;
 }
 
 .ops-topology-app .topology-canvas-wrap {
@@ -1741,7 +1749,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 4;
+  z-index: 1;
   overflow: visible;
   pointer-events: none;
 }
@@ -1843,8 +1851,8 @@
 .ops-topology-app .tw-node .node-desc {
   margin-top: 2px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--tw-sub);
+  font-weight: 400;
+  color: var(--tw-muted);
   line-height: 20px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1855,8 +1863,8 @@
 .ops-topology-app .tw-node .node-id-line {
   margin-top: 6px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--tw-sub);
+  font-weight: 400;
+  color: var(--tw-muted);
   line-height: 20px;
 }
 
@@ -1943,7 +1951,7 @@
 }
 
 .ops-topology-app .edge {
-  stroke: #2563eb;
+  stroke: var(--tw-primary);
   stroke-width: 2;
   fill: none;
   pointer-events: none;
@@ -2159,7 +2167,7 @@
   gap: 8px;
   padding: 6px 0;
   border-bottom: 1px solid var(--tw-border-soft);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--tw-text);
 }
 
@@ -2169,7 +2177,7 @@
   margin-top: 2px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #eef4ff;
+  background: #eaf1ff;
   position: relative;
 }
 
@@ -2275,8 +2283,8 @@
 
 .ops-topology-app .topology-inspector-title {
   font-size: 16px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.85);
+  font-weight: 800;
+  color: #17233b;
   line-height: 24px;
 }
 
@@ -2320,7 +2328,7 @@
 .ops-topology-app .topology-inspector-tab.active {
   color: var(--tw-primary);
   border-bottom-color: var(--tw-primary);
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .ops-topology-app .topology-inspector-empty {
@@ -2339,7 +2347,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #eef4ff;
+  background: #eaf1ff;
   color: var(--tw-primary);
 }
 
@@ -2371,9 +2379,8 @@
 
 .ops-topology-app .topology-field > span,
 .ops-topology-app .topology-field-label {
-  color: var(--tw-sub);
+  color: var(--tw-label);
   font: var(--tw-font-caption);
-  font-weight: 400;
 }
 
 .ops-topology-app .topology-field {
@@ -2569,6 +2576,69 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin: 8px 0;
+}
+
+.ops-topology-app .topology-connection-section + .topology-connection-section {
+  margin-top: 12px;
+}
+
+.ops-topology-app .topology-connection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ops-topology-app .topology-connection-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--tw-border);
+  border-radius: var(--tw-radius-sm);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ops-topology-app .topology-connection-item:hover {
+  border-color: #91d5ff;
+  background: #f0f7ff;
+}
+
+.ops-topology-app .topology-connection-item.is-selected {
+  border-color: var(--tw-primary);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+  background: #eff6ff;
+}
+
+.ops-topology-app .topology-connection-route {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tw-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.ops-topology-app .topology-connection-meta {
+  font-size: 11px;
+  color: var(--tw-muted);
+}
+
+.ops-topology-app .topology-connection-empty {
+  padding: 10px 8px;
+  border: 1px dashed var(--tw-border);
+  border-radius: var(--tw-radius-sm);
+  color: var(--tw-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.ops-topology-app .topology-connection-tip {
+  margin: 12px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--tw-muted);
 }
 
 .ops-topology-app .topology-monitor-empty {
@@ -2814,12 +2884,18 @@
 
 /* ── modals (siblings of .ops-topology-app) ── */
 .ops-topology-app ~ .topology-modal {
-  --tw-primary: #2563eb;
-  --tw-primary-hover: #3b82f6;
-  --tw-border: #dbe6f8;
-  --tw-text: #0f172a;
-  --tw-sub: #64748b;
-  --tw-shadow: 0 1px 2px rgba(2, 6, 23, 0.06), 0 6px 20px rgba(30, 64, 175, 0.05);
+  --tw-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tw-primary: #2f6bff;
+  --tw-primary-hover: #1f5dff;
+  --tw-border: #e7edf7;
+  --tw-text: #101828;
+  --tw-sub: #667085;
+  --tw-muted: #98a2b3;
+  --tw-label: #344054;
+  --tw-shadow: 0 10px 30px rgba(31, 41, 55, 0.05);
+  font-family: var(--tw-font);
+  font-size: 14px;
+  color: var(--tw-text);
   position: fixed;
   inset: 0;
   z-index: 10000;
@@ -2925,7 +3001,7 @@ body.topology-modal-open .ops-topology-app .topology-pro-canvas .scene {
   padding: 0 6px;
   border-radius: 10px;
   background: #f0f5ff;
-  color: #2563eb;
+  color: var(--tw-primary);
   font-size: 11px;
   font-weight: 700;
   line-height: 20px;
@@ -3020,7 +3096,7 @@ body.topology-modal-open .ops-topology-app .topology-pro-canvas .scene {
   opacity: 1;
   border-color: var(--tw-primary);
   color: var(--tw-primary);
-  background: #eef4ff;
+  background: #eaf1ff;
 }
 
 .ops-topology-app ~ .topology-modal .structured-add-tile-ico {
@@ -3205,7 +3281,7 @@ body.topology-modal-open .ops-topology-app .topology-pro-canvas .scene {
 }
 
 .ops-topology-app ~ .topology-modal .env-tag-development {
-  background: #eef4ff;
+  background: #eaf1ff;
   color: #096dd9;
   border-color: #91d5ff;
 }
@@ -3468,7 +3544,7 @@ body.topology-modal-open .ops-topology-app .topology-pro-canvas .scene {
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  background: #eef4ff;
+  background: #eaf1ff;
   color: var(--tw-primary);
   font-size: 10px;
   font-weight: 700;
