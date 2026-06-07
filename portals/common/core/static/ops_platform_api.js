@@ -145,10 +145,13 @@
   api.loadTopologyBlueprints = () => api.getJSON('/api/ops-platform/topology-blueprints');
   api.applyTopologyBlueprint = (payload) => api.postJSON('/api/ops-platform/topology/apply-blueprint', payload);
   api.loadEvents = (limit) => api.getJSON('/api/ops-platform/events?limit=' + (limit || 80));
-  api.loadOnboarding = () => api.getJSON('/api/ops-platform/node-onboarding');
+  api.loadOnboarding = (projectId) => api.getJSON('/api/ops-platform/node-onboarding' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.loadDiagnosticsSummary = (projectId) => api.getJSON('/api/ops-platform/diagnostics/summary' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.loadActionTargets = (projectId) => api.getJSON('/api/ops-platform/action-targets' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
   api.loadActionCatalog = () => api.getJSON('/api/ops-platform/action-catalog');
   api.validateAction = (payload) => api.postJSON('/api/ops-platform/actions/validate', payload);
   api.executeAction = (payload) => api.postJSON('/api/ops-platform/actions/execute', payload);
+  api.createActionApproval = (payload) => api.postJSON('/api/ops-platform/actions/approval', payload);
   api.saveTopology = (payload) => api.postJSON('/api/ops-platform/topology/save', payload || {});
   api.updateNode = (payload) => api.postJSON('/api/ops-platform/topology/node/update', payload || {});
   api.cloneNode = (payload) => api.postJSON('/api/ops-platform/topology/node/clone', payload || {});
@@ -224,7 +227,8 @@
     return api.getJSON('/api/ops-platform/agent/audit' + (q.length ? ('?' + q.join('&')) : ''));
   };
   api.controlPlaneSummary = () => api.getJSON('/api/ops-platform/control-plane/summary');
-  api.changeGovernanceSummary = () => api.getJSON('/api/ops-platform/change-governance/summary');
+  api.changeGovernanceSummary = (projectId) => api.getJSON('/api/ops-platform/change-governance/summary' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.setChangeFreeze = (payload) => api.postJSON('/api/ops-platform/change-governance/freeze', payload || {});
   api.moduleMap = () => api.getJSON('/api/ops-platform/module-map');
   api.runtimeFlowControl = (payload) => api.postJSON('/api/ops-platform/runtime/flow-control', payload || {});
   api.runtimeFlowStatus = (runId) => api.getJSON('/api/ops-platform/runtime/flow-status?run_id=' + encodeURIComponent(runId || ''));

@@ -1,4 +1,14 @@
-<link rel="stylesheet" href="/static/ops_platform.css?v=20260603f">
+<link rel="stylesheet" href="/static/ops_platform.css?v=20260606b">
+<div class="ops-app" data-page="change-governance">
+<aside class="ops-side">
+  <div class="ops-brand"><span class="ops-ico ico-title">O</span><div><b>运维平台</b><span>GameOps Console</span></div></div>
+  <a class="ops-project" href="/admin/ops-platform?project_id={{ project_id }}">GomeKu 运维工作台</a>
+  <div class="ops-nav-group"><span>工作台</span><a href="/admin/ops-platform?project_id={{ project_id }}">总览看板</a></div>
+  <div class="ops-nav-group"><span>架构编排</span><a href="/admin/ops-platform/topology?project_id={{ project_id }}">拓扑编排</a><a href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 与服务器</a></div>
+  <div class="ops-nav-group"><span>执行与诊断</span><a href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a><a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a></div>
+  <div class="ops-nav-group"><span>治理与合规</span><a class="active" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a><a href="/admin/approval">审批中心</a></div>
+</aside>
+<main class="ops-main">
 <section class="ops-page" data-project-id="{{ project_id }}">
   <div class="top">
     <div><div class="title title-row"><span class="ops-ico ico-title ico-change">C</span>发布与变更治理</div><div class="sub">变更计划、审批冻结窗口、灰度与回滚、复盘治理</div></div>
@@ -29,9 +39,13 @@
     <div class="hd"><b class="h-row"><span class="ops-ico ico-event">E</span>最近治理事件</b></div>
     <div class="bd"><div id="govEvents"></div></div>
   </section>
+  <input type="hidden" id="govTopologyId" value="">
+  <input type="hidden" id="govEnvKey" value="production">
 </section>
-<script src="/static/ops_platform_api.js?v=20260603f"></script>
-<script src="/static/ops_platform_change_governance.js?v=20260527q"></script>
+<script src="/static/ops_platform_api.js?v=20260606b"></script>
+<script src="/static/ops_platform_change_governance.js?v=20260606b"></script>
+</main>
+</div>
 
 
 

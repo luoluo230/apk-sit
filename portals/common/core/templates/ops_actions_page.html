@@ -6,7 +6,7 @@
   <div class="ops-nav-group"><span>工作台</span><a href="/admin/ops-platform?project_id={{ project_id }}">总览看板</a></div>
   <div class="ops-nav-group"><span>架构编排</span><a href="/admin/ops-platform/topology?project_id={{ project_id }}">拓扑编排</a><a href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 与服务器</a></div>
   <div class="ops-nav-group"><span>执行与诊断</span><a class="active" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a><a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">节点诊断</a></div>
-  <div class="ops-nav-group"><span>治理与合规</span><a href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a><a href="/admin/ops-platform/actions?project_id={{ project_id }}">审批中心</a></div>
+  <div class="ops-nav-group"><span>治理与合规</span><a href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a><a href="/admin/approval">审批中心</a></div>
 </aside>
 <main class="ops-main">
 <section class="ops-page" data-project-id="{{ project_id }}">
@@ -25,12 +25,20 @@
       <div class="bd">
         <div class="ops-toolbar" style="margin-bottom:8px"><span class="chip low">低风险</span><span class="chip mid">中风险</span><span class="chip high">高风险</span></div>
         <div class="row">
-          <div><label style="font-size:11px;color:#64748b">目标节点</label><select id="actNode" class="sel"></select></div>
+          <div><label style="font-size:11px;color:#64748b">目标类型</label><select id="actTargetType" class="sel"><option value="">全部</option><option value="service" selected>服务实例</option><option value="topology">拓扑节点</option><option value="agent">Agent</option><option value="node">配置节点</option></select></div>
+          <div><label style="font-size:11px;color:#64748b">动作目标</label><select id="actTargetKey" class="sel"></select></div>
+        </div>
+        <div id="actTargetMeta" class="ops-note" style="margin:8px 0;font-size:12px">加载目标...</div>
+        <div class="row">
           <div><label style="font-size:11px;color:#64748b">动作类型</label><select id="actType" class="sel"></select></div>
         </div>
-        <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">Target</label><input id="actTarget" class="inp">
+        <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">Target（server/service id）</label><input id="actTarget" class="inp">
+        <div class="row" style="margin-top:8px">
+          <div><label style="font-size:11px;color:#64748b">Ticket</label><input id="actTicket" class="inp" placeholder="OPS-20260606"></div>
+          <div><label style="font-size:11px;color:#64748b">Approver</label><input id="actApprover" class="inp" placeholder="admin"></div>
+        </div>
         <label style="font-size:11px;color:#64748b;display:block;margin-top:8px">Reason</label><textarea id="actReason" class="txt" rows="3"></textarea>
-        <div class="row" style="margin-top:8px"><button id="btnValidate" class="btn">预校验</button><button id="btnExecute" class="btn success">执行动作</button></div>
+        <div class="row" style="margin-top:8px"><button id="btnValidate" class="btn">预校验</button><button id="btnCreateApproval" class="btn">创建审批</button><button id="btnExecute" class="btn success">执行动作</button></div>
       </div>
     </section>
     <section class="panel">
@@ -67,8 +75,8 @@
     <div class="bd"><div id="queueSummary" class="row" style="margin-bottom:8px"></div><div id="queueTableWrap"></div></div>
   </section>
 </section>
-<script src="/static/ops_platform_api.js?v=20260605-agent-ui-fixes-v4"></script>
-<script src="/static/ops_platform_actions.js?v=20260605-agent-ui-fixes-v4"></script>
+<script src="/static/ops_platform_api.js?v=20260606b"></script>
+<script src="/static/ops_platform_actions.js?v=20260606b"></script>
 </main>
 </div>
 

@@ -341,16 +341,29 @@ def step_blueprints_no_mysql(base: str, cookie: str) -> Tuple[bool, List[str]]:
     logs: List[str] = []
     resp = _get(base, "/api/ops-platform/topology-blueprints", cookie)
     rows = resp.get("blueprints") if isinstance(resp.get("blueprints"), list) else []
-    bad = []
+    bad_mysql = []
+    bad_framework = []
     for row in rows:
         if not isinstance(row, dict):
             continue
+        bid = str(row.get("blueprint_id") or "")
         nodes = row.get("nodes") if isinstance(row.get("nodes"), list) else []
+        presets = {str(n.get("preset_id") or "") for n in nodes if isinstance(n, dict)}
         for n in nodes:
             if isinstance(n, dict) and str(n.get("preset_id") or "") == "mysql_db":
-                bad.append(str(row.get("blueprint_id") or ""))
-    ok = bool(resp.get("ok")) and not bad
-    logs.append(f"[{_ts()}] topology blueprints: count={len(rows)} mysql_refs={bad or 'none'}")
+                bad_mysql.append(bid)
+        if bid in ("minimal_framework", "medium_framework", "full_framework"):
+            if "auth_service" not in presets or "ops_service" not in presets:
+                bad_framework.append(bid)
+            if "pressure_worker" in presets:
+                bad_framework.append(f"{bid}:pressure")
+        if bid == "pressure_test_framework":
+            if "pressure_worker" not in presets:
+                bad_framework.append(bid)
+            if "auth_service" in presets or "ops_service" in presets or "mongo_db" in presets:
+                bad_framework.append(f"{bid}:production_mix")
+    ok = bool(resp.get("ok")) and not bad_mysql and not bad_framework
+    logs.append(f"[{_ts()}] topology blueprints: count={len(rows)} mysql_refs={bad_mysql or 'none'} framework={bad_framework or 'ok'}")
     return ok, logs
 
 
@@ -381,16 +394,24 @@ def step_full_framework_export(base: str, cookie: str, scope: Dict[str, str], re
         logs.append(f"[{_ts()}] cluster.json read FAIL: {ex}")
         return False, logs
     daemon_rows = [s for s in servers if str(s.get("Type") or "").strip().lower() == "daemon"]
+    app_types = {str(s.get("Type") or "").strip() for s in servers}
     infra_roles = {"cache", "database", "mq", "scheduler", "pressure"}
     infra_count = sum(1 for s in daemon_rows if str(s.get("Role") or "").strip().lower() in infra_roles)
-    logs.append(f"[{_ts()}] cluster.json servers={len(servers)} daemon={len(daemon_rows)} infra_roles={infra_count}")
+    logs.append(f"[{_ts()}] cluster.json servers={len(servers)} daemon={len(daemon_rows)} infra_roles={infra_count} app_types={sorted(app_types)}")
     for srv in daemon_rows[:8]:
         sid = str(srv.get("ServerId") or "")
         port = int(srv.get("Port") or 0)
         meta = srv.get("Metadata") if isinstance(srv.get("Metadata"), dict) else {}
         start_cmd = str(meta.get("StartCommand") or "")
         logs.append(f"[{_ts()}]   {sid} port={port} start={'yes' if start_cmd else 'no'}")
-    ok = len(daemon_rows) >= 4 and infra_count >= 4
+    ok = (
+        len(daemon_rows) >= 4
+        and infra_count >= 4
+        and "Auth" in app_types
+        and "Ops" in app_types
+        and "Gateway" in app_types
+        and "Game" in app_types
+    )
     return ok, logs
 
 

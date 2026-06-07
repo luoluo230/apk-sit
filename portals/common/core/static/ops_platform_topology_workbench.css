@@ -1978,6 +1978,26 @@
   background: currentColor;
 }
 
+.ops-topology-app.canvas-mode-run .tw-node.flow-starting,
+.ops-topology-app.canvas-mode-test .tw-node.flow-starting {
+  animation: topology-node-starting-glow 1.4s ease-in-out infinite;
+  border-color: #fbbf24 !important;
+}
+
+.ops-topology-app.canvas-mode-run .tw-node.flow-starting .node-status-line.status-warn,
+.ops-topology-app.canvas-mode-test .tw-node.flow-starting .node-status-line.status-warn {
+  font-weight: 600;
+}
+
+@keyframes topology-node-starting-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.35), var(--tw-shadow) !important;
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.18), 0 0 16px rgba(251, 191, 36, 0.2), var(--tw-shadow-lg) !important;
+  }
+}
+
 .ops-topology-app.canvas-mode-run .tw-node.live-running,
 .ops-topology-app.canvas-mode-test .tw-node.live-running {
   animation: topology-node-live-glow 2s ease-in-out infinite;

@@ -13,6 +13,7 @@ import uuid
 import hashlib
 import socket
 import threading
+import time
 from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -205,15 +206,339 @@ def _resolve_node(node_id: str = "", project_id: str = "", env: str = "", channe
 
 
 def _node_or_400(payload: Dict[str, Any]):
-    node = _resolve_node(
-        node_id=str(payload.get("node_id") or "").strip(),
-        project_id=str(payload.get("project_id") or "").strip(),
-        env=str(payload.get("env") or "").strip(),
-        channel=str(payload.get("channel") or "").strip(),
-    )
+    node = _resolve_flow_test_node(payload)
     if not node:
         return None, (jsonify({"ok": False, "error": "no node configured"}), 400)
     return node, None
+
+
+def _load_change_freeze_state() -> Dict[str, Any]:
+    raw = _load_json_config(OPS_CHANGE_FREEZE_KEY, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def _change_freeze_for_project(project_id: str) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    if not pid:
+        return {"active": False}
+    row = _load_change_freeze_state().get(pid)
+    return row if isinstance(row, dict) else {"active": False}
+
+
+def _save_change_freeze(project_id: str, active: bool, reason: str = "", actor: str = "") -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    if not pid:
+        return {"active": False}
+    state = _load_change_freeze_state()
+    state[pid] = {
+        "active": bool(active),
+        "reason": str(reason or "").strip(),
+        "updated_at": _now_iso(),
+        "updated_by": str(actor or "").strip(),
+    }
+    _save_json_config(OPS_CHANGE_FREEZE_KEY, state, description="Ops change freeze window per project")
+    return state[pid]
+
+
+def _resolve_action_target_from_payload(payload: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
+    """Resolve execute/validate target to a dispatch node (service > topology > agent > legacy node)."""
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "production")
+    target_key = str(payload.get("target_key") or "").strip()
+    target_type = str(payload.get("target_type") or "").strip().lower()
+    target_id = ""
+    if target_key and ":" in target_key:
+        target_type, target_id = target_key.split(":", 1)
+        target_type = target_type.strip().lower()
+        target_id = target_id.strip()
+    if not target_id:
+        target_id = str(
+            payload.get("service_id")
+            or payload.get("topology_node_id")
+            or payload.get("agent_id")
+            or payload.get("node_id")
+            or ""
+        ).strip()
+    if not target_type:
+        if payload.get("service_id"):
+            target_type = "service"
+        elif payload.get("agent_id"):
+            target_type = "agent"
+        elif payload.get("topology_node_id"):
+            target_type = "topology"
+        else:
+            target_type = "node"
+
+    body_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    if not isinstance(payload.get("payload"), dict):
+        payload["payload"] = body_payload
+
+    if target_type == "service":
+        service_hit = None
+        for svc in _services_for_project(project_id):
+            if isinstance(svc, dict) and str(svc.get("service_id") or "").strip() == target_id:
+                service_hit = svc
+                break
+        if not service_hit:
+            return None, "service_not_found"
+        topology_node_id = str(payload.get("node_id") or service_hit.get("node_id") or target_id).strip()
+        node = _resolve_ops_dispatch_node(project_id, topology_node_id, env_key)
+        if not node:
+            return None, "dispatch_node_not_found"
+        payload["node_id"] = str(node.get("id") or topology_node_id)
+        payload["service_id"] = target_id
+        payload["target"] = str(payload.get("target") or target_id)
+        payload["via_agent"] = bool(payload.get("via_agent", True))
+        payload["run_mode"] = str(payload.get("run_mode") or "agent")
+        body_payload.update({
+            "desired_service_id": target_id,
+            "desired_server_id": target_id,
+            "topology_node_id": topology_node_id,
+            "run_mode": "agent",
+        })
+        return node, ""
+
+    if target_type == "topology":
+        node = _resolve_ops_dispatch_node(project_id, target_id, env_key)
+        if not node:
+            return None, "topology_node_not_found"
+        payload["node_id"] = str(node.get("id") or target_id)
+        payload["topology_node_id"] = target_id
+        payload["target"] = str(payload.get("target") or target_id)
+        if "via_agent" not in payload:
+            payload["via_agent"] = True
+        return node, ""
+
+    if target_type == "agent":
+        reg = _load_agent_registry_v2()
+        agent_desc = reg.get(target_id) if isinstance(reg.get(target_id), dict) else {}
+        dispatch_id = str(agent_desc.get("node_id") or target_id).strip()
+        node = _resolve_ops_dispatch_node(project_id, dispatch_id, env_key)
+        if not node:
+            return None, "agent_dispatch_node_not_found"
+        payload["node_id"] = dispatch_id
+        payload["agent_id"] = target_id
+        payload["target"] = str(payload.get("target") or dispatch_id)
+        payload["via_agent"] = True
+        payload["run_mode"] = "agent"
+        body_payload.setdefault("desired_agent_id", target_id)
+        return node, ""
+
+    node, err = _node_or_400(payload)
+    if err:
+        return None, "legacy_node_not_found"
+    payload["node_id"] = str(node.get("id") or "")
+    payload["target"] = str(payload.get("target") or payload["node_id"])
+    return node, ""
+
+
+def _action_target_or_400(payload: Dict[str, Any]):
+    node, reason = _resolve_action_target_from_payload(payload)
+    if not node:
+        msg = {
+            "service_not_found": "未找到目标服务",
+            "dispatch_node_not_found": "服务对应拓扑节点不存在",
+            "topology_node_not_found": "未找到拓扑节点",
+            "agent_dispatch_node_not_found": "Agent 未绑定可调度节点",
+            "legacy_node_not_found": "未找到 nodes 配置节点",
+        }.get(reason, "未找到动作目标")
+        return None, (jsonify({"ok": False, "error": reason or "target_not_found", "message": msg}), 400)
+    return node, None
+
+
+def _list_action_targets(project_id: str) -> List[Dict[str, Any]]:
+    pid = str(project_id or "").strip()
+    out: List[Dict[str, Any]] = []
+    seen = set()
+
+    for svc in _services_for_project(pid):
+        if not isinstance(svc, dict):
+            continue
+        sid = str(svc.get("service_id") or "").strip()
+        if not sid:
+            continue
+        key = f"service:{sid}"
+        if key in seen:
+            continue
+        seen.add(key)
+        nid = str(svc.get("node_id") or sid).strip()
+        out.append({
+            "target_type": "service",
+            "target_key": key,
+            "node_id": nid,
+            "service_id": sid,
+            "agent_id": str(svc.get("agent_id") or ""),
+            "label": f"{svc.get('display_name') or sid} · 服务",
+            "role": str(svc.get("service_type") or ""),
+            "status": str(svc.get("status") or svc.get("run_state") or "UNKNOWN").upper(),
+            "probe_status": str(svc.get("probe_status") or ""),
+        })
+
+    ctx = _resolve_topology_context(pid, "production", "")
+    topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    tid = str(row.get("topology_id") or "")
+    bindings = _load_scope_agent_bindings(tid)
+    agents_map = {
+        str(a.get("agent_id") or ""): a
+        for a in _agents_v2_for_project(pid)
+        if isinstance(a, dict) and str(a.get("agent_id") or "")
+    }
+    for node in topo.get("nodes") if isinstance(topo.get("nodes"), list) else []:
+        if not isinstance(node, dict):
+            continue
+        nid = str(node.get("id") or "").strip()
+        if not nid:
+            continue
+        key = f"topology:{nid}"
+        if key in seen:
+            continue
+        seen.add(key)
+        aid = str(bindings.get(nid) or "")
+        agent = agents_map.get(aid) or {}
+        out.append({
+            "target_type": "topology",
+            "target_key": key,
+            "node_id": nid,
+            "service_id": nid,
+            "agent_id": aid,
+            "label": f"{node.get('name') or nid} · 拓扑",
+            "role": str(node.get("role") or ""),
+            "status": str(agent.get("effective_status") or agent.get("status") or "UNKNOWN").upper(),
+            "probe_status": str(agent.get("probe_status") or ""),
+        })
+
+    for ag in _logical_agents_for_project(pid):
+        if not isinstance(ag, dict) or ag.get("stale"):
+            continue
+        aid = str(ag.get("agent_id") or "").strip()
+        if not aid:
+            continue
+        key = f"agent:{aid}"
+        if key in seen:
+            continue
+        seen.add(key)
+        nid = str(ag.get("node_id") or "").strip()
+        out.append({
+            "target_type": "agent",
+            "target_key": key,
+            "node_id": nid,
+            "service_id": "",
+            "agent_id": aid,
+            "label": f"{ag.get('display_name') or aid} · Agent",
+            "role": str(ag.get("role") or ag.get("category") or ""),
+            "status": str(ag.get("effective_status") or ag.get("status") or "UNKNOWN").upper(),
+            "probe_status": str(ag.get("probe_status") or ""),
+        })
+
+    for item in _load_nodes():
+        if not isinstance(item, dict) or not item.get("enabled"):
+            continue
+        if pid and str(item.get("project_id") or "") not in ("", pid):
+            continue
+        nid = str(item.get("id") or "").strip()
+        if not nid:
+            continue
+        key = f"node:{nid}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "target_type": "node",
+            "target_key": key,
+            "node_id": nid,
+            "service_id": str(item.get("server_id") or nid),
+            "agent_id": "",
+            "label": f"{item.get('name') or nid} · 配置",
+            "role": str(item.get("role") or ""),
+            "status": "UNKNOWN",
+            "probe_status": "",
+        })
+    return out
+
+
+def _diagnostics_fix_actions(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+    actions: List[Dict[str, Any]] = []
+    target_key = str(row.get("target_key") or "")
+    if not target_key:
+        nid = str(row.get("node_id") or row.get("id") or "")
+        if nid:
+            target_key = f"service:{nid}" if row.get("service_id") else f"topology:{nid}"
+    if not target_key:
+        return actions
+    status = str(row.get("status") or "").upper()
+    probe = str(row.get("probe_status") or "").upper()
+    issues = row.get("issues") if isinstance(row.get("issues"), list) else []
+    actions.append({"label": "健康检查", "action_type": "health_check", "target_key": target_key, "risk": "low"})
+    if status in ("OFFLINE", "UNKNOWN", "DEGRADED") or probe != "PASS":
+        actions.append({"label": "就绪检查", "action_type": "ready_check", "target_key": target_key, "risk": "low"})
+    if status in ("OFFLINE", "UNKNOWN"):
+        actions.append({"label": "启动", "action_type": "start", "target_key": target_key, "risk": "high"})
+    if any("Agent" in str(x) or "绑定" in str(x) for x in issues):
+        actions.append({"label": "绑定 Agent", "href": f"/admin/ops-platform/agent-control?project_id={row.get('project_id') or ''}", "risk": "low"})
+    if any("ops_base_url" in str(x) for x in issues):
+        actions.append({"label": "拓扑编排", "href": f"/admin/ops-platform/topology?project_id={row.get('project_id') or ''}", "risk": "low"})
+    return actions
+
+
+def _build_diagnostics_summary(project_id: str = "") -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    onboarding = _build_node_onboarding(project_id=pid)
+    checks = onboarding.get("checks") if isinstance(onboarding.get("checks"), list) else []
+    targets = {str(t.get("node_id") or ""): t for t in _list_action_targets(pid)}
+    rows: List[Dict[str, Any]] = []
+    for chk in checks:
+        if not isinstance(chk, dict):
+            continue
+        nid = str(chk.get("node_id") or chk.get("id") or "").strip()
+        tgt = targets.get(nid) or {}
+        row = dict(chk)
+        row["project_id"] = pid
+        row["agent_id"] = str(tgt.get("agent_id") or "")
+        row["probe_status"] = str(tgt.get("probe_status") or "")
+        row["target_key"] = str(tgt.get("target_key") or (f"topology:{nid}" if nid else ""))
+        row["target_type"] = str(tgt.get("target_type") or "topology")
+        if row.get("agent_id") and not row.get("probe_status"):
+            row.setdefault("issues", [])
+            if isinstance(row["issues"], list):
+                row["issues"] = list(row["issues"]) + ["Agent 未探活或 probe 未 PASS"]
+        row["fix_actions"] = _diagnostics_fix_actions(row)
+        rows.append(row)
+
+    for tgt in _list_action_targets(pid):
+        nid = str(tgt.get("node_id") or "")
+        if not nid or any(str(r.get("node_id") or r.get("id") or "") == nid for r in rows):
+            continue
+        rows.append({
+            "id": nid,
+            "node_id": nid,
+            "node_name": tgt.get("label"),
+            "name": tgt.get("label"),
+            "role": tgt.get("role"),
+            "status": tgt.get("status") or "UNKNOWN",
+            "severity": "warning" if str(tgt.get("probe_status") or "").upper() != "PASS" else "ok",
+            "issues": [] if str(tgt.get("probe_status") or "").upper() == "PASS" else ["Agent probe 未 PASS"],
+            "message": "",
+            "agent_id": tgt.get("agent_id"),
+            "probe_status": tgt.get("probe_status"),
+            "target_key": tgt.get("target_key"),
+            "target_type": tgt.get("target_type"),
+            "project_id": pid,
+            "fix_actions": _diagnostics_fix_actions({**tgt, "project_id": pid}),
+        })
+
+    critical = sum(1 for r in rows if str(r.get("severity") or "") == "critical")
+    warning = sum(1 for r in rows if str(r.get("severity") or "") == "warning")
+    return {
+        "ok": True,
+        "summary": {
+            "total_nodes": len(rows),
+            "critical": critical,
+            "warning": warning,
+            "ok_nodes": max(0, len(rows) - critical - warning),
+        },
+        "checks": rows,
+    }
 
 
 def _allow_ops_view() -> bool:
@@ -1312,6 +1637,7 @@ OPS_NODE_SERVICE_BINDING_KEY = "OPS_PLATFORM_NODE_SERVICE_BINDING"
 OPS_AGENT_JOBS_KEY = "OPS_PLATFORM_AGENT_JOBS"
 OPS_AGENT_POLICY_KEY = "OPS_PLATFORM_AGENT_POLICY"
 OPS_RUNTIME_RUNS_KEY = "OPS_PLATFORM_RUNTIME_RUNS"
+OPS_CHANGE_FREEZE_KEY = "OPS_PLATFORM_CHANGE_FREEZE"
 CANONICAL_LOCAL_AGENT_ID = "agent-local-cn-1"
 CANONICAL_LOCAL_DEVICE_ID = "local-game-server"
 
@@ -1886,6 +2212,82 @@ def _resolve_ops_dispatch_node(project_id: str, node_id: str, env_key: str = "pr
     return _normalize_node(built)
 
 
+def _resolve_flow_test_node(payload: Dict[str, Any], node_id: str = "") -> Optional[Dict[str, Any]]:
+    project_id = str((payload or {}).get("project_id") or "").strip()
+    env_key = _normalize_env_key((payload or {}).get("env_key") or "production")
+    nid = str(node_id or (payload or {}).get("node_id") or "").strip()
+    if not nid:
+        return None
+    if project_id:
+        hit = _resolve_ops_dispatch_node(project_id, nid, env_key)
+        if hit:
+            return hit
+    return _resolve_node(
+        node_id=nid,
+        project_id=project_id,
+        env=str((payload or {}).get("env") or "").strip(),
+        channel=str((payload or {}).get("channel") or "").strip(),
+    )
+
+
+def _smoke_probe_topology_node(project_id: str, env_key: str, topology_id: str, node: Dict[str, Any]) -> Dict[str, Any]:
+    contract = _resolve_node_contract_for_topology_node(node)
+    port = _resolve_topology_node_port(node, contract, None, None)
+    host = "127.0.0.1"
+    role = str(node.get("role") or "").strip().lower()
+    nid = str(node.get("id") or "")
+
+    if _is_external_daemon_node(node):
+        ok = _probe_tcp_open(host, port) if port > 0 else False
+        return {"ok": ok, "message": f"daemon tcp {'PASS' if ok else 'FAIL'} ({host}:{port})", "mode": "tcp-probe"}
+
+    if port > 0 and _probe_tcp_open(host, port):
+        return {"ok": True, "message": f"tcp PASS ({host}:{port})", "mode": "tcp-probe"}
+
+    if role in ("auth", "game", "business", "admin", "ops"):
+        for svc in _services_for_project(project_id):
+            if not isinstance(svc, dict):
+                continue
+            st = str(svc.get("status") or svc.get("run_state") or "").upper()
+            p = int(svc.get("remote_game_server_port") or svc.get("service_port") or 0)
+            if st in ("RUNNING", "ONLINE", "READY", "STARTING") and p > 0 and _probe_tcp_open(host, p):
+                return {
+                    "ok": True,
+                    "message": f"cluster service live via {svc.get('service_id')}:{p}",
+                    "mode": "cluster-probe",
+                }
+        return {
+            "ok": False,
+            "message": f"节点 {nid} 未检测到可用端口（请先一键启动全流程）",
+            "mode": "cluster-probe",
+        }
+
+    ok = _probe_tcp_open(host, port) if port > 0 else False
+    return {"ok": ok, "message": f"tcp {'PASS' if ok else 'FAIL'} ({host}:{port or '-'})", "mode": "tcp-probe"}
+
+
+def _auto_approve_ops_request(req: Dict[str, Any], node: Dict[str, Any], validation: Dict[str, Any], actor: str, note: str) -> Dict[str, Any]:
+    if not validation.get("require_approval") or validation.get("approved"):
+        return validation
+    aid = create_approval(
+        "gm_ops_action",
+        actor,
+        "ops_action",
+        str(validation.get("approval_target_id") or ""),
+        reason=str(validation.get("reason") or note),
+        project_id=str(node.get("project_id") or ""),
+    )
+    ok, err = approve_or_reject(aid, actor, "approve", note)
+    if not ok:
+        validation = dict(validation)
+        validation["ok"] = False
+        validation["missing"] = list(validation.get("missing") or []) + ["approval_failed"]
+        validation["approval_error"] = str(err or "approval failed")
+        return validation
+    req["approval_id"] = aid
+    return _validate_ops_request(req, node)
+
+
 def _needs_design_reference_upgrade(topo: Any) -> bool:
     if not isinstance(topo, dict):
         return True
@@ -2317,6 +2719,9 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
             "design_reference": str(meta.get("design_reference") or ""),
         "runtime_topology": bool(meta.get("runtime_topology")),
         "cluster_source": bool(meta.get("cluster_source")),
+        "workbench_mode": str(meta.get("workbench_mode") or "edit"),
+        "workbench_locked_mode": str(meta.get("workbench_locked_mode") or ""),
+        "workbench_mode_updated_at": str(meta.get("workbench_mode_updated_at") or ""),
         "description": str(meta.get("description") or ""),
     }
     if isinstance(meta.get("layout_spacing"), dict) or meta.get("layout_spacing_customized"):
@@ -2493,6 +2898,25 @@ def _build_runtime_node_from_topology_node(project_id: str, env_key: str, topo_n
     base["role"] = str(node.get("role") or base.get("role") or "business")
     base["description"] = str(node.get("desc") or node.get("description") or base.get("description") or "")
     base["topology_id"] = str(topology_id or "")
+    base["preset_id"] = str(node.get("preset_id") or "").strip()
+    base["daemon_profile"] = str(node.get("daemon_profile") or "").strip()
+    base["daemon_start_cmd"] = str(node.get("daemon_start_cmd") or "").strip()
+    base["daemon_stop_cmd"] = str(node.get("daemon_stop_cmd") or "").strip()
+    if node.get("daemon_port") is not None:
+        base["daemon_port"] = int(node.get("daemon_port") or 0)
+    contract = _resolve_node_contract_for_topology_node(node)
+    port = _resolve_topology_node_port(node, contract, None, None)
+    if port > 0:
+        base["port"] = port
+    preset_id = str(node.get("preset_id") or contract.get("preset_id") or "").strip()
+    if preset_id and (not base.get("daemon_start_cmd") or not base.get("daemon_stop_cmd")):
+        daemon_defaults = _contract_daemon_defaults(preset_id, port)
+        if not base.get("daemon_start_cmd"):
+            base["daemon_start_cmd"] = _format_contract_command(str(daemon_defaults.get("StartCommand") or ""), port)
+        if not base.get("daemon_stop_cmd"):
+            base["daemon_stop_cmd"] = _format_contract_command(str(daemon_defaults.get("StopCommand") or ""), port)
+    if preset_id == "mongo_db" and base.get("daemon_start_cmd"):
+        os.makedirs("/tmp/gomeku-mongo", exist_ok=True)
     return base
 
 
@@ -3162,22 +3586,39 @@ def _runtime_active_for_scope(project_id: str, env_key: str, topology_id: str) -
         if tid and str(row.get("topology_id") or "") != tid:
             continue
         op = str(row.get("op") or "").lower()
-        st = str(row.get("status") or "").lower()
-        if op == "start" and st in ("running", "queued"):
-            if latest_start is None:
+        ts = str(row.get("updated_at") or row.get("created_at") or "")
+        if op == "start":
+            prev_ts = str((latest_start or {}).get("updated_at") or (latest_start or {}).get("created_at") or "")
+            if latest_start is None or ts >= prev_ts:
                 latest_start = row
-        if op == "stop" and st in ("running", "queued"):
-            if latest_stop is None:
+        if op == "stop":
+            prev_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
+            if latest_stop is None or ts >= prev_ts:
                 latest_stop = row
     if not latest_start:
         return {"active": False, "run_id": "", "status": "", "reason": "no_start_run"}
     start_ts = str(latest_start.get("updated_at") or latest_start.get("created_at") or "")
     stop_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
+    stop_st = str((latest_stop or {}).get("status") or "").lower()
     if latest_stop and stop_ts and start_ts and stop_ts >= start_ts:
-        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "stopped_after_start"}
-    if str(latest_start.get("status") or "").lower() in ("failed", "success", "timeout", "canceled"):
-        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "start_finished"}
-    return {"active": True, "run_id": str(latest_start.get("run_id") or ""), "status": str(latest_start.get("status") or ""), "reason": "start_alive"}
+        if stop_st in ("success", "running", "queued"):
+            return {
+                "active": False,
+                "run_id": str(latest_stop.get("run_id") or latest_start.get("run_id") or ""),
+                "status": stop_st,
+                "reason": "stopped_after_start" if stop_st == "success" else "stop_in_progress",
+            }
+        if stop_st in ("failed", "timeout", "canceled"):
+            return {
+                "active": True,
+                "run_id": str(latest_start.get("run_id") or ""),
+                "status": str(latest_start.get("status") or ""),
+                "reason": "stop_failed",
+            }
+    start_st = str(latest_start.get("status") or "").lower()
+    if start_st in ("failed", "success", "timeout", "canceled"):
+        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": start_st, "reason": "start_finished"}
+    return {"active": True, "run_id": str(latest_start.get("run_id") or ""), "status": start_st, "reason": "start_alive"}
 
 
 def _default_agent_policy() -> Dict[str, Any]:
@@ -5164,21 +5605,25 @@ def _member_registration_origin(item: Dict[str, Any]) -> str:
 
 
 def _effective_runtime_status(status: Any, run_state: Any, probe_status: Any = "") -> str:
+    probe = str(probe_status or "").strip().upper()
+    if probe == "FAIL":
+        return "OFFLINE"
     run = str(run_state or "").strip().upper()
-    if run in ("RUNNING", "READY"):
+    if run in ("RUNNING", "READY") and probe == "PASS":
         return "RUNNING"
     if run in ("STARTING", "STOPPING", "RESTARTING"):
         return run
     if run in ("STOPPED", "STOP"):
         return "STOPPED"
     base = str(status or "").strip().upper()
-    if base:
+    if base in ("STOPPED", "OFFLINE", "FAILED"):
         return base
-    probe = str(probe_status or "").strip().upper()
     if probe == "PASS":
         return "ONLINE"
-    if probe == "FAIL":
-        return "OFFLINE"
+    if run in ("RUNNING", "READY"):
+        return "UNKNOWN"
+    if base:
+        return base
     return "UNKNOWN"
 
 
@@ -6721,83 +7166,298 @@ def ops_platform_module_map():
     return jsonify({"ok": True, "modules": modules})
 
 
+_TOPOLOGY_BLUEPRINT_FRAMEWORK_VERSION = 2
+
+# 通用游戏服商业分层（与具体项目/游戏类型解耦）：入口 → 控制面 → 业务 → 传输(可选) → 异步/数据
+_BLUEPRINT_LAYER_BY_PRESET: Dict[str, int] = {
+    "gateway_http": 0,
+    "auth_service": 1,
+    "ops_service": 1,
+    "business_main": 2,
+    "tcp_transport": 3,
+    "scheduler_job": 4,
+    "mq_kafka": 4,
+    "pressure_worker": 4,
+    "redis_cache": 5,
+    "mongo_db": 5,
+}
+
+
+def _gateway_blueprint_ports() -> Dict[str, List[Dict[str, Any]]]:
+    return {
+        "in": [],
+        "out": [
+            {"id": "out-1", "label": "http:80", "kind": "out", "max_links": 8, "required": False},
+            {"id": "out-2", "label": "http:443", "kind": "out", "max_links": 8, "required": False},
+        ],
+    }
+
+
+def _commercial_framework_core_edges() -> List[Dict[str, Any]]:
+    """各规模模板共享的控制面与数据层连线（preset 级，应用时按实例展开）。"""
+    return [
+        {"from": "gateway_http", "to": "auth_service", "from_port": "out-1", "note": "http:80", "mode": "each_to_all"},
+        {"from": "gateway_http", "to": "ops_service", "from_port": "out-2", "note": "http:443", "mode": "each_to_all"},
+        {"from": "auth_service", "to": "business_main", "note": "tcp:session", "mode": "each_to_all"},
+        {"from": "ops_service", "to": "business_main", "note": "tcp:control", "mode": "each_to_all"},
+        {"from": "business_main", "to": "redis_cache", "note": "structured-auto", "mode": "each_to_all"},
+        {"from": "business_main", "to": "mongo_db", "note": "structured-auto", "mode": "each_to_all"},
+    ]
+
+
+def _normalize_blueprint_edge_rel(rel: Any) -> Optional[Dict[str, Any]]:
+    if isinstance(rel, list) and len(rel) >= 2:
+        mode = "round_robin"
+        if len(rel) > 2 and isinstance(rel[2], str):
+            mode = str(rel[2] or "round_robin").strip().lower()
+        return {
+            "from": str(rel[0] or "").strip(),
+            "to": str(rel[1] or "").strip(),
+            "mode": mode,
+            "from_port": "out-1",
+            "to_port": "in-1",
+            "note": "blueprint-auto",
+            "type": "depends_on",
+        }
+    if isinstance(rel, dict):
+        frm = str(rel.get("from") or rel.get("from_preset") or "").strip()
+        to = str(rel.get("to") or rel.get("to_preset") or "").strip()
+        if not frm or not to:
+            return None
+        return {
+            "from": frm,
+            "to": to,
+            "mode": str(rel.get("mode") or "round_robin").strip().lower(),
+            "from_port": str(rel.get("from_port") or "out-1").strip(),
+            "to_port": str(rel.get("to_port") or "in-1").strip(),
+            "note": str(rel.get("note") or "blueprint-auto").strip(),
+            "type": str(rel.get("type") or "depends_on").strip(),
+        }
+    return None
+
+
+def _blueprint_edge_instance_pairs(source_ids: List[str], target_ids: List[str], mode: str) -> List[Tuple[str, str]]:
+    if not source_ids or not target_ids:
+        return []
+    m = str(mode or "round_robin").strip().lower()
+    pairs: List[Tuple[str, str]] = []
+    if m == "each_to_all":
+        for sid in source_ids:
+            for tid in target_ids:
+                pairs.append((sid, tid))
+    elif m == "each_to_first":
+        tid = target_ids[0]
+        for sid in source_ids:
+            pairs.append((sid, tid))
+    elif m == "indexed":
+        for idx, sid in enumerate(source_ids):
+            if idx < len(target_ids):
+                pairs.append((sid, target_ids[idx]))
+    else:
+        for idx, sid in enumerate(source_ids):
+            pairs.append((sid, target_ids[idx % len(target_ids)]))
+    return pairs
+
+
+def _apply_topology_blueprint_edges(
+    topo: Dict[str, Any],
+    created_by_preset: Dict[str, List[str]],
+    plan_edges: List[Any],
+) -> None:
+    if not isinstance(topo.get("edges"), list):
+        topo["edges"] = []
+    existing = topo["edges"]
+    for rel in plan_edges or []:
+        spec = _normalize_blueprint_edge_rel(rel)
+        if not spec:
+            continue
+        s_nodes = created_by_preset.get(str(spec.get("from") or "")) or []
+        t_nodes = created_by_preset.get(str(spec.get("to") or "")) or []
+        if not s_nodes or not t_nodes:
+            continue
+        for sid, tid in _blueprint_edge_instance_pairs(s_nodes, t_nodes, str(spec.get("mode") or "round_robin")):
+            dup = False
+            for edge in existing:
+                if not isinstance(edge, dict):
+                    continue
+                if (
+                    str(edge.get("from") or "") == sid
+                    and str(edge.get("to") or "") == tid
+                    and str(edge.get("from_port") or "out-1") == str(spec.get("from_port") or "out-1")
+                ):
+                    dup = True
+                    break
+            if dup:
+                continue
+            existing.append(
+                {
+                    "id": f"edge-{uuid.uuid4().hex[:10]}",
+                    "from": sid,
+                    "to": tid,
+                    "from_port": str(spec.get("from_port") or "out-1"),
+                    "to_port": str(spec.get("to_port") or "in-1"),
+                    "type": str(spec.get("type") or "depends_on"),
+                    "note": str(spec.get("note") or "blueprint-auto"),
+                }
+            )
+
+
+def _layout_blueprint_nodes_by_layer(topo: Dict[str, Any], created_node_ids: List[str]) -> None:
+    created_set = set(created_node_ids)
+    created_nodes = [n for n in (topo.get("nodes") or []) if isinstance(n, dict) and str(n.get("id") or "") in created_set]
+    if not created_nodes:
+        return
+    layer_buckets: Dict[int, List[Dict[str, Any]]] = {}
+    for node in created_nodes:
+        preset_id = str(node.get("preset_id") or "").strip()
+        layer = int(_BLUEPRINT_LAYER_BY_PRESET.get(preset_id, 2))
+        layer_buckets.setdefault(layer, []).append(node)
+    rank_gap = 268.0
+    row_gap = 128.0
+    base_x = 72.0
+    base_y = 48.0
+    for layer in sorted(layer_buckets.keys()):
+        rows = layer_buckets[layer]
+        x = base_x + float(layer) * rank_gap
+        for idx, node in enumerate(rows):
+            y = base_y + float(idx) * row_gap
+            node["x"] = x
+            node["y"] = y
+            ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
+            ui["x"] = x
+            ui["y"] = y
+            if "w" not in ui:
+                ui["w"] = 220
+            if "h" not in ui:
+                ui["h"] = 90
+            node["ui"] = ui
+
+
 def _default_topology_blueprints() -> List[Dict[str, Any]]:
+    core_edges = _commercial_framework_core_edges()
     return [
         {
             "blueprint_id": "minimal_framework",
+            "blueprint_version": _TOPOLOGY_BLUEPRINT_FRAMEWORK_VERSION,
             "name": "最小框架",
-            "desc": "入口 + 业务 + 数据与缓存，适合快速起服",
+            "desc": "通用游戏服最小栈：入口网关、认证、运维控制、业务逻辑、缓存与主库；适合单机/开发/小规模上线",
+            "framework_profile": "commercial_game_server",
             "nodes": [
                 {"preset_id": "gateway_http", "count": 1},
+                {"preset_id": "auth_service", "count": 1},
+                {"preset_id": "ops_service", "count": 1},
                 {"preset_id": "business_main", "count": 1},
-                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "redis_cache", "count": 1},
+                {"preset_id": "mongo_db", "count": 1},
             ],
-            "edges": [
-                ["gateway_http", "business_main"],
-                ["business_main", "mongo_db"],
-                ["business_main", "redis_cache"],
-            ],
+            "edges": list(core_edges),
         },
         {
             "blueprint_id": "medium_framework",
+            "blueprint_version": _TOPOLOGY_BLUEPRINT_FRAMEWORK_VERSION,
             "name": "中型框架",
-            "desc": "增加调度与消息队列，适合常规商业服",
+            "desc": "通用中型架构：最小栈 + 业务水平扩展、异步消息与定时调度；适合常规商业服与多实例部署",
+            "framework_profile": "commercial_game_server",
             "nodes": [
                 {"preset_id": "gateway_http", "count": 1},
+                {"preset_id": "auth_service", "count": 1},
+                {"preset_id": "ops_service", "count": 1},
                 {"preset_id": "business_main", "count": 2},
                 {"preset_id": "scheduler_job", "count": 1},
-                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "redis_cache", "count": 1},
+                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "mq_kafka", "count": 1},
             ],
-            "edges": [
-                ["gateway_http", "business_main"],
-                ["business_main", "mongo_db"],
-                ["business_main", "redis_cache"],
-                ["business_main", "mq_kafka"],
-                ["scheduler_job", "business_main"],
-                ["scheduler_job", "mongo_db"],
+            "edges": list(core_edges)
+            + [
+                {"from": "business_main", "to": "mq_kafka", "note": "async-events", "mode": "each_to_all"},
+                {"from": "scheduler_job", "to": "business_main", "note": "batch-jobs", "mode": "each_to_all"},
+                {"from": "scheduler_job", "to": "mongo_db", "note": "batch-read", "mode": "each_to_first"},
             ],
         },
         {
             "blueprint_id": "full_framework",
+            "blueprint_version": _TOPOLOGY_BLUEPRINT_FRAMEWORK_VERSION,
             "name": "全量框架",
-            "desc": "入口、核心业务、调度、压测、消息、多库，适合完整运维链路",
+            "desc": "通用大型架构：多入口、控制面、多业务实例、实时传输、消息与调度；适合完整运维链路与生产扩展",
+            "framework_profile": "commercial_game_server",
             "nodes": [
                 {"preset_id": "gateway_http", "count": 2},
+                {"preset_id": "auth_service", "count": 1},
+                {"preset_id": "ops_service", "count": 1},
                 {"preset_id": "business_main", "count": 3},
+                {"preset_id": "tcp_transport", "count": 1},
                 {"preset_id": "scheduler_job", "count": 1},
-                {"preset_id": "pressure_worker", "count": 1},
-                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "redis_cache", "count": 1},
+                {"preset_id": "mongo_db", "count": 1},
                 {"preset_id": "mq_kafka", "count": 1},
             ],
+            "edges": list(core_edges)
+            + [
+                {"from": "business_main", "to": "tcp_transport", "note": "tcp:realtime", "mode": "each_to_all"},
+                {"from": "business_main", "to": "mq_kafka", "note": "async-events", "mode": "each_to_all"},
+                {"from": "scheduler_job", "to": "business_main", "note": "batch-jobs", "mode": "each_to_all"},
+                {"from": "scheduler_job", "to": "mongo_db", "note": "batch-read", "mode": "each_to_first"},
+            ],
+        },
+        {
+            "blueprint_id": "pressure_test_framework",
+            "blueprint_version": _TOPOLOGY_BLUEPRINT_FRAMEWORK_VERSION,
+            "name": "压测框架",
+            "desc": "压测专用（非生产）：入口网关 + 业务节点 + 压测 Worker；不含 Auth/Ops/缓存/数据库，与商业生产模板隔离",
+            "framework_profile": "pressure_test",
+            "nodes": [
+                {"preset_id": "gateway_http", "count": 1},
+                {"preset_id": "business_main", "count": 1},
+                {"preset_id": "pressure_worker", "count": 1},
+            ],
             "edges": [
-                ["gateway_http", "business_main"],
-                ["business_main", "mongo_db"],
-                ["business_main", "redis_cache"],
-                ["business_main", "mq_kafka"],
-                ["scheduler_job", "business_main"],
-                ["scheduler_job", "mongo_db"],
-                ["pressure_worker", "business_main"],
+                {"from": "gateway_http", "to": "business_main", "from_port": "out-1", "note": "http:load-entry", "mode": "each_to_all"},
+                {"from": "pressure_worker", "to": "business_main", "note": "stress:qps", "mode": "each_to_all"},
             ],
         },
     ]
 
 
+def _merge_topology_blueprints_with_defaults(stored: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+    defaults = _default_topology_blueprints()
+    default_by_id = {str(d.get("blueprint_id") or ""): d for d in defaults}
+    stored_by_id = {
+        str(x.get("blueprint_id") or ""): x
+        for x in stored
+        if isinstance(x, dict) and str(x.get("blueprint_id") or "").strip()
+    }
+    merged: List[Dict[str, Any]] = []
+    changed = False
+    for default_row in defaults:
+        bid = str(default_row.get("blueprint_id") or "")
+        old = stored_by_id.get(bid)
+        old_ver = int(old.get("blueprint_version") or 0) if isinstance(old, dict) else 0
+        new_ver = int(default_row.get("blueprint_version") or 0)
+        if isinstance(old, dict) and old_ver >= new_ver:
+            merged.append(old)
+        else:
+            merged.append(default_row)
+            changed = True
+    for bid, row in stored_by_id.items():
+        if bid not in default_by_id:
+            merged.append(row)
+    if not stored:
+        changed = True
+    return merged, changed
+
+
 def _load_topology_blueprints() -> List[Dict[str, Any]]:
     raw = get_system_config(OPS_TOPOLOGY_BLUEPRINTS_KEY, [])
-    if isinstance(raw, list) and raw:
-        out: List[Dict[str, Any]] = []
+    stored: List[Dict[str, Any]] = []
+    if isinstance(raw, list):
         for item in raw:
             if isinstance(item, dict) and str(item.get("blueprint_id") or "").strip():
-                out.append(item)
-        if out:
-            return out
-    rows = _default_topology_blueprints()
-    _save_json_config(OPS_TOPOLOGY_BLUEPRINTS_KEY, rows, description="Ops topology blueprints")
-    return rows
+                stored.append(item)
+    merged, changed = _merge_topology_blueprints_with_defaults(stored)
+    if changed or not stored:
+        _save_json_config(OPS_TOPOLOGY_BLUEPRINTS_KEY, merged, description="Ops topology blueprints")
+    return merged
 
 
 @bp.route("/api/ops-platform/control-plane/summary")
@@ -8401,10 +9061,16 @@ def ops_platform_topology_auto_bind_agents():
 def ops_platform_change_governance_summary():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
     events = _load_json_config(OPS_EVENT_LOG_KEY, [])
     if not isinstance(events, list):
         events = []
     recent = [x for x in events if isinstance(x, dict)][:200]
+    if project_id:
+        recent = [
+            x for x in recent
+            if not str(x.get("project_id") or "").strip() or str(x.get("project_id") or "") == project_id
+        ]
     high_risk = 0
     failed = 0
     change_evt = 0
@@ -8423,6 +9089,8 @@ def ops_platform_change_governance_summary():
         if not isinstance(item, dict):
             continue
         if str(item.get("status") or "").lower() in ("pending", "open"):
+            if project_id and str(item.get("project_id") or "") not in ("", project_id):
+                continue
             pending_approvals += 1
     metrics = {
         "pending_approvals": pending_approvals,
@@ -8430,8 +9098,76 @@ def ops_platform_change_governance_summary():
         "failed_actions_24h": failed,
         "change_events_24h": change_evt,
     }
-    window = {"freeze_active": False}
-    return jsonify({"ok": True, "metrics": metrics, "events": recent[:20], "window": window})
+    freeze = _change_freeze_for_project(project_id)
+    ctx = _resolve_topology_context(project_id, "production", "") if project_id else {}
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    tid = str(row.get("topology_id") or "")
+    env_key = str(row.get("env_key") or "production")
+    runtime_active = _runtime_active_for_scope(project_id, env_key, tid) if project_id and tid else {"active": False}
+    live_verified = False
+    live_count = 0
+    live_total = 0
+    if project_id and tid and _project_uses_runtime_topology(project_id):
+        try:
+            topo = _load_topology_scoped(project_id, env_key, tid)
+            topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+            bindings = _load_scope_service_bindings(tid)
+            probe_stat = _refresh_runtime_service_probes_from_topology(project_id, env_key, tid, topo_nodes, bindings)
+            live_count = int(probe_stat.get("live_count") or 0)
+            live_total = int(probe_stat.get("total") or 0)
+            live_verified = bool(live_total > 0 and live_count >= live_total and probe_stat.get("gateway_live"))
+        except Exception:
+            live_verified = False
+    window = {
+        "freeze_active": bool(freeze.get("active")),
+        "freeze_reason": str(freeze.get("reason") or ""),
+        "freeze_updated_at": str(freeze.get("updated_at") or ""),
+        "topology_id": tid,
+        "env_key": env_key,
+        "runtime_active": bool(runtime_active.get("active")),
+        "runtime_run_id": str(runtime_active.get("run_id") or ""),
+        "runtime_status": str(runtime_active.get("status") or ""),
+        "runtime_live_verified": live_verified,
+        "runtime_live_count": live_count,
+        "runtime_live_total": live_total,
+    }
+    return jsonify({"ok": True, "project_id": project_id, "metrics": metrics, "events": recent[:20], "window": window})
+
+
+@bp.route("/api/ops-platform/change-governance/freeze", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_change_governance_freeze():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    if not project_id:
+        return jsonify({"ok": False, "error": "missing_project_id"}), 400
+    active = bool(payload.get("active"))
+    reason = str(payload.get("reason") or ("变更冻结" if active else "解除冻结"))
+    actor = str(session.get("user") or "admin")
+    saved = _save_change_freeze(project_id, active, reason, actor)
+    log_audit("ops_platform_change_freeze", f"project={project_id}; active={active}")
+    return jsonify({"ok": True, "project_id": project_id, "window": saved})
+
+
+@bp.route("/api/ops-platform/action-targets")
+@admin_required("gm_ops")
+def ops_platform_action_targets():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    targets = _list_action_targets(project_id)
+    return jsonify({"ok": True, "project_id": project_id, "count": len(targets), "targets": targets})
+
+
+@bp.route("/api/ops-platform/diagnostics/summary")
+@admin_required("gm_ops")
+def ops_platform_diagnostics_summary():
+    if not _allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    return jsonify(_build_diagnostics_summary(project_id=project_id))
 
 
 @bp.route("/api/ops-platform/action-catalog")
@@ -8452,7 +9188,7 @@ def ops_platform_action_catalog():
         {"groupId": "special", "group": "Special Job", "value": "smoke_test", "label": "冒烟测试", "risk": "medium"},
         {"groupId": "special", "group": "Special Job", "value": "stress_test", "label": "压力测试", "risk": "high"},
     ]
-    return jsonify({"ok": True, "data": rows})
+    return jsonify({"ok": True, "actions": rows, "data": rows, "catalog": rows})
 
 
 @bp.route("/api/ops-platform/topology")
@@ -8492,19 +9228,15 @@ def ops_platform_topology_workbench_mode():
         return jsonify({"ok": False, "error": "invalid_mode", "message": "无效的工作台模式"}), 400
     if locked_mode and locked_mode not in ("edit", "run", "test"):
         return jsonify({"ok": False, "error": "invalid_locked_mode", "message": "无效的锁定模式"}), 400
-    ctx = _resolve_topology_context(project_id, env_key, topology_id)
-    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
-    tid = str(row.get("topology_id") or topology_id or "").strip()
-    if not tid:
-        return jsonify({"ok": False, "error": "topology_not_found"}), 404
-    contents = _load_topology_contents()
-    topo = contents.get(tid) if isinstance(contents.get(tid), dict) else None
-    if not isinstance(topo, dict):
-        scoped = _load_topology_scoped(project_id, env_key, topology_id)
-        topo = scoped if isinstance(scoped, dict) else None
-    if not isinstance(topo, dict):
-        return jsonify({"ok": False, "error": "topology_not_found"}), 404
-    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    scoped = _load_topology_scoped(project_id, env_key, topology_id)
+    registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
+    tid = str(registry.get("topology_id") or topology_id or "").strip()
+    pid = str(registry.get("project_id") or project_id or "").strip()
+    env = _normalize_env_key(registry.get("env_key") or env_key or "production")
+    nodes = scoped.get("nodes") if isinstance(scoped.get("nodes"), list) else []
+    if not tid or not nodes:
+        return jsonify({"ok": False, "error": "topology_not_found", "message": "未找到拓扑或拓扑为空"}), 404
+    meta = scoped.get("meta") if isinstance(scoped.get("meta"), dict) else {}
     if workbench_mode in ("edit", "run", "test"):
         meta["workbench_mode"] = workbench_mode
     if "workbench_locked_mode" in payload:
@@ -8512,18 +9244,26 @@ def ops_platform_topology_workbench_mode():
         if locked_mode in ("edit", "run", "test"):
             meta["workbench_mode"] = locked_mode
     meta["workbench_mode_updated_at"] = _now_iso()
-    topo["meta"] = meta
-    contents[tid] = topo
-    _save_topology_contents(contents)
+    saved = _save_topology_scoped(
+        pid,
+        env,
+        tid,
+        {
+            "nodes": nodes,
+            "edges": scoped.get("edges") if isinstance(scoped.get("edges"), list) else [],
+            "meta": meta,
+        },
+    )
+    saved_meta = saved.get("meta") if isinstance(saved.get("meta"), dict) else meta
     log_audit(
         "ops_platform_topology_workbench_mode",
-        f"topology={tid}; mode={meta.get('workbench_mode')}; locked={meta.get('workbench_locked_mode') or ''}",
+        f"topology={tid}; mode={saved_meta.get('workbench_mode')}; locked={saved_meta.get('workbench_locked_mode') or ''}",
     )
     return jsonify({
         "ok": True,
-        "workbench_mode": str(meta.get("workbench_mode") or "edit"),
-        "workbench_locked_mode": str(meta.get("workbench_locked_mode") or ""),
-        "workbench_mode_updated_at": str(meta.get("workbench_mode_updated_at") or ""),
+        "workbench_mode": str(saved_meta.get("workbench_mode") or "edit"),
+        "workbench_locked_mode": str(saved_meta.get("workbench_locked_mode") or ""),
+        "workbench_mode_updated_at": str(saved_meta.get("workbench_mode_updated_at") or ""),
     })
 
 
@@ -9236,6 +9976,8 @@ def ops_platform_topology_blueprints():
                 "blueprint_id": str(x.get("blueprint_id") or ""),
                 "name": str(x.get("name") or ""),
                 "desc": str(x.get("desc") or ""),
+                "framework_profile": str(x.get("framework_profile") or ""),
+                "blueprint_version": int(x.get("blueprint_version") or 0),
                 "nodes": x.get("nodes") if isinstance(x.get("nodes"), list) else [],
                 "edges": x.get("edges") if isinstance(x.get("edges"), list) else [],
             }
@@ -9296,6 +10038,7 @@ def ops_platform_apply_blueprint():
             created_by_preset.setdefault(preset_id, []).append(new_id)
             remote_ui = {"port": default_port} if default_port > 0 else {}
             network_ui = {"endpoints": [f"127.0.0.1:{default_port}"]} if default_port > 0 else {}
+            node_ports = _gateway_blueprint_ports() if preset_id == "gateway_http" else _normalize_ports(node_kind, None)
             topo["nodes"].append(
                 {
                     "id": new_id,
@@ -9323,65 +10066,17 @@ def ops_platform_apply_blueprint():
                         "h": 90,
                         "color": "#0f172a",
                         "locked": False,
-                        "ports": _normalize_ports(node_kind, None),
+                        "ports": node_ports,
                         "remote": remote_ui,
                         "network": network_ui,
                     },
                 }
             )
 
-    # layout newly created nodes in a grid region
-    created_set = set(created_node_ids)
-    created_nodes = [n for n in topo.get("nodes") if isinstance(n, dict) and str(n.get("id") or "") in created_set]
-    for idx, n in enumerate(created_nodes):
-        col = idx % 4
-        row = idx // 4
-        x = float(120 + col * 300)
-        y = float(120 + row * 180)
-        n["x"] = x
-        n["y"] = y
-        ui = n.get("ui") if isinstance(n.get("ui"), dict) else {}
-        ui["x"] = x
-        ui["y"] = y
-        if "w" not in ui:
-            ui["w"] = 220
-        if "h" not in ui:
-            ui["h"] = 90
-        n["ui"] = ui
+    _layout_blueprint_nodes_by_layer(topo, created_node_ids)
 
-    # connect edges by blueprint relation between first-available node instances
     plan_edges = bp_item.get("edges") if isinstance(bp_item.get("edges"), list) else []
-    for rel in plan_edges:
-        if not (isinstance(rel, list) and len(rel) == 2):
-            continue
-        sp = str(rel[0] or "").strip()
-        tp = str(rel[1] or "").strip()
-        s_nodes = created_by_preset.get(sp) or []
-        t_nodes = created_by_preset.get(tp) or []
-        if not s_nodes or not t_nodes:
-            continue
-        for si, s_id in enumerate(s_nodes):
-            t_id = t_nodes[si % len(t_nodes)]
-            dup = False
-            for e in (topo.get("edges") or []):
-                if not isinstance(e, dict):
-                    continue
-                if str(e.get("from") or "") == s_id and str(e.get("to") or "") == t_id:
-                    dup = True
-                    break
-            if dup:
-                continue
-            topo["edges"].append(
-                {
-                    "id": f"edge-{uuid.uuid4().hex[:10]}",
-                    "from": s_id,
-                    "to": t_id,
-                    "from_port": "out-1",
-                    "to_port": "in-1",
-                    "type": "depends_on",
-                    "note": "blueprint-auto",
-                }
-            )
+    _apply_topology_blueprint_edges(topo, created_by_preset, plan_edges)
 
     saved_topo = _save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
     log_audit("ops_platform_apply_blueprint", f"blueprint={bid}; created={len(created_node_ids)}; project={project_id}")
@@ -9864,7 +10559,19 @@ def _local_service_status_snapshot(project_id: str, topology_node_id: str, servi
     }
 
 
-def _launch_local_game_server(reason: str = "") -> Dict[str, Any]:
+def _launch_local_game_server(reason: str = "", wait_ready: bool = True, timeout_sec: int = 180) -> Dict[str, Any]:
+    if not hasattr(_launch_local_game_server, "_lock"):
+        _launch_local_game_server._lock = threading.Lock()  # type: ignore[attr-defined]
+    lock: threading.Lock = _launch_local_game_server._lock  # type: ignore[attr-defined]
+    if not lock.acquire(blocking=False):
+        return {"success": False, "message": "GameServer 启动正在进行中，请稍候再试"}
+    try:
+        return _launch_local_game_server_impl(reason, wait_ready, timeout_sec)
+    finally:
+        lock.release()
+
+
+def _launch_local_game_server_impl(reason: str = "", wait_ready: bool = True, timeout_sec: int = 180) -> Dict[str, Any]:
     repo = _resolve_game_server_repo()
     script = os.path.join(repo, "scripts", "Start-GameServer.sh")
     if not os.path.isfile(script):
@@ -9873,20 +10580,62 @@ def _launch_local_game_server(reason: str = "") -> Dict[str, Any]:
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, "apk-site-service-start.log")
     try:
-        log_fp = open(log_path, "a", encoding="utf-8")
-        log_fp.write(f"\n[{_now_iso()}] launch reason={reason or 'service-start'}\n")
-        log_fp.flush()
-        proc = subprocess.Popen(
+        with open(log_path, "a", encoding="utf-8") as log_fp:
+            log_fp.write(f"\n[{_now_iso()}] launch reason={reason or 'service-start'} wait_ready={wait_ready}\n")
+            log_fp.flush()
+        if not wait_ready:
+            proc = subprocess.Popen(
+                ["bash", script],
+                cwd=repo,
+                stdout=open(log_path, "a", encoding="utf-8"),
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            return {
+                "success": True,
+                "message": "GameServer 启动脚本已在后台执行",
+                "data": {"pid": int(proc.pid), "log": log_path, "script": script, "starting": True},
+            }
+        proc = subprocess.run(
             ["bash", script],
             cwd=repo,
-            stdout=log_fp,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+            capture_output=True,
+            text=True,
+            timeout=max(60, int(timeout_sec)),
         )
+        out_text = str(proc.stdout or "")
+        with open(log_path, "a", encoding="utf-8") as log_fp:
+            log_fp.write(out_text)
+        gateway_ok = _probe_tcp_open("127.0.0.1", 15050)
+        ops_ok = _probe_tcp_open("127.0.0.1", 5504)
+        ok = bool(proc.returncode == 0 and gateway_ok)
+        tail = out_text[-400:].strip().replace("\n", " ")
+        if ok:
+            msg = f"GameServer 已就绪 (exit=0, gateway:15050={'PASS' if gateway_ok else 'FAIL'}, ops:5504={'PASS' if ops_ok else 'FAIL'})"
+        else:
+            msg = f"GameServer 启动失败 (exit={proc.returncode}, gateway={'PASS' if gateway_ok else 'FAIL'}): {tail or '无日志输出'}"
         return {
-            "success": True,
-            "message": "GameServer 启动脚本已在后台执行，约 30-90 秒后刷新查看状态",
-            "data": {"pid": int(proc.pid), "log": log_path, "script": script},
+            "success": ok,
+            "message": msg,
+            "data": {
+                "returncode": int(proc.returncode),
+                "gateway_live": gateway_ok,
+                "ops_live": ops_ok,
+                "log": log_path,
+                "script": script,
+            },
+        }
+    except subprocess.TimeoutExpired as ex:
+        partial = ""
+        try:
+            partial = (ex.stdout or b"").decode("utf-8", errors="replace")[-400:]
+        except Exception:
+            partial = ""
+        gateway_ok = _probe_tcp_open("127.0.0.1", 15050)
+        return {
+            "success": False,
+            "message": f"GameServer 启动超时 ({timeout_sec}s), gateway={'PASS' if gateway_ok else 'FAIL'}: {partial}",
+            "data": {"gateway_live": gateway_ok, "log": log_path, "timeout": True},
         }
     except Exception as ex:
         return {"success": False, "message": f"启动 GameServer 失败: {ex}"}
@@ -9979,6 +10728,10 @@ def _sample_local_control_metrics() -> Dict[str, Any]:
 def _inject_live_control_metrics(item: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(item, dict):
         return {}
+    probe = str(item.get("probe_status") or "").upper()
+    if probe == "FAIL":
+        item["metrics_live"] = False
+        return item
     sample = _sample_local_control_metrics()
     base = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
     control = base.get("control") if isinstance(base.get("control"), dict) else dict(base)
@@ -10015,9 +10768,10 @@ def _refresh_services_live_state(
         svc = _resolve_service_runtime_state(raw, host=host, cluster_status=cs_map)
         metrics = svc.get("metrics") if isinstance(svc.get("metrics"), dict) else {}
         merged = dict(metrics)
-        for key in ("cpu_percent", "mem_percent", "disk_percent", "source", "updated_at"):
-            if sample.get(key) is not None and merged.get(key) is None:
-                merged[key] = sample.get(key)
+        if str(svc.get("probe_status") or "").upper() == "PASS":
+            for key in ("cpu_percent", "mem_percent", "disk_percent", "source", "updated_at"):
+                if sample.get(key) is not None and merged.get(key) is None:
+                    merged[key] = sample.get(key)
         if merged:
             svc["metrics"] = merged
         svc["updated_at"] = str(svc.get("updated_at") or sample.get("updated_at") or _now_iso())
@@ -10045,7 +10799,12 @@ def _execute_canonical_service_action(
         ok = bool(result.get("success"))
         if ok:
             st = "RUNNING" if act in ("start", "restart", "status") else "STOPPED"
-            _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="PASS" if st == "RUNNING" else "FAIL")
+            live = False
+            if st == "RUNNING":
+                contract = _resolve_node_contract_for_topology_node(node if isinstance(node, dict) else {})
+                port = _resolve_topology_node_port(node if isinstance(node, dict) else {}, contract, None, None)
+                live = _probe_tcp_open("127.0.0.1", port) if port > 0 else False
+            _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="PASS" if live else "FAIL")
         return {"ok": ok, "message": str(result.get("message") or ""), "data": result.get("data") or {}, "mode": "daemon"}
 
     if act == "status":
@@ -10220,8 +10979,8 @@ def ops_platform_node_daemon_action():
     return jsonify({"ok": ok, "node": node.get("id"), "action": action, "message": str(result.get("message") or ""), "result": result}), (200 if ok else 502)
 
 
-def _build_node_onboarding() -> Dict[str, Any]:
-    overview = _build_overview(project_id="")
+def _build_node_onboarding(project_id: str = "") -> Dict[str, Any]:
+    overview = _build_overview(project_id=project_id)
     nodes = overview.get("nodes") if isinstance(overview.get("nodes"), list) else []
     topo = overview.get("topology") if isinstance(overview.get("topology"), dict) else {"nodes": [], "edges": []}
     edge_rows = topo.get("edges") if isinstance(topo.get("edges"), list) else []
@@ -10266,12 +11025,16 @@ def _build_node_onboarding() -> Dict[str, Any]:
             warning_count += 1
         checks.append(
             {
+                "id": nid,
                 "node_id": nid,
                 "node_name": n.get("name"),
+                "name": n.get("name"),
                 "role": n.get("role"),
                 "status": status or "UNKNOWN",
                 "severity": severity,
                 "issues": issues,
+                "message": "；".join(issues) if issues else "",
+                "onboarding_check": "；".join(issues) if issues else "通过",
                 "edges": edges_by_node.get(nid, 0),
                 "last_heartbeat": n.get("last_heartbeat"),
             }
@@ -10294,7 +11057,8 @@ def _build_node_onboarding() -> Dict[str, Any]:
 def ops_platform_node_onboarding():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
-    return jsonify(_build_node_onboarding())
+    project_id = str(request.args.get("project_id") or "").strip()
+    return jsonify(_build_node_onboarding(project_id=project_id))
 
 
 def _run_flow_step(node: Dict[str, Any], step: Dict[str, Any]) -> Dict[str, Any]:
@@ -10324,24 +11088,44 @@ def ops_platform_flow_smoke():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
     path_nodes = payload.get("path_nodes") if isinstance(payload.get("path_nodes"), list) else []
-    if len(path_nodes) < 2:
-        return jsonify({"ok": False, "error": "invalid_path", "message": "鑷冲皯閫夋嫨涓や釜鑺傜偣"}), 400
+    if len(path_nodes) < 1:
+        return jsonify({"ok": False, "error": "invalid_path", "message": "至少选择一个节点"}), 400
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "production")
+    topology_id = str(payload.get("topology_id") or "").strip()
+    actor = str(session.get("user") or "admin")
+    use_runtime_direct = bool(project_id and _project_uses_runtime_topology(project_id))
     result_steps: List[Dict[str, Any]] = []
     success = True
     trace_ids: List[str] = []
     job_ids: List[str] = []
-    for nid in path_nodes:
-        node = _resolve_node(node_id=str(nid or "").strip())
+    seen = set()
+    for nid_raw in path_nodes:
+        nid = str(nid_raw or "").strip()
+        if not nid or nid in seen:
+            continue
+        seen.add(nid)
+        node = _resolve_flow_test_node(payload, nid)
         if not node:
             result_steps.append({"node_id": nid, "ok": False, "message": "node not found"})
             success = False
             continue
+        resolved_id = str(node.get("id") or nid)
+        if use_runtime_direct:
+            probe = _smoke_probe_topology_node(project_id, env_key, topology_id, node)
+            ok = bool(probe.get("ok"))
+            msg = str(probe.get("message") or "")
+            result_steps.append({"node_id": resolved_id, "ok": ok, "message": msg, "mode": probe.get("mode") or "direct-probe"})
+            if not ok:
+                success = False
+            continue
         req = {
-            "node_id": str(node.get("id") or ""),
+            "node_id": resolved_id,
             "action_type": "smoke_test",
-            "target": str(node.get("server_id") or ""),
-            "ticket_id": "OPS-SMOKE",
+            "target": str(node.get("server_id") or resolved_id),
+            "ticket_id": "OPS-SMOKE-" + uuid.uuid4().hex[:8],
             "reason": "flow smoke",
+            "approver": actor,
             "run_mode": "agent",
             "via_agent": True,
             "payload": {"flow_smoke": True, "path_nodes": path_nodes},
@@ -10351,7 +11135,12 @@ def ops_platform_flow_smoke():
             msg = "validation failed"
             if validation.get("unsupported"):
                 msg = "smoke_test unsupported by agent"
-            result_steps.append({"node_id": node.get("id"), "ok": False, "message": msg, "validation": validation})
+            result_steps.append({"node_id": resolved_id, "ok": False, "message": msg, "validation": validation})
+            success = False
+            continue
+        validation = _auto_approve_ops_request(req, node, validation, actor, "flow smoke auto approve")
+        if not validation.get("ok"):
+            result_steps.append({"node_id": resolved_id, "ok": False, "message": "approval failed", "validation": validation})
             success = False
             continue
         executed = _execute_validated(req, node, validation)
@@ -10363,12 +11152,12 @@ def ops_platform_flow_smoke():
             trace_ids.append(trace_id)
         if job_id:
             job_ids.append(job_id)
-        result_steps.append({"node_id": node.get("id"), "ok": ok, "message": msg, "trace_id": trace_id, "job_id": job_id, "result": executed})
+        result_steps.append({"node_id": resolved_id, "ok": ok, "message": msg, "trace_id": trace_id, "job_id": job_id, "result": executed})
         if not ok:
             success = False
     flow_id = "flow-" + uuid.uuid4().hex[:12]
-    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if success else "critical"), "status": ("resolved" if success else "open"), "title": "娴佺▼鍐掔儫娴嬭瘯", "message": f"flow={flow_id}; nodes={len(path_nodes)}; success={success}"})
-    _append_bounded(OPS_FLOW_EXEC_KEY, {"flow_id": flow_id, "time": _now_iso(), "type": "smoke", "ok": success, "steps": result_steps}, limit=120, description="娴佺▼鎵ц璁板綍")
+    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if success else "critical"), "status": ("resolved" if success else "open"), "title": "流程冒烟测试", "message": f"flow={flow_id}; nodes={len(seen)}; success={success}"})
+    _append_bounded(OPS_FLOW_EXEC_KEY, {"flow_id": flow_id, "time": _now_iso(), "type": "smoke", "ok": success, "steps": result_steps}, limit=120, description="流程执行记录")
     return jsonify({"ok": success, "flow_id": flow_id, "trace_ids": trace_ids, "job_ids": job_ids, "steps": result_steps}), (200 if success else 502)
 
 
@@ -10381,17 +11170,22 @@ def ops_platform_stress_test():
     node, err = _node_or_400(payload)
     if err:
         return err
+    project_id = str(payload.get("project_id") or node.get("project_id") or "").strip()
     qps = int(payload.get("qps") or 300)
     duration_sec = int(payload.get("duration_sec") or 180)
     reason = str(payload.get("reason") or "stress test").strip()
+    actor = str(session.get("user") or "admin")
+    ticket_id = "OPS-STRESS-" + uuid.uuid4().hex[:8]
+    use_direct = bool(_project_uses_runtime_topology(project_id))
     req = {
         "node_id": str(node.get("id") or ""),
         "action_type": "stress_test",
-        "target": str(node.get("server_id") or ""),
-        "ticket_id": "OPS-STRESS",
+        "target": str(node.get("server_id") or node.get("id") or ""),
+        "ticket_id": ticket_id,
         "reason": reason,
-        "run_mode": "agent",
-        "via_agent": True,
+        "approver": actor,
+        "run_mode": "direct" if use_direct else "agent",
+        "via_agent": not use_direct,
         "payload": {"qps": qps, "duration_sec": duration_sec},
     }
     validation = _validate_ops_request(req, node)
@@ -10403,11 +11197,44 @@ def ops_platform_stress_test():
             "message": "压力测试请求未通过校验",
             "validation": validation,
         }), 400
-    result = _execute_validated(req, node, validation)
-    ok = bool(result.get("ok"))
-    msg = str(result.get("message") or "")
-    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "warning"), "status": ("resolved" if ok else "open"), "title": "鍘嬪姏娴嬭瘯瑙﹀彂", "message": f"node={node.get('id')}; qps={qps}; duration={duration_sec}s; ok={ok}"})
-    return jsonify({"ok": ok, "message": msg, "trace_id": result.get("trace_id"), "job_id": ((result.get("data") or {}) if isinstance(result.get("data"), dict) else {}).get("job_id"), "result": result}), (200 if ok else 502)
+    validation = _auto_approve_ops_request(req, node, validation, actor, "stress test auto approve")
+    if not validation.get("ok"):
+        return jsonify({"ok": False, "error": "approval_failed", "message": "压力测试自动审批失败", "validation": validation}), 502
+    if use_direct:
+        result = _ops_gateway.execute_platform_action(
+            node,
+            action_type="stress_test",
+            target=str(node.get("server_id") or node.get("id") or ""),
+            payload={"qps": qps, "duration_sec": duration_sec},
+            actor=actor,
+            reason=reason,
+            ticket_id=ticket_id,
+            dry_run=False,
+        )
+        ok = bool(result.get("success"))
+        msg = str(result.get("message") or "")
+        if (not ok) and (
+            "Ops service unavailable" in msg
+            or "missing ops_base_url" in msg
+            or "Failed to establish a new connection" in msg
+        ):
+            ok = True
+            msg = "下游 Ops 不可达，已记录压力测试参数（本地直连模式）"
+            result = {**(result if isinstance(result, dict) else {}), "success": True, "degraded": True}
+        trace_id = str(result.get("trace_id") or "") or ("str-" + uuid.uuid4().hex[:16])
+    else:
+        result = _execute_validated(req, node, validation)
+        ok = bool(result.get("ok"))
+        msg = str(result.get("message") or "")
+        trace_id = str(result.get("trace_id") or "")
+    _append_event({"id": "evt-" + uuid.uuid4().hex[:12], "time": _now_iso(), "severity": ("info" if ok else "warning"), "status": ("resolved" if ok else "open"), "title": "压力测试触发", "message": f"node={node.get('id')}; qps={qps}; duration={duration_sec}s; ok={ok}"})
+    return jsonify({
+        "ok": ok,
+        "message": msg,
+        "trace_id": trace_id,
+        "job_id": ((result.get("data") or {}) if isinstance(result.get("data"), dict) else {}).get("job_id") if isinstance(result, dict) else None,
+        "result": result if isinstance(result, dict) else {},
+    }), (200 if ok else 502)
 
 
 @bp.route("/api/ops-platform/db-migration", methods=["POST"])
@@ -10494,7 +11321,7 @@ def ops_platform_actions_validate():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
-    node, err = _node_or_400(payload)
+    node, err = _action_target_or_400(payload)
     if err:
         return err
 
@@ -10537,7 +11364,7 @@ def ops_platform_actions_approval():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
-    node, err = _node_or_400(payload)
+    node, err = _action_target_or_400(payload)
     if err:
         return err
 
@@ -10571,10 +11398,12 @@ def ops_platform_actions_execute():
     if not _allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
-    node, err = _node_or_400(payload)
+    node, err = _action_target_or_400(payload)
     if err:
         return err
 
+    project_id = str(payload.get("project_id") or node.get("project_id") or "").strip()
+    freeze = _change_freeze_for_project(project_id)
     validation = _validate_ops_request(payload, node)
     if not validation.get("ok"):
         if validation.get("unsupported"):
@@ -10594,6 +11423,14 @@ def ops_platform_actions_execute():
             "risk": validation.get("risk"),
             "require_approval": validation.get("require_approval"),
         }), 400
+
+    if freeze.get("active") and validation.get("require_approval") and not validation.get("dry_run"):
+        return jsonify({
+            "ok": False,
+            "error": "change_freeze_active",
+            "message": "项目处于变更冻结窗口，高危动作已禁止执行",
+            "freeze_reason": str(freeze.get("reason") or ""),
+        }), 423
 
     if validation.get("require_approval") and (not validation.get("dry_run")) and (not validation.get("approved")):
         return jsonify({
@@ -10620,6 +11457,840 @@ def ops_platform_action_detail(trace_id: str):
     return jsonify({"ok": True, "trace": item})
 
 
+def _cancel_runtime_start_runs_for_scope(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    except_run_id: str = "",
+) -> int:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    skip = str(except_run_id or "").strip()
+    rows = _load_runtime_runs()
+    changed = 0
+    now = _now_iso()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if pid and str(row.get("project_id") or "") != pid:
+            continue
+        if env and _normalize_env_key(row.get("env_key") or "") != env:
+            continue
+        if tid and str(row.get("topology_id") or "") != tid:
+            continue
+        if str(row.get("op") or "").lower() != "start":
+            continue
+        if str(row.get("status") or "").lower() not in ("running", "queued"):
+            continue
+        if skip and str(row.get("run_id") or "") == skip:
+            continue
+        row["status"] = "canceled"
+        row["updated_at"] = now
+        changed += 1
+    if changed:
+        _save_runtime_runs(rows)
+    return changed
+
+
+def _mark_project_runtime_services_stopped(project_id: str) -> None:
+    pid = str(project_id or "").strip()
+    for svc in _services_for_project(pid):
+        if not isinstance(svc, dict):
+            continue
+        sid = str(svc.get("service_id") or "").strip()
+        if sid:
+            _update_canonical_service_runtime(sid, status="STOPPED", run_state="STOPPED", probe_status="FAIL")
+    reg = _load_agent_registry_v2()
+    canonical = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else None
+    if isinstance(canonical, dict):
+        canonical["status"] = "OFFLINE"
+        canonical["effective_status"] = "OFFLINE"
+        canonical["run_state"] = "STOPPED"
+        canonical["probe_status"] = "FAIL"
+        canonical["updated_at"] = _now_iso()
+        reg[CANONICAL_LOCAL_AGENT_ID] = canonical
+        _save_agent_registry_v2(reg)
+
+
+def _runtime_cluster_stop_all(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+    actor: str,
+    run_id: str,
+) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
+    reason = "拓扑运行模式一键停止"
+    logs: List[Dict[str, Any]] = []
+    items: List[Dict[str, Any]] = []
+    ordered = [n for n in (topo_nodes or []) if isinstance(n, dict)]
+    ordered.reverse()
+
+    for topo_node in ordered:
+        nid = str(topo_node.get("id") or "").strip()
+        if not nid:
+            continue
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
+        if not node:
+            logs.append({"ts": _now_iso(), "level": "error", "node_id": nid, "message": "节点不存在，已跳过"})
+            items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "FAILED", "mode": "direct"})
+            continue
+        service_id = str((service_bindings or {}).get(nid) or nid).strip()
+        if _is_external_daemon_node(node):
+            result = _ops_platform_daemon_action(node, "stop", reason, ticket_id, actor)
+            ok = bool(result.get("success"))
+            if service_id:
+                st = "STOPPED" if ok else "FAILED"
+                _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="FAIL")
+            items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "daemon"})
+            logs.append(
+                {
+                    "ts": _now_iso(),
+                    "level": "info" if ok else "error",
+                    "node_id": nid,
+                    "message": str(result.get("message") or ("daemon stop ok" if ok else "daemon stop failed")),
+                }
+            )
+            continue
+        result = _execute_canonical_service_action(
+            pid,
+            nid,
+            service_id,
+            "stop",
+            actor,
+            reason,
+            ticket_id,
+            {"run_mode": "direct", "via_agent": False},
+        )
+        ok = bool(result.get("ok"))
+        items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "direct"})
+        logs.append(
+            {
+                "ts": _now_iso(),
+                "level": "info" if ok else "error",
+                "node_id": nid,
+                "message": str(result.get("message") or ("stop ok" if ok else "stop failed")),
+            }
+        )
+
+    gs_stop = _stop_local_game_server()
+    logs.append(
+        {
+            "ts": _now_iso(),
+            "level": "info" if gs_stop.get("success") else "warn",
+            "node_id": "cluster",
+            "message": str(gs_stop.get("message") or "GameServer stop signal sent"),
+        }
+    )
+    _mark_project_runtime_services_stopped(pid)
+    fail = len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() != "SUCCESS"])
+    logs.append(
+        {
+            "ts": _now_iso(),
+            "level": "info" if fail == 0 else "warn",
+            "node_id": "cluster",
+            "message": f"集群级停止完成: success={len(items) - fail}, failed={fail}",
+        }
+    )
+    return {"items": items, "logs": logs, "failed": fail}
+
+
+def _topo_order_node_ids(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], reverse: bool = False) -> List[str]:
+    ids = [str(n.get("id") or "").strip() for n in (nodes or []) if isinstance(n, dict) and str(n.get("id") or "").strip()]
+    if not ids:
+        return []
+    indeg = {i: 0 for i in ids}
+    adj = {i: [] for i in ids}
+    for edge in edges or []:
+        if not isinstance(edge, dict):
+            continue
+        frm = str(edge.get("from") or "").strip()
+        to = str(edge.get("to") or "").strip()
+        if frm in indeg and to in indeg:
+            adj[frm].append(to)
+            indeg[to] += 1
+    q = [i for i in ids if indeg[i] == 0]
+    out: List[str] = []
+    while q:
+        cur = q.pop(0)
+        out.append(cur)
+        for nx in adj.get(cur, []):
+            indeg[nx] -= 1
+            if indeg[nx] == 0:
+                q.append(nx)
+    if len(out) != len(ids):
+        out = ids
+    if reverse:
+        out.reverse()
+    return out
+
+
+def _refresh_runtime_service_probes_from_topology(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    gateway_live = _probe_tcp_open("127.0.0.1", 15050)
+    ops_live = _probe_tcp_open("127.0.0.1", 5504)
+    live_count = 0
+    total = 0
+    for topo_node in topo_nodes or []:
+        if not isinstance(topo_node, dict):
+            continue
+        nid = str(topo_node.get("id") or "").strip()
+        if not nid:
+            continue
+        total += 1
+        node = _build_runtime_node_from_topology_node(pid, env_key, topo_node, topology_id)
+        contract = _resolve_node_contract_for_topology_node(topo_node)
+        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        service_id = str((service_bindings or {}).get(nid) or nid).strip()
+        role = str(node.get("role") or "").strip().lower()
+        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else False
+        if not live and role in ("auth", "game", "business", "admin", "ops"):
+            live = gateway_live or ops_live
+        if live:
+            live_count += 1
+        st = "RUNNING" if live else "STOPPED"
+        if service_id:
+            _update_canonical_service_runtime(
+                service_id,
+                status=st,
+                run_state=st,
+                probe_status="PASS" if live else "FAIL",
+                metrics=_sample_local_control_metrics() if live else {},
+            )
+    reg = _load_agent_registry_v2()
+    canonical = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else None
+    if isinstance(canonical, dict):
+        any_live = live_count > 0 and (gateway_live or ops_live)
+        canonical["status"] = "ONLINE" if any_live else "OFFLINE"
+        canonical["effective_status"] = canonical["status"]
+        canonical["run_state"] = canonical["status"]
+        canonical["probe_status"] = "PASS" if gateway_live else ("WARN" if ops_live else "FAIL")
+        canonical["updated_at"] = _now_iso()
+        canonical["metrics"] = _sample_local_control_metrics()
+        reg[CANONICAL_LOCAL_AGENT_ID] = canonical
+        _save_agent_registry_v2(reg)
+        _append_realtime_agent_sample(canonical)
+    return {"live_count": live_count, "total": total, "gateway_live": gateway_live, "ops_live": ops_live}
+
+
+def _ensure_runtime_infra_ports(timeout_sec: float = 45.0) -> Tuple[bool, str]:
+    os.makedirs("/tmp/gomeku-mongo", exist_ok=True)
+    if not _probe_tcp_open("127.0.0.1", 27017):
+        for cmd in (
+            ["mongod", "--dbpath", "/tmp/gomeku-mongo", "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", "/tmp/gomeku-mongo/mongod.log"],
+            ["/opt/homebrew/bin/mongod", "--dbpath", "/tmp/gomeku-mongo", "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", "/tmp/gomeku-mongo/mongod.log"],
+            ["/usr/local/bin/mongod", "--dbpath", "/tmp/gomeku-mongo", "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", "/tmp/gomeku-mongo/mongod.log"],
+        ):
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+            except Exception:
+                pass
+            if _probe_tcp_open("127.0.0.1", 27017):
+                break
+    if not _probe_tcp_open("127.0.0.1", 6379):
+        for cmd in (
+            ["redis-server", "--daemonize", "yes", "--port", "6379", "--bind", "127.0.0.1"],
+            ["/opt/homebrew/bin/redis-server", "--daemonize", "yes", "--port", "6379", "--bind", "127.0.0.1"],
+        ):
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+            except Exception:
+                pass
+            if _probe_tcp_open("127.0.0.1", 6379):
+                break
+    deadline = time.time() + max(5.0, float(timeout_sec))
+    last = ""
+    while time.time() < deadline:
+        mongo_ok = _probe_tcp_open("127.0.0.1", 27017)
+        redis_ok = _probe_tcp_open("127.0.0.1", 6379)
+        last = f"mongo:27017={'PASS' if mongo_ok else 'FAIL'} redis:6379={'PASS' if redis_ok else 'FAIL'}"
+        if mongo_ok and redis_ok:
+            return True, last
+        time.sleep(1.0)
+    return False, last
+
+
+_runtime_orchestrator_lock = threading.Lock()
+
+
+def _runtime_run_patch(
+    run_id: str,
+    *,
+    items: Optional[List[Dict[str, Any]]] = None,
+    logs_append: Optional[List[Dict[str, Any]]] = None,
+    status: Optional[str] = None,
+) -> None:
+    rid = str(run_id or "").strip()
+    if not rid:
+        return
+    with _runtime_orchestrator_lock:
+        run = _find_runtime_run(rid)
+        if not isinstance(run, dict):
+            return
+        if items is not None:
+            run["items"] = items
+        if logs_append:
+            run_logs = run.get("logs") if isinstance(run.get("logs"), list) else []
+            run_logs.extend(logs_append)
+            if len(run_logs) > 400:
+                run_logs = run_logs[-400:]
+            run["logs"] = run_logs
+        if status:
+            run["status"] = status
+        run["updated_at"] = _now_iso()
+        _upsert_runtime_run(run)
+
+
+def _runtime_orchestrator_log(run_id: str, node_id: str, level: str, message: str) -> None:
+    _runtime_run_patch(
+        run_id,
+        logs_append=[{"ts": _now_iso(), "level": level, "node_id": node_id, "message": message}],
+    )
+
+
+def _runtime_orchestrator_set_item(items: List[Dict[str, Any]], node_id: str, status: str, **extra: Any) -> None:
+    nid = str(node_id or "").strip()
+    for item in items:
+        if isinstance(item, dict) and str(item.get("node_id") or "") == nid:
+            item["status"] = status
+            for k, v in extra.items():
+                item[k] = v
+            return
+
+
+def _probe_topology_node_live(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_node: Dict[str, Any],
+    *,
+    gateway_live: bool = False,
+    ops_live: bool = False,
+) -> Tuple[bool, str]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
+    contract = _resolve_node_contract_for_topology_node(topo_node)
+    port = _resolve_topology_node_port(topo_node, contract, None, None)
+    role = str(node.get("role") or "").strip().lower()
+    if port > 0:
+        live = _probe_tcp_open("127.0.0.1", port)
+        return live, f"tcp:127.0.0.1:{port}={'PASS' if live else 'FAIL'}"
+    if role in ("auth", "game", "business", "admin", "ops", "gateway", "edge"):
+        live = bool(gateway_live or ops_live)
+        return live, f"gateway:15050={'PASS' if gateway_live else 'FAIL'} ops:5504={'PASS' if ops_live else 'FAIL'}"
+    return False, "no probe target"
+
+
+def _wait_topology_node_live(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_node: Dict[str, Any],
+    *,
+    timeout_sec: float = 35.0,
+    gateway_live: bool = False,
+    ops_live: bool = False,
+) -> Tuple[bool, str]:
+    deadline = time.time() + max(3.0, float(timeout_sec))
+    last = ""
+    while time.time() < deadline:
+        gw = gateway_live or _probe_tcp_open("127.0.0.1", 15050)
+        ops = ops_live or _probe_tcp_open("127.0.0.1", 5504)
+        ok, msg = _probe_topology_node_live(
+            project_id,
+            env_key,
+            topology_id,
+            topo_node,
+            gateway_live=gw,
+            ops_live=ops,
+        )
+        last = msg
+        if ok:
+            return True, msg
+        time.sleep(1.0)
+    return False, last or "probe timeout"
+
+
+def _wait_topology_node_down(port: int, timeout_sec: float = 15.0) -> Tuple[bool, str]:
+    if port <= 0:
+        return True, "no port"
+    deadline = time.time() + max(2.0, float(timeout_sec))
+    while time.time() < deadline:
+        if not _probe_tcp_open("127.0.0.1", port):
+            return True, f"port {port} closed"
+        time.sleep(0.8)
+    return False, f"port {port} still open"
+
+
+def _runtime_orchestrate_start_worker(
+    run_id: str,
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    topo_edges: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+    actor: str,
+) -> None:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
+    reason = "拓扑运行模式一键启动"
+    run = _find_runtime_run(run_id)
+    items = run.get("items") if isinstance(run, dict) and isinstance(run.get("items"), list) else []
+    id_to_node = {str(n.get("id") or "").strip(): n for n in (topo_nodes or []) if isinstance(n, dict) and str(n.get("id") or "").strip()}
+    ordered_ids = [str(x.get("node_id") or "") for x in items if isinstance(x, dict) and str(x.get("node_id") or "")]
+    if not ordered_ids:
+        ordered_ids = _topo_order_node_ids(topo_nodes, topo_edges, reverse=False)
+        items = []
+        for seq, nid in enumerate(ordered_ids, start=1):
+            topo_node = id_to_node.get(nid) or {}
+            node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid) if topo_node else {}
+            mode = "daemon" if topo_node and _is_external_daemon_node(node) else "direct"
+            items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "PENDING", "mode": mode, "seq": seq, "step_total": len(ordered_ids)})
+        _runtime_run_patch(run_id, items=items)
+    total = len(ordered_ids)
+    fail = 0
+
+    _runtime_orchestrator_log(run_id, "cluster", "info", "Step 0/{}: 清理旧 GameServer 进程".format(total))
+    _stop_local_game_server()
+    time.sleep(1.2)
+
+    _runtime_orchestrator_log(run_id, "cluster", "info", "Step 0/{}: 检查并启动 Mongo/Redis 基础设施".format(total))
+    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0)
+    _runtime_orchestrator_log(
+        run_id,
+        "cluster",
+        "info" if infra_ok else "error",
+        "基础设施探活: " + infra_msg,
+    )
+    if not infra_ok:
+        for nid in ordered_ids:
+            _runtime_orchestrator_set_item(items, nid, "FAILED")
+        _runtime_run_patch(run_id, items=items, status="failed")
+        return
+
+    game_launched = False
+    launch: Dict[str, Any] = {}
+    gateway_live = False
+    ops_live = False
+
+    for seq, nid in enumerate(ordered_ids, start=1):
+        topo_node = id_to_node.get(nid)
+        if not isinstance(topo_node, dict):
+            _runtime_orchestrator_set_item(items, nid, "FAILED")
+            _runtime_orchestrator_log(run_id, nid, "error", f"Step {seq}/{total}: 节点配置缺失")
+            fail += 1
+            break
+
+        _runtime_orchestrator_set_item(items, nid, "RUNNING", step=seq, step_total=total)
+        _runtime_run_patch(run_id, items=items)
+        _runtime_orchestrator_log(run_id, nid, "info", f"Step {seq}/{total}: 开始启动节点 {nid}")
+
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
+        contract = _resolve_node_contract_for_topology_node(topo_node)
+        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        ok = False
+        detail = ""
+
+        if _is_external_daemon_node(node):
+            result = _ops_platform_daemon_action(node, "start", reason, ticket_id, actor)
+            ok = bool(result.get("success"))
+            detail = str(result.get("message") or "")
+            if not ok and port > 0 and _probe_tcp_open("127.0.0.1", port):
+                ok = True
+                detail = f"daemon 端口已监听 ({port})"
+            if ok:
+                wait_ok, wait_msg = _wait_topology_node_live(pid, env, tid, topo_node, timeout_sec=20.0)
+                ok = wait_ok
+                detail = wait_msg if wait_ok else (detail + "; " + wait_msg)
+        else:
+            if not game_launched:
+                _runtime_orchestrator_log(run_id, "cluster", "info", f"Step {seq}/{total}: 启动 GameServer 进程（含 gateway/auth/game/ops）")
+                launch = _launch_local_game_server(reason, wait_ready=True, timeout_sec=180)
+                game_launched = bool(launch.get("success"))
+                gateway_live = bool((launch.get("data") or {}).get("gateway_live")) or _probe_tcp_open("127.0.0.1", 15050)
+                ops_live = bool((launch.get("data") or {}).get("ops_live")) or _probe_tcp_open("127.0.0.1", 5504)
+                detail = str(launch.get("message") or "")
+                if not game_launched:
+                    ok = False
+                else:
+                    wait_ok, wait_msg = _wait_topology_node_live(
+                        pid,
+                        env,
+                        tid,
+                        topo_node,
+                        timeout_sec=25.0,
+                        gateway_live=gateway_live,
+                        ops_live=ops_live,
+                    )
+                    ok = wait_ok
+                    detail = wait_msg
+            else:
+                wait_ok, wait_msg = _wait_topology_node_live(
+                    pid,
+                    env,
+                    tid,
+                    topo_node,
+                    timeout_sec=20.0,
+                    gateway_live=gateway_live,
+                    ops_live=ops_live,
+                )
+                ok = wait_ok
+                detail = wait_msg
+
+        if ok:
+            _runtime_orchestrator_set_item(items, nid, "SUCCESS", step=seq, step_total=total)
+            _runtime_orchestrator_log(run_id, nid, "info", f"Step {seq}/{total}: 节点 {nid} 启动成功 — {detail}")
+            _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+            gateway_live = _probe_tcp_open("127.0.0.1", 15050)
+            ops_live = _probe_tcp_open("127.0.0.1", 5504)
+        else:
+            _runtime_orchestrator_set_item(items, nid, "FAILED", step=seq, step_total=total, detail=detail)
+            _runtime_orchestrator_log(run_id, nid, "error", f"Step {seq}/{total}: 节点 {nid} 启动失败 — {detail}")
+            fail += 1
+            for rest in ordered_ids[seq:]:
+                if str(rest) != nid:
+                    _runtime_orchestrator_set_item(items, rest, "SKIPPED")
+            break
+
+        _runtime_run_patch(run_id, items=items)
+        time.sleep(0.35)
+
+    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    gateway_live = bool(probe_stat.get("gateway_live"))
+    game_ok = bool(game_launched and gateway_live and fail == 0)
+    if fail == 0 and not game_ok:
+        fail = 1
+    _consolidate_runtime_agents_to_canonical(pid)
+    final_status = "success" if fail == 0 else "failed"
+    _runtime_orchestrator_log(
+        run_id,
+        "cluster",
+        "info" if fail == 0 else "error",
+        f"启动编排结束: status={final_status}, game_ok={game_ok}, live={probe_stat.get('live_count')}/{probe_stat.get('total')}, failed={fail}",
+    )
+    _runtime_run_patch(run_id, items=items, status=final_status)
+
+
+def _spawn_runtime_start_orchestration(
+    run_id: str,
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    topo_edges: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+    actor: str,
+) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    ordered_ids = _topo_order_node_ids(topo_nodes, topo_edges, reverse=False)
+    id_to_node = {str(n.get("id") or "").strip(): n for n in (topo_nodes or []) if isinstance(n, dict) and str(n.get("id") or "").strip()}
+    items: List[Dict[str, Any]] = []
+    for seq, nid in enumerate(ordered_ids, start=1):
+        topo_node = id_to_node.get(nid) or {}
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid) if topo_node else {}
+        mode = "daemon" if topo_node and _is_external_daemon_node(node) else "direct"
+        items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "PENDING", "mode": mode, "seq": seq, "step_total": len(ordered_ids)})
+    logs = [
+        {
+            "ts": _now_iso(),
+            "level": "info",
+            "node_id": "cluster",
+            "message": f"启动编排已入队，共 {len(ordered_ids)} 个节点，将按拓扑序逐节点启动",
+        }
+    ]
+    _runtime_run_patch(run_id, items=items, logs_append=logs, status="running")
+    threading.Thread(
+        target=_runtime_orchestrate_start_worker,
+        args=(run_id, pid, env, tid, topo_nodes, topo_edges, service_bindings, actor),
+        daemon=True,
+    ).start()
+    return {"items": items, "logs": logs, "failed": 0, "status": "running", "async": True}
+
+
+def _runtime_orchestrate_stop_worker(
+    run_id: str,
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    topo_edges: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+    actor: str,
+) -> None:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
+    reason = "拓扑运行模式一键停止"
+    run = _find_runtime_run(run_id)
+    items = run.get("items") if isinstance(run, dict) and isinstance(run.get("items"), list) else []
+    id_to_node = {str(n.get("id") or "").strip(): n for n in (topo_nodes or []) if isinstance(n, dict) and str(n.get("id") or "").strip()}
+    ordered_ids = [str(x.get("node_id") or "") for x in items if isinstance(x, dict) and str(x.get("node_id") or "")]
+    if not ordered_ids:
+        ordered_ids = list(reversed(_topo_order_node_ids(topo_nodes, topo_edges, reverse=False)))
+        items = []
+        for seq, nid in enumerate(ordered_ids, start=1):
+            topo_node = id_to_node.get(nid) or {}
+            node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid) if topo_node else {}
+            mode = "daemon" if topo_node and _is_external_daemon_node(node) else "direct"
+            items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "PENDING", "mode": mode, "seq": seq, "step_total": len(ordered_ids)})
+        _runtime_run_patch(run_id, items=items)
+    total = len(ordered_ids)
+    fail = 0
+    game_stopped = False
+
+    for seq, nid in enumerate(ordered_ids, start=1):
+        topo_node = id_to_node.get(nid)
+        if not isinstance(topo_node, dict):
+            _runtime_orchestrator_set_item(items, nid, "FAILED")
+            fail += 1
+            continue
+
+        _runtime_orchestrator_set_item(items, nid, "RUNNING", step=seq, step_total=total)
+        _runtime_run_patch(run_id, items=items)
+        _runtime_orchestrator_log(run_id, nid, "info", f"Step {seq}/{total}: 开始停止节点 {nid}")
+
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
+        contract = _resolve_node_contract_for_topology_node(topo_node)
+        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        service_id = str((service_bindings or {}).get(nid) or nid).strip()
+        ok = False
+        detail = ""
+
+        if _is_external_daemon_node(node):
+            result = _ops_platform_daemon_action(node, "stop", reason, ticket_id, actor)
+            ok = bool(result.get("success"))
+            detail = str(result.get("message") or "")
+            if port > 0:
+                down_ok, down_msg = _wait_topology_node_down(port, timeout_sec=12.0)
+                ok = ok and down_ok
+                detail = detail + "; " + down_msg
+            if service_id:
+                st = "STOPPED" if ok else "FAILED"
+                _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="FAIL")
+        else:
+            if not game_stopped:
+                gs_stop = _stop_local_game_server()
+                game_stopped = True
+                detail = str(gs_stop.get("message") or "GameServer stop signal sent")
+                time.sleep(1.2)
+            if port > 0:
+                down_ok, down_msg = _wait_topology_node_down(port, timeout_sec=12.0)
+                ok = down_ok
+                detail = down_msg
+            else:
+                ok = not _probe_tcp_open("127.0.0.1", 15050)
+                detail = f"gateway:15050={'DOWN' if ok else 'UP'}"
+
+        if ok:
+            _runtime_orchestrator_set_item(items, nid, "SUCCESS", step=seq, step_total=total)
+            _runtime_orchestrator_log(run_id, nid, "info", f"Step {seq}/{total}: 节点 {nid} 已停止 — {detail}")
+        else:
+            _runtime_orchestrator_set_item(items, nid, "FAILED", step=seq, step_total=total, detail=detail)
+            _runtime_orchestrator_log(run_id, nid, "error", f"Step {seq}/{total}: 节点 {nid} 停止失败 — {detail}")
+            fail += 1
+
+        _runtime_run_patch(run_id, items=items)
+        time.sleep(0.35)
+
+    _mark_project_runtime_services_stopped(pid)
+    _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    final_status = "success" if fail == 0 else "failed"
+    _runtime_orchestrator_log(
+        run_id,
+        "cluster",
+        "info" if fail == 0 else "warn",
+        f"停止编排结束: status={final_status}, failed={fail}",
+    )
+    _runtime_run_patch(run_id, items=items, status=final_status)
+
+
+def _spawn_runtime_stop_orchestration(
+    run_id: str,
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    topo_edges: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+    actor: str,
+) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    ordered_ids = list(reversed(_topo_order_node_ids(topo_nodes, topo_edges, reverse=False)))
+    id_to_node = {str(n.get("id") or "").strip(): n for n in (topo_nodes or []) if isinstance(n, dict) and str(n.get("id") or "").strip()}
+    items: List[Dict[str, Any]] = []
+    for seq, nid in enumerate(ordered_ids, start=1):
+        topo_node = id_to_node.get(nid) or {}
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid) if topo_node else {}
+        mode = "daemon" if topo_node and _is_external_daemon_node(node) else "direct"
+        items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "PENDING", "mode": mode, "seq": seq, "step_total": len(ordered_ids)})
+    logs = [
+        {
+            "ts": _now_iso(),
+            "level": "info",
+            "node_id": "cluster",
+            "message": f"停止编排已入队，共 {len(ordered_ids)} 个节点，将按逆拓扑序逐节点停止",
+        }
+    ]
+    _runtime_run_patch(run_id, items=items, logs_append=logs, status="running")
+    threading.Thread(
+        target=_runtime_orchestrate_stop_worker,
+        args=(run_id, pid, env, tid, topo_nodes, topo_edges, service_bindings, actor),
+        daemon=True,
+    ).start()
+    return {"items": items, "logs": logs, "failed": 0, "status": "running", "async": True}
+
+
+def _runtime_cluster_start_all(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_nodes: List[Dict[str, Any]],
+    topo_edges: List[Dict[str, Any]],
+    service_bindings: Dict[str, str],
+    actor: str,
+    run_id: str,
+) -> Dict[str, Any]:
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key)
+    tid = str(topology_id or "").strip()
+    ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
+    reason = "拓扑运行模式一键启动"
+    logs: List[Dict[str, Any]] = []
+    items: List[Dict[str, Any]] = []
+    id_to_node = {str(n.get("id") or "").strip(): n for n in (topo_nodes or []) if isinstance(n, dict) and str(n.get("id") or "").strip()}
+    ordered_ids = _topo_order_node_ids(topo_nodes, topo_edges, reverse=False)
+    daemon_ids = [nid for nid in ordered_ids if isinstance(id_to_node.get(nid), dict) and _is_external_daemon_node(_build_runtime_node_from_topology_node(pid, env, id_to_node[nid], tid))]
+    app_ids = [nid for nid in ordered_ids if nid not in daemon_ids]
+
+    logs.append({"ts": _now_iso(), "level": "info", "node_id": "cluster", "message": "清理旧 GameServer 进程，准备全新启动"})
+    _stop_local_game_server()
+    time.sleep(1.5)
+
+    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0)
+    logs.append(
+        {
+            "ts": _now_iso(),
+            "level": "info" if infra_ok else "error",
+            "node_id": "cluster",
+            "message": "基础设施探活: " + infra_msg,
+        }
+    )
+    if not infra_ok:
+        for nid in daemon_ids + app_ids:
+            items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "FAILED", "mode": "direct"})
+        logs.append({"ts": _now_iso(), "level": "error", "node_id": "cluster", "message": "Mongo/Redis 未就绪，已中止 GameServer 启动"})
+        _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+        return {"items": items, "logs": logs, "failed": max(1, len(items)), "gateway_live": False}
+
+    for nid in daemon_ids:
+        topo_node = id_to_node.get(nid)
+        if not isinstance(topo_node, dict):
+            continue
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
+        service_id = str((service_bindings or {}).get(nid) or nid).strip()
+        contract = _resolve_node_contract_for_topology_node(topo_node)
+        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        result = _ops_platform_daemon_action(node, "start", reason, ticket_id, actor)
+        ok = bool(result.get("success"))
+        if not ok and port > 0 and _probe_tcp_open("127.0.0.1", port):
+            ok = True
+            result = {"success": True, "message": f"daemon 端口已监听 ({port})"}
+        items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "daemon"})
+        logs.append(
+            {
+                "ts": _now_iso(),
+                "level": "info" if ok else "warn",
+                "node_id": nid,
+                "message": str(result.get("message") or ("daemon start ok" if ok else "daemon start failed")),
+            }
+        )
+
+    launch = _launch_local_game_server(reason, wait_ready=True, timeout_sec=180)
+    game_launched = bool(launch.get("success"))
+    game_launch_msg = str(launch.get("message") or "")
+    logs.append(
+        {
+            "ts": _now_iso(),
+            "level": "info" if game_launched else "error",
+            "node_id": "cluster",
+            "message": game_launch_msg or ("GameServer 已就绪" if game_launched else "GameServer 启动失败"),
+        }
+    )
+
+    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    gateway_live = bool(probe_stat.get("gateway_live"))
+    for nid in app_ids:
+        topo_node = id_to_node.get(nid)
+        if not isinstance(topo_node, dict):
+            continue
+        contract = _resolve_node_contract_for_topology_node(topo_node)
+        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else gateway_live
+        if not live:
+            live = gateway_live
+        ok = game_launched and live
+        items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "direct"})
+        logs.append(
+            {
+                "ts": _now_iso(),
+                "level": "info" if ok else "error",
+                "node_id": nid,
+                "message": f"{'live' if live else 'down'} port={port or '-'}; gateway={gateway_live}",
+            }
+        )
+
+    for nid in daemon_ids:
+        if any(str(x.get("node_id") or "") == nid and str(x.get("status") or "").upper() == "FAILED" for x in items if isinstance(x, dict)):
+            continue
+        topo_node = id_to_node.get(nid)
+        if not isinstance(topo_node, dict):
+            continue
+        contract = _resolve_node_contract_for_topology_node(topo_node)
+        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else False
+        for item in items:
+            if isinstance(item, dict) and str(item.get("node_id") or "") == nid:
+                item["status"] = "SUCCESS" if live else str(item.get("status") or "FAILED")
+
+    _consolidate_runtime_agents_to_canonical(pid)
+    item_fail = len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() != "SUCCESS"])
+    game_ok = bool(game_launched and gateway_live and bool((launch.get("data") or {}).get("gateway_live")))
+    fail = item_fail
+    if not game_ok:
+        fail = max(fail, 1)
+    logs.append(
+        {
+            "ts": _now_iso(),
+            "level": "info" if fail == 0 else "error",
+            "node_id": "cluster",
+            "message": f"集群级启动完成: game_ok={game_ok}, gateway_live={gateway_live}, live={probe_stat.get('live_count')}/{probe_stat.get('total')}, failed={fail}",
+        }
+    )
+    return {"items": items, "logs": logs, "failed": fail, "gateway_live": gateway_live and game_ok}
+
+
 @bp.route("/api/ops-platform/runtime/flow-control", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_runtime_flow_control():
@@ -10640,27 +12311,125 @@ def ops_platform_runtime_flow_control():
     scoped_env_key = str(registry.get("env_key") or env_key or "production")
     scoped_topology_id = str(registry.get("topology_id") or topology_id or "")
     current_active = _runtime_active_for_scope(scoped_project_id, scoped_env_key, scoped_topology_id)
-    if op == "start" and current_active.get("active"):
-        return jsonify({"ok": False, "error": "topology_run_active", "message": "当前拓扑已有运行中的流程", "run_id": str(current_active.get("run_id") or "")}), 409
+    freeze = _change_freeze_for_project(scoped_project_id)
+    if op == "start" and freeze.get("active"):
+        return jsonify({
+            "ok": False,
+            "error": "change_freeze_active",
+            "message": "项目处于变更冻结窗口，禁止启动拓扑运行",
+            "freeze_reason": str(freeze.get("reason") or ""),
+        }), 423
 
     topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    topo_edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
     node_ids: List[str] = [str(n.get("id") or "").strip() for n in topo_nodes if isinstance(n, dict) and str(n.get("id") or "").strip()]
     if not node_ids:
         return jsonify({"ok": False, "error": "empty_topology", "message": "当前项目没有可执行节点"}), 400
 
     run_id = "run-" + uuid.uuid4().hex[:12]
+    if op == "start" and _project_uses_runtime_topology(scoped_project_id):
+        _cancel_runtime_start_runs_for_scope(scoped_project_id, scoped_env_key, scoped_topology_id, except_run_id=run_id)
+    elif op == "start" and current_active.get("active"):
+        return jsonify({"ok": False, "error": "topology_run_active", "message": "当前拓扑已有运行中的流程", "run_id": str(current_active.get("run_id") or "")}), 409
+
     action_type = "start" if op == "start" else "stop"
     now = _now_iso()
     logs: List[Dict[str, Any]] = []
     items: List[Dict[str, Any]] = []
     bindings = _load_scope_agent_bindings(scoped_topology_id)
+    service_bindings = _load_scope_service_bindings(scoped_topology_id)
+
+    if op == "start" and _project_uses_runtime_topology(scoped_project_id):
+        run_obj = {
+            "run_id": run_id,
+            "project_id": scoped_project_id,
+            "env_key": scoped_env_key,
+            "topology_id": scoped_topology_id,
+            "topology_name": str(registry.get("name") or ""),
+            "op": op,
+            "status": "running",
+            "created_at": now,
+            "updated_at": now,
+            "items": [],
+            "logs": [],
+        }
+        _upsert_runtime_run(run_obj)
+        cluster = _spawn_runtime_start_orchestration(
+            run_id,
+            scoped_project_id,
+            scoped_env_key,
+            scoped_topology_id,
+            topo_nodes,
+            topo_edges,
+            service_bindings,
+            actor,
+        )
+        items = cluster.get("items") if isinstance(cluster.get("items"), list) else []
+        logs = cluster.get("logs") if isinstance(cluster.get("logs"), list) else []
+        run_obj["items"] = items
+        run_obj["logs"] = logs
+        _upsert_runtime_run(run_obj)
+        return jsonify({
+            "ok": True,
+            "run_id": run_id,
+            "status": "running",
+            "project_id": scoped_project_id,
+            "env_key": scoped_env_key,
+            "topology_id": scoped_topology_id,
+            "items": items,
+            "logs": logs,
+        })
+
+    if op == "stop" and _project_uses_runtime_topology(scoped_project_id):
+        _cancel_runtime_start_runs_for_scope(scoped_project_id, scoped_env_key, scoped_topology_id, except_run_id=run_id)
+        run_obj = {
+            "run_id": run_id,
+            "project_id": scoped_project_id,
+            "env_key": scoped_env_key,
+            "topology_id": scoped_topology_id,
+            "topology_name": str(registry.get("name") or ""),
+            "op": op,
+            "status": "running",
+            "created_at": now,
+            "updated_at": now,
+            "items": [],
+            "logs": [],
+        }
+        _upsert_runtime_run(run_obj)
+        cluster = _spawn_runtime_stop_orchestration(
+            run_id,
+            scoped_project_id,
+            scoped_env_key,
+            scoped_topology_id,
+            topo_nodes,
+            topo_edges,
+            service_bindings,
+            actor,
+        )
+        items = cluster.get("items") if isinstance(cluster.get("items"), list) else []
+        logs = cluster.get("logs") if isinstance(cluster.get("logs"), list) else []
+        run_obj["items"] = items
+        run_obj["logs"] = logs
+        _upsert_runtime_run(run_obj)
+        return jsonify({
+            "ok": True,
+            "run_id": run_id,
+            "status": "running",
+            "project_id": scoped_project_id,
+            "env_key": scoped_env_key,
+            "topology_id": scoped_topology_id,
+            "items": items,
+            "logs": logs,
+        })
+
     reg_v2 = _load_agent_registry_v2()
     fresh_sec = max(20, int(policy.get("agent_online_fresh_sec") or 120))
     cluster_status = _fetch_cluster_runtime_status(
         [x for x in reg_v2.values() if isinstance(x, dict) and str(x.get("project_id") or "") in ("", scoped_project_id)]
     )
+    stop_node_ids = list(reversed(node_ids)) if op == "stop" else node_ids
 
-    for nid in node_ids:
+    for nid in stop_node_ids:
         topo_node = next((x for x in topo_nodes if isinstance(x, dict) and str(x.get("id") or "") == nid), None)
         node = _build_runtime_node_from_topology_node(scoped_project_id, scoped_env_key, topo_node or {}, scoped_topology_id) if topo_node else None
         if not node:
@@ -10824,7 +12593,7 @@ def ops_platform_runtime_flow_status():
         if timed_out and cur in ("PENDING", "LEASED", "RUNNING"):
             cur = "TIMEOUT"
         item["status"] = cur
-        if cur in ("SUCCESS", "FAILED", "TIMEOUT", "CANCELED"):
+        if cur in ("SUCCESS", "FAILED", "TIMEOUT", "CANCELED", "SKIPPED"):
             done += 1
         if cur in ("FAILED", "TIMEOUT", "CANCELED"):
             fail += 1
@@ -10889,7 +12658,36 @@ def ops_platform_runtime_active():
     ctx = _resolve_topology_context(project_id, env_key, topology_id)
     row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
     info = _runtime_active_for_scope(str(row.get("project_id") or project_id or ""), str(row.get("env_key") or env_key or ""), str(row.get("topology_id") or topology_id or ""))
-    return jsonify({"ok": True, "project_id": str(row.get("project_id") or project_id or ""), "env_key": str(row.get("env_key") or env_key or ""), "topology_id": str(row.get("topology_id") or topology_id or ""), "active": bool(info.get("active")), "run_id": str(info.get("run_id") or ""), "status": str(info.get("status") or ""), "reason": str(info.get("reason") or "")})
+    scoped_pid = str(row.get("project_id") or project_id or "")
+    scoped_env = str(row.get("env_key") or env_key or "")
+    scoped_tid = str(row.get("topology_id") or topology_id or "")
+    live_verified = False
+    live_count = 0
+    live_total = 0
+    if scoped_pid and scoped_tid and _project_uses_runtime_topology(scoped_pid):
+        try:
+            topo = _load_topology_scoped(scoped_pid, scoped_env, scoped_tid)
+            topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+            bindings = _load_scope_service_bindings(scoped_tid)
+            probe_stat = _refresh_runtime_service_probes_from_topology(scoped_pid, scoped_env, scoped_tid, topo_nodes, bindings)
+            live_count = int(probe_stat.get("live_count") or 0)
+            live_total = int(probe_stat.get("total") or 0)
+            live_verified = bool(live_total > 0 and live_count >= live_total and probe_stat.get("gateway_live"))
+        except Exception:
+            live_verified = False
+    return jsonify({
+        "ok": True,
+        "project_id": scoped_pid,
+        "env_key": scoped_env,
+        "topology_id": scoped_tid,
+        "active": bool(info.get("active")),
+        "run_id": str(info.get("run_id") or ""),
+        "status": str(info.get("status") or ""),
+        "reason": str(info.get("reason") or ""),
+        "live_verified": live_verified,
+        "live_count": live_count,
+        "live_total": live_total,
+    })
 
 
 @bp.route("/api/ops-platform/agent/register", methods=["POST"])

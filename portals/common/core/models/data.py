@@ -429,6 +429,7 @@ APPROVAL_TYPES = [
     ('news_publish', '新闻发布'),
     ('welfare_publish', '福利发布'),
     ('forum_post_publish', '官方帖子发布'),
+    ('gm_ops_action', '运维高危动作'),
 ]
 
 

@@ -332,8 +332,14 @@
     runtimeLogSeen: new Set(),
     runtimeProgressSig: "",
     runtimeSteady: false,
+    runtimeStopping: false,
+    runtimeAwaitLive: false,
+    runtimeAwaitLiveUntil: 0,
+    runtimeLiveWaitTimer: null,
     runtimeLastStatus: "",
     runtimeRequestedOp: "",
+    runtimePartialRecovery: false,
+    runtimeEdgesLogged: false,
     debugSeq: 0,
     agentsRefreshAt: 0,
     agentsTickTimer: null,
@@ -349,6 +355,7 @@
       metricsByEdge: {},
       history: [],
       replayTimer: null,
+      edgesEnabled: false,
     },
     inspectorTab: "basicInfoPanel",
     activeLeftTab: "tools",
@@ -920,18 +927,27 @@
   function serviceRuntimeStatusForNode(ag, nodeId) {
     if (!ag || !nodeId) return null;
     const services = Array.isArray(ag.services) ? ag.services : [];
-    const svc = services.find((s) => String((s || {}).node_id || (s || {}).service_id || "") === String(nodeId || ""));
+    const svc = services.find((s) => {
+      const sid = String((s && s.service_id) || "");
+      const nid = String((s && s.node_id) || "");
+      const target = String(nodeId || "");
+      return sid === target || nid === target;
+    });
+    if (svc && String(svc.probe_status || "").toUpperCase() !== "PASS") return null;
     if (!svc) return null;
     const probe = String(svc.probe_status || "").toUpperCase();
     const st = String(svc.run_state || svc.status || "").toUpperCase();
     if (probe === "FAIL" || st === "STOPPED" || st === "OFFLINE" || st === "FAILED") {
-      return { text: "离线", cls: "err" };
+      return { text: "已停止", cls: "err" };
     }
-    if (probe === "PASS" || st === "RUNNING" || st === "ONLINE" || st === "READY") {
+    if (probe === "PASS") {
       return { text: "运行中", cls: "ok" };
     }
-    if (!probe || st === "UNKNOWN") return { text: "待探活", cls: "warn" };
-    return { text: "运行中", cls: "ok" };
+    if (st === "RUNNING" || st === "ONLINE" || st === "READY") {
+      return { text: "未知", cls: "warn" };
+    }
+    if (st === "UNKNOWN" || (!probe && !st)) return { text: "未知", cls: "warn" };
+    return { text: "未知", cls: "warn" };
   }
 
   function nodeRuntimeStatus(n, ag, aid) {
@@ -942,10 +958,10 @@
     if (perSvc) return perSvc;
     const health = agentHealthLabel(ag);
     if (health.cls === "err") return { text: health.text.indexOf("连通") >= 0 ? "连通失败" : "离线", cls: "err" };
-    if (health.cls === "warn") return { text: "待探活", cls: "warn" };
+    if (health.cls === "warn") return { text: "未知", cls: "warn" };
     if (st === "offline" || st === "error") return { text: STATUS_LABELS[st] || "异常", cls: "err" };
     if (st === "degraded" || st === "observe") return { text: STATUS_LABELS[st] || st, cls: "warn" };
-    return { text: "运行中", cls: "ok" };
+    return { text: "未知", cls: "warn" };
   }
 
   function resolveAgentForNode(n) {
@@ -995,7 +1011,7 @@
     const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
     if (!nodes.length) return false;
     const healthy = healthyRunningNodeIdSet();
-    return healthy.size >= Math.max(1, Math.ceil(nodes.length * 0.5));
+    return healthy.size >= nodes.length;
   }
 
   function enforceLockedMode() {
@@ -1080,11 +1096,93 @@
 
   function edgeIsLiveRunning(edge, liveNodeIds) {
     if (!isRuntimeVizMode() || !edge) return false;
+    if (!state.flowViz.edgesEnabled) return false;
     const fromId = String(edge.from || "");
     const toId = String(edge.to || "");
     if (!liveNodeIds.has(fromId) || !liveNodeIds.has(toId)) return false;
     const toFlowSt = String((state.flowViz.statusByNode || {})[toId] || "").toUpperCase();
-    if (toFlowSt && ["FAILED", "TIMEOUT", "CANCELED", "OFFLINE", "ERROR", "PENDING", "LEASED"].includes(toFlowSt)) return false;
+    if (toFlowSt && ["FAILED", "TIMEOUT", "CANCELED", "OFFLINE", "ERROR", "PENDING", "LEASED", "STARTING", "SKIPPED", "STOPPED"].includes(toFlowSt)) return false;
+    return true;
+  }
+
+  function buildSequentialFlowVizFromItems(items, op, opts) {
+    const requireProbe = !!(opts && opts.requireProbe);
+    const effectiveOp = String(op || "start").toLowerCase();
+    const ordered = (items || []).slice().sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0));
+    const statusByNode = {};
+    const vizNodes = [];
+    let hasFailure = false;
+    ordered.forEach((it) => {
+      const nid = String((it && it.node_id) || "");
+      const st = String((it && it.status) || "PENDING").toUpperCase();
+      if (!nid) return;
+      if (effectiveOp === "stop") {
+        if (st === "PENDING") {
+          statusByNode[nid] = "RUNNING";
+          vizNodes.push(nid);
+        } else if (st === "RUNNING" || st === "LEASED") {
+          statusByNode[nid] = "STARTING";
+          vizNodes.push(nid);
+        } else if (st === "FAILED" || st === "TIMEOUT") {
+          statusByNode[nid] = "FAILED";
+          vizNodes.push(nid);
+          hasFailure = true;
+        } else if (st === "SUCCESS") {
+          statusByNode[nid] = "STOPPED";
+        }
+        return;
+      }
+      if (st === "SUCCESS") {
+        let probeOk = true;
+        if (requireProbe) {
+          const topoNode = (state.topology.nodes || []).find((n) => String(n.id) === nid);
+          const ag = topoNode ? resolveAgentForNode(topoNode) : null;
+          const aid = String((state.nodeBindings || {})[nid] || (ag && ag.agent_id) || "");
+          const rs = topoNode ? nodeRuntimeStatus(topoNode, ag, aid) : { cls: "err" };
+          probeOk = rs.cls === "ok";
+        }
+        if (probeOk) {
+          statusByNode[nid] = "RUNNING";
+          vizNodes.push(nid);
+        } else {
+          statusByNode[nid] = "STARTING";
+          vizNodes.push(nid);
+          hasFailure = true;
+        }
+      } else if (st === "RUNNING" || st === "LEASED") {
+        statusByNode[nid] = "STARTING";
+        vizNodes.push(nid);
+      } else if (st === "FAILED" || st === "TIMEOUT" || st === "CANCELED") {
+        statusByNode[nid] = st;
+        vizNodes.push(nid);
+        hasFailure = true;
+      } else if (st === "SKIPPED") {
+        statusByNode[nid] = "SKIPPED";
+      }
+    });
+    const total = ordered.length;
+    const successCount = ordered.filter((it) => String((it && it.status) || "").toUpperCase() === "SUCCESS").length;
+    const edgesEnabled = total > 0 && successCount === total && !hasFailure;
+    return { statusByNode, vizNodes, edgesEnabled, successCount, total, hasFailure };
+  }
+
+  function syncPartialRecoveryFromAgent() {
+    if (!state.runtimePartialRecovery || state.runtimeSteady) return false;
+    const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
+    if (!nodes.length) return false;
+    const healthy = healthyRunningNodeIdSet();
+    if (!healthy.size) return false;
+    const statusByNode = {};
+    Array.from(healthy).forEach((nid) => { statusByNode[nid] = "RUNNING"; });
+    const allHealthy = healthy.size >= nodes.length;
+    syncFlowViz("run", Array.from(healthy), statusByNode, { edgesEnabled: allHealthy });
+    redrawGraph();
+    if (allHealthy) {
+      state.runtimePartialRecovery = false;
+      logMode("Agent 侧节点已全部就绪，拓扑连线动画已同步开启", "ok");
+      finalizeRuntimeStartSteady(state.runtimeRunId || "");
+      return true;
+    }
     return true;
   }
 
@@ -1102,27 +1200,59 @@
     return !!(state.flowViz.mode === "test" && state.flowViz.nodes && state.flowViz.nodes.size);
   }
 
-  function syncLiveFlowVisualsForMode() {
-    if (!isRuntimeVizMode()) return;
-    if (state.mode === "test" && !isTestInProgress()) return;
-    const liveIds = liveRunningNodeIdSet();
-    const healthyIds = healthyRunningNodeIdSet();
-    const sourceIds = liveIds.size ? liveIds : (state.mode === "run" ? healthyIds : liveIds);
-    if (!sourceIds.size) {
-      if (state.mode === "run" && state.runtimeSteady && state.flowViz.mode === "run") return;
+  function reconcileFlowVizWithAgentTruth() {
+    if (!isRunMode()) return;
+    if (state.runtimeStopping) return;
+    const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
+    const healthy = healthyRunningNodeIdSet();
+    if (!healthy.size) {
+      if (state.flowViz.mode === "run" || state.runtimeSteady) {
+        clearFlowViz(true, "reconcile-all-stopped");
+        state.runtimeSteady = false;
+        state.runtimePartialRecovery = false;
+        if ($("runtimeStatusPill")) {
+          $("runtimeStatusPill").textContent = "已停止";
+          $("runtimeStatusPill").className = "state-pill state-muted";
+        }
+      }
       return;
     }
     const statusByNode = {};
-    sourceIds.forEach((nid) => { statusByNode[nid] = "RUNNING"; });
-    syncFlowViz(state.mode === "test" ? "test" : "run", Array.from(sourceIds), statusByNode);
-    if (state.mode === "run") {
-      state.runtimeSteady = true;
+    Array.from(healthy).forEach((nid) => { statusByNode[nid] = "RUNNING"; });
+    const allHealthy = healthy.size >= nodes.length;
+    syncFlowViz("run", Array.from(healthy), statusByNode, { edgesEnabled: allHealthy });
+    state.runtimeSteady = allHealthy;
+    if ($("runtimeStatusPill")) {
+      $("runtimeStatusPill").textContent = allHealthy ? "运行中" : ("部分运行 " + healthy.size + "/" + nodes.length);
+      $("runtimeStatusPill").className = "state-pill " + (allHealthy ? "state-ok" : "state-warn");
+    }
+    if (allHealthy) {
       const steadyMetrics = {};
       (state.topology.edges || []).forEach((e) => {
-        if (sourceIds.has(e.from) && sourceIds.has(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
+        if (healthy.has(e.from) && healthy.has(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
       });
       state.flowViz.metricsByEdge = steadyMetrics;
+    } else {
+      state.flowViz.metricsByEdge = {};
     }
+  }
+
+  function syncLiveFlowVisualsForMode() {
+    if (!isRuntimeVizMode()) return;
+    if (state.runtimeStopping) return;
+    if (state.runtimePartialRecovery) return;
+    if (state.mode === "test" && !isTestInProgress()) return;
+    if (isRunMode()) {
+      reconcileFlowVizWithAgentTruth();
+      return;
+    }
+    const liveIds = liveRunningNodeIdSet();
+    const healthyIds = healthyRunningNodeIdSet();
+    const sourceIds = liveIds.size ? liveIds : healthyIds;
+    if (!sourceIds.size) return;
+    const statusByNode = {};
+    sourceIds.forEach((nid) => { statusByNode[nid] = "RUNNING"; });
+    syncFlowViz("test", Array.from(sourceIds), statusByNode, { edgesEnabled: sourceIds.size >= (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only).length });
   }
 
   function applyWorkbenchModeFromMeta(meta) {
@@ -1212,7 +1342,7 @@
       const obj = JSON.parse(raw);
       const runId = String((obj || {}).runId || "");
       if (runId) state.runtimeRunId = runId;
-      state.runtimeSteady = !!((obj || {}).runtimeSteady);
+      state.runtimeSteady = false;
       state.runtimeRequestedOp = String((obj || {}).requestedOp || "");
     } catch (_) {}
   }
@@ -1293,6 +1423,127 @@
       clearInterval(state.runtimePollTimer);
       state.runtimePollTimer = null;
     }
+  }
+
+  function stopRuntimeLiveWait() {
+    state.runtimeAwaitLive = false;
+    state.runtimeAwaitLiveUntil = 0;
+    if (state.runtimeLiveWaitTimer) {
+      clearInterval(state.runtimeLiveWaitTimer);
+      state.runtimeLiveWaitTimer = null;
+    }
+  }
+
+  async function finalizeRuntimeStartSteady(runId) {
+    state.runtimeAwaitLive = false;
+    stopRuntimeLiveWait();
+    await refreshAgentsIfNeeded(true);
+    const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
+    const healthy = healthyRunningNodeIdSet();
+    if (!healthy.size) {
+      state.runtimeSteady = false;
+      clearFlowViz(true, "finalize-no-healthy-services");
+      if ($("runtimeStatusPill")) {
+        $("runtimeStatusPill").textContent = "已停止";
+        $("runtimeStatusPill").className = "state-pill state-muted";
+      }
+      logMode("Agent 探活未通过，未进入运行态可视化", "warn");
+      redrawGraph();
+      return;
+    }
+    state.runtimeSteady = healthy.size >= nodes.length;
+    state.mode = "run";
+    state.lockedMode = state.runtimeSteady ? "run" : "";
+    const steadyNodes = Array.from(healthy);
+    const steadyStatus = {};
+    steadyNodes.forEach((nid) => { steadyStatus[String(nid)] = "RUNNING"; });
+    syncFlowViz("run", steadyNodes, steadyStatus, { edgesEnabled: state.runtimeSteady });
+    const steadyMetrics = {};
+    if (state.runtimeSteady) {
+      (state.topology.edges || []).forEach((e) => {
+        if (steadyNodes.includes(e.from) && steadyNodes.includes(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
+      });
+    }
+    state.flowViz.metricsByEdge = steadyMetrics;
+    if ($("runtimeStatusPill")) {
+      $("runtimeStatusPill").textContent = state.runtimeSteady ? "运行中" : ("部分运行 " + steadyNodes.length + "/" + nodes.length);
+      $("runtimeStatusPill").className = "state-pill " + (state.runtimeSteady ? "state-ok" : "state-warn");
+    }
+    applyModeUI();
+    redrawGraph();
+    dbg("runtime-steady-on", { runId, activeNodes: steadyNodes.length, allHealthy: state.runtimeSteady });
+    logMode(state.runtimeSteady
+      ? "启动成功，Agent 探活全部通过，运行动画已开启"
+      : ("部分节点已就绪（" + steadyNodes.length + "/" + nodes.length + "），与 Agent 控制面板已同步"));
+    saveModeState();
+    if (state.runtimeSteady) persistWorkbenchMode({ lockedMode: "run" });
+    saveRuntimeState();
+  }
+
+  function startRuntimeLiveWait(runId) {
+    stopRuntimeLiveWait();
+    state.runtimeAwaitLive = true;
+    state.runtimeAwaitLiveUntil = Date.now() + 120000;
+    logMode("GameServer 启动中，等待端口探活就绪...", "warn");
+    const tick = async () => {
+      if (!state.runtimeAwaitLive) return;
+      await refreshAgentsIfNeeded(true);
+      redrawGraph();
+      if (clusterServicesRunning()) {
+        await finalizeRuntimeStartSteady(runId);
+        toast("GameServer 已就绪", "ok");
+        return;
+      }
+      if (Date.now() >= state.runtimeAwaitLiveUntil) {
+        stopRuntimeLiveWait();
+        state.runtimeSteady = false;
+        clearFlowViz(true, "runtime-live-wait-timeout");
+        toast("GameServer 启动超时，请查看模式日志或 apk-site-service-start.log", "error");
+        logMode("等待 GameServer 探活超时（120s），已清除运行态可视化", "error");
+        redrawGraph();
+      }
+    };
+    tick();
+    state.runtimeLiveWaitTimer = setInterval(tick, 2000);
+  }
+
+  async function finalizeRuntimeStop(reason) {
+    stopRuntimeLiveWait();
+    state.runtimeStopping = false;
+    state.runtimeSteady = false;
+    state.runtimePartialRecovery = false;
+    state.runtimeRunId = "";
+    state.runtimeRequestedOp = "";
+    state.runtimeLastStatus = "";
+    state.runtimeProgressSig = "";
+    state.runtimeLogSeen = new Set();
+    state.lockedMode = "";
+    stopRuntimePolling();
+    clearFlowViz(true, reason || "finalizeRuntimeStop");
+    saveRuntimeState();
+    saveModeState();
+    try {
+      await persistWorkbenchMode({ lockedMode: "" });
+    } catch (_) {}
+    await refreshAgentsIfNeeded(true);
+    updateRuntimeSummary({
+      run_id: "-",
+      total: 0,
+      done: 0,
+      running: 0,
+      success: 0,
+      failed: 0,
+      warn: 0,
+      progress_pct: 0,
+    });
+    if ($("runtimeStatusPill")) {
+      $("runtimeStatusPill").textContent = "已停止";
+      $("runtimeStatusPill").className = "state-pill state-muted";
+    }
+    applyModeUI();
+    redrawGraph();
+    renderRuntimeNodeList();
+    logMode("全流程已停止，运行态已清除");
   }
 
   function nodeSeed(id) {
@@ -1404,29 +1655,39 @@
     if (state.agentsTickTimer) clearInterval(state.agentsTickTimer);
     state.agentsTickTimer = setInterval(async () => {
       await refreshAgentsIfNeeded(false);
+      if (state.runtimeStopping) {
+        redrawGraph();
+        return;
+      }
       const modeChanged = inferWorkbenchModeFromRuntime();
       if (modeChanged) applyModeUI();
       syncLiveFlowVisualsForMode();
+      syncPartialRecoveryFromAgent();
+      if (isRunMode()) reconcileFlowVizWithAgentTruth();
       redrawGraph();
     }, 2000);
   }
 
-  function syncFlowViz(mode, nodeIds, statusByNode) {
+  function syncFlowViz(mode, nodeIds, statusByNode, opts) {
     const nset = new Set((nodeIds || []).filter(Boolean));
+    const edgesEnabled = !!(opts && opts.edgesEnabled);
     const eset = new Set();
-    (state.topology.edges || []).forEach((e) => {
-      if (nset.has(e.from) && nset.has(e.to)) eset.add(e.id);
-    });
+    if (edgesEnabled) {
+      (state.topology.edges || []).forEach((e) => {
+        if (nset.has(e.from) && nset.has(e.to)) eset.add(e.id);
+      });
+    }
     state.flowViz.mode = mode || "";
     state.flowViz.nodes = nset;
     state.flowViz.edges = eset;
     state.flowViz.statusByNode = statusByNode || {};
+    state.flowViz.edgesEnabled = edgesEnabled;
     state.flowViz.seed = Date.now();
   }
 
   function clearFlowViz(force, reason) {
     dbg("clearFlowViz", { force: !!force, reason: reason || "", mode: state.mode, runtimeSteady: !!state.runtimeSteady });
-    if (!force && state.mode === "run" && (state.runtimeSteady || liveRunningNodeIdSet().size > 0 || healthyRunningNodeIdSet().size > 0)) {
+    if (!force && state.mode === "run" && healthyRunningNodeIdSet().size > 0 && (state.runtimeSteady || liveRunningNodeIdSet().size > 0)) {
       logMode("已忽略一次可视化清理请求（运行态保护中）", "warn");
       return;
     }
@@ -1440,6 +1701,7 @@
     state.flowViz.statusByNode = {};
     state.flowViz.metricsByEdge = {};
     state.flowViz.history = [];
+    state.flowViz.edgesEnabled = false;
   }
 
   function edgeMetrics(edgeId, status) {
@@ -1670,23 +1932,26 @@
     if (d.debug && typeof d.debug === "object") {
       dbg("runtime-debug", d.debug);
     }
-    const statusByNode = {};
-    const activeNodes = [];
-    (d.items || []).forEach((it) => {
-      const nid = String((it && it.node_id) || "");
-      const st = String((it && it.status) || "PENDING").toUpperCase();
-      if (!nid) return;
-      statusByNode[nid] = st;
-      if (["PENDING", "LEASED", "RUNNING", "SUCCESS", "FAILED", "TIMEOUT", "CANCELED"].includes(st)) activeNodes.push(nid);
-    });
+    const op = String(d.op || "").toLowerCase();
+    const effectiveOp = op || String(state.runtimeRequestedOp || "").toLowerCase() || "start";
+    const seqViz = buildSequentialFlowVizFromItems(d.items || [], effectiveOp, { requireProbe: effectiveOp === "start" });
+    const statusByNode = seqViz.statusByNode;
+    const activeNodes = seqViz.vizNodes;
     const metricsByEdge = {};
-    (state.topology.edges || []).forEach((e) => {
-      if (!activeNodes.includes(e.from) || !activeNodes.includes(e.to)) return;
-      const toSt = statusByNode[String(e.to)] || "";
-      metricsByEdge[e.id] = edgeMetrics(e.id, toSt);
-    });
-    syncFlowViz("run", activeNodes, statusByNode);
+    if (seqViz.edgesEnabled) {
+      (state.topology.edges || []).forEach((e) => {
+        if (!activeNodes.includes(e.from) || !activeNodes.includes(e.to)) return;
+        const toSt = statusByNode[String(e.to)] || "";
+        metricsByEdge[e.id] = edgeMetrics(e.id, toSt);
+      });
+    }
+    syncFlowViz(effectiveOp === "stop" ? "run" : "run", activeNodes, statusByNode, { edgesEnabled: seqViz.edgesEnabled });
+    if (seqViz.edgesEnabled && !state.runtimeEdgesLogged) {
+      state.runtimeEdgesLogged = true;
+      logMode("全部节点已就绪，开始连线流量动画", "");
+    }
     state.flowViz.metricsByEdge = metricsByEdge;
+    if (effectiveOp === "start") reconcileFlowVizWithAgentTruth();
     pushFlowSnapshot();
     updateRuntimeSummary(d);
     redrawGraph();
@@ -1703,18 +1968,29 @@
       }
     }
     const st = String(d.status || "").toLowerCase();
-    const op = String(d.op || "").toLowerCase();
-    const effectiveOp = op || String(state.runtimeRequestedOp || "").toLowerCase() || "start";
+    const effectiveOpFinal = effectiveOp;
     if (state.runtimeLastStatus !== st) {
-      dbg("runtime-status-transition", { from: state.runtimeLastStatus || "-", to: st, op, effectiveOp, done: Number(d.done || 0), total: Number(d.total || 0), failed: Number(d.failed || 0) });
+      dbg("runtime-status-transition", { from: state.runtimeLastStatus || "-", to: st, op, effectiveOp: effectiveOpFinal, done: Number(d.done || 0), total: Number(d.total || 0), failed: Number(d.failed || 0) });
       state.runtimeLastStatus = st;
     }
     if (st === "success" || st === "failed") {
       stopRuntimePolling();
       const ok = st === "success";
-      toast(ok ? "全流程执行完成" : "全流程执行结束（含失败）", ok ? "ok" : "warn");
-      logMode("运行结束: " + st.toUpperCase(), ok ? "" : "warn");
       if (!ok) {
+        stopRuntimeLiveWait();
+        const partial = buildSequentialFlowVizFromItems(d.items || [], effectiveOpFinal);
+        const runningNodes = partial.vizNodes.filter((nid) => String(statusByNode[nid] || "").toUpperCase() === "RUNNING");
+        if (runningNodes.length) {
+          state.runtimePartialRecovery = true;
+          syncFlowViz("run", partial.vizNodes, partial.statusByNode, { edgesEnabled: false });
+          state.flowViz.metricsByEdge = {};
+          redrawGraph();
+          toast("部分节点启动失败，已保留成功节点；可在 Agent 修复后自动同步", "warn");
+          logMode("运行结束: FAILED（" + runningNodes.length + " 个节点仍运行，等待 Agent 修复同步）", "warn");
+          return;
+        }
+        toast("全流程执行结束（含失败）", "warn");
+        logMode("运行结束: " + st.toUpperCase(), "warn");
         replayFailureFlow();
         setTimeout(() => {
           clearFlowViz(true, "pollRuntimeRun-failed-finalize");
@@ -1722,34 +1998,22 @@
         }, 2200);
         return;
       }
-      if (effectiveOp === "start") {
-        state.runtimeSteady = true;
-        state.mode = "run";
-        state.lockedMode = "run";
-        const steadyNodes = activeNodes.length ? activeNodes : (state.topology.nodes || []).map((n) => n.id);
-        const steadyStatus = {};
-        steadyNodes.forEach((nid) => { steadyStatus[String(nid)] = "RUNNING"; });
-        syncFlowViz("run", steadyNodes, steadyStatus);
-        const steadyMetrics = {};
-        (state.topology.edges || []).forEach((e) => {
-          if (steadyNodes.includes(e.from) && steadyNodes.includes(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
-        });
-        state.flowViz.metricsByEdge = steadyMetrics;
-        applyModeUI();
-        redrawGraph();
-        dbg("runtime-steady-on", { runId, activeNodes: steadyNodes.length });
-        logMode("启动成功，已进入持续运行态可视化（直到手动停止）");
-        saveModeState();
-        persistWorkbenchMode({ lockedMode: "run" });
-        saveRuntimeState();
+      toast("全流程执行完成", "ok");
+      logMode("运行结束: " + st.toUpperCase(), "");
+      if (effectiveOpFinal === "start") {
+        state.runtimePartialRecovery = false;
+        await refreshAgentsIfNeeded(true);
+        if (!seqViz.edgesEnabled && !clusterServicesRunning()) {
+          startRuntimeLiveWait(runId);
+          return;
+        }
+        await finalizeRuntimeStartSteady(runId);
+        toast("全流程执行完成", "ok");
         return;
       }
-      setTimeout(() => {
-        clearFlowViz(true, "pollRuntimeRun-stop-success");
-        redrawGraph();
-      }, 1200);
-      state.runtimeSteady = false;
-      saveRuntimeState();
+      await finalizeRuntimeStop("pollRuntimeRun-stop-success");
+      toast("全流程已停止", "ok");
+      return;
     }
   }
 
@@ -1864,6 +2128,12 @@
     const meta = (state.topology && state.topology.meta) || {};
     if (meta.runtime_topology || meta.cluster_source) return false;
     return String(meta.design_reference || "") === "v4";
+  }
+
+  function isRuntimeTopologyProject() {
+    const meta = (state.topology && state.topology.meta) || {};
+    if (meta.runtime_topology || meta.cluster_source) return true;
+    return (state.topology.nodes || []).some((n) => String((n && n.id) || "").endsWith("-cn-1"));
   }
 
   function designDemoAgents() {
@@ -2998,10 +3268,11 @@
       const descLine = String(n.desc || "").trim() || roleLabel(n.role);
       let statusText = runtimeStatus.text;
       let statusCls = runtimeStatus.cls;
-      if ((isRunMode() || isTestMode()) && isFlow) {
-        const flowRunning = flowSt === "RUNNING" || flowSt === "SUCCESS";
-        statusText = flowRunning ? "运行中" : (STATUS_LABELS[st] || stLabel);
-        statusCls = flowRunning ? "ok" : (flowSt === "FAILED" ? "err" : "warn");
+      const probeOk = runtimeStatus.cls === "ok";
+      const flowStarting = probeOk && isFlow && flowSt === "STARTING";
+      if (flowStarting && statusText !== "运行中") {
+        statusText = "启动中";
+        statusCls = "warn";
       }
 
       const hasIn = (state.topology.edges || []).some((e) => String(e.to) === String(n.id));
@@ -3013,7 +3284,8 @@
             : ""))
         : "";
       const segmentHl = isTestSegmentScope() && state.highlight.nodes.size > 0;
-      const liveRunning = nodeIsLiveRunning(n, ag, aid, runtimeStatus);
+      const seqAnim = probeOk && isFlow && (flowSt === "RUNNING" || flowSt === "STARTING");
+      const liveRunning = probeOk && (nodeIsLiveRunning(n, ag, aid, runtimeStatus) || seqAnim);
 
       const el = document.createElement("div");
       el.className = "node structured-node tw-node"
@@ -3022,6 +3294,7 @@
         + (segmentHl && state.highlight.nodes.has(n.id) ? " hl" : "")
         + (segmentHl && !state.highlight.nodes.has(n.id) ? " path-dim" : "")
         + (isFlow ? " flow-active" : "")
+        + (flowSt === "STARTING" ? " flow-starting" : "")
         + (liveRunning ? " live-running run-active" : "")
         + (["FAILED", "TIMEOUT", "CANCELED"].includes(flowSt) ? " flow-fail" : "")
         + (flowSt === "SUCCESS" ? " flow-ok" : "")
@@ -3096,9 +3369,8 @@
       const bindCls = sid || aid ? "state-ok" : "state-warn";
       const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
       const runtimeStatus = nodeRuntimeStatus(n, ag, aid);
-      const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
-      const stLabel = flowSt ? (flowSt === "RUNNING" ? "运行中" : flowSt) : runtimeStatus.text;
-      const stCls = flowSt === "FAILED" ? "state-err" : (runtimeStatus.cls === "ok" ? "state-ok" : (runtimeStatus.cls === "err" ? "state-err" : "state-warn"));
+      const stLabel = runtimeStatus.text;
+      const stCls = runtimeStatus.cls === "ok" ? "state-ok" : (runtimeStatus.cls === "err" ? "state-err" : "state-warn");
       return '<tr data-node-row="' + esc(n.id) + '">'
         + '<td><span class="node-row-name"><span class="node-row-ico" style="--ico-accent:' + esc(iconAccent(n)) + '">' + roleBadge(n) + '</span>' + esc(nodeDisplayTitle(n)) + '</span></td>'
         + '<td>' + esc(roleLabel(n.role)) + '</td>'
@@ -4214,15 +4486,21 @@
   async function runFullLifecycle(start) {
     const op = start ? "start" : "stop";
     state.runtimeRequestedOp = op;
+    state.runtimePartialRecovery = false;
+    state.runtimeEdgesLogged = false;
     dbg("runFullLifecycle-click", { op, mode: state.mode, lockedMode: state.lockedMode || "", currentRunId: state.runtimeRunId || "" });
     stopRuntimePolling();
-    if (!start) clearFlowViz(true, "runFullLifecycle-stop-before-control");
+    if (!start) {
+      state.runtimeStopping = true;
+      clearFlowViz(true, "runFullLifecycle-stop-before-control");
+    }
     state.runtimeSteady = false;
+    state.runtimePartialRecovery = false;
     state.runtimeLastStatus = "";
     state.runtimeLogSeen = new Set();
     state.runtimeProgressSig = "";
     logMode((start ? "开始" : "开始") + (start ? "一键启动" : "一键停止") + "全流程");
-    if (start) {
+    if (start && !isRuntimeTopologyProject()) {
       const startupNodes = (state.topology.nodes || []).map((n) => n.id);
       const pre = await precheckAndStartRemoteForNodes(startupNodes);
       if (!pre.ok) {
@@ -4230,11 +4508,23 @@
         appendJsonDetail("运行前置校验失败节点清单", pre.failures);
         return;
       }
+    } else if (start) {
+      logMode("Runtime 拓扑：跳过 Agent 前置校验，改走集群级直连启动");
     }
     const d = await OpsApi.runtimeFlowControl(Object.assign(currentScope(), { op }));
     if (!d || d.ok === false) {
+      if (!start) state.runtimeStopping = false;
+      if (start) {
+        clearFlowViz(true, "runFullLifecycle-start-failed");
+        redrawGraph();
+      }
       toast((d && d.message) || "运行请求失败", "error");
       logMode("运行请求失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
+      if (d && d.logs) appendRuntimeLogs(d.logs);
+      if (d && d.status) {
+        state.runtimeLastStatus = String(d.status).toLowerCase();
+        updateRuntimeSummary(d);
+      }
       return;
     }
     state.runtimeRunId = String(d.run_id || "");
@@ -4246,7 +4536,10 @@
     logDeployment((start ? "一键启动" : "一键停止") + "全流程已入队 run_id=" + state.runtimeRunId, "info");
     toast((start ? "启动" : "停止") + "任务已入队，开始实时跟踪", "ok");
     await pollRuntimeRun(state.runtimeRunId);
-    state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+    const terminal = String(state.runtimeLastStatus || String(d.status || "")).toLowerCase();
+    if (state.runtimeRunId && !state.runtimePollTimer && !state.runtimeAwaitLive && terminal !== "success" && terminal !== "failed") {
+      state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+    }
   }
 
   async function runSmokeOrStress(isStress) {
@@ -4260,8 +4553,15 @@
       return;
     }
     logMode("测试参数确认: scope=" + scope + " start=" + (startNode || "-") + " end=" + (endNode || "-"));
+    const pathNodes = resolvePathNodesForTest(scope, startNode, endNode);
+    if (!pathNodes.length) {
+      toast("没有可测试的节点", "warn");
+      logMode("测试路径为空", "warn");
+      return;
+    }
     computePathHighlight();
-    syncFlowViz("test", Array.from(state.highlight.nodes || []), {});
+    const vizNodes = scope === "segment" ? pathNodes : Array.from(state.highlight.nodes || pathNodes);
+    syncFlowViz("test", vizNodes.length ? vizNodes : pathNodes, {});
     state.flowViz.metricsByEdge = {};
     Array.from(state.flowViz.edges || []).forEach((eid) => { state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, "RUNNING"); });
     redrawGraph();
@@ -4301,50 +4601,59 @@
       }
       return;
     }
-    const pathNodes = scope === "full"
-      ? (state.topology.nodes || []).map((n) => n.id)
-      : [startNode, endNode].filter(Boolean);
-    const pre = await precheckAndStartRemoteForNodes(pathNodes);
-    if (!pre.ok) {
-      toast("测试前置校验失败，请先修复失败节点", "error");
-      appendJsonDetail("测试前置校验失败节点清单", pre.failures);
-      return;
+    const pathNodesForTest = pathNodes;
+    if (!isRuntimeTopologyProject()) {
+      const pre = await precheckAndStartRemoteForNodes(pathNodesForTest);
+      if (!pre.ok) {
+        toast("测试前置校验失败，请先修复失败节点", "error");
+        appendJsonDetail("测试前置校验失败节点清单", pre.failures);
+        return;
+      }
+    } else {
+      logMode("Runtime 拓扑：跳过 Agent 前置校验，直接执行探活测试");
     }
     testLogHeader("单元测试开始", "scope=" + scope);
-    testLogKV("path_nodes", pathNodes.join(" -> "));
-    testLogKV("path_len", pathNodes.length);
-    const d = await OpsApi.postJSON("/api/ops-platform/flow-smoke", Object.assign(currentScope(), { path_nodes: pathNodes }));
-    if (d && d.ok !== false) {
-      const flowId = d.flow_id || "-";
-      const steps = Array.isArray(d.steps) ? d.steps : [];
-      logMode("单元测试完成: flow_id=" + flowId + " steps=" + steps.length + " ok=" + (!!d.ok));
-      steps.forEach((s, i) => testLogStep(i, s));
-      const okCount = steps.filter((s) => s && s.ok).length;
-      const failCount = steps.length - okCount;
-      logMode("单元测试汇总: ok_steps=" + okCount + " fail_steps=" + failCount + " flow_id=" + flowId, failCount > 0 ? "warn" : "");
-      appendJsonDetail("单元测试原始响应", d);
-      toast("单元测试完成", "ok");
-      const stepStatus = {};
-      (steps || []).forEach((s) => { if (s && s.node_id) stepStatus[String(s.node_id)] = s.ok ? "SUCCESS" : "FAILED"; });
-      syncFlowViz("test", Array.from(state.highlight.nodes || []), stepStatus);
+    testLogKV("path_nodes", pathNodesForTest.join(" -> "));
+    testLogKV("path_len", pathNodesForTest.length);
+    const stepStatus = {};
+    const stepResults = [];
+    let flowId = "-";
+    let allOk = true;
+    for (let i = 0; i < pathNodesForTest.length; i += 1) {
+      const nid = pathNodesForTest[i];
+      logMode("测试 Step " + (i + 1) + "/" + pathNodesForTest.length + ": 探活节点 " + nid + "...");
+      stepStatus[nid] = "STARTING";
+      syncFlowViz("test", pathNodesForTest.slice(0, i + 1), Object.assign({}, stepStatus), { edgesEnabled: false });
+      redrawGraph();
+      const d = await OpsApi.postJSON("/api/ops-platform/flow-smoke", Object.assign(currentScope(), { path_nodes: [nid] }));
+      const step = (Array.isArray(d && d.steps) ? d.steps : [])[0] || {};
+      const ok = !!(d && d.ok !== false && step.ok !== false);
+      stepStatus[nid] = ok ? "RUNNING" : "FAILED";
+      stepResults.push(step);
+      testLogStep(i, step);
+      if (!ok) allOk = false;
+      if (d && d.flow_id) flowId = d.flow_id;
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    if (allOk) {
+      logMode("单元测试完成: flow_id=" + flowId + " steps=" + stepResults.length + " ok=true");
+      logMode("全部测试节点探活通过，开始连线流量动画", "");
+      syncFlowViz("test", pathNodesForTest, stepStatus, { edgesEnabled: true });
       state.flowViz.metricsByEdge = {};
-      Array.from(state.flowViz.edges || []).forEach((eid) => {
-        const anyFail = Object.values(stepStatus || {}).some((x) => String(x).toUpperCase() === "FAILED");
-        state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, anyFail ? "FAILED" : "SUCCESS");
+      (state.topology.edges || []).forEach((e) => {
+        if (pathNodesForTest.includes(e.from) && pathNodesForTest.includes(e.to)) {
+          state.flowViz.metricsByEdge[e.id] = edgeMetrics(e.id, "RUNNING");
+        }
       });
+      appendJsonDetail("单元测试原始响应", { flow_id: flowId, steps: stepResults, ok: true });
+      toast("单元测试完成", "ok");
       redrawGraph();
     } else {
-      logMode("单元测试失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
-      if (d) {
-        testLogKV("error_code", d.error_code || d.error || "-");
-        testLogKV("http_status", d._http_status || "-");
-        testLogKV("message", d.message || "-");
-      }
-      appendJsonDetail("单元测试失败原始响应", d || {});
-      toast((d && d.message) || "单元测试失败", "error");
-      syncFlowViz("test", Array.from(state.highlight.nodes || []), {});
-      state.flowViz.metricsByEdge = {};
-      Array.from(state.flowViz.edges || []).forEach((eid) => { state.flowViz.metricsByEdge[eid] = edgeMetrics(eid, "FAILED"); });
+      const failCount = pathNodesForTest.filter((nid) => stepStatus[nid] === "FAILED").length;
+      logMode("单元测试汇总: fail_steps=" + failCount + " flow_id=" + flowId, "warn");
+      syncFlowViz("test", pathNodesForTest.filter((nid) => stepStatus[nid]), stepStatus, { edgesEnabled: false });
+      appendJsonDetail("单元测试原始响应", { flow_id: flowId, steps: stepResults, ok: false });
+      toast("单元测试含失败节点", "warn");
       redrawGraph();
     }
   }
@@ -4442,6 +4751,76 @@
 
     startSel.value = nextStart;
     endSel.value = nextEnd;
+  }
+
+  function topoSortNodeIds(nodes, edges) {
+    const ids = (nodes || []).map((n) => String(n.id || "")).filter(Boolean);
+    if (!ids.length) return [];
+    const indeg = {};
+    const adj = {};
+    ids.forEach((id) => { indeg[id] = 0; adj[id] = []; });
+    (edges || []).forEach((e) => {
+      const fromId = String(e.from || "");
+      const toId = String(e.to || "");
+      if (!fromId || !toId || indeg[fromId] == null || indeg[toId] == null) return;
+      adj[fromId].push(toId);
+      indeg[toId] += 1;
+    });
+    const q = ids.filter((id) => indeg[id] === 0);
+    const out = [];
+    while (q.length) {
+      const cur = q.shift();
+      out.push(cur);
+      (adj[cur] || []).forEach((nx) => {
+        indeg[nx] -= 1;
+        if (indeg[nx] === 0) q.push(nx);
+      });
+    }
+    return out.length === ids.length ? out : ids;
+  }
+
+  function resolveOrderedPathNodes(startNode, endNode) {
+    const start = String(startNode || "").trim();
+    const end = String(endNode || "").trim();
+    if (!start && !end) return [];
+    if (!start || !end || start === end) return [start || end].filter(Boolean);
+    const edges = state.topology.edges || [];
+    const adj = {};
+    edges.forEach((e) => {
+      if (!adj[e.from]) adj[e.from] = [];
+      adj[e.from].push(e);
+    });
+    const q = [start];
+    const prev = {};
+    const visited = new Set([start]);
+    let found = false;
+    while (q.length) {
+      const cur = q.shift();
+      if (cur === end) { found = true; break; }
+      (adj[cur] || []).forEach((e) => {
+        const nx = e.to;
+        if (visited.has(nx)) return;
+        visited.add(nx);
+        prev[nx] = cur;
+        q.push(nx);
+      });
+    }
+    if (!found) return [start, end];
+    const path = [];
+    let cursor = end;
+    while (cursor) {
+      path.unshift(cursor);
+      if (cursor === start) break;
+      cursor = prev[cursor] || "";
+    }
+    return path;
+  }
+
+  function resolvePathNodesForTest(scope, startNode, endNode) {
+    if (scope === "full") {
+      return topoSortNodeIds(state.topology.nodes || [], state.topology.edges || []);
+    }
+    return resolveOrderedPathNodes(startNode, endNode);
   }
 
   function resolveTestEndpoints(scope) {
@@ -5391,19 +5770,19 @@
     applyModeUI();
     redrawGraph();
     const act = await OpsApi.runtimeFlowActive(currentScope());
-    if (act && act.ok !== false && act.active && act.run_id) {
-      state.mode = "run";
-      if (!state.lockedMode) state.lockedMode = "run";
-      state.runtimeRunId = String(act.run_id || "");
-      state.runtimeRequestedOp = "start";
-      state.runtimeSteady = true;
-      syncLiveFlowVisualsForMode();
-      applyModeUI();
-      persistWorkbenchMode({ lockedMode: state.lockedMode });
-      logMode("后端检测为运行中，自动恢复运行跟踪: " + state.runtimeRunId, "warn");
-      await pollRuntimeRun(state.runtimeRunId);
-      stopRuntimePolling();
-      state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+    await refreshAgentsIfNeeded(true);
+    if (act && act.ok !== false && act.active && act.run_id && String(act.reason || "") === "start_alive") {
+      if (act.live_verified || clusterServicesRunning()) {
+        state.mode = "run";
+        if (!state.lockedMode) state.lockedMode = "run";
+        state.runtimeRunId = String(act.run_id || "");
+        state.runtimeRequestedOp = "start";
+        await finalizeRuntimeStartSteady(state.runtimeRunId);
+        logMode("后端探活确认服务运行中，已恢复运行跟踪: " + state.runtimeRunId, "");
+      } else {
+        logMode("检测到历史启动编排记录(" + act.run_id + ")，但 Agent 探活未通过（" + Number(act.live_count || 0) + "/" + Number(act.live_total || 0) + "），不恢复运行态", "warn");
+        reconcileFlowVizWithAgentTruth();
+      }
       maybeOpenStructuredAddFromQuery();
       return;
     }
@@ -5411,9 +5790,12 @@
       logMode("检测到刷新前运行态，自动恢复运行跟踪: " + state.runtimeRunId, "warn");
       await pollRuntimeRun(state.runtimeRunId);
       stopRuntimePolling();
-      state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+      const terminal = String(state.runtimeLastStatus || "").toLowerCase();
+      if (terminal !== "success" && terminal !== "failed") {
+        state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+      }
     } else if (state.mode === "run") {
-      syncLiveFlowVisualsForMode();
+      reconcileFlowVizWithAgentTruth();
       redrawGraph();
     }
     maybeOpenStructuredAddFromQuery();

@@ -135,6 +135,17 @@
       return { tone: ["CRITICAL", "ERROR"].includes(severity) ? "offline" : "info", text: "未知" };
     }
 
+    if (kind === "service" || kind === "agent") {
+      const probe = String((item && item.probe_status) || "").toUpperCase();
+      if (probe === "FAIL") return { tone: "offline", text: "已停止" };
+      if (probe === "PASS" && ["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) {
+        return { tone: "ok", text: "运行中" };
+      }
+      if (["OFFLINE", "STOPPED"].includes(status)) return { tone: "offline", text: "已停止" };
+      if (["ONLINE", "READY", "RUNNING", "SUCCESS"].includes(status)) return { tone: "warn", text: "未知" };
+      return { tone: "info", text: "未知" };
+    }
+
     if (["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) return { tone: "ok", text: "运行中" };
     if (["OFFLINE", "STOPPED"].includes(status)) return { tone: "offline", text: "已停止" };
     if (["DEGRADED", "ERROR", "FAILED", "WARN", "WARNING", "TIMEOUT"].includes(status)) return { tone: "warn", text: "异常" };

@@ -107,12 +107,24 @@
     return true;
   }
 
-  function normalizeStatus(value) {
+  function normalizeStatus(value, probeStatus) {
+    const probe = String(probeStatus || "").toUpperCase();
+    if (probe === "FAIL") return "OFFLINE";
     const status = String(value || "").toUpperCase();
-    if (["ONLINE", "READY", "RUNNING", "SUCCESS"].indexOf(status) >= 0) return "ONLINE";
+    if (["ONLINE", "READY", "RUNNING", "SUCCESS"].indexOf(status) >= 0) return probe === "PASS" ? "ONLINE" : "UNKNOWN";
     if (["OFFLINE", "STOPPED", "TIMEOUT", "CANCELED"].indexOf(status) >= 0) return "OFFLINE";
     if (["DEGRADED", "ERROR", "FAILED", "WARN", "WARNING"].indexOf(status) >= 0) return "WARN";
     return "UNKNOWN";
+  }
+
+  function normalizeAgentStatus(agent) {
+    if (!agent) return "UNKNOWN";
+    return normalizeStatus(agent.effective_status || agent.status, agent.probe_status);
+  }
+
+  function normalizeServiceStatus(service) {
+    if (!service) return "UNKNOWN";
+    return normalizeStatus(service.status || service.run_state, service.probe_status);
   }
 
   function statusText(status) {
@@ -150,6 +162,9 @@
   }
 
   function metricSource(agent) {
+    if (agent && String(agent.probe_status || "").toUpperCase() === "FAIL") {
+      return { control: {}, snapshot: {}, live: false };
+    }
     const metrics = agent && typeof agent.metrics === "object" ? agent.metrics : {};
     const control = metrics && typeof metrics.control === "object" ? metrics.control : metrics;
     const snapshot = agent && agent.device_metrics_snapshot && typeof agent.device_metrics_snapshot.control === "object"
@@ -181,7 +196,7 @@
     const rows = Array.isArray(services) ? services : [];
     const summary = { total: rows.length, online: 0, abnormal: 0, offline: 0 };
     rows.forEach(function (service) {
-      const status = normalizeStatus(service.status || service.run_state);
+      const status = normalizeServiceStatus(service);
       if (status === "ONLINE") summary.online += 1;
       else if (status === "OFFLINE") summary.offline += 1;
       else summary.abnormal += 1;
@@ -211,7 +226,7 @@
       const services = Array.isArray(agent.services) ? agent.services : [];
       const summary = summarizeServices(services);
       const summaryText = summarizeServiceText(summary);
-      const status = normalizeStatus(agent.effective_status || agent.status);
+      const status = normalizeAgentStatus(agent);
       const rowId = String(agent.agent_id || agent.device_id || "");
       return {
         rowId: rowId,
@@ -330,7 +345,7 @@
       return '<div class="agent-card-service-empty">暂无已管理服务器</div>';
     }
     const items = visibleServices.map(function (service) {
-      const status = normalizeStatus(service.status || service.run_state);
+      const status = normalizeServiceStatus(service);
       const label = statusText(status);
       const text = service.display_name || service.service_id || "-";
       return "" +
