@@ -1,15 +1,29 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Ops platform gateway: native Ops API integration for intranet."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 import requests
+
+
+def _ascii_http_header(value: Any, fallback: str = "ops-platform") -> str:
+    """HTTP 头仅允许 latin-1；含中文等非 ASCII 时回退为安全 ASCII。"""
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    try:
+        text.encode("latin-1")
+        return text
+    except UnicodeEncodeError:
+        ascii_only = re.sub(r"[^\x20-\x7E]", "", text).strip()
+        return ascii_only or fallback
 
 
 class OpsPlatformGateway:
@@ -42,10 +56,10 @@ class OpsPlatformGateway:
 
         headers = {
             "X-Ops-Key": key,
-            "X-Ops-Actor": str(node.get("ops_actor") or actor or "intranet-ops").strip(),
-            "X-Ops-Role": str(node.get("ops_role") or "SuperAdmin").strip(),
-            "X-Ops-Reason": str(reason or "ops-platform").strip(),
-            "X-Ops-TicketId": str(ticket_id or "OPS-N/A").strip(),
+            "X-Ops-Actor": _ascii_http_header(node.get("ops_actor") or actor or "intranet-ops", "intranet-ops"),
+            "X-Ops-Role": _ascii_http_header(node.get("ops_role") or "SuperAdmin", "SuperAdmin"),
+            "X-Ops-Reason": _ascii_http_header(reason or "ops-platform", "ops-platform"),
+            "X-Ops-TicketId": _ascii_http_header(ticket_id or "OPS-N/A", "OPS-N/A"),
         }
         return headers
 

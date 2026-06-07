@@ -13,6 +13,18 @@
     serviceFormAgentId: "",
     refreshTimer: null,
     loading: false,
+    logViewer: {
+      serviceId: "",
+      serviceName: "",
+      level: "all",
+      query: "",
+      sinceOffset: 0,
+      timer: null,
+      autoRefresh: true,
+      currentSession: true,
+      hideLifecycle: true,
+      mode: "logs",
+    },
   };
 
   const nodes = {
@@ -52,6 +64,14 @@
     logTitle: document.getElementById("serviceLogTitle"),
     logSub: document.getElementById("serviceLogSub"),
     logContent: document.getElementById("serviceLogContent"),
+    logLevel: document.getElementById("serviceLogLevel"),
+    logSearch: document.getElementById("serviceLogSearch"),
+    logCurrentSession: document.getElementById("serviceLogCurrentSession"),
+    logHideLifecycle: document.getElementById("serviceLogHideLifecycle"),
+    logAutoRefresh: document.getElementById("serviceLogAutoRefresh"),
+    logRefresh: document.getElementById("serviceLogRefresh"),
+    logStats: document.getElementById("serviceLogStats"),
+    logLines: document.getElementById("serviceLogLines"),
   };
 
   function esc(value) {
@@ -264,6 +284,29 @@
     };
   }
 
+  function chartYScale(values) {
+    const nums = (values || []).map(function (v) { return Number(v); }).filter(function (v) { return Number.isFinite(v); });
+    if (!nums.length) return { min: 0, max: 100, adaptive: false };
+    let min = Math.min.apply(null, nums);
+    let max = Math.max.apply(null, nums);
+    if (max - min < 0.01) {
+      const center = min;
+      const pad = Math.max(0.5, center * 0.05);
+      return { min: Math.max(0, center - pad), max: Math.min(100, center + pad), adaptive: true };
+    }
+    if (max - min < 15) {
+      const pad = Math.max((max - min) * 0.2, 0.3);
+      return { min: Math.max(0, min - pad), max: Math.min(100, max + pad), adaptive: true };
+    }
+    return { min: 0, max: 100, adaptive: false };
+  }
+
+  function formatChartTick(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "--";
+    return String(Math.round(num * 10) / 10);
+  }
+
   function chartMarkup(title, color, chart, shownValue) {
     const values = chart && Array.isArray(chart.values) ? chart.values : [];
     const labels = chart && Array.isArray(chart.labels) ? chart.labels : ["--", "--", "--"];
@@ -278,15 +321,22 @@
         "</div>";
     }
     const safeValues = values;
+    const scale = chartYScale(safeValues);
+    const span = Math.max(0.001, scale.max - scale.min);
     const points = safeValues.map(function (value, index) {
       const x = safeValues.length === 1 ? 0 : (index / (safeValues.length - 1)) * 240;
-      const y = 90 - (Math.max(0, Math.min(100, Number(value) || 0)) * 0.72);
+      const clamped = Math.max(scale.min, Math.min(scale.max, Number(value) || scale.min));
+      const y = 90 - ((clamped - scale.min) / span) * 72;
       return x + "," + y;
     }).join(" ");
+    const yTop = formatChartTick(scale.max);
+    const yMid = formatChartTick((scale.min + scale.max) / 2);
+    const yBot = formatChartTick(scale.min);
+    const adaptiveNote = scale.adaptive ? '<span class="agent-chart-adaptive">自适应刻度</span>' : "";
     return "" +
       '<div class="agent-chart">' +
-        '<div class="agent-chart-head"><span>' + esc(title) + "</span><strong>" + esc(valueText) + "</strong></div>" +
-        '<div class="agent-chart-scale"><span>100</span><span>50</span><span>0</span></div>' +
+        '<div class="agent-chart-head"><span>' + esc(title) + adaptiveNote + "</span><strong>" + esc(valueText) + "</strong></div>" +
+        '<div class="agent-chart-scale"><span>' + esc(yTop) + '</span><span>' + esc(yMid) + '</span><span>' + esc(yBot) + '</span></div>' +
         '<svg viewBox="0 0 240 100" preserveAspectRatio="none">' +
           '<polyline points="' + esc(points) + '" fill="none" stroke="' + esc(color) + '" stroke-width="3" stroke-linecap="round"></polyline>' +
         "</svg>" +
@@ -754,11 +804,161 @@
   function openLogModal(title, subtitle, payload) {
     nodes.logTitle.textContent = title;
     nodes.logSub.textContent = subtitle;
-    nodes.logContent.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    if (nodes.logLines) nodes.logLines.classList.add("is-hidden");
+    if (nodes.logContent) {
+      nodes.logContent.classList.remove("is-hidden");
+      nodes.logContent.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    }
+    nodes.logModal.classList.remove("is-hidden");
+  }
+
+  function formatStatusPayload(response) {
+    const d = (response && response.data) || {};
+    const m = d.metrics || {};
+    return [
+      "服务 ID: " + (d.service_id || "--"),
+      "运行状态: " + (d.status_label || d.run_state || d.status || "--"),
+      "探活结果: " + (d.probe_status || "--"),
+      "探活方式: " + (d.probe_method || "--"),
+      "Cluster 状态: " + (d.cluster_state || "--"),
+      "通信地址: " + (d.host || "127.0.0.1") + ":" + (d.port || "--"),
+      "采样时间: " + (d.sampled_at || "--"),
+      "",
+      "主机 CPU: " + (m.cpu_percent != null ? m.cpu_percent + "%" : "--"),
+      "主机内存: " + (m.mem_percent != null ? m.mem_percent + "%" : "--"),
+      "主机磁盘: " + (m.disk_percent != null ? m.disk_percent + "%" : "--"),
+    ].join("\n");
+  }
+
+  function renderLogLines(lines) {
+    if (!nodes.logLines) return;
+    if (!Array.isArray(lines) || !lines.length) {
+      nodes.logLines.innerHTML = '<div class="agent-log-empty">暂无匹配日志。请确认 GameServer 已启动，或调整筛选条件。</div>';
+      return;
+    }
+    nodes.logLines.innerHTML = lines.map(function (row) {
+      const level = String(row.level || "info");
+      const time = esc(row.time || "");
+      const category = esc(row.category || "");
+      const message = esc(row.message || row.raw || "");
+      return '<div class="agent-log-line agent-log-line--' + esc(level) + '">' +
+        (time ? '<span>[' + time + ']</span> ' : "") +
+        (category ? '<span>[' + category + ']</span> ' : "") +
+        message +
+        "</div>";
+    }).join("");
+    nodes.logLines.scrollTop = nodes.logLines.scrollHeight;
+  }
+
+  function updateLogStats(payload) {
+    if (!nodes.logStats) return;
+    const counts = payload.counts || {};
+    const sources = Array.isArray(payload.sources) ? payload.sources.join(", ") : "--";
+    const filters = payload.filters || {};
+    const sessionAt = payload.session_started_at ? (" | 当前启动 " + payload.session_started_at) : "";
+    const filterNote = (filters.current_session_only ? " | 仅当前启动" : "") + (filters.hide_lifecycle ? " | 隐藏注销/重载" : "");
+    nodes.logStats.textContent =
+      "来源: " + sources +
+      sessionAt +
+      filterNote +
+      " | 显示 " + Number(payload.total || 0) + " 条" +
+      " | 普通 " + Number(counts.info || 0) +
+      " / 告警 " + Number(counts.warn || 0) +
+      " / 报错 " + Number(counts.error || 0);
+  }
+
+  function stopLogPolling() {
+    if (state.logViewer.timer) {
+      window.clearInterval(state.logViewer.timer);
+      state.logViewer.timer = null;
+    }
+  }
+
+  async function fetchServiceLogs(incremental) {
+    const viewer = state.logViewer;
+    if (!viewer.serviceId) return;
+    const useSessionFilter = !!(viewer.currentSession || viewer.hideLifecycle);
+    const response = await window.OpsApi.serviceLogs({
+      project_id: state.projectId,
+      service_id: viewer.serviceId,
+      level: viewer.level,
+      q: viewer.query,
+      tail: incremental && !useSessionFilter ? 200 : 800,
+      since_offset: incremental && !useSessionFilter ? viewer.sinceOffset : 0,
+      current_session: viewer.currentSession ? "1" : "0",
+      hide_lifecycle: viewer.hideLifecycle ? "1" : "0",
+    });
+    if (!response || !response.ok) {
+      if (nodes.logStats) nodes.logStats.textContent = (response && response.message) || "日志读取失败";
+      return;
+    }
+    if (incremental && viewer.sinceOffset > 0) {
+      const existing = Array.from(nodes.logLines.querySelectorAll(".agent-log-line")).length;
+      if (Number(response.total || 0) === 0 && existing > 0) {
+        viewer.sinceOffset = Number(response.next_offset || viewer.sinceOffset);
+        return;
+      }
+    }
+    renderLogLines(response.lines || []);
+    updateLogStats(response);
+    viewer.sinceOffset = Number(response.next_offset || viewer.sinceOffset || 0);
+  }
+
+  function startLogPolling() {
+    stopLogPolling();
+    if (!state.logViewer.autoRefresh) return;
+    state.logViewer.timer = window.setInterval(function () {
+      fetchServiceLogs(true).catch(function (error) {
+        console.error("[agent-detail] log poll failed", error);
+      });
+    }, 2500);
+  }
+
+  async function openLiveLogModal(service) {
+    state.logViewer.mode = "logs";
+    const toolbar = document.querySelector(".agent-log-toolbar");
+    if (toolbar) toolbar.classList.remove("is-hidden");
+    state.logViewer.serviceId = String(service.service_id || "");
+    state.logViewer.serviceName = String(service.display_name || service.service_id || "");
+    state.logViewer.level = nodes.logLevel ? String(nodes.logLevel.value || "all") : "all";
+    state.logViewer.query = nodes.logSearch ? String(nodes.logSearch.value || "").trim() : "";
+    state.logViewer.sinceOffset = 0;
+    state.logViewer.autoRefresh = !!(nodes.logAutoRefresh && nodes.logAutoRefresh.checked);
+    state.logViewer.currentSession = !!(nodes.logCurrentSession && nodes.logCurrentSession.checked);
+    state.logViewer.hideLifecycle = !!(nodes.logHideLifecycle && nodes.logHideLifecycle.checked);
+
+    nodes.logTitle.textContent = "服务日志: " + state.logViewer.serviceName;
+    nodes.logSub.textContent = "默认仅显示当前进程启动后的日志，并隐藏注销/重载噪声。";
+    if (nodes.logContent) nodes.logContent.classList.add("is-hidden");
+    if (nodes.logLines) nodes.logLines.classList.remove("is-hidden");
+    nodes.logModal.classList.remove("is-hidden");
+    await fetchServiceLogs(false);
+    startLogPolling();
+  }
+
+  function openStatusModal(service, response) {
+    stopLogPolling();
+    state.logViewer.mode = "status";
+    const toolbar = document.querySelector(".agent-log-toolbar");
+    if (toolbar) toolbar.classList.add("is-hidden");
+    nodes.logTitle.textContent = "服务状态: " + (service.display_name || service.service_id || "");
+    nodes.logSub.textContent = String(response.message || "本地探活采样结果");
+    if (nodes.logLines) {
+      nodes.logLines.classList.add("is-hidden");
+      nodes.logLines.innerHTML = "";
+    }
+    if (nodes.logContent) {
+      nodes.logContent.classList.remove("is-hidden");
+      nodes.logContent.textContent = formatStatusPayload(response);
+    }
+    if (nodes.logStats) {
+      nodes.logStats.textContent = "模式: " + String(response.mode || "direct-local");
+    }
     nodes.logModal.classList.remove("is-hidden");
   }
 
   function closeLogModal() {
+    stopLogPolling();
     nodes.logModal.classList.add("is-hidden");
   }
 
@@ -897,31 +1097,15 @@
       return;
     }
     if (action === "logs") {
-      const response = await runServiceAction(service, "logs");
-      if (!response) return;
-      openLogModal(
-        "服务日志: " + (service.display_name || service.service_id || ""),
-        "日志拉取任务已提交，可根据 job_id / trace_id 跟进执行结果。",
-        {
-          service_id: service.service_id,
-          agent_id: service.agent_id,
-          action: "logs",
-          job_id: response.job_id || "",
-          trace_id: response.trace_id || "",
-        }
-      );
-      flash("日志拉取任务已提交", "success");
+      await openLiveLogModal(service);
+      flash("已打开实时日志", "success");
       return;
     }
     if (action === "status") {
       const response = await runServiceAction(service, "status");
       if (!response) return;
-      openLogModal(
-        "服务状态回执: " + (service.display_name || service.service_id || ""),
-        "当前接口返回的是状态查询任务回执。",
-        response
-      );
-      flash("状态查询任务已提交", "success");
+      openStatusModal(service, response);
+      flash(String(response.message || "状态查询完成"), "success");
       return;
     }
     openConfirm(
@@ -1096,6 +1280,53 @@
     };
 
     document.getElementById("serviceLogClose").onclick = closeLogModal;
+    if (nodes.logRefresh) {
+      nodes.logRefresh.onclick = function () {
+        fetchServiceLogs(false).catch(function (error) {
+          console.error("[agent-detail] log refresh failed", error);
+        });
+      };
+    }
+    if (nodes.logLevel) {
+      nodes.logLevel.onchange = function () {
+        state.logViewer.level = String(nodes.logLevel.value || "all");
+        state.logViewer.sinceOffset = 0;
+        fetchServiceLogs(false);
+      };
+    }
+    if (nodes.logSearch) {
+      let searchTimer = null;
+      nodes.logSearch.oninput = function () {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(function () {
+          state.logViewer.query = String(nodes.logSearch.value || "").trim();
+          state.logViewer.sinceOffset = 0;
+          fetchServiceLogs(false);
+        }, 300);
+      };
+    }
+    if (nodes.logAutoRefresh) {
+      nodes.logAutoRefresh.onchange = function () {
+        state.logViewer.autoRefresh = !!nodes.logAutoRefresh.checked;
+        if (state.logViewer.autoRefresh && !nodes.logModal.classList.contains("is-hidden") && state.logViewer.mode === "logs") {
+          startLogPolling();
+        } else {
+          stopLogPolling();
+        }
+      };
+    }
+    function onLogFilterChange() {
+      state.logViewer.currentSession = !!(nodes.logCurrentSession && nodes.logCurrentSession.checked);
+      state.logViewer.hideLifecycle = !!(nodes.logHideLifecycle && nodes.logHideLifecycle.checked);
+      state.logViewer.sinceOffset = 0;
+      fetchServiceLogs(false);
+    }
+    if (nodes.logCurrentSession) {
+      nodes.logCurrentSession.onchange = onLogFilterChange;
+    }
+    if (nodes.logHideLifecycle) {
+      nodes.logHideLifecycle.onchange = onLogFilterChange;
+    }
 
     document.addEventListener("click", function (event) {
       if (!event.target.closest(".agent-dropdown")) {
@@ -1107,6 +1338,7 @@
   bindStatic();
   startRealtimePolling();
   window.addEventListener("beforeunload", function () {
+    stopLogPolling();
     if (state.refreshTimer) {
       window.clearInterval(state.refreshTimer);
       state.refreshTimer = null;

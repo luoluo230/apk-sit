@@ -1,11 +1,24 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Game server Ops client for intranet GM operations center."""
 
 import json
 import os
+import re
 from typing import Any, Dict, Optional
 
 import requests
+
+
+def _ascii_http_header(value: Any, fallback: str = "gm-operation") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    try:
+        text.encode("latin-1")
+        return text
+    except UnicodeEncodeError:
+        ascii_only = re.sub(r"[^\x20-\x7E]", "", text).strip()
+        return ascii_only or fallback
 
 
 class GameOpsClient:
@@ -60,10 +73,10 @@ class GameOpsClient:
         key = self._write_key if write else (self._read_key or self._write_key)
         headers = {
             "X-Ops-Key": key,
-            "X-Ops-Actor": operator or "intranet-gm",
-            "X-Ops-Role": role or "Viewer",
-            "X-Ops-Reason": reason or "gm operation",
-            "X-Ops-TicketId": ticket_id or "N/A",
+            "X-Ops-Actor": _ascii_http_header(operator or "intranet-gm", "intranet-gm"),
+            "X-Ops-Role": _ascii_http_header(role or "Viewer", "Viewer"),
+            "X-Ops-Reason": _ascii_http_header(reason or "gm operation", "gm-operation"),
+            "X-Ops-TicketId": _ascii_http_header(ticket_id or "N/A", "N/A"),
         }
 
         url = f"{self._base_url}{path}"

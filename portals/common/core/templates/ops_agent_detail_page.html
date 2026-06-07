@@ -220,17 +220,32 @@
       </div>
 
       <div id="serviceLogModal" class="agent-modal is-hidden" aria-hidden="true">
-        <div class="agent-modal-card">
+        <div class="agent-modal-card agent-modal-card--log">
           <div class="agent-modal-head">
             <h3 id="serviceLogTitle">服务日志</h3>
             <button id="serviceLogClose" class="agent-btn agent-btn--outline agent-btn--small" type="button">关闭</button>
           </div>
-          <p id="serviceLogSub" class="agent-modal-sub">查看最近一次日志操作回执。</p>
-          <pre id="serviceLogContent" class="agent-detail-code"></pre>
+          <p id="serviceLogSub" class="agent-modal-sub">实时读取 GameServer UTF-8 日志（cluster-*.log）。</p>
+          <div class="agent-log-toolbar">
+            <select id="serviceLogLevel" class="agent-log-select" aria-label="日志级别">
+              <option value="all">全部</option>
+              <option value="info">普通</option>
+              <option value="warn">告警</option>
+              <option value="error">报错</option>
+            </select>
+            <input id="serviceLogSearch" class="agent-log-search" type="search" placeholder="搜索关键字..." />
+            <label class="agent-log-auto"><input id="serviceLogCurrentSession" type="checkbox" checked /> 仅当前启动</label>
+            <label class="agent-log-auto"><input id="serviceLogHideLifecycle" type="checkbox" checked /> 隐藏注销/重载</label>
+            <label class="agent-log-auto"><input id="serviceLogAutoRefresh" type="checkbox" checked /> 自动刷新</label>
+            <button id="serviceLogRefresh" class="agent-btn agent-btn--outline agent-btn--small" type="button">刷新</button>
+          </div>
+          <div id="serviceLogStats" class="agent-log-stats">准备加载日志...</div>
+          <div id="serviceLogLines" class="agent-log-lines"></div>
+          <pre id="serviceLogContent" class="agent-detail-code is-hidden"></pre>
         </div>
       </div>
     </main>
   </section>
 </div>
-<script src="/static/ops_platform_api.js?v=20260605-agent-ui-fixes-v4"></script>
-<script src="/static/ops_platform_agent_detail.js?v=20260605-agent-ui-fixes-v4"></script>
+<script src="/static/ops_platform_api.js?v=20260607-log-filters-v1"></script>
+<script src="/static/ops_platform_agent_detail.js?v=20260607-chart-adaptive-v1"></script>

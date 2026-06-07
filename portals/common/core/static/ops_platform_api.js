@@ -189,6 +189,19 @@
   api.listServices = (projectId) => api.getJSON('/api/ops-platform/services' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
   api.upsertService = (payload) => api.postJSON('/api/ops-platform/services/upsert', payload || {});
   api.serviceAction = (payload) => api.postJSON('/api/ops-platform/services/action', payload || {});
+  api.serviceLogs = (params) => {
+    const q = [];
+    const p = params || {};
+    if (p.project_id || p.projectId) q.push('project_id=' + encodeURIComponent(p.project_id || p.projectId));
+    if (p.service_id || p.serviceId) q.push('service_id=' + encodeURIComponent(p.service_id || p.serviceId));
+    if (p.level) q.push('level=' + encodeURIComponent(p.level));
+    if (p.q) q.push('q=' + encodeURIComponent(p.q));
+    if (p.tail) q.push('tail=' + encodeURIComponent(p.tail));
+    if (p.since_offset != null) q.push('since_offset=' + encodeURIComponent(p.since_offset));
+    if (p.current_session != null) q.push('current_session=' + encodeURIComponent(p.current_session));
+    if (p.hide_lifecycle != null) q.push('hide_lifecycle=' + encodeURIComponent(p.hide_lifecycle));
+    return api.getJSON('/api/ops-platform/services/logs' + (q.length ? ('?' + q.join('&')) : ''));
+  };
   api.autoBindAgents = (payload) => api.postJSON('/api/ops-platform/topology/auto-bind-agents', payload || {});
   api.agentJobs = (nodeId, status, limit) => {
     const q = [];

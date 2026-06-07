@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Legacy GM extraction + Ops platform routes."""
 
 from __future__ import annotations
@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+import re
 import signal
 import subprocess
 import uuid
@@ -2308,12 +2309,12 @@ def _load_topology_scoped(project_id: str = "", env_key: str = "", topology_id: 
         )
     normalized_edges = _repair_runtime_topology_edges(normalized_nodes, normalized_edges, meta)
     out_meta: Dict[str, Any] = {
-        "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
-        "version": int(meta.get("version") or 1),
-        "updated_at": str(meta.get("updated_at") or ""),
-        "layout_mode": str(meta.get("layout_mode") or "structured"),
-        "layout_locked": bool(meta.get("layout_locked")),
-        "design_reference": str(meta.get("design_reference") or ""),
+            "viewport": {"x": float(viewport.get("x") or 0), "y": float(viewport.get("y") or 0), "zoom": float(viewport.get("zoom") or 1)},
+            "version": int(meta.get("version") or 1),
+            "updated_at": str(meta.get("updated_at") or ""),
+            "layout_mode": str(meta.get("layout_mode") or "structured"),
+            "layout_locked": bool(meta.get("layout_locked")),
+            "design_reference": str(meta.get("design_reference") or ""),
         "runtime_topology": bool(meta.get("runtime_topology")),
         "cluster_source": bool(meta.get("cluster_source")),
         "description": str(meta.get("description") or ""),
@@ -2770,15 +2771,15 @@ def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str
             probe_host = "127.0.0.1"
         bind_host = endpoint_host or ("0.0.0.0" if role in ("gateway", "transport", "edge") else "127.0.0.1")
         base_meta = {
-            "ProjectId": str(project_id or ""),
-            "EnvKey": _normalize_env_key(env_key),
-            "TopologyId": str(topology_id or ""),
-            "TopologyName": str(row.get("name") or ""),
-            "VersionLabel": str(row.get("version_label") or ""),
-            "NodeId": node_id,
-            "AgentId": agent_id,
-            "ServiceId": str((service or {}).get("service_id") or ""),
-            "AgentWs": str(endpoint or ""),
+                    "ProjectId": str(project_id or ""),
+                    "EnvKey": _normalize_env_key(env_key),
+                    "TopologyId": str(topology_id or ""),
+                    "TopologyName": str(row.get("name") or ""),
+                    "VersionLabel": str(row.get("version_label") or ""),
+                    "NodeId": node_id,
+                    "AgentId": agent_id,
+                    "ServiceId": str((service or {}).get("service_id") or ""),
+                    "AgentWs": str(endpoint or ""),
             "RemoteGameServerPort": str(remote_port or ""),
             "PresetId": str(node.get("preset_id") or contract.get("preset_id") or ""),
             "ProbeStrategy": str(contract.get("probe_strategy") or "tcp"),
@@ -7354,6 +7355,36 @@ def ops_platform_services_delete():
     )
 
 
+@bp.route("/api/ops-platform/services/logs", methods=["GET"])
+@admin_required("gm_ops")
+def ops_platform_services_logs():
+    project_id = str(request.args.get("project_id") or "").strip()
+    service_id = str(request.args.get("service_id") or "").strip()
+    level = str(request.args.get("level") or "all").strip().lower()
+    query = str(request.args.get("q") or "").strip()
+    try:
+        tail = int(request.args.get("tail") or 400)
+    except Exception:
+        tail = 400
+    try:
+        since_offset = int(request.args.get("since_offset") or 0)
+    except Exception:
+        since_offset = 0
+    current_session_only = str(request.args.get("current_session") or request.args.get("session") or "1").strip().lower() in ("1", "true", "yes", "on")
+    hide_lifecycle = str(request.args.get("hide_lifecycle") or "1").strip().lower() in ("1", "true", "yes", "on")
+    tail = max(50, min(tail, 2000))
+    payload = _read_gameserver_service_logs(
+        service_id,
+        level=level,
+        query=query,
+        tail=tail,
+        since_offset=since_offset,
+        current_session_only=current_session_only,
+        hide_lifecycle=hide_lifecycle,
+    )
+    return jsonify({"ok": True, "project_id": project_id, "service_id": service_id, **payload})
+
+
 @bp.route("/api/ops-platform/services/action", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_services_action():
@@ -7452,6 +7483,7 @@ def ops_platform_services_action():
             "action": action,
             "mode": result.get("mode") or "direct",
             "message": str(result.get("message") or ""),
+            "data": result.get("data") if isinstance(result.get("data"), dict) else {},
             "trace_id": "dir-" + uuid.uuid4().hex[:12],
         })
 
@@ -9476,6 +9508,312 @@ def _probe_tcp_open(host: str, port: int, timeout: float = 0.8) -> bool:
         return False
 
 
+_GS_LOG_LINE_RE = re.compile(
+    r"^\[(?P<time>[^\]]+)\]\[(?P<level>INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\]\[(?P<category>[^\]]*)\]\s*(?P<message>.*)$",
+    re.IGNORECASE,
+)
+_GS_LOG_ERROR_HINT = re.compile(
+    r"(?i)(\bfailed\b|\bfailure\b|\bexception\b|\berror\b|\bfatal\b|\bcrash\b|\bunable to\b|\bcannot access\b|\bcreateindexes failed\b)",
+)
+_GS_LOG_WARN_HINT = re.compile(
+    r"(?i)(\bwarning\b|\bwarn\b|partial start|degraded|timeout|skipping protocol)",
+)
+_GS_LOG_SESSION_START = re.compile(
+    r"(游戏服务器框架启动中|框架启动中|GameServer framework starting)",
+    re.IGNORECASE,
+)
+_GS_LOG_LIFECYCLE_HIDE = re.compile(
+    r"(注销协议|业务模块停止|已注销所有脚本|正在停止所有服务器|集群已安全退出|检测到配置变更，已重新加载)",
+)
+_SERVICE_LOG_HINTS: Dict[str, List[str]] = {
+    "gateway-cn-1": ["gateway", "websocket"],
+    "auth-cn-1": ["auth"],
+    "game-cn-1": ["game", "router"],
+    "ops-cn-1": ["ops", "http", "daemon", "cluster"],
+    "mongo-db-cn-1": ["mongo", "mongosession"],
+    "redis-cache-cn-1": ["redis"],
+}
+
+
+def _gameserver_log_artifact_paths() -> Tuple[str, str]:
+    repo = _resolve_game_server_repo()
+    log_dir = os.path.join(repo, "tools", "SmokeTest", "artifacts")
+    return (
+        os.path.join(log_dir, "server-live.out.log"),
+        os.path.join(log_dir, "server-live.err.log"),
+    )
+
+
+def _gameserver_log_source_paths(current_session_only: bool = False) -> List[str]:
+    """优先 UTF-8 结构化日志（ServerLogger 写入），再合并 nohup 控制台输出。"""
+    repo = _resolve_game_server_repo()
+    paths: List[str] = []
+    all_cluster: List[str] = []
+    for sub in (
+        os.path.join(repo, "game-server", "bin", "Debug", "logs"),
+        os.path.join(repo, "game-server", "bin", "Release", "logs"),
+    ):
+        if not os.path.isdir(sub):
+            continue
+        all_cluster.extend(
+            os.path.join(sub, name)
+            for name in os.listdir(sub)
+            if name.startswith("cluster-") and name.endswith(".log")
+        )
+    cluster_paths = sorted(set(all_cluster), reverse=True)
+    if current_session_only:
+        cluster_paths = cluster_paths[:1]
+    else:
+        cluster_paths = cluster_paths[:3]
+    paths.extend(cluster_paths)
+    out_path, err_path = _gameserver_log_artifact_paths()
+    if cluster_paths:
+        if os.path.isfile(err_path):
+            paths.append(err_path)
+        if os.path.isfile(out_path):
+            paths.append(out_path)
+    else:
+        for p in (out_path, err_path):
+            if os.path.isfile(p):
+                paths.append(p)
+    return paths
+
+
+def _normalize_log_level(level: str) -> str:
+    lv = str(level or "").strip().upper()
+    if lv in ("WARN", "WARNING"):
+        return "warn"
+    if lv in ("ERROR", "FATAL"):
+        return "error"
+    if lv in ("DEBUG", "TRACE"):
+        return "debug"
+    return "info"
+
+
+def _infer_log_level_from_text(level: str, raw_line: str, source_path: str = "") -> str:
+    normalized = _normalize_log_level(level)
+    if normalized in ("warn", "error", "debug"):
+        return normalized
+    text = str(raw_line or "")
+    if _GS_LOG_ERROR_HINT.search(text):
+        return "error"
+    if _GS_LOG_WARN_HINT.search(text):
+        return "warn"
+    if str(source_path or "").endswith(".err.log"):
+        return "error"
+    return "info"
+
+
+def _log_dedupe_key(raw_line: str) -> str:
+    text = str(raw_line or "").strip()
+    if not text:
+        return ""
+    stripped = re.sub(r"^\[[^\]]+\]", "", text, count=1).strip()
+    stripped = re.sub(r"^\[(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\]", "", stripped, flags=re.IGNORECASE).strip()
+    stripped = re.sub(r"^\[[^\]]+\]", "", stripped, count=1).strip()
+    return stripped.lower()
+
+
+def _parse_gameserver_log_line(line: str, source_path: str = "") -> Dict[str, Any]:
+    raw = str(line or "").rstrip("\n\r")
+    if not raw.strip():
+        return {"time": "", "level": "info", "category": "", "message": "", "raw": raw}
+    match = _GS_LOG_LINE_RE.match(raw.strip())
+    if not match:
+        level = _infer_log_level_from_text("", raw, source_path)
+        category = ""
+        bracket = re.match(r"^\[(?P<cat>[^\]]+)\]", raw.strip())
+        if bracket:
+            category = bracket.group("cat")
+        return {
+            "time": "",
+            "level": level,
+            "category": category,
+            "message": raw,
+            "raw": raw,
+        }
+    level = _infer_log_level_from_text(match.group("level"), raw, source_path)
+    return {
+        "time": match.group("time"),
+        "level": level,
+        "category": match.group("category"),
+        "message": match.group("message"),
+        "raw": raw,
+    }
+
+
+def _service_log_line_matches(service_id: str, parsed: Dict[str, Any], raw_line: str) -> bool:
+    sid = str(service_id or "").strip().lower()
+    if not sid:
+        return True
+    hints = _SERVICE_LOG_HINTS.get(sid) or []
+    if not hints:
+        token = sid.split("-")[0]
+        hints = [token] if token else []
+    hay = f"{parsed.get('category') or ''} {parsed.get('message') or ''} {raw_line}".lower()
+    if sid in hay:
+        return True
+    return any(h in hay for h in hints)
+
+
+def _slice_merged_from_current_session(merged: List[Tuple[int, str, str]]) -> Tuple[List[Tuple[int, str, str]], str]:
+    start_idx = 0
+    started_at = ""
+    for idx, (_, line, _) in enumerate(merged):
+        if _GS_LOG_SESSION_START.search(line):
+            start_idx = idx
+            match = _GS_LOG_LINE_RE.match(line.strip())
+            if match:
+                started_at = match.group("time")
+    if start_idx <= 0:
+        return merged, started_at
+    return merged[start_idx:], started_at
+
+
+def _should_hide_lifecycle_log_line(raw_line: str) -> bool:
+    text = str(raw_line or "")
+    if not text.strip():
+        return True
+    return bool(_GS_LOG_LIFECYCLE_HIDE.search(text))
+
+
+def _read_gameserver_service_logs(
+    service_id: str = "",
+    *,
+    level: str = "all",
+    query: str = "",
+    tail: int = 400,
+    since_offset: int = 0,
+    current_session_only: bool = False,
+    hide_lifecycle: bool = False,
+) -> Dict[str, Any]:
+    paths = _gameserver_log_source_paths(current_session_only=current_session_only)
+    if not paths:
+        return {
+            "lines": [],
+            "total": 0,
+            "next_offset": 0,
+            "sources": [],
+            "message": "未找到 GameServer 日志文件，请先启动 GameServer",
+        }
+
+    merged: List[Tuple[int, str, str]] = []
+    offset = 0
+    seen_keys: set = set()
+    has_cluster_logs = any("cluster-" in os.path.basename(p) for p in paths)
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fp:
+                for line in fp:
+                    if has_cluster_logs and "????" in line and _GS_LOG_LINE_RE.match(line.strip()):
+                        continue
+                    key = _log_dedupe_key(line)
+                    if key and key in seen_keys:
+                        continue
+                    if key:
+                        seen_keys.add(key)
+                    merged.append((offset, line, path))
+                    offset += len(line.encode("utf-8", errors="replace"))
+        except Exception:
+            continue
+
+    session_started_at = ""
+    if current_session_only and merged:
+        merged, session_started_at = _slice_merged_from_current_session(merged)
+
+    lv_filter = str(level or "all").strip().lower()
+    q = str(query or "").strip().lower()
+    parsed_rows: List[Dict[str, Any]] = []
+    for byte_offset, line, path in merged:
+        if since_offset > 0 and byte_offset < since_offset:
+            continue
+        if hide_lifecycle and _should_hide_lifecycle_log_line(line):
+            continue
+        parsed = _parse_gameserver_log_line(line, path)
+        if lv_filter not in ("", "all") and parsed.get("level") != lv_filter:
+            continue
+        if service_id and not _service_log_line_matches(service_id, parsed, line):
+            continue
+        hay = f"{parsed.get('raw') or ''} {parsed.get('category') or ''} {parsed.get('message') or ''}".lower()
+        if q and q not in hay:
+            continue
+        parsed_rows.append({
+            **parsed,
+            "offset": byte_offset,
+            "source": os.path.basename(path),
+        })
+
+    if tail > 0 and len(parsed_rows) > tail:
+        parsed_rows = parsed_rows[-tail:]
+
+    next_offset = merged[-1][0] + len(merged[-1][1].encode("utf-8", errors="replace")) if merged else 0
+    counts = {"info": 0, "warn": 0, "error": 0, "debug": 0}
+    for row in parsed_rows:
+        key = str(row.get("level") or "info")
+        if key in counts:
+            counts[key] += 1
+
+    return {
+        "lines": parsed_rows,
+        "total": len(parsed_rows),
+        "next_offset": next_offset,
+        "sources": [os.path.basename(p) for p in paths],
+        "counts": counts,
+        "service_id": service_id,
+        "session_started_at": session_started_at,
+        "filters": {
+            "current_session_only": bool(current_session_only),
+            "hide_lifecycle": bool(hide_lifecycle),
+        },
+    }
+
+
+def _local_service_status_snapshot(project_id: str, topology_node_id: str, service_id: str) -> Dict[str, Any]:
+    node = _resolve_ops_dispatch_node(project_id, topology_node_id)
+    if not node:
+        return {"ok": False, "message": "topology node not found"}
+    port = int(node.get("port") or node.get("remote_game_server_port") or 0)
+    cs_map = _fetch_cluster_runtime_status()
+    raw_svc = {
+        "service_id": service_id,
+        "node_id": topology_node_id,
+        "service_port": port,
+        "remote_game_server_port": port,
+        "service_type": node.get("role") or node.get("service_type") or "",
+    }
+    resolved = _resolve_service_runtime_state(raw_svc, host="127.0.0.1", cluster_status=cs_map)
+    metrics = _sample_local_control_metrics()
+    st = str(resolved.get("run_state") or resolved.get("status") or "UNKNOWN").upper()
+    labels = {
+        "RUNNING": "运行中",
+        "ONLINE": "运行中",
+        "READY": "运行中",
+        "STARTING": "启动中",
+        "STOPPED": "已停止",
+        "OFFLINE": "离线",
+        "UNKNOWN": "未知",
+    }
+    return {
+        "ok": True,
+        "message": f"{service_id} 当前状态：{labels.get(st, st)}",
+        "data": {
+            "service_id": service_id,
+            "node_id": topology_node_id,
+            "status": resolved.get("status"),
+            "run_state": resolved.get("run_state"),
+            "status_label": labels.get(st, st),
+            "probe_status": resolved.get("probe_status"),
+            "probe_method": resolved.get("probe_method"),
+            "cluster_state": resolved.get("cluster_state"),
+            "port": port,
+            "host": "127.0.0.1",
+            "metrics": metrics,
+            "sampled_at": _now_iso(),
+        },
+        "mode": "direct-local",
+    }
+
+
 def _launch_local_game_server(reason: str = "") -> Dict[str, Any]:
     repo = _resolve_game_server_repo()
     script = os.path.join(repo, "scripts", "Start-GameServer.sh")
@@ -9659,6 +9997,18 @@ def _execute_canonical_service_action(
             st = "RUNNING" if act in ("start", "restart", "status") else "STOPPED"
             _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="PASS" if st == "RUNNING" else "FAIL")
         return {"ok": ok, "message": str(result.get("message") or ""), "data": result.get("data") or {}, "mode": "daemon"}
+
+    if act == "status":
+        return _local_service_status_snapshot(project_id, topology_node_id, service_id)
+
+    if act == "logs":
+        log_payload = _read_gameserver_service_logs(service_id, tail=500)
+        return {
+            "ok": True,
+            "message": f"已读取 GameServer 日志（{log_payload.get('total', 0)} 条）",
+            "data": log_payload,
+            "mode": "direct-local",
+        }
 
     ops_node = _resolve_ops_dispatch_node(project_id, "ops-cn-1") or node
     map_action = {"start": "start", "stop": "stop", "restart": "restart", "status": "status", "probe": "health_check", "logs": "log_tail"}.get(act, act)
