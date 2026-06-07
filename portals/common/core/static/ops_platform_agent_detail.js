@@ -2,10 +2,17 @@
   const root = document.querySelector(".agent-detail-page");
   if (!root || !window.OpsApi) return;
 
+  const urlParams = new URLSearchParams(window.location.search);
+
   const state = {
     projectId: String(root.dataset.projectId || ""),
     agentId: String(root.dataset.agentId || ""),
-    activeTab: new URLSearchParams(window.location.search).get("tab") || "overview",
+    activeTab: urlParams.get("tab") || "overview",
+    focusServiceKey: String(urlParams.get("node_id") || urlParams.get("service_id") || "").trim(),
+    focusServiceId: "",
+    focusApplied: false,
+    topologyFocusActive: false,
+    topologyFocusDismissed: false,
     detail: null,
     selectedServiceIds: new Set(),
     pendingConfirm: null,
@@ -227,6 +234,47 @@
     return Array.isArray((state.detail || {}).services) ? state.detail.services : [];
   }
 
+  function serviceMatchesFocus(service) {
+    if (!state.topologyFocusActive || !state.focusServiceId || !service) return false;
+    return String(service.service_id || "") === state.focusServiceId;
+  }
+
+  function applyServiceFocusSelection() {
+    if (!state.focusServiceKey || state.focusApplied || state.topologyFocusDismissed) return;
+    const match = serviceRows().find(function (service) {
+      const key = state.focusServiceKey;
+      const serviceId = String(service.service_id || "");
+      const nodeId = String(service.node_id || "");
+      return key === serviceId || key === nodeId;
+    });
+    if (!match) return;
+    const serviceId = String(match.service_id || "");
+    if (!serviceId) return;
+    state.selectedServiceIds.add(serviceId);
+    state.focusServiceId = serviceId;
+    state.topologyFocusActive = true;
+    state.focusApplied = true;
+  }
+
+  function clearTopologyFocusSelection() {
+    if (!state.topologyFocusActive) return;
+    if (state.focusServiceId) state.selectedServiceIds.delete(state.focusServiceId);
+    state.focusServiceId = "";
+    state.topologyFocusActive = false;
+    state.topologyFocusDismissed = true;
+    renderAll({ skipFocusScroll: true });
+  }
+
+  function scrollFocusedServiceRowIntoView() {
+    const key = state.focusServiceId || state.focusServiceKey;
+    if (!key) return;
+    window.requestAnimationFrame(function () {
+      const row = document.querySelector('.agent-table tbody tr.is-topology-focus[data-service-id="' + key + '"]')
+        || document.querySelector(".agent-table tbody tr.is-topology-focus");
+      if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }
+
   function selectedServices() {
     return serviceRows().filter(function (service) {
       return state.selectedServiceIds.has(String(service.service_id || ""));
@@ -379,12 +427,13 @@
   function serviceTableRows() {
     return serviceRows().map(function (service) {
       const serviceId = String(service.service_id || "");
+      const focused = serviceMatchesFocus(service);
       const selected = state.selectedServiceIds.has(serviceId);
       const metrics = service.metrics && typeof service.metrics === "object" ? service.metrics : {};
       const cpu = Number(metrics.cpu_percent);
       const memMb = Number(metrics.service_memory_mb);
       return "" +
-        "<tr>" +
+        '<tr class="' + (focused ? "is-topology-focus" : "") + '" data-service-id="' + esc(serviceId) + '">' +
           '<td><input type="checkbox" data-service-select="' + esc(serviceId) + '"' + (selected ? " checked" : "") + "></td>" +
           "<td><strong>" + esc(service.display_name || serviceId) + "</strong><div class=\"table-sub\">" + esc(serviceId) + "</div></td>" +
           "<td>" + renderStatusPill(service.status || service.run_state, "service", service) + "</td>" +
@@ -706,7 +755,8 @@
       "</div>";
   }
 
-  function renderAll() {
+  function renderAll(options) {
+    const skipFocusScroll = !!(options && options.skipFocusScroll);
     const detail = state.detail || {};
     const agent = detail.agent || {};
     const status = agentStatus();
@@ -723,6 +773,7 @@
       "安装时间: " + formatDate(agent.created_at || agent.updated_at || agent.last_seen),
     ].join("  |  ");
 
+    applyServiceFocusSelection();
     document.getElementById("tab-overview").innerHTML = overviewMarkup();
     document.getElementById("tab-device").innerHTML = deviceMarkup();
     document.getElementById("tab-services").innerHTML = serviceConsole("服务与进程");
@@ -735,6 +786,7 @@
 
     bindDynamic();
     switchTab(state.activeTab);
+    if (!skipFocusScroll) scrollFocusedServiceRowIntoView();
   }
 
   function switchTab(tab) {
@@ -1159,8 +1211,15 @@
         const serviceId = String(node.getAttribute("data-service-select") || "");
         if (!serviceId) return;
         if (node.checked) state.selectedServiceIds.add(serviceId);
-        else state.selectedServiceIds.delete(serviceId);
-        renderAll();
+        else {
+          state.selectedServiceIds.delete(serviceId);
+          if (state.topologyFocusActive && serviceId === state.focusServiceId) {
+            state.focusServiceId = "";
+            state.topologyFocusActive = false;
+            state.topologyFocusDismissed = true;
+          }
+        }
+        renderAll({ skipFocusScroll: true });
       };
     });
     document.querySelectorAll("[data-service-action]").forEach(function (node) {
@@ -1332,6 +1391,12 @@
       if (!event.target.closest(".agent-dropdown")) {
         toggleMoreMenu(false);
       }
+    });
+
+    root.addEventListener("click", function (event) {
+      if (!state.topologyFocusActive) return;
+      if (event.target.closest("tr.is-topology-focus")) return;
+      clearTopologyFocusSelection();
     });
   }
 

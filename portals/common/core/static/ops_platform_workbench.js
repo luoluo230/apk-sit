@@ -337,7 +337,8 @@
     debugSeq: 0,
     agentsRefreshAt: 0,
     agentsTickTimer: null,
-    modeLocked: false,
+    lockedMode: "",
+    autoRunModeLogged: false,
     highlight: { nodes: new Set(), edges: new Set() },
     flowViz: {
       mode: "",
@@ -360,6 +361,7 @@
     sidebarCollapsed: false,
   };
   const MODE_STORAGE_KEY = "ops_topology_mode_v1";
+  const MODE_LABELS = { edit: "编辑模式", run: "运行模式", test: "测试模式" };
   const RUNTIME_STORAGE_KEY = "ops_topology_runtime_v1";
   const ENV_LABELS = {
     development: "开发环境",
@@ -946,19 +948,250 @@
     return { text: "运行中", cls: "ok" };
   }
 
-  function saveModeState() {
-    try { localStorage.setItem(MODE_STORAGE_KEY, JSON.stringify({ mode: state.mode, modeLocked: !!state.modeLocked, ts: Date.now() })); } catch (_) {}
+  function resolveAgentForNode(n) {
+    const aid = String((state.nodeBindings || {})[String((n && n.id) || "")] || "");
+    if (aid) {
+      return (state.agents || []).find((x) => String(x.agent_id || "") === aid) || null;
+    }
+    for (const ag of (state.agents || [])) {
+      if (!ag || ag.stale) continue;
+      const services = Array.isArray(ag.services) ? ag.services : [];
+      if (services.some((s) => String((s && s.node_id) || (s && s.service_id) || "") === String((n && n.id) || ""))) {
+        return ag;
+      }
+    }
+    return null;
   }
 
-  function loadModeState() {
+  function isRuntimeVizMode() {
+    return isRunMode() || isTestMode();
+  }
+
+  function nodeIsLiveRunning(n, ag, aid, runtimeStatus) {
+    if (!isRuntimeVizMode()) return false;
+    const rs = runtimeStatus || nodeRuntimeStatus(n, ag, aid);
+    if (!rs || rs.cls !== "ok") return false;
+    const flowSt = String((state.flowViz.statusByNode || {})[n.id] || "").toUpperCase();
+    if (flowSt) {
+      if (["FAILED", "TIMEOUT", "CANCELED", "OFFLINE", "ERROR"].includes(flowSt)) return false;
+      if (["PENDING", "LEASED"].includes(flowSt)) return false;
+    }
+    return true;
+  }
+
+  function healthyRunningNodeIdSet() {
+    const ids = new Set();
+    (state.topology.nodes || []).forEach((n) => {
+      if ((n.ui || {}).list_only) return;
+      const ag = resolveAgentForNode(n);
+      const aid = String((state.nodeBindings || {})[n.id] || (ag && ag.agent_id) || "");
+      const rs = nodeRuntimeStatus(n, ag, aid);
+      if (rs && rs.cls === "ok") ids.add(String(n.id));
+    });
+    return ids;
+  }
+
+  function clusterServicesRunning() {
+    const nodes = (state.topology.nodes || []).filter((n) => !(n.ui || {}).list_only);
+    if (!nodes.length) return false;
+    const healthy = healthyRunningNodeIdSet();
+    return healthy.size >= Math.max(1, Math.ceil(nodes.length * 0.5));
+  }
+
+  function enforceLockedMode() {
+    if (!state.lockedMode) return false;
+    if (state.mode === state.lockedMode) return false;
+    state.mode = state.lockedMode;
+    return true;
+  }
+
+  function displayWorkbenchMode() {
+    enforceLockedMode();
+    return state.lockedMode || state.mode || "edit";
+  }
+
+  function resolveWorkbenchModePreferences(meta) {
+    const serverLocked = String((meta || {}).workbench_locked_mode || "");
+    const serverMode = String((meta || {}).workbench_mode || "");
+    let localMode = "";
+    let localLocked = "";
     try {
-      const raw = localStorage.getItem(MODE_STORAGE_KEY);
-      if (!raw) return;
-      const obj = JSON.parse(raw);
-      const mode = String((obj || {}).mode || "");
-      if (["edit", "run", "test"].includes(mode)) state.mode = mode;
-      state.modeLocked = !!((obj || {}).modeLocked);
+      const raw = localStorage.getItem(modeStorageKey());
+      if (raw) {
+        const obj = JSON.parse(raw);
+        localMode = String((obj || {}).mode || "");
+        localLocked = String((obj || {}).lockedMode || ((obj || {}).modeLocked ? localMode : "") || "");
+      }
     } catch (_) {}
+
+    state.lockedMode = "";
+    if (serverLocked && ["edit", "run", "test"].includes(serverLocked)) {
+      state.lockedMode = serverLocked;
+      state.mode = serverLocked;
+      return;
+    }
+    if (localLocked && ["edit", "run", "test"].includes(localLocked)) {
+      state.lockedMode = localLocked;
+      state.mode = localLocked;
+      return;
+    }
+    if (serverMode && ["edit", "run", "test"].includes(serverMode)) {
+      state.mode = serverMode;
+      return;
+    }
+    if (localMode && ["edit", "run", "test"].includes(localMode)) {
+      state.mode = localMode;
+    }
+  }
+
+  function inferWorkbenchModeFromRuntime() {
+    let changed = enforceLockedMode();
+    if (state.lockedMode) return changed;
+    if (clusterServicesRunning()) {
+      if (state.mode !== "run") {
+        state.mode = "run";
+        if (!state.autoRunModeLogged) {
+          logMode("检测到架构服务已运行，自动进入运行模式", "");
+          state.autoRunModeLogged = true;
+        }
+        persistWorkbenchMode();
+        return true;
+      }
+      return changed;
+    }
+    if (isTestInProgress() && state.mode !== "test") {
+      state.mode = "test";
+      return true;
+    }
+    return changed;
+  }
+
+  function liveRunningNodeIdSet() {
+    const ids = new Set();
+    if (!isRuntimeVizMode()) return ids;
+    (state.topology.nodes || []).forEach((n) => {
+      if ((n.ui || {}).list_only) return;
+      const ag = resolveAgentForNode(n);
+      const aid = String((state.nodeBindings || {})[n.id] || (ag && ag.agent_id) || "");
+      if (nodeIsLiveRunning(n, ag, aid)) ids.add(String(n.id));
+    });
+    return ids;
+  }
+
+  function edgeIsLiveRunning(edge, liveNodeIds) {
+    if (!isRuntimeVizMode() || !edge) return false;
+    const fromId = String(edge.from || "");
+    const toId = String(edge.to || "");
+    if (!liveNodeIds.has(fromId) || !liveNodeIds.has(toId)) return false;
+    const toFlowSt = String((state.flowViz.statusByNode || {})[toId] || "").toUpperCase();
+    if (toFlowSt && ["FAILED", "TIMEOUT", "CANCELED", "OFFLINE", "ERROR", "PENDING", "LEASED"].includes(toFlowSt)) return false;
+    return true;
+  }
+
+  function modeStorageKey() {
+    return MODE_STORAGE_KEY + ":" + [state.projectId, state.envKey, state.topologyId].map((x) => String(x || "")).join(":");
+  }
+
+  function isModeLocked() {
+    return !!state.lockedMode;
+  }
+
+  function isTestInProgress() {
+    if (state.mode !== "test") return false;
+    if (state.runtimePollTimer && state.runtimeRunId) return true;
+    return !!(state.flowViz.mode === "test" && state.flowViz.nodes && state.flowViz.nodes.size);
+  }
+
+  function syncLiveFlowVisualsForMode() {
+    if (!isRuntimeVizMode()) return;
+    if (state.mode === "test" && !isTestInProgress()) return;
+    const liveIds = liveRunningNodeIdSet();
+    const healthyIds = healthyRunningNodeIdSet();
+    const sourceIds = liveIds.size ? liveIds : (state.mode === "run" ? healthyIds : liveIds);
+    if (!sourceIds.size) {
+      if (state.mode === "run" && state.runtimeSteady && state.flowViz.mode === "run") return;
+      return;
+    }
+    const statusByNode = {};
+    sourceIds.forEach((nid) => { statusByNode[nid] = "RUNNING"; });
+    syncFlowViz(state.mode === "test" ? "test" : "run", Array.from(sourceIds), statusByNode);
+    if (state.mode === "run") {
+      state.runtimeSteady = true;
+      const steadyMetrics = {};
+      (state.topology.edges || []).forEach((e) => {
+        if (sourceIds.has(e.from) && sourceIds.has(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
+      });
+      state.flowViz.metricsByEdge = steadyMetrics;
+    }
+  }
+
+  function applyWorkbenchModeFromMeta(meta) {
+    resolveWorkbenchModePreferences(meta);
+  }
+
+  async function persistWorkbenchMode(opts) {
+    saveModeState();
+    const payload = Object.assign(currentScope(), {
+      workbench_mode: state.mode,
+      workbench_locked_mode: opts && Object.prototype.hasOwnProperty.call(opts, "lockedMode")
+        ? (opts.lockedMode || "")
+        : (state.lockedMode || ""),
+    });
+    try {
+      const r = await OpsApi.saveWorkbenchMode(payload);
+      if (r && r.ok !== false && state.topology.meta) {
+        state.topology.meta.workbench_mode = r.workbench_mode || state.mode;
+        state.topology.meta.workbench_locked_mode = r.workbench_locked_mode != null ? r.workbench_locked_mode : (state.lockedMode || "");
+        state.topology.meta.workbench_mode_updated_at = r.workbench_mode_updated_at || "";
+      }
+    } catch (_) {}
+  }
+
+  function trySetMode(next, opts) {
+    const mode = String(next || "edit");
+    if (!["edit", "run", "test"].includes(mode)) return false;
+    if (state.lockedMode && mode !== state.lockedMode) {
+      toast("当前已锁定为" + (MODE_LABELS[state.lockedMode] || state.lockedMode) + "，无法切换", "warn");
+      applyModeUI();
+      return false;
+    }
+    if (state.mode === mode) return true;
+    state.mode = mode;
+    applyModeUI();
+    if (!(opts && opts.silent)) logMode("切换到" + (MODE_LABELS[mode] || mode));
+    saveModeState();
+    if (!(opts && opts.skipPersist)) persistWorkbenchMode({ lockedMode: state.lockedMode || "" });
+    return true;
+  }
+
+  async function lockCurrentMode() {
+    state.lockedMode = state.mode;
+    applyModeUI();
+    logMode("模式已锁定为" + (MODE_LABELS[state.lockedMode] || state.lockedMode));
+    toast("已锁定 · " + (MODE_LABELS[state.lockedMode] || state.lockedMode), "ok");
+    await persistWorkbenchMode({ lockedMode: state.lockedMode });
+  }
+
+  async function unlockMode() {
+    state.lockedMode = "";
+    applyModeUI();
+    logMode("模式已解锁");
+    toast("模式已解锁", "ok");
+    await persistWorkbenchMode({ lockedMode: "" });
+  }
+
+  function saveModeState() {
+    try {
+      localStorage.setItem(modeStorageKey(), JSON.stringify({
+        mode: state.mode,
+        lockedMode: state.lockedMode || "",
+        ts: Date.now(),
+      }));
+    } catch (_) {}
+  }
+
+  function loadModeStateFromLocal() {
+    resolveWorkbenchModePreferences(state.topology && state.topology.meta);
   }
 
   function saveRuntimeState() {
@@ -1171,6 +1404,9 @@
     if (state.agentsTickTimer) clearInterval(state.agentsTickTimer);
     state.agentsTickTimer = setInterval(async () => {
       await refreshAgentsIfNeeded(false);
+      const modeChanged = inferWorkbenchModeFromRuntime();
+      if (modeChanged) applyModeUI();
+      syncLiveFlowVisualsForMode();
       redrawGraph();
     }, 2000);
   }
@@ -1190,7 +1426,7 @@
 
   function clearFlowViz(force, reason) {
     dbg("clearFlowViz", { force: !!force, reason: reason || "", mode: state.mode, runtimeSteady: !!state.runtimeSteady });
-    if (!force && state.mode === "run" && state.runtimeSteady) {
+    if (!force && state.mode === "run" && (state.runtimeSteady || liveRunningNodeIdSet().size > 0 || healthyRunningNodeIdSet().size > 0)) {
       logMode("已忽略一次可视化清理请求（运行态保护中）", "warn");
       return;
     }
@@ -1488,6 +1724,8 @@
       }
       if (effectiveOp === "start") {
         state.runtimeSteady = true;
+        state.mode = "run";
+        state.lockedMode = "run";
         const steadyNodes = activeNodes.length ? activeNodes : (state.topology.nodes || []).map((n) => n.id);
         const steadyStatus = {};
         steadyNodes.forEach((nid) => { steadyStatus[String(nid)] = "RUNNING"; });
@@ -1497,9 +1735,12 @@
           if (steadyNodes.includes(e.from) && steadyNodes.includes(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
         });
         state.flowViz.metricsByEdge = steadyMetrics;
+        applyModeUI();
         redrawGraph();
         dbg("runtime-steady-on", { runId, activeNodes: steadyNodes.length });
         logMode("启动成功，已进入持续运行态可视化（直到手动停止）");
+        saveModeState();
+        persistWorkbenchMode({ lockedMode: "run" });
         saveRuntimeState();
         return;
       }
@@ -2216,6 +2457,7 @@
     if (next.project_id) state.projectId = String(next.project_id);
     if (next.env_key) state.envKey = String(next.env_key);
     if (next.topology_id) state.topologyId = String(next.topology_id);
+    state.autoRunModeLogged = false;
     syncQueryString();
     await loadAll();
   }
@@ -2489,65 +2731,187 @@
     });
   }
 
+  function agentServerHref(ag, aid, nodeId) {
+    const agentId = String(aid || (ag && ag.agent_id) || "").trim();
+    if (!agentId) return "";
+    const nid = String(nodeId || "").trim();
+    const boundService = nid ? String((state.serviceBindings || {})[nid] || "").trim() : "";
+    let href = "/admin/ops-platform/agent-detail?project_id=" + encodeURIComponent(state.projectId)
+      + "&agent_id=" + encodeURIComponent(agentId)
+      + "&tab=overview";
+    if (boundService) href += "&service_id=" + encodeURIComponent(boundService);
+    else if (nid) href += "&node_id=" + encodeURIComponent(nid);
+    const deviceId = String((ag && ag.device_id) || "").trim();
+    if (deviceId) href += "&preview=" + encodeURIComponent(deviceId);
+    return href;
+  }
+
   function redrawGraph() {
+    drawEdgePaths();
     drawNodes();
-    drawEdges();
+    drawEdgeLabels();
   }
 
   function ensureEdgeMarkers() {
     const svg = $("edgeSvg");
-    if (!svg || svg.querySelector("#edge-arrow-marker")) return;
-    const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-    marker.setAttribute("id", "edge-arrow-marker");
-    marker.setAttribute("viewBox", "0 0 10 10");
-    marker.setAttribute("refX", "10");
-    marker.setAttribute("refY", "5");
-    marker.setAttribute("markerWidth", "10");
-    marker.setAttribute("markerHeight", "10");
-    marker.setAttribute("markerUnits", "userSpaceOnUse");
-    marker.setAttribute("orient", "auto");
-    const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    head.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
-    head.setAttribute("fill", "#2563eb");
-    marker.appendChild(head);
-    defs.appendChild(marker);
-    svg.appendChild(defs);
+    if (!svg) return;
+    let defs = svg.querySelector("defs");
+    if (!defs) {
+      defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      svg.appendChild(defs);
+    }
+    if (!defs.querySelector("#edge-arrow-marker")) {
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "edge-arrow-marker");
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "10");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", "10");
+      marker.setAttribute("markerHeight", "10");
+      marker.setAttribute("markerUnits", "userSpaceOnUse");
+      marker.setAttribute("orient", "auto");
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      head.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
+      head.setAttribute("fill", "#2563eb");
+      marker.appendChild(head);
+      defs.appendChild(marker);
+    }
+    if (!defs.querySelector("#edge-arrow-marker-live")) {
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "edge-arrow-marker-live");
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "10");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", "10");
+      marker.setAttribute("markerHeight", "10");
+      marker.setAttribute("markerUnits", "userSpaceOnUse");
+      marker.setAttribute("orient", "auto");
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      head.setAttribute("d", "M 0 0 L 10 5 L 0 10 Z");
+      head.setAttribute("fill", "#52c41a");
+      marker.appendChild(head);
+      defs.appendChild(marker);
+    }
+    if (!defs.querySelector("#topology-live-flow-style")) {
+      const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+      style.setAttribute("id", "topology-live-flow-style");
+      style.textContent = ""
+        + "@keyframes topology-edge-flow-svg { to { stroke-dashoffset: -40; } }"
+        + ".live-flow { stroke: #22c55e !important; stroke-width: 3; stroke-dasharray: 14 10;"
+        + " animation: topology-edge-flow-svg 0.9s linear infinite; filter: drop-shadow(0 0 2px rgba(34,197,94,.55)); }";
+      defs.appendChild(style);
+    }
   }
 
-  function drawEdges() {
+  function drawEdgePaths() {
     const svg = $("edgeSvg");
     if (!svg) return;
     svg.querySelectorAll(":scope > :not(defs)").forEach((el) => el.remove());
     ensureEdgeMarkers();
+    const liveNodeIds = liveRunningNodeIdSet();
     let visible = 0;
     let skipped = 0;
     (state.topology.edges || []).forEach((edge) => {
       const d = edgePath(edge);
       if (!d) { skipped += 1; return; }
       visible += 1;
+      const liveFlow = edgeIsLiveRunning(edge, liveNodeIds);
+      const pathId = "edge-path-" + String(edge.id || "").replace(/[^a-zA-Z0-9_-]/g, "_");
       const hit = document.createElementNS("http://www.w3.org/2000/svg", "path");
       hit.setAttribute("d", d);
       hit.setAttribute("fill", "none");
       hit.setAttribute("class", "edge-hit");
       hit.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("id", pathId);
       path.setAttribute("d", d);
       path.setAttribute("fill", "none");
-      path.setAttribute("marker-end", "url(#edge-arrow-marker)");
+      path.setAttribute("marker-end", liveFlow ? "url(#edge-arrow-marker-live)" : "url(#edge-arrow-marker)");
       const hl = state.highlight.edges.has(edge.id) ? " hl" : "";
       const segmentHl = isTestSegmentScope() && state.highlight.edges.size > 0;
       const dim = segmentHl && !state.highlight.edges.has(edge.id) ? " path-dim" : "";
       const flow = state.flowViz.edges.has(edge.id) ? " flow" : "";
       const fail = (state.flowViz.statusByNode[String(edge.to)] && ["FAILED", "TIMEOUT", "CANCELED"].includes(String(state.flowViz.statusByNode[String(edge.to)]).toUpperCase())) ? " fail" : "";
-      path.setAttribute("class", "edge" + hl + dim + flow + fail + (state.selection.edgeId === edge.id ? " sel" : ""));
+      path.setAttribute("class", "edge" + hl + dim + flow + fail + (liveFlow ? " live-flow" : "") + (state.selection.edgeId === edge.id ? " sel" : ""));
       const src = getNode(edge.from);
-      if (!flow && !hl && !fail) {
+      if (!flow && !hl && !fail && !liveFlow) {
         path.style.stroke = isEditMode() ? "#2563eb" : roleColor(src && src.role);
+      } else if (liveFlow) {
+        path.style.stroke = "";
       }
       path.onclick = (ev) => { ev.stopPropagation(); state.selection.edgeId = edge.id; state.selection.nodes.clear(); redrawGraph(); };
       svg.appendChild(hit);
       svg.appendChild(path);
+      if (liveFlow) {
+        const particle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        particle.setAttribute("r", "4");
+        particle.setAttribute("class", "edge-flow-particle");
+        particle.setAttribute("fill", "#22c55e");
+        const motion = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+        motion.setAttribute("dur", "2s");
+        motion.setAttribute("repeatCount", "indefinite");
+        motion.setAttribute("path", d);
+        particle.appendChild(motion);
+        svg.appendChild(particle);
+        const particle2 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        particle2.setAttribute("r", "2.5");
+        particle2.setAttribute("class", "edge-flow-particle edge-flow-particle-trail");
+        particle2.setAttribute("fill", "#86efac");
+        particle2.setAttribute("opacity", "0.85");
+        const motion2 = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+        motion2.setAttribute("dur", "2s");
+        motion2.setAttribute("repeatCount", "indefinite");
+        motion2.setAttribute("begin", "1s");
+        motion2.setAttribute("path", d);
+        particle2.appendChild(motion2);
+        svg.appendChild(particle2);
+      }
+      const slots = edgeDecorSlots(edge);
+      if (slots && isEditMode()) {
+        const del = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        del.setAttribute("class", "edge-remove");
+        del.setAttribute("transform", "translate(" + Math.round(slots.delete.x) + "," + Math.round(slots.delete.y) + ")");
+        del.setAttribute("title", "删除连线");
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("r", "9");
+        const minus = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        minus.setAttribute("text-anchor", "middle");
+        minus.setAttribute("y", "4");
+        minus.setAttribute("font-size", "14");
+        minus.textContent = "−";
+        del.appendChild(c);
+        del.appendChild(minus);
+        del.onclick = (ev) => { ev.stopPropagation(); confirmStructuredDeleteEdge(edge.id); };
+        svg.appendChild(del);
+      }
+    });
+    const sig = (state.topology.edges || []).map((e) => [e.id, e.from, e.from_port, e.to, e.to_port].join(":")).join("|");
+    const drawSig = visible + "/" + skipped + "/" + sig;
+    if (state.lastEdgeDrawSig !== drawSig) {
+      state.lastEdgeDrawSig = drawSig;
+      if (skipped) logMode("部分连线暂不可见，已按当前节点布局重新计算画布。", "warn");
+    }
+    const delBtn = $("btnDeleteEdgeInline");
+    if (delBtn) delBtn.disabled = !state.selection.edgeId;
+    const hint = $("edgeSelectionHint");
+    if (hint) {
+      hint.textContent = state.selection.edgeId ? ("已选中连线: " + state.selection.edgeId) : "未选中连线";
+      hint.className = "state-pill " + (state.selection.edgeId ? "state-ok" : "state-info");
+    }
+    const nid = selectedNodeId();
+    const connPane = $("connectionsPanel");
+    if (nid && connPane && connPane.classList.contains("active")) renderNodeConnections(nid);
+  }
+
+  function drawEdgeLabels() {
+    const svg = $("edgeLabelSvg");
+    if (!svg) return;
+    svg.innerHTML = "";
+    (state.topology.edges || []).forEach((edge) => {
+      const d = edgePath(edge);
+      if (!d) return;
+      const flow = state.flowViz.edges.has(edge.id);
+      const fail = (state.flowViz.statusByNode[String(edge.to)] && ["FAILED", "TIMEOUT", "CANCELED"].includes(String(state.flowViz.statusByNode[String(edge.to)]).toUpperCase()));
       const slots = edgeDecorSlots(edge);
       if (slots) {
         const label = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -2571,23 +2935,6 @@
         label.appendChild(rect);
         label.appendChild(txt);
         svg.appendChild(label);
-        if (isEditMode()) {
-          const del = document.createElementNS("http://www.w3.org/2000/svg", "g");
-          del.setAttribute("class", "edge-remove");
-          del.setAttribute("transform", "translate(" + Math.round(slots.delete.x) + "," + Math.round(slots.delete.y) + ")");
-          del.setAttribute("title", "删除连线");
-          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          c.setAttribute("r", "9");
-          const minus = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          minus.setAttribute("text-anchor", "middle");
-          minus.setAttribute("y", "4");
-          minus.setAttribute("font-size", "14");
-          minus.textContent = "−";
-          del.appendChild(c);
-          del.appendChild(minus);
-          del.onclick = (ev) => { ev.stopPropagation(); confirmStructuredDeleteEdge(edge.id); };
-          svg.appendChild(del);
-        }
       }
       if (flow) {
         const m = edgeMid(edge);
@@ -2612,22 +2959,11 @@
         }
       }
     });
-    const sig = (state.topology.edges || []).map((e) => [e.id, e.from, e.from_port, e.to, e.to_port].join(":")).join("|");
-    const drawSig = visible + "/" + skipped + "/" + sig;
-    if (state.lastEdgeDrawSig !== drawSig) {
-      state.lastEdgeDrawSig = drawSig;
-      if (skipped) logMode("部分连线暂不可见，已按当前节点布局重新计算画布。", "warn");
-    }
-    const delBtn = $("btnDeleteEdgeInline");
-    if (delBtn) delBtn.disabled = !state.selection.edgeId;
-    const hint = $("edgeSelectionHint");
-    if (hint) {
-      hint.textContent = state.selection.edgeId ? ("已选中连线: " + state.selection.edgeId) : "未选中连线";
-      hint.className = "state-pill " + (state.selection.edgeId ? "state-ok" : "state-info");
-    }
-    const nid = selectedNodeId();
-    const connPane = $("connectionsPanel");
-    if (nid && connPane && connPane.classList.contains("active")) renderNodeConnections(nid);
+  }
+
+  function drawEdges() {
+    drawEdgePaths();
+    drawEdgeLabels();
   }
 
   function drawPorts(node, side) {
@@ -2646,8 +2982,8 @@
     const runtime = runtimeById();
     (state.topology.nodes || []).forEach((n) => {
       if ((n.ui || {}).list_only) return;
-      const aid = String((state.nodeBindings || {})[n.id] || "");
-      const ag = state.agents.find((x) => String(x.agent_id || "") === aid) || null;
+      const ag = resolveAgentForNode(n);
+      const aid = String((state.nodeBindings || {})[n.id] || (ag && ag.agent_id) || "");
       const bindText = ag ? ("Agent： " + (ag.display_name || ag.agent_id)) : "未绑定 Agent";
       const agHealth = agentHealthLabel(ag);
       const runtimeStatus = nodeRuntimeStatus(n, ag, aid);
@@ -2669,8 +3005,15 @@
       }
 
       const hasIn = (state.topology.edges || []).some((e) => String(e.to) === String(n.id));
-      const agentLine = aid ? ('<div class="node-agent-line">Agent: ' + esc(aid) + '</div>') : "";
+      const agentHref = agentServerHref(ag, aid, n.id);
+      const agentLine = (ag || aid)
+        ? ('<div class="node-agent-line">Agent: ' + esc(aid || (ag && ag.agent_id) || "") + '</div>'
+          + (agentHref
+            ? ('<div class="node-agent-actions"><button class="node-agent-open-btn" type="button" data-agent-href="' + esc(agentHref) + '" title="打开 Agent 服务器界面">服务器 ↗</button></div>')
+            : ""))
+        : "";
       const segmentHl = isTestSegmentScope() && state.highlight.nodes.size > 0;
+      const liveRunning = nodeIsLiveRunning(n, ag, aid, runtimeStatus);
 
       const el = document.createElement("div");
       el.className = "node structured-node tw-node"
@@ -2679,6 +3022,7 @@
         + (segmentHl && state.highlight.nodes.has(n.id) ? " hl" : "")
         + (segmentHl && !state.highlight.nodes.has(n.id) ? " path-dim" : "")
         + (isFlow ? " flow-active" : "")
+        + (liveRunning ? " live-running run-active" : "")
         + (["FAILED", "TIMEOUT", "CANCELED"].includes(flowSt) ? " flow-fail" : "")
         + (flowSt === "SUCCESS" ? " flow-ok" : "")
         + ((((n.ui || {}).disabled) ? " is-disabled" : ""));
@@ -2722,6 +3066,14 @@
         ev.preventDefault();
         ev.stopPropagation();
         confirmStructuredDeleteNode(btn.getAttribute("data-node-id"));
+      };
+    });
+    layer.querySelectorAll(".node-agent-open-btn").forEach((btn) => {
+      btn.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const href = String(btn.getAttribute("data-agent-href") || "").trim();
+        if (href) window.location.href = href;
       };
     });
 
@@ -3862,7 +4214,7 @@
   async function runFullLifecycle(start) {
     const op = start ? "start" : "stop";
     state.runtimeRequestedOp = op;
-    dbg("runFullLifecycle-click", { op, mode: state.mode, locked: !!state.modeLocked, currentRunId: state.runtimeRunId || "" });
+    dbg("runFullLifecycle-click", { op, mode: state.mode, lockedMode: state.lockedMode || "", currentRunId: state.runtimeRunId || "" });
     stopRuntimePolling();
     if (!start) clearFlowViz(true, "runFullLifecycle-stop-before-control");
     state.runtimeSteady = false;
@@ -4125,12 +4477,14 @@
   }
 
   function applyModeUI() {
+    enforceLockedMode();
+    const effectiveMode = displayWorkbenchMode();
     const map = {
       edit: { hint: "当前为编辑模式，可调整拓扑结构、节点属性与绑定关系。", run: "none", test: "none" },
       run: { hint: "当前为运行模式，聚焦全流程启动、停止与运行回放。", run: "flex", test: "none" },
       test: { hint: "测试模式支持完整架构与指定链路段验证；模式锁定后不可切换。", run: "none", test: "flex" },
     };
-    const cfg = map[state.mode] || map.edit;
+    const cfg = map[effectiveMode] || map.edit;
     const modeHint = $("modeHint");
     if (modeHint) modeHint.textContent = cfg.hint;
     const runBar = $("runBar");
@@ -4138,31 +4492,46 @@
     if (runBar) runBar.style.display = cfg.run;
     if (testBar) testBar.style.display = cfg.test;
     const modeSelect = $("modeSelect");
+    const locked = isModeLocked();
+    const modeLabel = MODE_LABELS[effectiveMode] || effectiveMode;
+    const lockLabel = locked ? ("已锁定 · " + (MODE_LABELS[state.lockedMode] || state.lockedMode)) : "已解锁";
+    if ($("modeCurrentValue")) $("modeCurrentValue").textContent = modeLabel;
+    if ($("modeCurrentBanner")) {
+      $("modeCurrentBanner").dataset.mode = effectiveMode;
+      $("modeCurrentBanner").classList.toggle("is-locked", locked);
+    }
+    const headerBadge = $("topologyModeBadge");
+    if (headerBadge) {
+      headerBadge.textContent = locked ? lockLabel : modeLabel;
+      headerBadge.dataset.mode = effectiveMode;
+      headerBadge.classList.toggle("is-locked", locked);
+    }
     if (modeSelect) {
-      modeSelect.value = state.mode;
-      modeSelect.disabled = state.modeLocked;
+      modeSelect.value = effectiveMode;
+      modeSelect.querySelectorAll("option").forEach((opt) => {
+        opt.disabled = locked && opt.value !== state.lockedMode;
+      });
     }
     document.querySelectorAll("[data-mode-value]").forEach((btn) => {
-      btn.classList.toggle("active", btn.getAttribute("data-mode-value") === state.mode);
-      btn.disabled = state.modeLocked;
+      const mv = btn.getAttribute("data-mode-value") || "";
+      btn.classList.toggle("active", mv === effectiveMode);
+      btn.disabled = locked && mv !== state.lockedMode;
     });
-    if ($("modeLockBtn")) $("modeLockBtn").style.display = state.modeLocked ? "none" : "";
-    if ($("modeUnlockBtn")) $("modeUnlockBtn").style.display = state.modeLocked ? "" : "none";
-    if ($("modeLockSwitch")) $("modeLockSwitch").checked = !state.modeLocked;
+    if ($("modeLockSwitch")) $("modeLockSwitch").checked = locked;
     if ($("modeLockStatus")) {
-      $("modeLockStatus").textContent = state.modeLocked ? "已锁定" : "已解锁";
-      $("modeLockStatus").style.color = state.modeLocked ? "#2563eb" : "#16a34a";
+      $("modeLockStatus").textContent = lockLabel;
+      $("modeLockStatus").style.color = locked ? "#2563eb" : "#16a34a";
     }
     const shell = document.querySelector(".ops-topology-app");
     if (shell) {
       shell.classList.remove("canvas-mode-edit", "canvas-mode-run", "canvas-mode-test");
-      shell.classList.add("canvas-mode-" + state.mode);
+      shell.classList.add("canvas-mode-" + effectiveMode);
     }
     refreshRightPanelMode();
     refreshLogDemoForChrome();
     syncLayoutSpacingControls();
     syncToolButtonsForMode();
-    if (state.mode === "test") {
+    if (effectiveMode === "test") {
       seedTestModeRuntimeDemo();
       syncTestScopeUI();
     } else {
@@ -4173,12 +4542,14 @@
       const segFields = $("testSegmentFields");
       if (segFields) segFields.classList.add("is-hidden");
     }
-    if (state.mode === "edit") {
+    if (effectiveMode === "edit") {
       clearFlowViz(true, "applyModeUI-edit-mode");
-      redrawGraph();
+    } else {
+      syncLiveFlowVisualsForMode();
     }
+    redrawGraph();
 
-    const lock = state.mode !== "edit";
+    const lock = effectiveMode !== "edit";
     ["insNodeName", "insNodeRole", "insNodeBizStatus", "insNodeKind", "insNodeColorPicker", "insNodeOwner", "insNodePrimaryAgent", "insNodePrimaryAgentBasic", "insNodeDesc", "insNodeTags", "insNodeRemotePort", "insNodeRemotePortBasic", "insNodeEndpoints", "insNodeEndpointsBasic", "insNodeNotes"]
       .forEach((id) => { const el = $(id); if (el) el.disabled = lock; });
     document.querySelectorAll(".topology-color-preset").forEach((btn) => { btn.disabled = lock; });
@@ -4228,6 +4599,7 @@
     if (!state.activePresetId && state.presets.length) state.activePresetId = state.presets[0].preset_id;
 
     normalizeTopology();
+    applyWorkbenchModeFromMeta(state.topology.meta);
     const preserveLayout = shouldPreserveTopologyLayoutOnLoad();
     if (preserveLayout) {
       if (state.topology.meta.layout_locked == null) state.topology.meta.layout_locked = true;
@@ -4257,7 +4629,7 @@
     else closeNodeEditor();
     setTopologyHint("拓扑已可操作，正在后台同步 Agent、绑定与总览数据...", "loading");
 
-    loadAuxiliaryData();
+    await loadAuxiliaryData();
   }
 
   async function loadAuxiliaryData() {
@@ -4315,10 +4687,13 @@
       bpSel.innerHTML = '<option value="">流程模板</option>' + state.blueprints.map((b) => '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name) + '</option>').join("");
     }
 
+    const modeChanged = inferWorkbenchModeFromRuntime();
+    syncLiveFlowVisualsForMode();
     redrawGraph();
     renderRuntimeNodeList();
     fillTestNodeOptions();
     applyModeUI();
+    if (modeChanged) saveModeState();
     const currentNodeId = String((($("insNodeId") || {}).value || "")).trim();
     if (currentNodeId && getNode(currentNodeId)) openNodeEditor(currentNodeId);
     setTopologyHint(warns.length ? ("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
@@ -4464,10 +4839,7 @@
 
     document.querySelectorAll("[data-mode-value]").forEach((btn) => {
       btn.onclick = () => {
-        if (state.modeLocked) return;
-        state.mode = btn.getAttribute("data-mode-value") || "edit";
-        applyModeUI();
-        saveModeState();
+        trySetMode(btn.getAttribute("data-mode-value") || "edit");
       };
     });
 
@@ -4754,41 +5126,22 @@
     const modeSelectEl = $("modeSelect");
     if (modeSelectEl) {
       modeSelectEl.onchange = () => {
-        if (state.modeLocked) return;
-        state.mode = modeSelectEl.value || "edit";
-        applyModeUI();
-        logMode("切换到" + (state.mode === "edit" ? "编辑" : state.mode === "run" ? "运行" : "测试") + "模式");
-        saveModeState();
+        trySetMode(modeSelectEl.value || "edit");
       };
     }
     const modeLockEl = $("modeLockBtn");
     if (modeLockEl) {
-      modeLockEl.onclick = () => {
-        state.modeLocked = true;
-        applyModeUI();
-        logMode("模式已锁定");
-        toast("模式已锁定", "ok");
-        saveModeState();
-      };
+      modeLockEl.onclick = () => { lockCurrentMode(); };
     }
     const modeUnlockEl = $("modeUnlockBtn");
     if (modeUnlockEl) {
-      modeUnlockEl.onclick = () => {
-        state.modeLocked = false;
-        applyModeUI();
-        logMode("模式已解锁");
-        toast("模式已解锁", "ok");
-        saveModeState();
-      };
+      modeUnlockEl.onclick = () => { unlockMode(); };
     }
     const modeLockSwitch = $("modeLockSwitch");
     if (modeLockSwitch) {
       modeLockSwitch.onchange = () => {
-        state.modeLocked = !modeLockSwitch.checked;
-        applyModeUI();
-        logMode(state.modeLocked ? "模式已锁定" : "模式已解锁");
-        toast(state.modeLocked ? "模式已锁定" : "模式已解锁", "ok");
-        saveModeState();
+        if (modeLockSwitch.checked) lockCurrentMode();
+        else unlockMode();
       };
     }
     if ($("btnRunStartAll")) $("btnRunStartAll").onclick = () => runFullLifecycle(true);
@@ -4998,9 +5351,11 @@
       if (!from) return;
       state.acceptanceStructuredAddFrom = "";
       if (state.mode !== "edit") {
-        state.mode = "edit";
-        state.modeLocked = false;
-        applyModeUI();
+        if (state.lockedMode && state.lockedMode !== "edit") {
+          toast("当前已锁定为" + (MODE_LABELS[state.lockedMode] || state.lockedMode) + "，无法进入编辑", "warn");
+          return;
+        }
+        trySetMode("edit", { silent: true });
       }
       openStructuredAddMenu(from);
     } catch (_) {}
@@ -5027,19 +5382,24 @@
     if (!state.topologyId && state.projectId === "GomeKu" && state.envKey === "production") {
       state.topologyId = "topology-design-gomeku-production";
     }
-    loadModeState();
     loadRuntimeState();
     bindEvents();
     await loadAll();
     startAgentsRealtimeTick();
+    inferWorkbenchModeFromRuntime();
+    syncLiveFlowVisualsForMode();
+    applyModeUI();
+    redrawGraph();
     const act = await OpsApi.runtimeFlowActive(currentScope());
     if (act && act.ok !== false && act.active && act.run_id) {
       state.mode = "run";
-      state.modeLocked = true;
+      if (!state.lockedMode) state.lockedMode = "run";
       state.runtimeRunId = String(act.run_id || "");
       state.runtimeRequestedOp = "start";
       state.runtimeSteady = true;
+      syncLiveFlowVisualsForMode();
       applyModeUI();
+      persistWorkbenchMode({ lockedMode: state.lockedMode });
       logMode("后端检测为运行中，自动恢复运行跟踪: " + state.runtimeRunId, "warn");
       await pollRuntimeRun(state.runtimeRunId);
       stopRuntimePolling();
@@ -5052,6 +5412,9 @@
       await pollRuntimeRun(state.runtimeRunId);
       stopRuntimePolling();
       state.runtimePollTimer = setInterval(() => { pollRuntimeRun(state.runtimeRunId); }, 1200);
+    } else if (state.mode === "run") {
+      syncLiveFlowVisualsForMode();
+      redrawGraph();
     }
     maybeOpenStructuredAddFromQuery();
   }

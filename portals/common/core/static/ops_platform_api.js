@@ -229,6 +229,7 @@
   api.runtimeFlowControl = (payload) => api.postJSON('/api/ops-platform/runtime/flow-control', payload || {});
   api.runtimeFlowStatus = (runId) => api.getJSON('/api/ops-platform/runtime/flow-status?run_id=' + encodeURIComponent(runId || ''));
   api.runtimeFlowActive = (scope) => api.getJSON(withScope('/api/ops-platform/runtime/active', scope));
+  api.saveWorkbenchMode = (payload) => api.postJSON('/api/ops-platform/topology/workbench-mode', payload || {});
 
   window.OpsApi = api;
 })();

@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260606-topology-layout-fix1">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260607-topology-edge-labels-v6">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -46,9 +46,10 @@
   <main class="topology-shell-main">
     <section class="topology-page-header">
       <div class="topology-header-row">
-        <div class="topology-page-title">
+          <div class="topology-page-title">
           <span class="topology-page-icon"><svg viewBox="0 0 24 24"><path d="M6 6h5v5H6V6zm7 0h5v5h-5V6zM6 13h5v5H6v-5zm7 3h5v2h-5v-2z"/></svg></span>
           <div class="topology-page-heading">拓扑编排工作区</div>
+          <span id="topologyModeBadge" class="topology-mode-badge" data-mode="edit">编辑模式</span>
         </div>
         <div class="topology-header-controls">
           <label class="topology-header-select-inline"><span>项目</span><select id="projectSelector" class="sel topology-header-sel"></select></label>
@@ -115,6 +116,10 @@
 
           <!-- 模式 -->
           <div class="topology-left-pane is-hidden" data-left-panel="mode">
+            <div id="modeCurrentBanner" class="topology-mode-current">
+              <span class="mode-current-label">当前模式</span>
+              <span id="modeCurrentValue" class="mode-current-value">编辑模式</span>
+            </div>
             <div class="topology-mode-switcher">
               <button class="mode-btn" data-mode-value="edit" type="button">编辑模式</button>
               <button class="mode-btn" data-mode-value="run" type="button">运行模式</button>
@@ -218,6 +223,7 @@
               <div id="scene" class="scene">
                 <svg id="edgeSvg" class="edges" width="4000" height="2600"></svg>
                 <div id="nodeLayer" class="nodes"></div>
+                <svg id="edgeLabelSvg" class="edge-labels" width="4000" height="2600"></svg>
               </div>
               <div id="marquee" class="topology-marquee"></div>
               <div class="topology-mini-map-card"><canvas id="topologyMiniMap" width="160" height="100"></canvas></div>
@@ -473,4 +479,4 @@
 </div>
 
 <script src="/static/ops_platform_api.js?v=20260606-topology-rewrite36"></script>
-<script src="/static/ops_platform_workbench.js?v=20260606-topology-service-status-fix1"></script>
+<script src="/static/ops_platform_workbench.js?v=20260607-topology-service-focus-v7"></script>

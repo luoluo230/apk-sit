@@ -984,6 +984,19 @@ button {
   border-bottom: 0;
 }
 
+.agent-table tbody tr.is-topology-focus td {
+  background: #eff6ff;
+  box-shadow: inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+}
+
+.agent-table tbody tr.is-topology-focus td:first-child {
+  box-shadow: inset 3px 0 0 #2563eb, inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+}
+
+.agent-table tbody tr.is-topology-focus td:last-child {
+  box-shadow: inset -3px 0 0 #2563eb, inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+}
+
 .agent-table .table-sub {
   margin-top: 4px;
   color: #98a2b3;

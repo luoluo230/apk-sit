@@ -8477,6 +8477,56 @@ def ops_platform_topology():
     })
 
 
+@bp.route("/api/ops-platform/topology/workbench-mode", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_workbench_mode():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    project_id = str(payload.get("project_id") or "").strip()
+    env_key = _normalize_env_key(payload.get("env_key") or "")
+    topology_id = str(payload.get("topology_id") or "").strip()
+    workbench_mode = str(payload.get("workbench_mode") or "").strip().lower()
+    locked_mode = str(payload.get("workbench_locked_mode") if payload.get("workbench_locked_mode") is not None else "").strip().lower()
+    if workbench_mode and workbench_mode not in ("edit", "run", "test"):
+        return jsonify({"ok": False, "error": "invalid_mode", "message": "无效的工作台模式"}), 400
+    if locked_mode and locked_mode not in ("edit", "run", "test"):
+        return jsonify({"ok": False, "error": "invalid_locked_mode", "message": "无效的锁定模式"}), 400
+    ctx = _resolve_topology_context(project_id, env_key, topology_id)
+    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
+    tid = str(row.get("topology_id") or topology_id or "").strip()
+    if not tid:
+        return jsonify({"ok": False, "error": "topology_not_found"}), 404
+    contents = _load_topology_contents()
+    topo = contents.get(tid) if isinstance(contents.get(tid), dict) else None
+    if not isinstance(topo, dict):
+        scoped = _load_topology_scoped(project_id, env_key, topology_id)
+        topo = scoped if isinstance(scoped, dict) else None
+    if not isinstance(topo, dict):
+        return jsonify({"ok": False, "error": "topology_not_found"}), 404
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    if workbench_mode in ("edit", "run", "test"):
+        meta["workbench_mode"] = workbench_mode
+    if "workbench_locked_mode" in payload:
+        meta["workbench_locked_mode"] = locked_mode if locked_mode in ("edit", "run", "test") else ""
+        if locked_mode in ("edit", "run", "test"):
+            meta["workbench_mode"] = locked_mode
+    meta["workbench_mode_updated_at"] = _now_iso()
+    topo["meta"] = meta
+    contents[tid] = topo
+    _save_topology_contents(contents)
+    log_audit(
+        "ops_platform_topology_workbench_mode",
+        f"topology={tid}; mode={meta.get('workbench_mode')}; locked={meta.get('workbench_locked_mode') or ''}",
+    )
+    return jsonify({
+        "ok": True,
+        "workbench_mode": str(meta.get("workbench_mode") or "edit"),
+        "workbench_locked_mode": str(meta.get("workbench_locked_mode") or ""),
+        "workbench_mode_updated_at": str(meta.get("workbench_mode_updated_at") or ""),
+    })
+
+
 @bp.route("/api/ops-platform/topology/save", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_topology_save():

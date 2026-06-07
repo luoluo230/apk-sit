@@ -481,6 +481,42 @@
   color: var(--tw-text);
 }
 
+.ops-topology-app .topology-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--tw-border);
+  background: #f8fafc;
+  color: var(--tw-sub);
+  white-space: nowrap;
+}
+
+.ops-topology-app .topology-mode-badge[data-mode="edit"] {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+  color: #0369a1;
+}
+
+.ops-topology-app .topology-mode-badge[data-mode="run"] {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.ops-topology-app .topology-mode-badge[data-mode="test"] {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+
+.ops-topology-app .topology-mode-badge.is-locked {
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
 .ops-topology-app .topology-header-controls {
   display: flex;
   align-items: center;
@@ -829,6 +865,48 @@
 }
 
 /* ── mode panel: segmented control ── */
+.ops-topology-app .topology-mode-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--tw-radius);
+  border: 1px solid var(--tw-border);
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+}
+
+.ops-topology-app .topology-mode-current[data-mode="edit"] {
+  border-color: #bae6fd;
+  background: linear-gradient(180deg, #f0f9ff 0%, #e0f2fe 100%);
+}
+
+.ops-topology-app .topology-mode-current[data-mode="run"] {
+  border-color: #86efac;
+  background: linear-gradient(180deg, #ecfdf5 0%, #dcfce7 100%);
+}
+
+.ops-topology-app .topology-mode-current[data-mode="test"] {
+  border-color: #fcd34d;
+  background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.ops-topology-app .topology-mode-current.is-locked {
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+
+.ops-topology-app .mode-current-label {
+  font-size: 12px;
+  color: var(--tw-muted);
+}
+
+.ops-topology-app .mode-current-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tw-text);
+}
+
 .ops-topology-app .topology-mode-switcher {
   display: flex;
   padding: 2px;
@@ -1772,6 +1850,20 @@
   pointer-events: none;
 }
 
+.ops-topology-app .edge-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.ops-topology-app .edge-labels .edge-route-label,
+.ops-topology-app .edge-labels .edge-metric {
+  pointer-events: all;
+}
+
 .ops-topology-app .nodes .node {
   pointer-events: auto;
 }
@@ -1886,6 +1978,48 @@
   background: currentColor;
 }
 
+.ops-topology-app.canvas-mode-run .tw-node.live-running,
+.ops-topology-app.canvas-mode-test .tw-node.live-running {
+  animation: topology-node-live-glow 2s ease-in-out infinite;
+  border-color: #86efac !important;
+}
+
+.ops-topology-app.canvas-mode-run .tw-node.live-running .node-status-line.status-ok,
+.ops-topology-app.canvas-mode-test .tw-node.live-running .node-status-line.status-ok {
+  font-weight: 600;
+}
+
+.ops-topology-app.canvas-mode-run .tw-node.live-running .node-status-dot,
+.ops-topology-app.canvas-mode-test .tw-node.live-running .node-status-dot {
+  animation: topology-status-pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55);
+}
+
+@keyframes topology-node-live-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.35), var(--tw-shadow) !important;
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.2), 0 0 20px rgba(34, 197, 94, 0.22), var(--tw-shadow-lg) !important;
+  }
+}
+
+@keyframes topology-status-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.82; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-topology-app .edge.live-flow,
+  .ops-topology-app .tw-node.live-running,
+  .ops-topology-app .tw-node.live-running .node-status-dot {
+    animation: none !important;
+  }
+  .ops-topology-app .edge-flow-particle {
+    display: none;
+  }
+}
+
 .ops-topology-app .node-add-btn {
   position: absolute;
   right: -11px !important;
@@ -1950,6 +2084,33 @@
   color: var(--tw-sub);
 }
 
+.ops-topology-app .tw-node .node-agent-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ops-topology-app .tw-node .node-agent-open-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.ops-topology-app .tw-node .node-agent-open-btn:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
 .ops-topology-app .edge {
   stroke: var(--tw-primary);
   stroke-width: 2;
@@ -1978,6 +2139,28 @@
   stroke-dasharray: 8 5;
 }
 
+.ops-topology-app.canvas-mode-run .edge.live-flow,
+.ops-topology-app.canvas-mode-test .edge.live-flow {
+  stroke: #22c55e !important;
+  stroke-width: 3;
+  stroke-dasharray: 14 10;
+  animation: topology-edge-flow 0.9s linear infinite;
+  filter: drop-shadow(0 0 2px rgba(34, 197, 94, 0.55));
+}
+
+.ops-topology-app .edge-flow-particle {
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgba(34, 197, 94, 0.9));
+}
+
+.ops-topology-app .edge-flow-particle-trail {
+  filter: drop-shadow(0 0 2px rgba(134, 239, 172, 0.8));
+}
+
+@keyframes topology-edge-flow {
+  to { stroke-dashoffset: -40; }
+}
+
 .ops-topology-app .edge.hl {
   stroke: #faad14;
   stroke-width: 2.5;
@@ -1989,9 +2172,10 @@
 }
 
 .ops-topology-app .edge-route-label rect {
-  fill: rgba(255, 255, 255, 0.96);
+  fill: rgba(255, 255, 255, 0.98);
   stroke: #c7d8f4;
   stroke-width: 1;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.12));
 }
 
 .ops-topology-app .edge-route-label text {
@@ -2023,6 +2207,7 @@
   fill: rgba(15, 23, 42, 0.82);
   stroke: rgba(148, 163, 184, 0.55);
   stroke-width: 1;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.18));
 }
 
 .ops-topology-app .edge-metric text {
@@ -2031,11 +2216,7 @@
   font-weight: 600;
 }
 
-/* canvas mode overlays */
-.ops-topology-app.canvas-mode-run .tw-node.run-active {
-  box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.4), var(--tw-shadow-lg) !important;
-}
-
+/* canvas mode overlays — run-active pulse via .live-running in run/test modes */
 .ops-topology-app.canvas-mode-test .tw-node.test-active {
   box-shadow: 0 0 0 2px rgba(114, 46, 209, 0.35), var(--tw-shadow-lg) !important;
 }
