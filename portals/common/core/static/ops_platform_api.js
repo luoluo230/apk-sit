@@ -168,13 +168,17 @@
   api.queryTrace = (traceId) => api.getJSON('/api/ops-platform/actions/' + encodeURIComponent(traceId));
   api.agentPolicy = () => api.getJSON('/api/ops-platform/agent/policy');
   api.updateAgentPolicy = (payload) => api.postJSON('/api/ops-platform/agent/policy', payload);
-  api.agents = (projectId, status, deviceId, bound, hostIp) => {
+  api.agents = (projectId, options) => {
+    const opts = options && typeof options === 'object' ? options : {};
     const q = [];
     if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
-    if (status) q.push('status=' + encodeURIComponent(status));
-    if (deviceId) q.push('device_id=' + encodeURIComponent(deviceId));
-    if (bound) q.push('bound=' + encodeURIComponent(bound));
-    if (hostIp) q.push('host_ip=' + encodeURIComponent(hostIp));
+    if (opts.status) q.push('status=' + encodeURIComponent(String(opts.status)));
+    if (opts.deviceId || opts.device_id) q.push('device_id=' + encodeURIComponent(String(opts.deviceId || opts.device_id)));
+    if (opts.bound) q.push('bound=' + encodeURIComponent(String(opts.bound)));
+    if (opts.hostIp || opts.host_ip) q.push('host_ip=' + encodeURIComponent(String(opts.hostIp || opts.host_ip)));
+    if (opts.topology_id) q.push('topology_id=' + encodeURIComponent(String(opts.topology_id)));
+    if (opts.env_key) q.push('env_key=' + encodeURIComponent(String(opts.env_key)));
+    if (opts.live) q.push('live=1');
     return api.getJSON('/api/ops-platform/agents' + (q.length ? ('?' + q.join('&')) : ''));
   };
   api.agentDevices = (projectId) => api.getJSON('/api/ops-platform/agents/devices' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));

@@ -157,6 +157,9 @@
       if (runState === "STOPPING" || status === "STOPPING") {
         return { tone: "info", text: "停止中" };
       }
+      if (probe === "PASS") {
+        return { tone: "ok", text: "运行中" };
+      }
       if (["ERROR", "FAILED"].includes(runState) || ["ERROR", "FAILED"].includes(status)) {
         if (lastAction === "stop") {
           return { tone: "offline", text: "停止失败" };
@@ -166,7 +169,7 @@
       if (["STOPPED", "OFFLINE"].includes(runState) || ["STOPPED", "OFFLINE"].includes(status)) {
         return { tone: "offline", text: "已停止" };
       }
-      if (probe === "PASS" || ["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) {
+      if (["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) {
         return { tone: "ok", text: "运行中" };
       }
       if (probe === "FAIL") {
@@ -1504,7 +1507,7 @@
       window.clearInterval(state.refreshTimer);
     }
     state.refreshTimer = window.setInterval(function () {
-      load({ silent: true }).catch(function (error) {
+      load({ silent: true, live: true, include: "core" }).catch(function (error) {
         console.error("[agent-detail] silent refresh failed", error);
       });
     }, 5000);

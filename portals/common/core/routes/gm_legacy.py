@@ -1662,7 +1662,7 @@ def _ops_platform_redirect_to_runtime_project():
     if request.path.rstrip("/").endswith("/topology"):
         args.setdefault("env_key", "production")
         if not str(args.get("topology_id") or "").strip():
-            args["topology_id"] = "topology-design-gomeku-production"
+            args["topology_id"] = "topology-gomeku-production-default"
     return redirect(request.path + "?" + urlencode(args))
 
 
@@ -2946,7 +2946,7 @@ def _build_runtime_node_from_topology_node(project_id: str, env_key: str, topo_n
         if not base.get("daemon_stop_cmd"):
             base["daemon_stop_cmd"] = _format_contract_command(str(daemon_defaults.get("StopCommand") or ""), port)
     if preset_id == "mongo_db" and base.get("daemon_start_cmd"):
-        mongo_dbpath = os.path.join(DATA_DIR, "gomeku-mongo") if os.name == "nt" else "/tmp/gomeku-mongo"
+        mongo_dbpath = _gomeku_mongo_dbpath()
         os.makedirs(mongo_dbpath, exist_ok=True)
     return base
 
@@ -3548,6 +3548,28 @@ def _sync_topology_to_game_server(project_id: str, env_key: str, topology_id: st
     }
 
 
+def _runtime_default_topology_id(project_id: str = "", env_key: str = "") -> str:
+    pid = str(project_id or "").strip() or "GomeKu"
+    env = _normalize_env_key(env_key or "production")
+    safe = pid.replace("/", "-").replace(" ", "-").lower() or "default"
+    return f"topology-{safe}-{env}-default"
+
+
+def _binding_fallback_topology_ids(project_id: str = "", env_key: str = "", topology_id: str = "") -> List[str]:
+    tid = str(topology_id or "").strip()
+    out: List[str] = []
+    for candidate in (
+        tid,
+        _runtime_default_topology_id(project_id, env_key),
+        "topology-gomeku-production-default",
+        "topology-design-gomeku-production",
+    ):
+        c = str(candidate or "").strip()
+        if c and c not in out:
+            out.append(c)
+    return out
+
+
 def _load_scope_agent_bindings(topology_id: str) -> Dict[str, str]:
     data = _load_node_agent_bindings()
     out: Dict[str, str] = {}
@@ -3564,6 +3586,48 @@ def _load_scope_agent_bindings(topology_id: str) -> Dict[str, str]:
         elif not tid:
             out[text] = str(value or "").strip()
     return out
+
+
+def _resolve_scope_agent_bindings_for_scope(
+    topology_id: str,
+    project_id: str = "",
+    env_key: str = "",
+    valid_nodes: Optional[set] = None,
+) -> Dict[str, str]:
+    best: Dict[str, str] = {}
+    nodes = valid_nodes if isinstance(valid_nodes, set) else None
+    for tid in _binding_fallback_topology_ids(project_id, env_key, topology_id):
+        cur = _load_scope_agent_bindings(tid)
+        if not cur:
+            continue
+        if nodes:
+            filtered = {k: v for k, v in cur.items() if k in nodes}
+            if len(filtered) > len(best):
+                best = filtered
+        elif len(cur) > len(best):
+            best = cur
+    return best
+
+
+def _resolve_scope_service_bindings_for_scope(
+    topology_id: str,
+    project_id: str = "",
+    env_key: str = "",
+    valid_nodes: Optional[set] = None,
+) -> Dict[str, str]:
+    best: Dict[str, str] = {}
+    nodes = valid_nodes if isinstance(valid_nodes, set) else None
+    for tid in _binding_fallback_topology_ids(project_id, env_key, topology_id):
+        cur = _load_scope_service_bindings(tid)
+        if not cur:
+            continue
+        if nodes:
+            filtered = {k: v for k, v in cur.items() if k in nodes}
+            if len(filtered) > len(best):
+                best = filtered
+        elif len(cur) > len(best):
+            best = cur
+    return best
 
 
 def _save_scope_agent_binding(topology_id: str, node_id: str, agent_id: str) -> Dict[str, Any]:
@@ -3697,14 +3761,28 @@ def _load_agent_policy() -> Dict[str, Any]:
 #  Cluster → Agent 同步：从 game-server 的 cluster.json /ops/cluster 自动同步拓扑
 # ──────────────────────────────────────────────────────────────────────
 
+def _gomeku_mongo_dbpath() -> str:
+    """Mongo 数据目录：Windows 用项目 DATA_DIR，Unix 用 /tmp。"""
+    if os.name == "nt":
+        return os.path.join(DATA_DIR, "gomeku-mongo")
+    return "/tmp/gomeku-mongo"
+
+
 def _resolve_game_server_repo() -> str:
     env = str(os.getenv("GAME_SERVER_REPO") or "").strip()
     if env and os.path.isdir(env):
         return env
-    candidates = [
-        "/Users/wangling/Desktop/MyGame/GameClient/game-server",
-        r"E:\maclient\game-server",
-    ]
+    if os.name == "nt":
+        candidates = [
+            r"E:\maclient\game-server",
+            r"D:\maclient\game-server",
+            os.path.join(os.path.expanduser("~"), "game-server"),
+        ]
+    else:
+        candidates = [
+            "/Users/wangling/Desktop/MyGame/GameClient/game-server",
+            os.path.join(os.path.expanduser("~"), "game-server"),
+        ]
     for path in candidates:
         if os.path.isdir(path):
             return path
@@ -4463,6 +4541,12 @@ def _udp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
         return {"ok": False, "rtt_ms": 0.0, "error": str(ex)}
 
 
+def _redis_cli_candidates() -> List[str]:
+    if os.name == "nt":
+        return ["memurai-cli", "redis-cli"]
+    return ["redis-cli"]
+
+
 def _redis_ping_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
     if not host or port <= 0:
         return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
@@ -4470,20 +4554,23 @@ def _redis_ping_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, A
     if not tcp_fast.get("ok"):
         return tcp_fast
     start = datetime.utcnow()
-    try:
-        proc = subprocess.run(
-            ["redis-cli", "-h", host, "-p", str(port), "ping"],
-            capture_output=True,
-            text=True,
-            timeout=max(0.6, min(1.0, float(timeout))),
-        )
-        ok = proc.returncode == 0 and "PONG" in (proc.stdout or "").upper()
-        rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
-        if ok:
-            return {"ok": True, "rtt_ms": round(rtt, 1), "error": ""}
-        return {"ok": True, "rtt_ms": round(float(tcp_fast.get("rtt_ms") or rtt), 1), "error": "", "method": "tcp-fallback"}
-    except Exception:
-        return tcp_fast
+    for cli in _redis_cli_candidates():
+        try:
+            proc = subprocess.run(
+                [cli, "-h", host, "-p", str(port), "ping"],
+                capture_output=True,
+                text=True,
+                timeout=max(0.6, min(1.0, float(timeout))),
+            )
+            ok = proc.returncode == 0 and "PONG" in (proc.stdout or "").upper()
+            rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+            if ok:
+                return {"ok": True, "rtt_ms": round(rtt, 1), "error": "", "method": cli}
+        except FileNotFoundError:
+            continue
+        except Exception:
+            break
+    return {"ok": True, "rtt_ms": round(float(tcp_fast.get("rtt_ms") or 0.0), 1), "error": "", "method": "tcp-fallback"}
 
 
 def _probe_by_protocol(host: str, port: int, proto: str = "tcp", timeout: float = 1.5) -> Dict[str, Any]:
@@ -4580,16 +4667,17 @@ def _resolve_service_runtime_state(
     host: str = "127.0.0.1",
     cluster_status: Optional[Dict[str, str]] = None,
     probe_timeout: float = 0.8,
+    fast_probe: bool = False,
 ) -> Dict[str, Any]:
     """统一服务级运行态：embedded 模块走 cluster 状态，其余走 TCP + cluster 兜底。"""
     svc = dict(service) if isinstance(service, dict) else {}
     sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
     prior_run = str(svc.get("run_state") or svc.get("status") or "").strip().upper()
     port = int(svc.get("service_port") or svc.get("remote_game_server_port") or 0)
-    timeout = max(0.2, min(float(probe_timeout or 0.8), 2.0))
+    timeout = max(0.08, min(float(probe_timeout or 0.8), 2.0)) if fast_probe else max(0.2, min(float(probe_timeout or 0.8), 2.0))
 
     if _service_starting_grace_active(svc):
-        if port > 0 and _probe_tcp_open(host, port, timeout=0.25):
+        if port > 0 and _probe_tcp_open(host, port, timeout=0.12 if fast_probe else 0.25):
             svc["probe_status"] = "PASS"
             svc["status"] = "RUNNING"
             svc["run_state"] = "RUNNING"
@@ -4603,11 +4691,57 @@ def _resolve_service_runtime_state(
         svc["probe_host"] = str(host or "127.0.0.1").strip()
         return svc
     sid_lower = sid.lower()
-    if sid_lower in _GAMESERVER_PROCESS_SERVICE_IDS:
+    cs_map = cluster_status if isinstance(cluster_status, dict) else {}
+    cs = str(cs_map.get(sid) or "").strip().upper()
+    embedded = _is_embedded_cluster_service(svc)
+    probe_method = "tcp"
+    open_ok = False
+
+    if embedded:
+        probe_method = "cluster-embedded"
+        gw_ops_up = _embedded_process_gateway_up(host, timeout=timeout)
+        if cs and _cluster_state_is_online(cs):
+            open_ok = True
+        elif cs and not _cluster_state_is_online(cs):
+            if gw_ops_up:
+                open_ok = True
+                probe_method = "cluster-embedded-process-up"
+            else:
+                open_ok = False
+                probe_method = "cluster-embedded-offline"
+        elif gw_ops_up:
+            open_ok = True
+            probe_method = "cluster-process-up-fast" if fast_probe else "cluster-process-up"
+        else:
+            open_ok = False
+            probe_method = "cluster-embedded-offline"
+        if open_ok:
+            svc["probe_status"] = "PASS"
+            svc["status"] = "RUNNING"
+            svc["run_state"] = "RUNNING"
+        else:
+            svc["probe_status"] = "FAIL"
+            if prior_run == "STARTING":
+                svc["status"] = "STARTING"
+                svc["run_state"] = "STARTING"
+            else:
+                svc["status"] = "STOPPED"
+                svc["run_state"] = "STOPPED"
+        svc["probe_method"] = probe_method
+        svc["probe_host"] = str(host or "127.0.0.1").strip()
+        if cs:
+            svc["cluster_state"] = cs
+        return svc
+    elif sid_lower in _GAMESERVER_PROCESS_SERVICE_IDS:
         tcp_port = _gameserver_tcp_probe_port(sid_lower)
         if tcp_port > 0:
-            open_ok = _gameserver_service_live(sid_lower)
-            probe_method = "gameserver-tcp"
+            open_ok = _gameserver_service_live(sid_lower, fast=fast_probe)
+            probe_method = "gameserver-tcp-fast" if fast_probe else "gameserver-tcp"
+        elif fast_probe:
+            gw_live = _probe_tcp_open(host, 15050, timeout=timeout)
+            ops_live = _probe_tcp_open(host, 5504, timeout=timeout)
+            open_ok = bool(gw_live or ops_live)
+            probe_method = "gameserver-process-fast"
         else:
             open_ok = _is_gameserver_process_alive(sid_lower)
             probe_method = "gameserver-process"
@@ -4626,22 +4760,6 @@ def _resolve_service_runtime_state(
         svc["probe_method"] = probe_method
         svc["probe_host"] = str(host or "127.0.0.1").strip()
         return svc
-    cs_map = cluster_status if isinstance(cluster_status, dict) else {}
-    cs = str(cs_map.get(sid) or "").strip().upper()
-    embedded = _is_embedded_cluster_service(svc)
-    probe_method = "tcp"
-    open_ok = False
-
-    if embedded:
-        probe_method = "cluster-embedded"
-        if cs and _cluster_state_is_online(cs):
-            open_ok = True
-        elif cs and not _cluster_state_is_online(cs):
-            open_ok = False
-        else:
-            # cluster 状态未知时，不凭 TCP 误判 embedded 模块离线
-            open_ok = False
-            probe_method = "cluster-embedded-deferred"
     elif _is_daemon_infra_service(svc):
         probe_method = "redis_ping" if "redis" in sid or str(svc.get("service_type") or "").lower() == "cache" else "mongo_ping"
         if port > 0:
@@ -4729,6 +4847,54 @@ def _fetch_cluster_runtime_status(agents: Optional[List[Dict[str, Any]]] = None)
     except Exception:
         pass
     return cluster_status
+
+
+def _invalidate_runtime_probe_state() -> None:
+    """停止/刷新后立即使探活与 cluster 缓存失效，避免 UI 长时间显示旧 PASS。"""
+    global _probe_cache, _probe_cache_ts, _cluster_runtime_cache
+    with _probe_cache_lock:
+        _probe_cache = {}
+        _probe_cache_ts = 0.0
+        _cluster_runtime_cache["ts"] = 0.0
+        _cluster_runtime_cache["map"] = {}
+
+
+def _seed_probe_cache_from_registry() -> None:
+    """将 registry 中最新 probe/status 写入探活缓存，供 agents 列表立即读取。"""
+    global _probe_cache, _probe_cache_ts
+    reg = _load_agent_registry_v2()
+    seeded: Dict[str, Dict[str, Any]] = {}
+    for aid, item in (reg.items() if isinstance(reg, dict) else []):
+        if not isinstance(item, dict) or item.get("stale"):
+            continue
+        agent_id = str(aid or "").strip()
+        if not agent_id:
+            continue
+        probe = str(item.get("probe_status") or "").upper()
+        effective = str(item.get("effective_status") or item.get("status") or "UNKNOWN").upper()
+        seeded[agent_id] = {
+            "ok": probe == "PASS",
+            "effective_status": effective,
+            "rtt_ms": float(item.get("probe_rtt_ms") or 0.0),
+            "probe_at": str(item.get("updated_at") or _now_iso()),
+            "metrics": item.get("metrics") if isinstance(item.get("metrics"), dict) else {},
+        }
+    with _probe_cache_lock:
+        _probe_cache = seeded
+        _probe_cache_ts = _time_mod.time()
+
+
+def _derive_agent_probe_from_services(services: List[Dict[str, Any]]) -> Tuple[str, str]:
+    rows = [s for s in (services or []) if isinstance(s, dict)]
+    if not rows:
+        return "UNKNOWN", "FAIL"
+    any_pass = any(str(s.get("probe_status") or "").upper() == "PASS" for s in rows)
+    any_starting = any(str(s.get("run_state") or s.get("status") or "").upper() == "STARTING" for s in rows)
+    if any_pass:
+        return "ONLINE", "PASS"
+    if any_starting:
+        return "STARTING", "FAIL"
+    return "OFFLINE", "FAIL"
 
 
 def _fetch_cluster_runtime_status_cached(agents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, str]:
@@ -6807,9 +6973,15 @@ def _probe_service_cache_fresh(max_age_sec: float = PROBE_INTERVAL_SEC * 3) -> b
 def _should_use_cached_service_state(services: List[Dict[str, Any]], force_live: bool = False) -> bool:
     if force_live:
         return False
+    if any(_is_embedded_cluster_service(s) for s in (services or []) if isinstance(s, dict)):
+        return False
     if _probe_service_cache_fresh():
         return True
     return _service_runtime_cache_fresh(services)
+
+
+def _embedded_process_gateway_up(host: str = "127.0.0.1", timeout: float = 0.15) -> bool:
+    return bool(_probe_tcp_open(host, 15050, timeout=timeout) or _probe_tcp_open(host, 5504, timeout=timeout))
 
 
 def _build_agent_metric_series(agent: Dict[str, Any], member_agent_ids: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -6895,6 +7067,7 @@ def _build_agent_detail(
 
     services = [dict(s) for s in (logical_hit.get("services") or []) if isinstance(s, dict)]
     services_from_cache = _should_use_cached_service_state(services, force_live=force_live)
+    has_embedded = any(_is_embedded_cluster_service(s) for s in services)
     if force_live:
         _reconcile_all_gameserver_daemon_states()
     cluster_status_map = _fetch_cluster_runtime_status_cached()
@@ -6904,6 +7077,8 @@ def _build_agent_detail(
             project_id=project_id,
             agent=agent,
             cluster_status=cluster_status_map,
+            fast_probe=bool(force_live or has_embedded),
+            probe_timeout=0.12 if (force_live or has_embedded) else 0.35,
         )
     service_ids = [str(s.get("service_id") or "").strip() for s in services if str(s.get("service_id") or "").strip()]
     member_agent_ids = [str(x or "").strip() for x in (logical_hit.get("member_agent_ids") or []) if str(x or "").strip()]
@@ -7515,7 +7690,7 @@ def ops_platform_module_map():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     modules = [
         {"id": "overview", "name": "全局总览", "href": "/admin/ops-platform?project_id=GomeKu", "children": ["kpi", "risk", "todo"]},
-        {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology?project_id=GomeKu&env_key=production&topology_id=topology-design-gomeku-production", "children": ["node_library", "canvas", "inspector"]},
+        {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology?project_id=GomeKu&env_key=production&topology_id=topology-gomeku-production-default", "children": ["node_library", "canvas", "inspector"]},
         {"id": "action_center", "name": "动作执行中心", "href": "/admin/ops-platform/actions?project_id=GomeKu", "children": ["catalog", "approval", "execute", "history"]},
         {"id": "diagnostics", "name": "诊断与体检", "href": "/admin/ops-platform/diagnostics?project_id=GomeKu", "children": ["rules", "filter", "export"]},
         {"id": "events_trace", "name": "事件与追踪", "href": "/admin/ops-platform?project_id=GomeKu", "children": ["timeline", "trace", "audit"]},
@@ -7873,21 +8048,30 @@ def ops_platform_agents_list():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     _ensure_probe_bg_started()
     project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
+    env_key = _normalize_env_key(request.args.get("env_key") or "")
+    topology_id = str(request.args.get("topology_id") or "").strip()
+    force_live = str(request.args.get("live") or "").strip().lower() in ("1", "true", "yes", "on")
     status = str(request.args.get("status") or "").strip().upper()
     device_id = str(request.args.get("device_id") or "").strip()
     host_ip = str(request.args.get("host_ip") or "").strip().lower()
     region = str(request.args.get("region") or "").strip().lower()
     bound = str(request.args.get("bound") or "").strip().lower()
-    bindings = _load_node_agent_bindings()
+    resolved_bindings = _resolve_scope_agent_bindings_for_scope(topology_id, project_id, env_key)
+    resolved_service_bindings = _resolve_scope_service_bindings_for_scope(topology_id, project_id, env_key)
     rows = _logical_agents_for_project(project_id)
     rows = [r for r in rows if not r.get("stale")]
     cluster_status_map: Dict[str, str] = {}
     if project_id and _project_uses_runtime_topology(project_id):
         try:
-            cluster_status_map = _fetch_cluster_runtime_status(rows)
+            if force_live and topology_id:
+                cluster_status_map = {}
+            elif force_live:
+                cluster_status_map = _fetch_cluster_runtime_status(rows)
+            else:
+                cluster_status_map = _fetch_cluster_runtime_status_cached(rows)
         except Exception:
             cluster_status_map = {}
-    bound_agent_ids = set(str(v or "") for v in bindings.values() if str(v or "").strip())
+    bound_agent_ids = set(str(v or "") for v in resolved_bindings.values() if str(v or "").strip())
         # 走缓存：不再每次请求都探活，用后台引擎缓存结果
     with _probe_cache_lock:
         cached_probe = dict(_probe_cache)
@@ -7944,8 +8128,43 @@ def ops_platform_agents_list():
             obj["metrics_live"] = bool(obj.get("metrics_live"))
             obj["metrics_missing"] = {"control": not any(base_c.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent", "qps", "rtt_ms")), "business": not any(base_b.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn"))}
         obj["device_metrics_snapshot"] = {}
-        # 探活状态
-        if cached_pr:
+        last_seen_raw = str(obj.get("last_seen") or "")
+        try:
+            last_seen_ts = datetime.fromisoformat(last_seen_raw.replace("Z", "")).timestamp()
+            obj["last_seen_age_sec"] = max(0, int(now_ts - last_seen_ts))
+        except Exception:
+            obj["last_seen_age_sec"] = None
+        obj["is_bound"] = is_bound
+        obj["topology_group"] = str(obj.get("node_id") or "ungrouped").split("-", 1)[0]
+        obj["placement"] = {
+            "region": str(obj.get("region") or ""),
+            "zone": str(obj.get("zone") or ""),
+            "host_ip": str(obj.get("host_ip") or obj.get("host_name") or ""),
+            "device_id": str(obj.get("device_id") or ""),
+        }
+        svc_rows = obj.get("services") if isinstance(obj.get("services"), list) else []
+        if svc_rows:
+            has_embedded = any(_is_embedded_cluster_service(s) for s in svc_rows if isinstance(s, dict))
+            use_cached_services = (not force_live) and _should_use_cached_service_state(svc_rows, force_live=False)
+            if use_cached_services:
+                obj["services"] = svc_rows
+            else:
+                obj["services"] = _refresh_services_live_state(
+                    svc_rows,
+                    project_id=project_id,
+                    cluster_status=cluster_status_map,
+                    agent=obj,
+                    fast_probe=bool(force_live or has_embedded),
+                    probe_timeout=0.08 if (force_live or has_embedded) else 0.35,
+                )
+        if force_live:
+            eff, probe = _derive_agent_probe_from_services(obj.get("services") or [])
+            obj["effective_status"] = eff
+            obj["probe_status"] = probe
+            obj["probe_rtt_ms"] = float(cached_pr.get("rtt_ms") or 0.0) if cached_pr else 0.0
+            obj["probe_at"] = _now_iso()
+            obj["probe_source"] = "live-request"
+        elif cached_pr:
             obj["effective_status"] = cached_pr.get("effective_status", "UNKNOWN")
             obj["probe_status"] = "PASS" if cached_pr.get("ok") else "FAIL"
             obj["probe_rtt_ms"] = cached_pr.get("rtt_ms", 0.0)
@@ -7960,32 +8179,10 @@ def ops_platform_agents_list():
                 obj["effective_status"] = "OFFLINE"
             else:
                 obj["effective_status"] = base_status
-            obj["probe_source"] = "fallback"
-        last_seen_raw = str(obj.get("last_seen") or "")
-        try:
-            last_seen_ts = datetime.fromisoformat(last_seen_raw.replace("Z", "")).timestamp()
-            obj["last_seen_age_sec"] = max(0, int(now_ts - last_seen_ts))
-        except Exception:
-            obj["last_seen_age_sec"] = None
-        # 走缓存结果（bg-engine），不再实时探活
+            obj["probe_status"] = str(obj.get("probe_status") or ("PASS" if base_status in ("ONLINE", "RUNNING", "READY") else "FAIL")).upper()
+            obj["probe_source"] = "registry-fallback"
         if status and str(obj.get("effective_status") or "").upper() != status:
             continue
-        obj["is_bound"] = is_bound
-        obj["topology_group"] = str(obj.get("node_id") or "ungrouped").split("-", 1)[0]
-        obj["placement"] = {
-            "region": str(obj.get("region") or ""),
-            "zone": str(obj.get("zone") or ""),
-            "host_ip": str(obj.get("host_ip") or obj.get("host_name") or ""),
-            "device_id": str(obj.get("device_id") or ""),
-        }
-        svc_rows = obj.get("services") if isinstance(obj.get("services"), list) else []
-        if svc_rows:
-            obj["services"] = _refresh_services_live_state(
-                svc_rows,
-                project_id=project_id,
-                cluster_status=cluster_status_map,
-                agent=obj,
-            )
         out.append(obj)
     # 同设备统一快照：同一 device_id 下所有卡片显示一致口径
     grouped_snap: Dict[str, Dict[str, Any]] = {}
@@ -8031,8 +8228,16 @@ def ops_platform_agents_list():
             "business": not any(mb.get(k) is not None for k in ("qps", "rtt_p95_ms", "rtt_p99_ms", "error_rate", "conn")),
         }
         member_ids = [str(x or "").strip() for x in (a.get("member_agent_ids") or []) if str(x or "").strip()]
-        out[idx] = _overlay_live_metrics(a, member_ids or [str(a.get("agent_id") or "")])
-    return jsonify({"ok": True, "count": len(out), "agents": out, "bindings": bindings})
+        if not topology_id:
+            out[idx] = _overlay_live_metrics(a, member_ids or [str(a.get("agent_id") or "")])
+    return jsonify({
+        "ok": True,
+        "count": len(out),
+        "agents": out,
+        "bindings": resolved_bindings,
+        "service_bindings": resolved_service_bindings,
+        "force_live": bool(force_live),
+    })
 
 
 @bp.route("/api/ops-platform/agents/devices")
@@ -9130,9 +9335,9 @@ def ops_platform_node_bindings():
     scoped = _load_topology_scoped(project_id, env_key, topology_id)
     registry = scoped.get("registry") if isinstance(scoped.get("registry"), dict) else {}
     tid = str(registry.get("topology_id") or topology_id or "")
-    bindings = _load_scope_agent_bindings(tid)
-    service_bindings = _load_scope_service_bindings(tid)
     valid_nodes = set(str(x.get("id") or "") for x in (scoped.get("nodes") or []) if isinstance(x, dict))
+    bindings = _resolve_scope_agent_bindings_for_scope(tid, project_id, env_key, valid_nodes)
+    service_bindings = _resolve_scope_service_bindings_for_scope(tid, project_id, env_key, valid_nodes)
     out: Dict[str, str] = {str(nid): str(aid) for nid, aid in bindings.items() if str(nid or "").strip() in valid_nodes and str(aid or "").strip()}
     out_services: Dict[str, str] = {}
     valid_services = set(
@@ -10617,7 +10822,7 @@ def _probe_tcp_open(host: str, port: int, timeout: float = 0.8) -> bool:
     if port_val <= 0:
         return False
     try:
-        with socket.create_connection((host_name, port_val), timeout=max(0.2, float(timeout))):
+        with socket.create_connection((host_name, port_val), timeout=max(0.05, float(timeout))):
             return True
     except Exception:
         return False
@@ -10686,10 +10891,18 @@ def _gameserver_tcp_probe_port(service_id: str, node: Optional[Dict[str, Any]] =
     return 0
 
 
+_gameserver_pid_cache: Dict[str, Tuple[float, int]] = {}
+_GAMESERVER_PID_CACHE_TTL_SEC = 5.0
+
+
 def _find_gameserver_pid_by_service(service_id: str) -> int:
     sid = str(service_id or "").strip().lower()
     if not sid:
         return 0
+    now = _time_mod.time()
+    cached = _gameserver_pid_cache.get(sid)
+    if cached and (now - float(cached[0] or 0.0)) < _GAMESERVER_PID_CACHE_TTL_SEC:
+        return int(cached[1] or 0)
     needle = f"--servers={sid}"
     if os.name == "nt":
         try:
@@ -10707,12 +10920,17 @@ def _find_gameserver_pid_by_service(service_id: str) -> int:
                 timeout=15,
                 check=False,
             )
+            pid = 0
             for line in reversed((proc.stdout or "").splitlines()):
                 text = line.strip()
                 if text.isdigit():
-                    return int(text)
+                    pid = int(text)
+                    break
+            _gameserver_pid_cache[sid] = (now, pid)
+            return pid
         except Exception:
             pass
+        _gameserver_pid_cache[sid] = (now, 0)
         return 0
     try:
         proc = subprocess.run(
@@ -10725,9 +10943,12 @@ def _find_gameserver_pid_by_service(service_id: str) -> int:
         for line in (proc.stdout or "").splitlines():
             parts = line.strip().split(None, 1)
             if parts and parts[0].isdigit() and needle in (parts[1] if len(parts) > 1 else ""):
-                return int(parts[0])
+                pid = int(parts[0])
+                _gameserver_pid_cache[sid] = (now, pid)
+                return pid
     except Exception:
         pass
+    _gameserver_pid_cache[sid] = (now, 0)
     return 0
 
 
@@ -10746,14 +10967,20 @@ def _is_gameserver_process_alive(service_id: str) -> bool:
     return False
 
 
-def _gameserver_service_live(service_id: str, node: Optional[Dict[str, Any]] = None, pid: int = 0) -> bool:
+def _gameserver_service_live(service_id: str, node: Optional[Dict[str, Any]] = None, pid: int = 0, fast: bool = False) -> bool:
     port = _gameserver_tcp_probe_port(service_id, node)
+    probe_timeout = 0.12 if fast else 0.35
     if port > 0:
-        # HttpListener 在 Windows 上常显示为 System PID，不能仅凭端口属主判断。
-        active_pid = pid if pid > 0 and _is_process_running(pid) else _find_gameserver_pid_by_service(service_id)
-        if active_pid > 0 and _is_process_running(active_pid) and _probe_tcp_open("127.0.0.1", port, timeout=0.35):
+        if not _probe_tcp_open("127.0.0.1", port, timeout=probe_timeout):
+            return False
+        if fast:
             return True
-        return False
+        active_pid = pid if pid > 0 and _is_process_running(pid) else _find_gameserver_pid_by_service(service_id)
+        return bool(active_pid > 0 and _is_process_running(active_pid))
+    if fast:
+        state = _get_daemon_state(str(service_id or "").strip().lower())
+        cached_pid = int(state.get("pid") or 0) if str(state.get("pid") or "").strip().isdigit() else 0
+        return bool(cached_pid > 0 and _is_process_running(cached_pid))
     return _is_gameserver_process_alive(service_id)
 
 
@@ -11887,7 +12114,7 @@ def _start_external_daemon_node(node: Dict[str, Any], act: str = "start") -> Dic
 
     if os.name == "nt":
         if role in ("database", "mongo") or port == 27017:
-            db_dir = r"C:\data\gomeku-mongo"
+            db_dir = _gomeku_mongo_dbpath()
             os.makedirs(db_dir, exist_ok=True)
             svc = subprocess.run(
                 [
@@ -11995,6 +12222,29 @@ def _kill_tracked_pid(pid: int) -> bool:
         return False
 
 
+def _daemon_cmd_looks_unix_only(cmd: str) -> bool:
+    """Windows 上跳过明显只能在 Unix/macOS 执行的守护进程命令。"""
+    text = str(cmd or "").strip().lower()
+    if not text:
+        return False
+    unix_markers = (
+        "/tmp/",
+        "/opt/homebrew/",
+        "/usr/local/",
+        "mongosh ",
+        "redis-cli -p",
+        " --fork",
+        " --daemonize",
+        "bash -lc",
+        "pkill ",
+    )
+    if any(marker in text for marker in unix_markers):
+        return True
+    if text.startswith("mongod ") and "--dbpath /tmp" in text:
+        return True
+    return False
+
+
 def _stop_external_daemon_node(node: Dict[str, Any], act: str = "stop") -> Dict[str, Any]:
     """停止本机 Mongo/Redis 等守护节点：优先 stop_cmd，再杀残留 PID，以端口关闭为准。"""
     nid = str(node.get("id") or "")
@@ -12005,14 +12255,14 @@ def _stop_external_daemon_node(node: Dict[str, Any], act: str = "stop") -> Dict[
     with open(log_path, "a", encoding="utf-8") as log_fp:
         log_fp.write(f"[{_now_iso()}] daemon {act} stop pid={pid} cmd={stop_cmd}\n")
 
-    if stop_cmd:
+    if stop_cmd and not (os.name == "nt" and _daemon_cmd_looks_unix_only(stop_cmd)):
         subprocess.call(stop_cmd, shell=True)
 
     _kill_tracked_pid(pid)
 
     port = _daemon_node_port(node)
     closed = _wait_daemon_port_closed(node, timeout_sec=12.0)
-    if not closed and stop_cmd:
+    if not closed and stop_cmd and not (os.name == "nt" and _daemon_cmd_looks_unix_only(stop_cmd)):
         subprocess.call(stop_cmd, shell=True)
         closed = _wait_daemon_port_closed(node, timeout_sec=8.0)
 
@@ -12200,30 +12450,46 @@ def _refresh_services_live_state(
     project_id: str = "",
     cluster_status: Optional[Dict[str, str]] = None,
     agent: Optional[Dict[str, Any]] = None,
+    fast_probe: bool = False,
+    probe_timeout: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
-    sample = _sample_local_control_metrics()
+    sample = {} if fast_probe else _sample_local_control_metrics()
     cs_map = cluster_status if isinstance(cluster_status, dict) else {}
-    if not cs_map and project_id:
+    if not cs_map and project_id and not fast_probe:
         try:
             cs_map = _fetch_cluster_runtime_status_cached(_agents_v2_for_project(project_id))
         except Exception:
             cs_map = {}
-    out: List[Dict[str, Any]] = []
-    for raw in services or []:
-        if not isinstance(raw, dict):
-            continue
+    pt = float(probe_timeout) if probe_timeout is not None else (0.12 if fast_probe else 0.35)
+    rows = [raw for raw in (services or []) if isinstance(raw, dict)]
+
+    def _probe_one(raw: Dict[str, Any]) -> Dict[str, Any]:
         svc_host = _resolve_agent_probe_host(agent, raw) if agent else host
-        svc = _resolve_service_runtime_state(raw, host=svc_host, cluster_status=cs_map, probe_timeout=0.35)
-        metrics = svc.get("metrics") if isinstance(svc.get("metrics"), dict) else {}
-        merged = dict(metrics)
-        if str(svc.get("probe_status") or "").upper() == "PASS":
-            for key in ("cpu_percent", "mem_percent", "disk_percent", "source", "updated_at"):
-                if sample.get(key) is not None and merged.get(key) is None:
-                    merged[key] = sample.get(key)
-        if merged:
-            svc["metrics"] = merged
-        svc["updated_at"] = str(svc.get("updated_at") or sample.get("updated_at") or _now_iso())
-        out.append(svc)
+        svc = _resolve_service_runtime_state(
+            raw,
+            host=svc_host,
+            cluster_status=cs_map,
+            probe_timeout=pt,
+            fast_probe=fast_probe,
+        )
+        if not fast_probe:
+            metrics = svc.get("metrics") if isinstance(svc.get("metrics"), dict) else {}
+            merged = dict(metrics)
+            if str(svc.get("probe_status") or "").upper() == "PASS":
+                for key in ("cpu_percent", "mem_percent", "disk_percent", "source", "updated_at"):
+                    if sample.get(key) is not None and merged.get(key) is None:
+                        merged[key] = sample.get(key)
+            if merged:
+                svc["metrics"] = merged
+            svc["updated_at"] = str(svc.get("updated_at") or sample.get("updated_at") or _now_iso())
+        return svc
+
+    if len(rows) <= 1:
+        return [_probe_one(raw) for raw in rows]
+    out: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(8, len(rows))) as pool:
+        for svc in pool.map(_probe_one, rows):
+            out.append(svc)
     return out
 
 
@@ -13066,6 +13332,8 @@ def _mark_project_runtime_services_stopped(project_id: str) -> None:
         canonical["updated_at"] = _now_iso()
         reg[CANONICAL_LOCAL_AGENT_ID] = canonical
         _save_agent_registry_v2(reg)
+    _invalidate_runtime_probe_state()
+    _seed_probe_cache_from_registry()
 
 
 def _runtime_cluster_stop_all(
@@ -13240,40 +13508,88 @@ def _refresh_runtime_service_probes_from_topology(
     return {"live_count": live_count, "total": total, "gateway_live": gateway_live, "ops_live": ops_live}
 
 
-def _ensure_runtime_infra_ports(timeout_sec: float = 45.0) -> Tuple[bool, str]:
-    os.makedirs("/tmp/gomeku-mongo", exist_ok=True)
-    if not _probe_tcp_open("127.0.0.1", 27017):
-        for cmd in (
-            ["mongod", "--dbpath", "/tmp/gomeku-mongo", "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", "/tmp/gomeku-mongo/mongod.log"],
-            ["/opt/homebrew/bin/mongod", "--dbpath", "/tmp/gomeku-mongo", "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", "/tmp/gomeku-mongo/mongod.log"],
-            ["/usr/local/bin/mongod", "--dbpath", "/tmp/gomeku-mongo", "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", "/tmp/gomeku-mongo/mongod.log"],
-        ):
-            try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
-            except Exception:
-                pass
-            if _probe_tcp_open("127.0.0.1", 27017):
-                break
-    if not _probe_tcp_open("127.0.0.1", 6379):
-        for cmd in (
-            ["redis-server", "--daemonize", "yes", "--port", "6379", "--bind", "127.0.0.1"],
-            ["/opt/homebrew/bin/redis-server", "--daemonize", "yes", "--port", "6379", "--bind", "127.0.0.1"],
-        ):
-            try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
-            except Exception:
-                pass
-            if _probe_tcp_open("127.0.0.1", 6379):
-                break
+def _ensure_runtime_infra_ports(
+    timeout_sec: float = 45.0,
+    project_id: str = "",
+    env_key: str = "",
+    topology_id: str = "",
+) -> Tuple[bool, str]:
+    """确保 Mongo/Redis 基础设施端口可用；Windows 走本机守护进程启动逻辑。"""
+
+    def _ports_snapshot() -> Tuple[bool, str]:
+        mongo_ok = _probe_tcp_open("127.0.0.1", 27017, timeout=0.15)
+        redis_ok = _probe_tcp_open("127.0.0.1", 6379, timeout=0.15)
+        msg = f"mongo:27017={'PASS' if mongo_ok else 'FAIL'} redis:6379={'PASS' if redis_ok else 'FAIL'}"
+        return bool(mongo_ok and redis_ok), msg
+
+    ok, msg = _ports_snapshot()
+    if ok:
+        return True, msg
+
+    pid = str(project_id or "GomeKu").strip()
+    env = _normalize_env_key(env_key or "production")
+    tid = str(topology_id or "").strip()
+    scoped_nodes: List[Dict[str, Any]] = []
+    try:
+        scoped = _load_topology_scoped(pid, env, tid) if tid else {}
+        scoped_nodes = [n for n in (scoped.get("nodes") or []) if isinstance(n, dict)]
+    except Exception:
+        scoped_nodes = []
+
+    def _infra_node(nid: str, role: str, port: int) -> Dict[str, Any]:
+        hit = next((n for n in scoped_nodes if str(n.get("id") or "") == nid), None)
+        if isinstance(hit, dict):
+            return _build_runtime_node_from_topology_node(pid, env, hit, tid)
+        return {
+            "id": nid,
+            "role": role,
+            "port": port,
+            "daemon_profile": "external_daemon",
+        }
+
+    for nid, role, port in (
+        ("mongo-db-cn-1", "database", 27017),
+        ("redis-cache-cn-1", "cache", 6379),
+    ):
+        if _probe_tcp_open("127.0.0.1", port, timeout=0.12):
+            continue
+        node = _infra_node(nid, role, port)
+        if os.name == "nt":
+            _start_external_daemon_node(node, "start")
+        else:
+            if role == "database":
+                db_dir = _gomeku_mongo_dbpath()
+                os.makedirs(db_dir, exist_ok=True)
+                for cmd in (
+                    ["mongod", "--dbpath", db_dir, "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", f"{db_dir}/mongod.log"],
+                    ["/opt/homebrew/bin/mongod", "--dbpath", db_dir, "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", f"{db_dir}/mongod.log"],
+                    ["/usr/local/bin/mongod", "--dbpath", db_dir, "--port", "27017", "--bind_ip", "127.0.0.1", "--fork", "--logpath", f"{db_dir}/mongod.log"],
+                ):
+                    try:
+                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+                    except Exception:
+                        pass
+                    if _probe_tcp_open("127.0.0.1", 27017, timeout=0.15):
+                        break
+            else:
+                for cmd in (
+                    ["redis-server", "--daemonize", "yes", "--port", "6379", "--bind", "127.0.0.1"],
+                    ["/opt/homebrew/bin/redis-server", "--daemonize", "yes", "--port", "6379", "--bind", "127.0.0.1"],
+                ):
+                    try:
+                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+                    except Exception:
+                        pass
+                    if _probe_tcp_open("127.0.0.1", 6379, timeout=0.15):
+                        break
+
     deadline = time.time() + max(5.0, float(timeout_sec))
-    last = ""
+    last = msg
     while time.time() < deadline:
-        mongo_ok = _probe_tcp_open("127.0.0.1", 27017)
-        redis_ok = _probe_tcp_open("127.0.0.1", 6379)
-        last = f"mongo:27017={'PASS' if mongo_ok else 'FAIL'} redis:6379={'PASS' if redis_ok else 'FAIL'}"
-        if mongo_ok and redis_ok:
+        ok, last = _ports_snapshot()
+        if ok:
             return True, last
-        time.sleep(1.0)
+        time.sleep(0.5)
     return False, last
 
 
@@ -13427,7 +13743,7 @@ def _runtime_orchestrate_start_worker(
     time.sleep(1.2)
 
     _runtime_orchestrator_log(run_id, "cluster", "info", "Step 0/{}: 检查并启动 Mongo/Redis 基础设施".format(total))
-    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0)
+    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0, project_id=pid, env_key=env, topology_id=tid)
     _runtime_orchestrator_log(
         run_id,
         "cluster",
@@ -13706,7 +14022,7 @@ def _runtime_cluster_start_all(
     _stop_local_game_server()
     time.sleep(1.5)
 
-    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0)
+    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0, project_id=pid, env_key=env, topology_id=tid)
     logs.append(
         {
             "ts": _now_iso(),

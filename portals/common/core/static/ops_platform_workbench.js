@@ -333,6 +333,7 @@
     runtimeProgressSig: "",
     runtimeSteady: false,
     runtimeStopping: false,
+    runtimeStarting: false,
     runtimeAwaitLive: false,
     runtimeAwaitLiveUntil: 0,
     runtimeLiveWaitTimer: null,
@@ -342,6 +343,8 @@
     runtimeEdgesLogged: false,
     debugSeq: 0,
     agentsRefreshAt: 0,
+    agentsHydrated: false,
+    bindingsHydrated: false,
     agentsTickTimer: null,
     lockedMode: "",
     autoRunModeLogged: false,
@@ -933,12 +936,14 @@
       const target = String(nodeId || "");
       return sid === target || nid === target;
     });
-    if (svc && String(svc.probe_status || "").toUpperCase() !== "PASS") return null;
     if (!svc) return null;
     const probe = String(svc.probe_status || "").toUpperCase();
     const st = String(svc.run_state || svc.status || "").toUpperCase();
     if (probe === "FAIL" || st === "STOPPED" || st === "OFFLINE" || st === "FAILED") {
       return { text: "已停止", cls: "err" };
+    }
+    if (st === "STARTING" || st === "STOPPING" || st === "RESTARTING") {
+      return { text: st === "STOPPING" ? "停止中" : "启动中", cls: "warn" };
     }
     if (probe === "PASS") {
       return { text: "运行中", cls: "ok" };
@@ -952,8 +957,14 @@
 
   function nodeRuntimeStatus(n, ag, aid) {
     const st = String(n.bizStatus || "normal");
-    if (!aid) return { text: "未绑定", cls: "warn" };
-    if (!ag) return { text: "Agent缺失", cls: "err" };
+    if (!aid) {
+      if (!state.bindingsHydrated && !state.agentsHydrated) return { text: "状态同步中", cls: "warn" };
+      return { text: "未绑定", cls: "warn" };
+    }
+    if (!ag) {
+      if (!state.agentsHydrated) return { text: "探活中", cls: "warn" };
+      return { text: "Agent缺失", cls: "err" };
+    }
     const perSvc = serviceRuntimeStatusForNode(ag, n.id);
     if (perSvc) return perSvc;
     const health = agentHealthLabel(ag);
@@ -1639,24 +1650,50 @@
     return { cpu: 0, mem: 0, qps: 0, rtt: 0, source: "missing", updatedAt: "" };
   }
 
-  async function refreshAgentsIfNeeded(force) {
-    const d = await OpsApi.agents(state.projectId);
+  function mergeAgentPayload(d) {
+    if (!d || d.ok === false) return false;
+    if (Array.isArray(d.agents)) {
+      state.agents = d.agents;
+      state.agentsRefreshAt = Date.now();
+      state.agentsHydrated = true;
+    }
+    if (d.bindings && typeof d.bindings === "object") {
+      state.nodeBindings = Object.assign({}, state.nodeBindings, d.bindings);
+    }
+    if (d.service_bindings && typeof d.service_bindings === "object") {
+      state.serviceBindings = Object.assign({}, state.serviceBindings, d.service_bindings);
+    }
+    return true;
+  }
+
+  function agentsRequestOptions(force, extra) {
+    const opts = Object.assign({
+      topology_id: state.topologyId,
+      env_key: state.envKey,
+      live: !!force || !!state.runtimeStopping || !!state.runtimeStarting,
+    }, extra || {});
+    return opts;
+  }
+
+  async function refreshAgentsIfNeeded(force, extra) {
+    const d = await OpsApi.agents(state.projectId, agentsRequestOptions(force, extra));
     if (d && d.ok === false && (d.error_code === 'OPS_AUTH_REQUIRED' || d.error === 'auth_redirect')) {
       window.location.href = '/login';
       return;
     }
-    if (d && d.ok !== false && Array.isArray(d.agents)) {
-      state.agents = d.agents;
-      state.agentsRefreshAt = Date.now();
-    }
+    mergeAgentPayload(d);
   }
 
   function startAgentsRealtimeTick() {
     if (state.agentsTickTimer) clearInterval(state.agentsTickTimer);
     state.agentsTickTimer = setInterval(async () => {
-      await refreshAgentsIfNeeded(false);
-      if (state.runtimeStopping) {
+      await refreshAgentsIfNeeded(state.runtimeStopping || state.runtimeStarting);
+      if (state.runtimeStopping || state.runtimeStarting) {
         redrawGraph();
+        renderRuntimeNodeList();
+        const cur = String((($("insNodeId") || {}).value || "")).trim();
+        const curNode = cur ? getNode(cur) : null;
+        if (curNode) updateInspectorHeader(curNode);
         return;
       }
       const modeChanged = inferWorkbenchModeFromRuntime();
@@ -1921,7 +1958,7 @@
 
   async function pollRuntimeRun(runId) {
     if (!runId) return;
-    await refreshAgentsIfNeeded(false);
+    await refreshAgentsIfNeeded(!!state.runtimeStopping || !!state.runtimeStarting);
     const d = await OpsApi.runtimeFlowStatus(runId);
     if (!d || d.ok === false) {
       logMode("运行状态拉取失败: " + ((d && (d.message || d.error)) || "未知错误"), "error");
@@ -1975,6 +2012,7 @@
     }
     if (st === "success" || st === "failed") {
       stopRuntimePolling();
+      state.runtimeStarting = false;
       const ok = st === "success";
       if (!ok) {
         stopRuntimeLiveWait();
@@ -1989,8 +2027,10 @@
           logMode("运行结束: FAILED（" + runningNodes.length + " 个节点仍运行，等待 Agent 修复同步）", "warn");
           return;
         }
-        toast("全流程执行结束（含失败）", "warn");
-        logMode("运行结束: " + st.toUpperCase(), "warn");
+        const errLog = (d.logs || []).slice().reverse().find((row) => String((row && row.level) || "").toLowerCase() === "error");
+        const errMsg = errLog ? String(errLog.message || "") : "";
+        toast(errMsg || "全流程启动失败，请查看模式日志", "error");
+        logMode("运行结束: " + st.toUpperCase() + (errMsg ? (" — " + errMsg) : ""), "warn");
         replayFailureFlow();
         setTimeout(() => {
           clearFlowViz(true, "pollRuntimeRun-failed-finalize");
@@ -3269,9 +3309,12 @@
       let statusText = runtimeStatus.text;
       let statusCls = runtimeStatus.cls;
       const probeOk = runtimeStatus.cls === "ok";
-      const flowStarting = probeOk && isFlow && flowSt === "STARTING";
-      if (flowStarting && statusText !== "运行中") {
-        statusText = "启动中";
+      const flowStarting = isFlow && (flowSt === "STARTING" || flowSt === "RUNNING");
+      if (flowStarting && (statusText === "已停止" || statusText === "未知" || statusText === "探活中")) {
+        statusText = flowSt === "RUNNING" ? "运行中" : "启动中";
+        statusCls = flowSt === "RUNNING" ? "ok" : "warn";
+      } else if (state.runtimeStarting && state.runtimeLastStatus === "running" && statusText === "已停止") {
+        statusText = "等待启动";
         statusCls = "warn";
       }
 
@@ -4131,8 +4174,11 @@
       badge.style.background = "color-mix(in srgb, " + palette.border + " 12%, white)";
     }
     if (pill) {
-      pill.textContent = STATUS_LABELS[node.bizStatus] || node.bizStatus || "运行中";
-      pill.className = "state-pill " + (node.bizStatus === "normal" ? "state-ok" : node.bizStatus === "error" ? "state-err" : "state-info");
+      const ag = resolveAgentForNode(node);
+      const aid = String((state.nodeBindings || {})[node.id] || (ag && ag.agent_id) || "");
+      const rs = nodeRuntimeStatus(node, ag, aid);
+      pill.textContent = rs.text;
+      pill.className = "state-pill " + (rs.cls === "ok" ? "state-ok" : rs.cls === "err" ? "state-err" : "state-info");
     }
   }
 
@@ -4499,6 +4545,7 @@
     state.runtimeLastStatus = "";
     state.runtimeLogSeen = new Set();
     state.runtimeProgressSig = "";
+    state.runtimeStarting = !!start;
     logMode((start ? "开始" : "开始") + (start ? "一键启动" : "一键停止") + "全流程");
     if (start && !isRuntimeTopologyProject()) {
       const startupNodes = (state.topology.nodes || []).map((n) => n.id);
@@ -4514,6 +4561,7 @@
     const d = await OpsApi.runtimeFlowControl(Object.assign(currentScope(), { op }));
     if (!d || d.ok === false) {
       if (!start) state.runtimeStopping = false;
+      if (start) state.runtimeStarting = false;
       if (start) {
         clearFlowViz(true, "runFullLifecycle-start-failed");
         redrawGraph();
@@ -5011,61 +5059,7 @@
     await loadAuxiliaryData();
   }
 
-  async function loadAuxiliaryData() {
-    const settled = await Promise.allSettled([
-      OpsApi.loadNodes(),
-      OpsApi.loadOverview(state.projectId),
-      OpsApi.loadTopologyBlueprints(),
-      OpsApi.loadNodeBindings(currentScope()),
-      OpsApi.agents(state.projectId),
-      OpsApi.listServices(state.projectId),
-    ]);
-    const [nodes, overview, blueprints, bindings, agents, servicesResp] = settled.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
-    if (checkAuthExpired(nodes) || checkAuthExpired(overview) || checkAuthExpired(blueprints) || checkAuthExpired(bindings) || checkAuthExpired(agents) || checkAuthExpired(servicesResp)) return;
-
-    const warns = [];
-    if (nodes && nodes.ok !== false && Array.isArray(nodes.nodes)) {
-      state.nodesRaw = (state.topology.nodes || []).length
-        ? (state.topology.nodes || []).map((n) => ({
-          id: n.id,
-          name: n.name || n.id,
-          role: n.role,
-          kind: n.kind,
-          description: n.desc,
-          desc: n.desc,
-          biz_status: n.bizStatus,
-          owner: n.owner,
-          tags: n.tags,
-        })).concat((nodes.nodes || []).filter((raw) => !(state.topology.nodes || []).some((n) => String(n.id) === String(raw.id))))
-        : nodes.nodes;
-      normalizeTopology();
-      if (!shouldPreserveTopologyLayoutOnLoad()) layoutStructuredGraph();
-    } else {
-      warns.push("节点清单");
-    }
-    if (overview && overview.ok !== false) state.overviewNodes = overview.nodes || [];
-    else warns.push("总览");
-    if (blueprints && blueprints.ok !== false && Array.isArray(blueprints.blueprints)) state.blueprints = blueprints.blueprints;
-    else warns.push("流程模板");
-    if (bindings && bindings.ok !== false) {
-      state.nodeBindings = bindings.bindings || {};
-      state.serviceBindings = bindings.service_bindings || {};
-    }
-    else warns.push("绑定");
-    if (agents && agents.ok !== false) state.agents = agents.agents || [];
-    else warns.push("Agent");
-    if (servicesResp && servicesResp.ok !== false) state.services = servicesResp.services || servicesResp.items || [];
-    else warns.push("服务实例");
-
-    renderBlueprintSelectors();
-    renderScopeSelectors();
-    renderTopologyManagerList();
-
-    const bpSel = $("flowBlueprintSelect");
-    if (bpSel) {
-      bpSel.innerHTML = '<option value="">流程模板</option>' + state.blueprints.map((b) => '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name) + '</option>').join("");
-    }
-
+  function touchRuntimeStatusUi() {
     const modeChanged = inferWorkbenchModeFromRuntime();
     syncLiveFlowVisualsForMode();
     redrawGraph();
@@ -5074,8 +5068,118 @@
     applyModeUI();
     if (modeChanged) saveModeState();
     const currentNodeId = String((($("insNodeId") || {}).value || "")).trim();
-    if (currentNodeId && getNode(currentNodeId)) openNodeEditor(currentNodeId);
-    setTopologyHint(warns.length ? ("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
+    const curNode = currentNodeId ? getNode(currentNodeId) : null;
+    if (curNode) {
+      updateInspectorHeader(curNode);
+      openNodeEditor(currentNodeId);
+    }
+  }
+
+  function applyBindingsPayload(bindings) {
+    if (!bindings || bindings.ok === false) return false;
+    state.nodeBindings = Object.assign({}, state.nodeBindings, bindings.bindings || {});
+    state.serviceBindings = Object.assign({}, state.serviceBindings, bindings.service_bindings || {});
+    state.bindingsHydrated = true;
+    return true;
+  }
+
+  async function loadAuxiliaryData() {
+    const warns = [];
+    const scope = currentScope();
+
+    const applyNodes = (nodes) => {
+      if (checkAuthExpired(nodes)) return;
+      if (nodes && nodes.ok !== false && Array.isArray(nodes.nodes)) {
+        state.nodesRaw = (state.topology.nodes || []).length
+          ? (state.topology.nodes || []).map((n) => ({
+            id: n.id,
+            name: n.name || n.id,
+            role: n.role,
+            kind: n.kind,
+            description: n.desc,
+            desc: n.desc,
+            biz_status: n.bizStatus,
+            owner: n.owner,
+            tags: n.tags,
+          })).concat((nodes.nodes || []).filter((raw) => !(state.topology.nodes || []).some((n) => String(n.id) === String(raw.id))))
+          : nodes.nodes;
+        normalizeTopology();
+        if (!shouldPreserveTopologyLayoutOnLoad()) layoutStructuredGraph();
+      } else {
+        warns.push("节点清单");
+      }
+    };
+
+    const applyOverview = (overview) => {
+      if (checkAuthExpired(overview)) return;
+      if (overview && overview.ok !== false) state.overviewNodes = overview.nodes || [];
+      else warns.push("总览");
+    };
+
+    const applyBlueprints = (blueprints) => {
+      if (checkAuthExpired(blueprints)) return;
+      if (blueprints && blueprints.ok !== false && Array.isArray(blueprints.blueprints)) {
+        state.blueprints = blueprints.blueprints;
+        renderBlueprintSelectors();
+        const bpSel = $("flowBlueprintSelect");
+        if (bpSel) {
+          bpSel.innerHTML = '<option value="">流程模板</option>' + state.blueprints.map((b) => '<option value="' + esc(b.blueprint_id) + '">' + esc(b.name) + '</option>').join("");
+        }
+      } else {
+        warns.push("流程模板");
+      }
+    };
+
+    const applyServices = (servicesResp) => {
+      if (checkAuthExpired(servicesResp)) return;
+      if (servicesResp && servicesResp.ok !== false) state.services = servicesResp.services || servicesResp.items || [];
+      else warns.push("服务实例");
+    };
+
+    const applyAgents = (agents, label) => {
+      if (checkAuthExpired(agents)) return false;
+      if (agents && agents.ok !== false) {
+        mergeAgentPayload(agents);
+        return true;
+      }
+      if (label) warns.push(label);
+      return false;
+    };
+
+    // 关键路径：绑定 + 本机实时探活（并行），不等待 overview 等慢接口
+    const critical = await Promise.allSettled([
+      OpsApi.loadNodeBindings(scope),
+      OpsApi.agents(state.projectId, agentsRequestOptions(true)),
+    ]);
+    const [bindingsRes, agentsRes] = critical.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
+    if (!applyBindingsPayload(bindingsRes)) warns.push("绑定");
+    else touchRuntimeStatusUi();
+    if (!applyAgents(agentsRes, "Agent")) {
+      // keep bindings visible even when agents fails
+    } else {
+      touchRuntimeStatusUi();
+    }
+
+    setTopologyHint(warns.length ? ("部分状态数据加载失败: " + warns.join("、") + "，画布仍可操作") : "", warns.length ? "warn" : "");
+
+    Promise.allSettled([
+      OpsApi.loadNodes(),
+      OpsApi.loadOverview(state.projectId),
+      OpsApi.loadTopologyBlueprints(),
+      OpsApi.listServices(state.projectId),
+    ]).then((settled) => {
+      const [nodes, overview, blueprints, servicesResp] = settled.map((r) => r.status === "fulfilled" ? r.value : { ok: false, error: String(r.reason || "request_failed") });
+      applyNodes(nodes);
+      applyOverview(overview);
+      applyBlueprints(blueprints);
+      applyServices(servicesResp);
+      renderScopeSelectors();
+      renderTopologyManagerList();
+      touchRuntimeStatusUi();
+      if (warns.length) {
+        setTopologyHint("部分辅助数据加载失败: " + warns.join("、") + "，画布仍可操作", "warn");
+      }
+    });
   }
 
   async function pickBlueprintId() {
@@ -5759,7 +5863,7 @@
     state.envKey = String(ds.envKey || queryEnv || "production");
     state.topologyId = String(ds.topologyId || queryTopology || "");
     if (!state.topologyId && state.projectId === "GomeKu" && state.envKey === "production") {
-      state.topologyId = "topology-design-gomeku-production";
+      state.topologyId = "topology-gomeku-production-default";
     }
     loadRuntimeState();
     bindEvents();
@@ -5770,7 +5874,7 @@
     applyModeUI();
     redrawGraph();
     const act = await OpsApi.runtimeFlowActive(currentScope());
-    await refreshAgentsIfNeeded(true);
+    if (state.runtimeStopping || state.runtimeStarting) await refreshAgentsIfNeeded(true);
     if (act && act.ok !== false && act.active && act.run_id && String(act.reason || "") === "start_alive") {
       if (act.live_verified || clusterServicesRunning()) {
         state.mode = "run";
