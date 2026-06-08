@@ -78,8 +78,22 @@ def _node(
     return row
 
 
+def _daemon_cmds(preset_id: str, port: int) -> tuple[str, str]:
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT / "portals" / "common" / "core"))
+    _os.environ.setdefault("APP_PORTAL_MODE", "admin")
+    from routes import gm_legacy as gm  # type: ignore
+
+    defaults = gm._contract_daemon_defaults(preset_id, port)
+    return str(defaults.get("StartCommand") or ""), str(defaults.get("StopCommand") or "")
+
+
 def build_minimal_topology() -> Dict[str, Any]:
     """GomeKu 最小可运行：4 进程节点 + Redis + Mongo（不含 TCP/压测/MQ）。"""
+    mongo_start, mongo_stop = _daemon_cmds("mongo_db", 27017)
+    redis_start, redis_stop = _daemon_cmds("redis_cache", 6379)
     nodes = [
         _node("gateway-cn-1", "gateway_http", "gateway", "网关服务", "gateway", 72, 48, 15050),
         _node("auth-cn-1", "auth_service", "auth", "认证服务", "auth", 72, 248),
@@ -95,8 +109,8 @@ def build_minimal_topology() -> Dict[str, Any]:
             320,
             27017,
             "external_daemon",
-            "mongod --dbpath /tmp/gomeku-mongo --port 27017 --bind_ip 127.0.0.1",
-            "mongosh --port 27017 --eval 'db.adminCommand({shutdown:1})'",
+            mongo_start,
+            mongo_stop,
         ),
         _node(
             "redis-cache-cn-1",
@@ -108,8 +122,8 @@ def build_minimal_topology() -> Dict[str, Any]:
             360,
             6379,
             "external_daemon",
-            "redis-server --port 6379",
-            "redis-cli -p 6379 shutdown nosave",
+            redis_start,
+            redis_stop,
         ),
     ]
     edges: List[Dict[str, Any]] = []

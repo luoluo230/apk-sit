@@ -15,12 +15,13 @@ import socket
 import threading
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, redirect, render_template_string, request, session
 from urllib.parse import urlencode
 
+from config import DATA_DIR
 from models.data import (
     approvals_db,
     audit_log_db,
@@ -2183,6 +2184,35 @@ def _topology_ops_dispatch_base(project_id: str, env_key: str, topo: Dict[str, A
     return f"http://127.0.0.1:{port}"
 
 
+def _resolve_topology_node_id_for_service(project_id: str, service_id: str, hint_node_id: str = "") -> str:
+    """将 service_id / 绑定键 / demo 映射解析为可 dispatch 的拓扑 node_id。"""
+    sid = str(service_id or "").strip()
+    hint = str(hint_node_id or "").strip()
+    candidates: List[str] = []
+    if hint:
+        candidates.append(hint)
+    if sid:
+        candidates.append(sid)
+        mapped = str(_DEMO_TO_RUNTIME_NODE.get(sid) or "").strip()
+        if mapped:
+            candidates.append(mapped)
+    for key, value in (_load_node_service_bindings() or {}).items():
+        if str(value or "").strip() != sid:
+            continue
+        text = str(key or "").strip()
+        node_id = text.split("::", 1)[-1].strip() if "::" in text else text
+        if node_id:
+            candidates.append(node_id)
+    seen: set = set()
+    for nid in candidates:
+        if not nid or nid in seen:
+            continue
+        seen.add(nid)
+        if _resolve_ops_dispatch_node(project_id, nid):
+            return nid
+    return hint or sid
+
+
 def _resolve_ops_dispatch_node(project_id: str, node_id: str, env_key: str = "production") -> Optional[Dict[str, Any]]:
     nid = str(node_id or "").strip()
     if not nid:
@@ -2916,7 +2946,8 @@ def _build_runtime_node_from_topology_node(project_id: str, env_key: str, topo_n
         if not base.get("daemon_stop_cmd"):
             base["daemon_stop_cmd"] = _format_contract_command(str(daemon_defaults.get("StopCommand") or ""), port)
     if preset_id == "mongo_db" and base.get("daemon_start_cmd"):
-        os.makedirs("/tmp/gomeku-mongo", exist_ok=True)
+        mongo_dbpath = os.path.join(DATA_DIR, "gomeku-mongo") if os.name == "nt" else "/tmp/gomeku-mongo"
+        os.makedirs(mongo_dbpath, exist_ok=True)
     return base
 
 
@@ -2955,8 +2986,15 @@ def _load_node_contract(preset_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _resolve_env_profile_name() -> str:
-    if os.name == "posix" and os.uname().sysname == "Darwin":
-        return "local_macos"
+    if os.name == "nt":
+        return "local_windows"
+    if os.name == "posix":
+        try:
+            if os.uname().sysname == "Darwin":
+                return "local_macos"
+        except Exception:
+            pass
+        return "local_linux"
     return "local_macos"
 
 
@@ -3330,10 +3368,13 @@ def _ensure_canonical_local_agent(
         if not sid:
             continue
         merged_services[sid] = dict(svc)
+    runtime_topology = _project_uses_runtime_topology(pid)
     for svc in (hit.get("services") if isinstance(hit.get("services"), list) else []):
         if not isinstance(svc, dict):
             continue
         sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
+        if runtime_topology and sid in _DESIGN_DEMO_NODE_IDS:
+            continue
         if sid and sid not in merged_services:
             merged_services[sid] = dict(svc)
     service_rows = list(merged_services.values())
@@ -4425,19 +4466,24 @@ def _udp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
 def _redis_ping_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
     if not host or port <= 0:
         return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
+    tcp_fast = _tcp_probe(host, port, min(0.45, float(timeout)))
+    if not tcp_fast.get("ok"):
+        return tcp_fast
     start = datetime.utcnow()
     try:
         proc = subprocess.run(
             ["redis-cli", "-h", host, "-p", str(port), "ping"],
             capture_output=True,
             text=True,
-            timeout=max(1.0, timeout),
+            timeout=max(0.6, min(1.0, float(timeout))),
         )
         ok = proc.returncode == 0 and "PONG" in (proc.stdout or "").upper()
         rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
-        return {"ok": ok, "rtt_ms": round(rtt, 1), "error": "" if ok else (proc.stderr or proc.stdout or "redis ping failed").strip()}
+        if ok:
+            return {"ok": True, "rtt_ms": round(rtt, 1), "error": ""}
+        return {"ok": True, "rtt_ms": round(float(tcp_fast.get("rtt_ms") or rtt), 1), "error": "", "method": "tcp-fallback"}
     except Exception:
-        return _tcp_probe(host, port, timeout)
+        return tcp_fast
 
 
 def _probe_by_protocol(host: str, port: int, proto: str = "tcp", timeout: float = 1.5) -> Dict[str, Any]:
@@ -4457,11 +4503,53 @@ def _probe_by_protocol(host: str, port: int, proto: str = "tcp", timeout: float 
 
 
 _EMBEDDED_CLUSTER_SERVER_TYPES = {"auth", "game"}
+_GAMESERVER_PROCESS_SERVICE_IDS = frozenset(
+    {"gateway-cn-1", "auth-cn-1", "game-cn-1", "ops-cn-1"}
+)
+_GAMESERVER_DEFAULT_PORTS: Dict[str, int] = {
+    "gateway-cn-1": 15050,
+    "auth-cn-1": 5501,
+    "game-cn-1": 5502,
+    "ops-cn-1": 5504,
+}
+_GAMESERVER_TCP_PROBE_PORTS: Dict[str, int] = {
+    "gateway-cn-1": 15050,
+    "ops-cn-1": 5504,
+}
+_GAMESERVER_START_ORDER: Tuple[str, ...] = ("auth-cn-1", "game-cn-1", "ops-cn-1", "gateway-cn-1")
 
 
 def _cluster_state_is_online(state: Any) -> bool:
     text = str(state or "").strip().upper()
-    return text in ("RUNNING", "READY", "ONLINE", "ACTIVE", "0", "ONLINE")
+    return text in ("RUNNING", "READY", "ONLINE", "ACTIVE", "0") or str(state or "").strip() == "0"
+
+
+def _is_daemon_infra_service(service: Dict[str, Any]) -> bool:
+    if not isinstance(service, dict):
+        return False
+    sid = str(service.get("service_id") or service.get("node_id") or "").strip().lower()
+    stype = str(service.get("service_type") or service.get("role") or "").strip().lower()
+    return sid in ("mongo-db-cn-1", "redis-cache-cn-1") or stype in ("database", "cache", "mongo", "redis")
+
+
+def _resolve_agent_probe_host(
+    agent: Optional[Dict[str, Any]] = None,
+    service: Optional[Dict[str, Any]] = None,
+) -> str:
+    """统一服务探活地址：probe_host 优先；本机 runtime / 守护进程固定 loopback。"""
+    agent_obj = agent if isinstance(agent, dict) else {}
+    service_obj = service if isinstance(service, dict) else {}
+    explicit = str(service_obj.get("probe_host") or agent_obj.get("probe_host") or "").strip()
+    if explicit:
+        return explicit
+    if _is_daemon_infra_service(service_obj):
+        return "127.0.0.1"
+    if str(agent_obj.get("device_id") or "").strip() == CANONICAL_LOCAL_DEVICE_ID:
+        return "127.0.0.1"
+    if str(agent_obj.get("agent_id") or "").strip() == CANONICAL_LOCAL_AGENT_ID:
+        return "127.0.0.1"
+    fallback = str(agent_obj.get("host_ip") or agent_obj.get("host_name") or "").strip()
+    return fallback or "127.0.0.1"
 
 
 def _is_embedded_cluster_agent(agent: Dict[str, Any]) -> bool:
@@ -4491,11 +4579,53 @@ def _resolve_service_runtime_state(
     service: Dict[str, Any],
     host: str = "127.0.0.1",
     cluster_status: Optional[Dict[str, str]] = None,
+    probe_timeout: float = 0.8,
 ) -> Dict[str, Any]:
     """统一服务级运行态：embedded 模块走 cluster 状态，其余走 TCP + cluster 兜底。"""
     svc = dict(service) if isinstance(service, dict) else {}
     sid = str(svc.get("service_id") or svc.get("node_id") or "").strip()
+    prior_run = str(svc.get("run_state") or svc.get("status") or "").strip().upper()
     port = int(svc.get("service_port") or svc.get("remote_game_server_port") or 0)
+    timeout = max(0.2, min(float(probe_timeout or 0.8), 2.0))
+
+    if _service_starting_grace_active(svc):
+        if port > 0 and _probe_tcp_open(host, port, timeout=0.25):
+            svc["probe_status"] = "PASS"
+            svc["status"] = "RUNNING"
+            svc["run_state"] = "RUNNING"
+            svc["probe_method"] = "grace-fast-tcp"
+            svc["probe_host"] = str(host or "127.0.0.1").strip()
+            return svc
+        svc["probe_status"] = "FAIL"
+        svc["status"] = "STARTING"
+        svc["run_state"] = "STARTING"
+        svc["probe_method"] = "starting-grace"
+        svc["probe_host"] = str(host or "127.0.0.1").strip()
+        return svc
+    sid_lower = sid.lower()
+    if sid_lower in _GAMESERVER_PROCESS_SERVICE_IDS:
+        tcp_port = _gameserver_tcp_probe_port(sid_lower)
+        if tcp_port > 0:
+            open_ok = _gameserver_service_live(sid_lower)
+            probe_method = "gameserver-tcp"
+        else:
+            open_ok = _is_gameserver_process_alive(sid_lower)
+            probe_method = "gameserver-process"
+        if open_ok:
+            svc["probe_status"] = "PASS"
+            svc["status"] = "RUNNING"
+            svc["run_state"] = "RUNNING"
+        else:
+            svc["probe_status"] = "FAIL"
+            if prior_run == "STARTING":
+                svc["status"] = "STARTING"
+                svc["run_state"] = "STARTING"
+            else:
+                svc["status"] = "STOPPED"
+                svc["run_state"] = "STOPPED"
+        svc["probe_method"] = probe_method
+        svc["probe_host"] = str(host or "127.0.0.1").strip()
+        return svc
     cs_map = cluster_status if isinstance(cluster_status, dict) else {}
     cs = str(cs_map.get(sid) or "").strip().upper()
     embedded = _is_embedded_cluster_service(svc)
@@ -4512,8 +4642,15 @@ def _resolve_service_runtime_state(
             # cluster 状态未知时，不凭 TCP 误判 embedded 模块离线
             open_ok = False
             probe_method = "cluster-embedded-deferred"
+    elif _is_daemon_infra_service(svc):
+        probe_method = "redis_ping" if "redis" in sid or str(svc.get("service_type") or "").lower() == "cache" else "mongo_ping"
+        if port > 0:
+            probe = _probe_by_protocol(host, port, probe_method, timeout=timeout)
+            open_ok = bool(probe.get("ok"))
+        else:
+            open_ok = False
     else:
-        open_ok = _probe_tcp_open(host, port) if port > 0 else False
+        open_ok = _probe_tcp_open(host, port, timeout=timeout) if port > 0 else False
         if not open_ok and cs and _cluster_state_is_online(cs):
             open_ok = True
             probe_method = "cluster-fallback"
@@ -4523,28 +4660,47 @@ def _resolve_service_runtime_state(
         svc["status"] = "RUNNING"
         svc["run_state"] = "RUNNING"
     elif embedded and not cs:
-        # GameServer 进程内模块：Ops/Gateway 可达时视为在线
-        if _probe_tcp_open(host, 5504) and _probe_tcp_open(host, 15050):
+        # GameServer 进程内模块：Gateway/Ops 均不可达时与 Gateway 行一致显示已停止
+        gw_live = _probe_tcp_open(host, 15050, timeout=timeout)
+        ops_live = _probe_tcp_open(host, 5504, timeout=timeout)
+        if not gw_live and not ops_live:
+            svc["probe_status"] = "FAIL"
+            svc["status"] = "STOPPED"
+            svc["run_state"] = "STOPPED"
+            probe_method = "cluster-embedded-offline"
+        elif gw_live or ops_live:
             svc["probe_status"] = "PASS"
             svc["status"] = "RUNNING"
             svc["run_state"] = "RUNNING"
             probe_method = "cluster-process-up"
         else:
-            svc["probe_status"] = ""
-            svc["status"] = "UNKNOWN"
-            svc["run_state"] = "UNKNOWN"
+            svc["probe_status"] = "FAIL"
+            svc["status"] = "STOPPED"
+            svc["run_state"] = "STOPPED"
+            probe_method = "cluster-embedded-deferred"
     else:
         svc["probe_status"] = "FAIL"
-        svc["status"] = "STOPPED"
-        svc["run_state"] = "STOPPED"
+        if prior_run == "STARTING" or _service_starting_grace_active(svc):
+            svc["status"] = "STARTING"
+            svc["run_state"] = "STARTING"
+        else:
+            svc["status"] = "STOPPED"
+            svc["run_state"] = "STOPPED"
     svc["probe_method"] = probe_method
+    svc["probe_host"] = str(host or "127.0.0.1").strip()
     if cs:
         svc["cluster_state"] = cs
     return svc
 
 
+_cluster_runtime_cache: Dict[str, Any] = {"ts": 0.0, "map": {}}
+_CLUSTER_RUNTIME_CACHE_TTL_SEC = 5.0
+
+
 def _fetch_cluster_runtime_status(agents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, str]:
     cluster_status: Dict[str, str] = {}
+    if not _probe_tcp_open("127.0.0.1", 5504, timeout=0.25):
+        return cluster_status
     try:
         gw = OpsPlatformGateway()
         ops_node = _resolve_node(node_id="ops-cn-1")
@@ -4573,6 +4729,32 @@ def _fetch_cluster_runtime_status(agents: Optional[List[Dict[str, Any]]] = None)
     except Exception:
         pass
     return cluster_status
+
+
+def _fetch_cluster_runtime_status_cached(agents: Optional[List[Dict[str, Any]]] = None) -> Dict[str, str]:
+    now = _time_mod.time()
+    with _probe_cache_lock:
+        cached_ts = float(_cluster_runtime_cache.get("ts") or 0.0)
+        cached_map = _cluster_runtime_cache.get("map") if isinstance(_cluster_runtime_cache.get("map"), dict) else {}
+        if now - cached_ts < _CLUSTER_RUNTIME_CACHE_TTL_SEC and cached_map:
+            return dict(cached_map)
+    fresh = _fetch_cluster_runtime_status(agents)
+    with _probe_cache_lock:
+        _cluster_runtime_cache["ts"] = now
+        _cluster_runtime_cache["map"] = dict(fresh)
+    return fresh
+
+
+def _service_starting_grace_active(service: Dict[str, Any], grace_sec: float = 120.0) -> bool:
+    if not isinstance(service, dict):
+        return False
+    run = str(service.get("run_state") or service.get("status") or "").strip().upper()
+    if run != "STARTING":
+        return False
+    ts = _parse_iso_ts(service.get("updated_at"))
+    if ts <= 0:
+        return True
+    return (_time_mod.time() - ts) <= max(10.0, float(grace_sec))
 
 
 def _merge_probe_with_cluster_status(
@@ -4820,15 +5002,27 @@ def _probe_background_tick() -> None:
     # 采集本机指标（Redis/MongoDB/Daemon 等非 game-server 节点）
     try:
         import psutil
+        disk_pct = None
+        try:
+            disk_pct = round(float(psutil.disk_usage("/").percent), 1)
+        except Exception:
+            try:
+                disk_pct = round(float(psutil.disk_usage("C:\\").percent), 1)
+            except Exception:
+                disk_pct = None
         proc_metrics = {
             "cpu_percent": round(psutil.cpu_percent(interval=0.1), 1),
             "mem_percent": round(psutil.virtual_memory().percent, 1),
+            "disk_percent": disk_pct,
             "source": "runtime.sample",
+            "updated_at": _now_iso(),
         }
     except ImportError:
-        proc_metrics = {}
+        proc_metrics = _fallback_local_control_metrics()
     except Exception:
-        proc_metrics = {}
+        proc_metrics = _fallback_local_control_metrics()
+    if not any(proc_metrics.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent")):
+        proc_metrics = _fallback_local_control_metrics()
 
     # 收集探活结果
     for future in as_completed(futures, timeout=PROBE_INTERVAL_SEC):
@@ -4882,6 +5076,7 @@ def _probe_background_tick() -> None:
 
     # --- 4b. 更新 canonical agent 的服务级探活与指标采样 ---
     try:
+        _reconcile_all_gameserver_daemon_states()
         tick_now = _now_iso()
         reg = _load_agent_registry_v2()
         canonical = reg.get(CANONICAL_LOCAL_AGENT_ID) if isinstance(reg.get(CANONICAL_LOCAL_AGENT_ID), dict) else {}
@@ -5529,6 +5724,7 @@ def _services_for_project(project_id: str = "") -> List[Dict[str, Any]]:
                 out.append(
                     {
                         "service_id": sid,
+                        "node_id": str(s.get("node_id") or sid),
                         "agent_id": str(a.get("agent_id") or ""),
                         "device_id": str(a.get("device_id") or ""),
                         "project_id": str(a.get("project_id") or ""),
@@ -5554,6 +5750,7 @@ def _services_for_project(project_id: str = "") -> List[Dict[str, Any]]:
             out.append(
                 {
                     "service_id": sid,
+                    "node_id": str(a.get("node_id") or sid),
                     "agent_id": str(a.get("agent_id") or ""),
                     "device_id": str(a.get("device_id") or ""),
                     "project_id": str(a.get("project_id") or ""),
@@ -5722,6 +5919,57 @@ def _latest_realtime_metric(agent_ids: List[str]) -> Dict[str, Any]:
     return latest
 
 
+def _ensure_agent_metrics_live(agent: Dict[str, Any], member_agent_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    """详情读路径：补齐 CPU/内存/磁盘指标并写入内存采样环，不写 registry。"""
+    if not isinstance(agent, dict):
+        return {}
+    ids = [str(agent.get("agent_id") or "").strip()]
+    ids.extend([str(x or "").strip() for x in (member_agent_ids or []) if str(x or "").strip()])
+    _overlay_live_metrics(agent, ids)
+    control = agent.get("metrics") if isinstance(agent.get("metrics"), dict) else {}
+    nested = control.get("control") if isinstance(control.get("control"), dict) else control
+    has_values = isinstance(nested, dict) and any(
+        nested.get(key) is not None for key in ("cpu_percent", "mem_percent", "disk_percent")
+    )
+    if not has_values:
+        _inject_live_control_metrics(agent)
+    if any(
+        (agent.get("metrics") or {}).get(key) is not None
+        for key in ("cpu_percent", "mem_percent", "disk_percent")
+    ) or any(
+        ((agent.get("metrics") or {}).get("control") or {}).get(key) is not None
+        for key in ("cpu_percent", "mem_percent", "disk_percent")
+    ):
+        agent["metrics_live"] = True
+        _append_realtime_agent_sample(agent)
+    else:
+        agent["metrics_live"] = False
+    return agent
+
+
+def _apply_service_metrics_from_agent(services: List[Dict[str, Any]], agent: Dict[str, Any]) -> List[Dict[str, Any]]:
+    sample = _extract_control_metrics(agent if isinstance(agent, dict) else {})
+    if not any(sample.get(key) is not None for key in ("cpu_percent", "mem_percent", "disk_percent")):
+        sample = _sample_local_control_metrics()
+    out: List[Dict[str, Any]] = []
+    for raw in services or []:
+        if not isinstance(raw, dict):
+            continue
+        svc = dict(raw)
+        if str(svc.get("probe_status") or "").upper() != "PASS":
+            out.append(svc)
+            continue
+        metrics = svc.get("metrics") if isinstance(svc.get("metrics"), dict) else {}
+        merged = dict(metrics)
+        for key in ("cpu_percent", "mem_percent", "disk_percent", "service_cpu_percent", "service_memory_mb", "source", "updated_at"):
+            if sample.get(key) is not None and merged.get(key) is None:
+                merged[key] = sample.get(key)
+        if merged:
+            svc["metrics"] = merged
+        out.append(svc)
+    return out
+
+
 def _overlay_live_metrics(agent: Dict[str, Any], agent_ids: List[str]) -> Dict[str, Any]:
     if not isinstance(agent, dict):
         return {}
@@ -5825,12 +6073,14 @@ def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
                     sid = str(svc.get("service_id") or svc.get("id") or "").strip()
                     if not sid or sid in service_seen:
                         continue
+                    if _project_uses_runtime_topology(project_id) and sid in _DESIGN_DEMO_NODE_IDS:
+                        continue
                     service_seen.add(sid)
                     services.append(
                         {
                             "service_id": sid,
                             "agent_id": member_agent_id,
-                            "node_id": str(svc.get("node_id") or member_node_id or "").strip(),
+                            "node_id": str(svc.get("node_id") or sid or member_node_id or "").strip(),
                             "device_id": device_id,
                             "project_id": str(member.get("project_id") or ""),
                             "display_name": str(svc.get("display_name") or sid),
@@ -6158,8 +6408,29 @@ def _get_daemon_state(node_id: str) -> Dict[str, Any]:
 
 
 def _is_process_running(pid: int) -> bool:
+    value = int(pid or 0)
+    if value <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, value)
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return False
+                return int(exit_code.value) == STILL_ACTIVE
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
+        except Exception:
+            return False
     try:
-        os.kill(int(pid), 0)
+        os.kill(value, 0)
         return True
     except Exception:
         return False
@@ -6495,6 +6766,52 @@ def _item_matches_agent_scope(item: Dict[str, Any], agent: Dict[str, Any], servi
     return False
 
 
+_AGENT_DETAIL_SERVICE_CACHE_MAX_AGE_SEC = 12.0
+
+
+def _parse_agent_detail_include(raw: str) -> set:
+    text = str(raw or "all").strip().lower()
+    if not text or text == "all":
+        return {"all"}
+    return {part.strip() for part in text.split(",") if part.strip()}
+
+
+def _agent_detail_include_wants(include_set: set, section: str) -> bool:
+    return "all" in include_set or str(section or "").strip().lower() in include_set
+
+
+def _service_runtime_cache_fresh(services: List[Dict[str, Any]], max_age_sec: float = _AGENT_DETAIL_SERVICE_CACHE_MAX_AGE_SEC) -> bool:
+    if not services:
+        return False
+    now = _time_mod.time()
+    for svc in services:
+        if not isinstance(svc, dict):
+            return False
+        run = str(svc.get("run_state") or svc.get("status") or "").strip().upper()
+        if run in ("STARTING", "STOPPING", "RESTARTING"):
+            return False
+        ts = _parse_iso_ts(svc.get("updated_at"))
+        if ts <= 0 or (now - ts) > max(4.0, float(max_age_sec)):
+            return False
+    return True
+
+
+def _probe_service_cache_fresh(max_age_sec: float = PROBE_INTERVAL_SEC * 3) -> bool:
+    with _probe_cache_lock:
+        cache_ts = float(_probe_cache_ts or 0.0)
+    if cache_ts <= 0:
+        return False
+    return (_time_mod.time() - cache_ts) <= max(6.0, float(max_age_sec))
+
+
+def _should_use_cached_service_state(services: List[Dict[str, Any]], force_live: bool = False) -> bool:
+    if force_live:
+        return False
+    if _probe_service_cache_fresh():
+        return True
+    return _service_runtime_cache_fresh(services)
+
+
 def _build_agent_metric_series(agent: Dict[str, Any], member_agent_ids: Optional[List[str]] = None) -> Dict[str, Any]:
     ids = [str(x or "").strip() for x in (member_agent_ids or []) if str(x or "").strip()]
     primary_agent_id = str(agent.get("agent_id") or "").strip()
@@ -6513,7 +6830,13 @@ def _build_agent_metric_series(agent: Dict[str, Any], member_agent_ids: Optional
     }
 
 
-def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, Any]]:
+def _build_agent_detail(
+    project_id: str,
+    agent_id: str,
+    *,
+    include: str = "all",
+    force_live: bool = False,
+) -> Optional[Dict[str, Any]]:
     target_agent_id = str(agent_id or "").strip()
     if not target_agent_id:
         return None
@@ -6561,25 +6884,40 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
     else:
         agent["effective_status"] = str(agent.get("status") or "UNKNOWN").upper()
 
+    include_set = _parse_agent_detail_include(include)
+    want_core = _agent_detail_include_wants(include_set, "core")
+    want_metrics = _agent_detail_include_wants(include_set, "metrics") or _agent_detail_include_wants(include_set, "core")
+    want_jobs = _agent_detail_include_wants(include_set, "jobs")
+    want_events = _agent_detail_include_wants(include_set, "events")
+    want_audits = _agent_detail_include_wants(include_set, "audits")
+    want_config = _agent_detail_include_wants(include_set, "config")
+    want_node = _agent_detail_include_wants(include_set, "node")
+
     services = [dict(s) for s in (logical_hit.get("services") or []) if isinstance(s, dict)]
-    host = str(agent.get("host_ip") or agent.get("host_name") or agent.get("probe_host") or "127.0.0.1").strip()
-    services = _refresh_services_live_state(services, host=host, project_id=project_id)
+    services_from_cache = _should_use_cached_service_state(services, force_live=force_live)
+    if force_live:
+        _reconcile_all_gameserver_daemon_states()
+    cluster_status_map = _fetch_cluster_runtime_status_cached()
+    if not services_from_cache:
+        services = _refresh_services_live_state(
+            services,
+            project_id=project_id,
+            agent=agent,
+            cluster_status=cluster_status_map,
+        )
     service_ids = [str(s.get("service_id") or "").strip() for s in services if str(s.get("service_id") or "").strip()]
     member_agent_ids = [str(x or "").strip() for x in (logical_hit.get("member_agent_ids") or []) if str(x or "").strip()]
     member_node_ids = [str(x or "").strip() for x in (logical_hit.get("member_node_ids") or []) if str(x or "").strip()]
-    _overlay_live_metrics(agent, member_agent_ids)
-    _inject_live_control_metrics(agent)
-    if isinstance(hit, dict) and hit:
-        hit = dict(hit)
-        _inject_live_control_metrics(hit)
-        reg[primary_agent_id] = hit
-        _append_realtime_agent_sample(hit)
-        _save_agent_registry_v2(reg)
+    if want_metrics or _agent_detail_include_wants(include_set, "all"):
+        _ensure_agent_metrics_live(agent, member_agent_ids)
+    elif not cached_pr:
+        agent["metrics_live"] = False
+    services = _apply_service_metrics_from_agent(services, agent)
     node_id = str(agent.get("node_id") or (member_node_ids[0] if member_node_ids else "")).strip()
-    node = _resolve_ops_dispatch_node(project_id, node_id)
+    node = _resolve_ops_dispatch_node(project_id, node_id) if want_node or _agent_detail_include_wants(include_set, "all") else {}
 
-    jobs_all = _load_agent_jobs()
-    jobs = []
+    jobs: List[Dict[str, Any]] = []
+    jobs_all = _load_agent_jobs() if want_jobs or _agent_detail_include_wants(include_set, "all") else []
     for item in reversed(jobs_all):
         if not isinstance(item, dict):
             continue
@@ -6589,13 +6927,14 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
         if len(jobs) >= 30:
             break
 
-    snapshot = _load_json_config(OPS_ALERT_SNAPSHOT_KEY, {})
-    alerts = snapshot.get("alerts") if isinstance(snapshot, dict) and isinstance(snapshot.get("alerts"), list) else []
-    event_rows = _load_json_config(OPS_EVENT_LOG_KEY, [])
     events_merged: List[Dict[str, Any]] = []
-    events_merged.extend([x for x in alerts if isinstance(x, dict)])
-    events_merged.extend([x for x in event_rows if isinstance(x, dict)])
-    events_merged.sort(key=lambda x: str(x.get("time") or ""), reverse=True)
+    if want_events or _agent_detail_include_wants(include_set, "all"):
+        snapshot = _load_json_config(OPS_ALERT_SNAPSHOT_KEY, {})
+        alerts = snapshot.get("alerts") if isinstance(snapshot, dict) and isinstance(snapshot.get("alerts"), list) else []
+        event_rows = _load_json_config(OPS_EVENT_LOG_KEY, [])
+        events_merged.extend([x for x in alerts if isinstance(x, dict)])
+        events_merged.extend([x for x in event_rows if isinstance(x, dict)])
+        events_merged.sort(key=lambda x: str(x.get("time") or ""), reverse=True)
 
     scope_tokens = {
         str(agent.get("agent_id") or "").strip(),
@@ -6620,19 +6959,24 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
                 return True
         return False
 
-    events = [x for x in events_merged if _matches_logical_scope(x)][:30]
+    events: List[Dict[str, Any]] = []
+    if want_events or _agent_detail_include_wants(include_set, "all"):
+        events = [x for x in events_merged if _matches_logical_scope(x)][:30]
 
-    traces_raw = _load_json_config(OPS_TRACE_LOG_KEY, [])
-    traces = [x for x in traces_raw if isinstance(x, dict) and _matches_logical_scope(x)][:30]
+    traces: List[Dict[str, Any]] = []
+    if want_events or _agent_detail_include_wants(include_set, "all"):
+        traces_raw = _load_json_config(OPS_TRACE_LOG_KEY, [])
+        traces = [x for x in traces_raw if isinstance(x, dict) and _matches_logical_scope(x)][:30]
 
-    audits = []
-    for item in reversed(audit_log_db if isinstance(audit_log_db, list) else []):
-        if not isinstance(item, dict):
-            continue
-        if _matches_logical_scope(item):
-            audits.append(item)
-        if len(audits) >= 40:
-            break
+    audits: List[Dict[str, Any]] = []
+    if want_audits or _agent_detail_include_wants(include_set, "all"):
+        for item in reversed(audit_log_db if isinstance(audit_log_db, list) else []):
+            if not isinstance(item, dict):
+                continue
+            if _matches_logical_scope(item):
+                audits.append(item)
+            if len(audits) >= 40:
+                break
 
     control_metrics = ((agent.get("metrics") or {}).get("control") if isinstance(agent.get("metrics"), dict) else {}) or {}
     service_summary = {
@@ -6649,25 +6993,16 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
     elif str(agent.get("effective_status") or "").upper() not in ("ONLINE", "RUNNING", "READY"):
         healthy_ratio = 0
 
-    detail = {
+    with _probe_cache_lock:
+        cache_ts = float(_probe_cache_ts or 0.0)
+    probe_cache_age_sec = round(max(0.0, _time_mod.time() - cache_ts), 1) if cache_ts > 0 else None
+
+    detail: Dict[str, Any] = {
         "agent": agent,
-        "node": node or {},
         "services": services,
         "member_agent_ids": member_agent_ids,
         "member_node_ids": member_node_ids,
         "service_summary": service_summary,
-        "jobs": jobs,
-        "events": events,
-        "traces": traces,
-        "audits": audits,
-        "metrics_history": _build_agent_metric_series(agent, member_agent_ids),
-        "config": {
-            "policy": _load_agent_policy(),
-            "transport": hit.get("transport") if isinstance(hit.get("transport"), dict) else {},
-            "network": hit.get("network") if isinstance(hit.get("network"), dict) else {},
-            "capabilities": hit.get("capabilities") if isinstance(hit.get("capabilities"), list) else [],
-            "services": [{"service_id": s.get("service_id"), "service_type": s.get("service_type"), "network": s.get("network"), "endpoints": s.get("endpoints")} for s in services],
-        },
         "overview": {
             "status": str(agent.get("effective_status") or agent.get("status") or "UNKNOWN").upper(),
             "healthy_ratio": healthy_ratio,
@@ -6685,7 +7020,32 @@ def _build_agent_detail(project_id: str, agent_id: str) -> Optional[Dict[str, An
             "can_restart_agent": bool(primary_agent_id or member_agent_ids or member_node_ids),
             "can_restart_services": bool(services),
         },
+        "meta": {
+            "include": sorted(include_set),
+            "force_live": bool(force_live),
+            "services_from_cache": bool(services_from_cache),
+            "probe_cache_age_sec": probe_cache_age_sec,
+        },
     }
+    if want_node or _agent_detail_include_wants(include_set, "all"):
+        detail["node"] = node or {}
+    if want_jobs or _agent_detail_include_wants(include_set, "all"):
+        detail["jobs"] = jobs
+    if want_events or _agent_detail_include_wants(include_set, "all"):
+        detail["events"] = events
+        detail["traces"] = traces
+    if want_audits or _agent_detail_include_wants(include_set, "all"):
+        detail["audits"] = audits
+    if want_metrics or _agent_detail_include_wants(include_set, "all"):
+        detail["metrics_history"] = _build_agent_metric_series(agent, member_agent_ids)
+    if want_config or _agent_detail_include_wants(include_set, "all"):
+        detail["config"] = {
+            "policy": _load_agent_policy(),
+            "transport": hit.get("transport") if isinstance(hit.get("transport"), dict) else {},
+            "network": hit.get("network") if isinstance(hit.get("network"), dict) else {},
+            "capabilities": hit.get("capabilities") if isinstance(hit.get("capabilities"), list) else [],
+            "services": [{"service_id": s.get("service_id"), "service_type": s.get("service_type"), "network": s.get("network"), "endpoints": s.get("endpoints")} for s in services],
+        }
     return detail
 
 
@@ -7620,12 +7980,11 @@ def ops_platform_agents_list():
         }
         svc_rows = obj.get("services") if isinstance(obj.get("services"), list) else []
         if svc_rows:
-            svc_host = str(obj.get("host_ip") or obj.get("host_name") or obj.get("probe_host") or "127.0.0.1").strip()
             obj["services"] = _refresh_services_live_state(
                 svc_rows,
-                host=svc_host,
                 project_id=project_id,
                 cluster_status=cluster_status_map,
+                agent=obj,
             )
         out.append(obj)
     # 同设备统一快照：同一 device_id 下所有卡片显示一致口径
@@ -8030,8 +8389,13 @@ def ops_platform_services_logs():
         since_offset = int(request.args.get("since_offset") or 0)
     except Exception:
         since_offset = 0
-    current_session_only = str(request.args.get("current_session") or request.args.get("session") or "1").strip().lower() in ("1", "true", "yes", "on")
-    hide_lifecycle = str(request.args.get("hide_lifecycle") or "1").strip().lower() in ("1", "true", "yes", "on")
+    sid_lower = service_id.lower()
+    daemon_infra = sid_lower in ("mongo-db-cn-1", "redis-cache-cn-1")
+    gameserver_process = sid_lower in _GAMESERVER_PROCESS_SERVICE_IDS
+    default_session = "1" if gameserver_process else ("0" if daemon_infra else "1")
+    default_lifecycle = "0" if (daemon_infra or gameserver_process) else "1"
+    current_session_only = str(request.args.get("current_session") or request.args.get("session") or default_session).strip().lower() in ("1", "true", "yes", "on")
+    hide_lifecycle = str(request.args.get("hide_lifecycle") or default_lifecycle).strip().lower() in ("1", "true", "yes", "on")
     tail = max(50, min(tail, 2000))
     payload = _read_gameserver_service_logs(
         service_id,
@@ -8065,12 +8429,11 @@ def ops_platform_services_action():
     if not service_hit:
         return jsonify({"ok": False, "error": "service_not_found", "error_code": "OPS_SERVICE_NOT_FOUND"}), 404
 
-    topology_node_id = str(payload.get("node_id") or service_hit.get("node_id") or "").strip()
-    if not topology_node_id:
-        for bound_node_id, bound_service_id in (_load_node_service_bindings() or {}).items():
-            if str(bound_service_id or "").strip() == service_id:
-                topology_node_id = str(bound_node_id or "").strip()
-                break
+    topology_node_id = _resolve_topology_node_id_for_service(
+        project_id,
+        service_id,
+        str(payload.get("node_id") or service_hit.get("node_id") or "").strip(),
+    )
     agent_id = str(service_hit.get("agent_id") or payload.get("agent_id") or "").strip()
     reg = _load_agent_registry_v2()
     agent_desc = reg.get(agent_id) if agent_id and isinstance(reg.get(agent_id), dict) else {}
@@ -8129,11 +8492,12 @@ def ops_platform_services_action():
         if not result.get("ok"):
             return jsonify({
                 "ok": False,
-                "error": "OPS_REMOTE_START_FAILED",
-                "error_code": "OPS_REMOTE_START_FAILED",
+                "error": "OPS_SERVICE_ACTION_FAILED",
+                "error_code": "OPS_SERVICE_ACTION_FAILED",
                 "message": str(result.get("message") or "service action failed"),
                 "mode": result.get("mode") or "direct",
-            }), 502
+                "data": result.get("data") if isinstance(result.get("data"), dict) else {},
+            })
         return jsonify({
             "ok": True,
             "node_id": topology_node_id,
@@ -8167,7 +8531,13 @@ def ops_platform_services_action():
         return jsonify({"ok": False, "error": "validation_failed", "missing": validation.get("missing") or []}), 400
     result = _execute_validated(req, node, validation)
     if not result.get("ok"):
-        return jsonify({"ok": False, "error": "OPS_REMOTE_START_FAILED", "error_code": "OPS_REMOTE_START_FAILED", "message": str(result.get("message") or result.get("error") or "service action failed")}), 502
+        return jsonify({
+            "ok": False,
+            "error": "OPS_SERVICE_ACTION_FAILED",
+            "error_code": "OPS_SERVICE_ACTION_FAILED",
+            "message": str(result.get("message") or result.get("error") or "service action failed"),
+            "data": result.get("data") if isinstance(result.get("data"), dict) else {},
+        })
     return jsonify({
         "ok": True,
         "node_id": topology_node_id,
@@ -10275,9 +10645,17 @@ _SERVICE_LOG_HINTS: Dict[str, List[str]] = {
     "auth-cn-1": ["auth"],
     "game-cn-1": ["game", "router"],
     "ops-cn-1": ["ops", "http", "daemon", "cluster"],
-    "mongo-db-cn-1": ["mongo", "mongosession"],
-    "redis-cache-cn-1": ["redis"],
+    "mongo-db-cn-1": ["mongo", "mongosession", "mongod"],
+    "redis-cache-cn-1": ["redis", "memurai"],
+    "db-01": ["mongo", "mongod", "mongosession"],
 }
+
+
+def _daemon_log_path(node_id: str) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(node_id or "daemon").strip()) or "daemon"
+    log_dir = os.path.join(DATA_DIR, "logs", "daemons")
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, f"{safe}.log")
 
 
 def _gameserver_log_artifact_paths() -> Tuple[str, str]:
@@ -10289,11 +10667,265 @@ def _gameserver_log_artifact_paths() -> Tuple[str, str]:
     )
 
 
-def _gameserver_log_source_paths(current_session_only: bool = False) -> List[str]:
+def _is_gameserver_process_service_id(service_id: str) -> bool:
+    return str(service_id or "").strip().lower() in _GAMESERVER_PROCESS_SERVICE_IDS
+
+
+def _gameserver_service_port(service_id: str, node: Optional[Dict[str, Any]] = None) -> int:
+    if isinstance(node, dict):
+        port = int(node.get("port") or node.get("remote_game_server_port") or 0)
+        if port > 0:
+            return port
+    return int(_GAMESERVER_DEFAULT_PORTS.get(str(service_id or "").strip().lower(), 0))
+
+
+def _gameserver_tcp_probe_port(service_id: str, node: Optional[Dict[str, Any]] = None) -> int:
+    sid = str(service_id or "").strip().lower()
+    if sid in _GAMESERVER_TCP_PROBE_PORTS:
+        return int(_GAMESERVER_TCP_PROBE_PORTS.get(sid) or 0)
+    return 0
+
+
+def _find_gameserver_pid_by_service(service_id: str) -> int:
+    sid = str(service_id or "").strip().lower()
+    if not sid:
+        return 0
+    needle = f"--servers={sid}"
+    if os.name == "nt":
+        try:
+            proc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_Process -Filter \"Name='GameServer.GameServerApp.exe'\" | "
+                    "Select-Object ProcessId,CommandLine | ForEach-Object { "
+                    f"if ($_.CommandLine -like '*{needle}*') {{ $_.ProcessId }} }}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            for line in reversed((proc.stdout or "").splitlines()):
+                text = line.strip()
+                if text.isdigit():
+                    return int(text)
+        except Exception:
+            pass
+        return 0
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", "ps -eo pid=,args= | grep GameServer.GameServerApp | grep -F -- " + sid],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        for line in (proc.stdout or "").splitlines():
+            parts = line.strip().split(None, 1)
+            if parts and parts[0].isdigit() and needle in (parts[1] if len(parts) > 1 else ""):
+                return int(parts[0])
+    except Exception:
+        pass
+    return 0
+
+
+def _is_gameserver_process_alive(service_id: str) -> bool:
+    sid = str(service_id or "").strip().lower()
+    state = _get_daemon_state(sid)
+    pid = int(state.get("pid") or 0) if str(state.get("pid") or "").strip().isdigit() else 0
+    if pid > 0 and _is_process_running(pid):
+        return True
+    found = _find_gameserver_pid_by_service(sid)
+    if found > 0 and _is_process_running(found):
+        _set_daemon_state(sid, {"pid": found, "status": "RUNNING"})
+        return True
+    if found > 0:
+        _set_daemon_state(sid, {"pid": 0, "status": "STOPPED"})
+    return False
+
+
+def _gameserver_service_live(service_id: str, node: Optional[Dict[str, Any]] = None, pid: int = 0) -> bool:
+    port = _gameserver_tcp_probe_port(service_id, node)
+    if port > 0:
+        # HttpListener 在 Windows 上常显示为 System PID，不能仅凭端口属主判断。
+        active_pid = pid if pid > 0 and _is_process_running(pid) else _find_gameserver_pid_by_service(service_id)
+        if active_pid > 0 and _is_process_running(active_pid) and _probe_tcp_open("127.0.0.1", port, timeout=0.35):
+            return True
+        return False
+    return _is_gameserver_process_alive(service_id)
+
+
+def _reconcile_gameserver_daemon_state(service_id: str) -> Dict[str, Any]:
+    sid = str(service_id or "").strip().lower()
+    if sid not in _GAMESERVER_PROCESS_SERVICE_IDS:
+        return {}
+    live = _gameserver_service_live(sid)
+    state = _get_daemon_state(sid)
+    cur_status = str(state.get("status") or "").strip().upper()
+    pid = _find_gameserver_pid_by_service(sid) if live else 0
+    if live:
+        patch = {"status": "RUNNING", "pid": int(pid or state.get("pid") or 0), "last_error": ""}
+    elif cur_status in ("STARTING", "STOPPING"):
+        patch = {"status": "STOPPED", "pid": 0, "last_error": ""}
+    else:
+        patch = {"status": "STOPPED", "pid": 0}
+    merged = _set_daemon_state(sid, patch)
+    return merged
+
+
+def _reconcile_all_gameserver_daemon_states() -> None:
+    for sid in _GAMESERVER_PROCESS_SERVICE_IDS:
+        try:
+            _reconcile_gameserver_daemon_state(sid)
+        except Exception:
+            pass
+
+
+def _gameserver_service_log_path(repo: str, service_id: str) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(service_id or "gameserver").strip()) or "gameserver"
+    return os.path.join(repo, "tools", "SmokeTest", "artifacts", f"apk-site-service-{safe}.log")
+
+
+def _gameserver_session_marker_path(repo: str = "", service_id: str = "") -> str:
+    root = str(repo or _resolve_game_server_repo() or "").strip()
+    sid = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(service_id or "cluster").strip()) or "cluster"
+    return os.path.join(root, "tools", "SmokeTest", "artifacts", f"gameserver-session-{sid}.json")
+
+
+def _write_gameserver_session_marker(repo: str, pid: int, service_id: str = "") -> None:
+    path = _gameserver_session_marker_path(repo, service_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fp:
+        json.dump(
+            {"started_at": _now_iso(), "pid": int(pid), "epoch": time.time(), "service_id": str(service_id or "").strip()},
+            fp,
+        )
+
+
+def _clear_gameserver_session_marker(repo: str = "", service_id: str = "") -> None:
+    path = _gameserver_session_marker_path(repo, service_id)
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _read_gameserver_session_marker(repo: str = "", service_id: str = "") -> Dict[str, Any]:
+    path = _gameserver_session_marker_path(repo, service_id)
+    try:
+        with open(path, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _find_pid_listening_on_port(port: int, host: str = "127.0.0.1") -> int:
+    if port <= 0:
+        return 0
+    if os.name == "nt":
+        try:
+            proc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"$c = Get-NetTCPConnection -LocalAddress '{host}' -LocalPort {int(port)} -State Listen -ErrorAction SilentlyContinue | "
+                    "Select-Object -First 1 -ExpandProperty OwningProcess; if ($c) { Write-Output $c }",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=12,
+                check=False,
+            )
+            for line in reversed((proc.stdout or "").splitlines()):
+                text = line.strip()
+                if text.isdigit():
+                    return int(text)
+        except Exception:
+            pass
+        try:
+            proc = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, timeout=12, check=False)
+            needle = f":{int(port)}"
+            for line in (proc.stdout or "").splitlines():
+                upper = line.upper()
+                if "LISTENING" not in upper or needle not in line:
+                    continue
+                parts = line.split()
+                if parts and parts[-1].isdigit():
+                    return int(parts[-1])
+        except Exception:
+            pass
+        return 0
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", f"lsof -nP -iTCP:{int(port)} -sTCP:LISTEN -t 2>/dev/null | head -1"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        text = (proc.stdout or "").strip().splitlines()
+        if text and text[0].strip().isdigit():
+            return int(text[0].strip())
+    except Exception:
+        pass
+    return 0
+
+
+def _apply_service_runtime_after_action(
+    service_id: str,
+    *,
+    status: str,
+    live: bool,
+    metrics: Optional[Dict[str, Any]] = None,
+) -> None:
+    st = str(status or "STOPPED").strip().upper()
+    probe = "PASS" if live and st == "RUNNING" else ("FAIL" if st == "STOPPED" else "")
+    fields: Dict[str, Any] = {"status": st, "run_state": st, "probe_status": probe}
+    if metrics is not None:
+        fields["metrics"] = metrics
+    _update_canonical_service_runtime(service_id, **fields)
+
+
+def _is_daemon_log_source(paths: List[str]) -> bool:
+    if not paths:
+        return False
+    norm = [str(p or "").replace("\\", "/").lower() for p in paths]
+    return all("/logs/daemons/" in p for p in norm)
+
+
+def _gameserver_log_source_paths(current_session_only: bool = False, service_id: str = "") -> List[str]:
     """优先 UTF-8 结构化日志（ServerLogger 写入），再合并 nohup 控制台输出。"""
     repo = _resolve_game_server_repo()
     paths: List[str] = []
+    sid = str(service_id or "").strip().lower()
+    if sid in ("mongo-db-cn-1", "redis-cache-cn-1", "db-01"):
+        daemon_path = _daemon_log_path(sid if sid != "db-01" else "mongo-db-cn-1")
+        return [daemon_path] if os.path.isfile(daemon_path) else []
+    def _cluster_log_sort_key(path: str) -> Tuple[float, str]:
+        try:
+            return (float(os.path.getmtime(path)), os.path.basename(path))
+        except OSError:
+            return (0.0, os.path.basename(path))
+
     all_cluster: List[str] = []
+    if _is_gameserver_process_service_id(sid):
+        inst_logs = os.path.join(_gameserver_instance_dir(repo, sid), "logs")
+        if os.path.isdir(inst_logs):
+            all_cluster.extend(
+                os.path.join(inst_logs, name)
+                for name in os.listdir(inst_logs)
+                if name.startswith("cluster-") and name.endswith(".log")
+            )
+        cluster_paths = sorted(set(all_cluster), key=_cluster_log_sort_key, reverse=True)[:1]
+        paths.extend(cluster_paths)
+        launcher_log = _gameserver_service_log_path(repo, sid)
+        if os.path.isfile(launcher_log):
+            paths.append(launcher_log)
+        return paths
     for sub in (
         os.path.join(repo, "game-server", "bin", "Debug", "logs"),
         os.path.join(repo, "game-server", "bin", "Release", "logs"),
@@ -10305,22 +10937,14 @@ def _gameserver_log_source_paths(current_session_only: bool = False) -> List[str
             for name in os.listdir(sub)
             if name.startswith("cluster-") and name.endswith(".log")
         )
-    cluster_paths = sorted(set(all_cluster), reverse=True)
-    if current_session_only:
-        cluster_paths = cluster_paths[:1]
-    else:
-        cluster_paths = cluster_paths[:3]
-    paths.extend(cluster_paths)
-    out_path, err_path = _gameserver_log_artifact_paths()
+    cluster_paths = sorted(set(all_cluster), key=_cluster_log_sort_key, reverse=True)[:1]
     if cluster_paths:
-        if os.path.isfile(err_path):
-            paths.append(err_path)
-        if os.path.isfile(out_path):
-            paths.append(out_path)
-    else:
-        for p in (out_path, err_path):
-            if os.path.isfile(p):
-                paths.append(p)
+        paths.extend(cluster_paths)
+        return paths
+    out_path, err_path = _gameserver_log_artifact_paths()
+    for p in (out_path, err_path):
+        if os.path.isfile(p):
+            paths.append(p)
     return paths
 
 
@@ -10401,6 +11025,76 @@ def _service_log_line_matches(service_id: str, parsed: Dict[str, Any], raw_line:
     return any(h in hay for h in hints)
 
 
+def _log_line_epoch(raw_line: str) -> float:
+    text = str(raw_line or "")
+    match = re.search(r"(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)", text)
+    if not match:
+        return 0.0
+    token = match.group(1).replace(" ", "T")
+    tail = text[match.end(): match.end() + 2]
+    if tail.startswith("Z") or text[match.start(): match.end()].endswith("Z"):
+        token += "Z"
+    try:
+        if token.endswith("Z"):
+            return datetime.fromisoformat(token.replace("Z", "+00:00")).timestamp()
+        return datetime.fromisoformat(token).replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _extract_line_iso_time(raw_line: str) -> str:
+    text = str(raw_line or "")
+    match = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)", text)
+    if match:
+        return match.group(1)
+    epoch = _log_line_epoch(text)
+    if epoch > 0:
+        return datetime.utcfromtimestamp(epoch).isoformat() + "Z"
+    return ""
+
+
+_DAEMON_SESSION_MARK = re.compile(
+    r"daemon\s+(?:start|restart)(?:\s+begin|:?\s+skipped)",
+    re.IGNORECASE,
+)
+
+
+def _slice_merged_from_daemon_session(merged: List[Tuple[int, str, str]]) -> Tuple[List[Tuple[int, str, str]], str]:
+    start_idx = 0
+    started_at = ""
+    for idx, (_, line, _) in enumerate(merged):
+        if _DAEMON_SESSION_MARK.search(line):
+            start_idx = idx
+            started_at = _extract_line_iso_time(line)
+    if start_idx <= 0:
+        return merged, started_at
+    return merged[start_idx:], started_at
+
+
+def _filter_merged_from_session_epoch(
+    merged: List[Tuple[int, str, str]],
+    epoch: float,
+    *,
+    grace_sec: float = 8.0,
+) -> Tuple[List[Tuple[int, str, str]], str]:
+    if epoch <= 0 or not merged:
+        return merged, ""
+    cutoff = float(epoch) - max(0.0, float(grace_sec))
+    kept: List[Tuple[int, str, str]] = []
+    trailing_blank = 0
+    for item in merged:
+        ts = _log_line_epoch(item[1])
+        if ts >= cutoff:
+            kept.append(item)
+            trailing_blank = 0
+        elif ts <= 0 and kept and trailing_blank < 2:
+            kept.append(item)
+            trailing_blank += 1
+    if kept:
+        return kept, datetime.utcfromtimestamp(float(epoch)).isoformat() + "Z"
+    return merged, ""
+
+
 def _slice_merged_from_current_session(merged: List[Tuple[int, str, str]]) -> Tuple[List[Tuple[int, str, str]], str]:
     start_idx = 0
     started_at = ""
@@ -10422,6 +11116,28 @@ def _should_hide_lifecycle_log_line(raw_line: str) -> bool:
     return bool(_GS_LOG_LIFECYCLE_HIDE.search(text))
 
 
+def _read_text_file_lines(path: str) -> List[str]:
+    if not path or not os.path.isfile(path):
+        return []
+    raw = b""
+    try:
+        with open(path, "rb") as fp:
+            raw = fp.read()
+    except Exception:
+        return []
+    if not raw:
+        return []
+    for encoding in ("utf-8-sig", "utf-8", "gb18030", "gbk"):
+        try:
+            text = raw.decode(encoding)
+        except Exception:
+            continue
+        if encoding.startswith("utf") and text.count("\ufffd") > max(3, len(text) // 200):
+            continue
+        return text.splitlines(keepends=True)
+    return raw.decode("utf-8", errors="replace").splitlines(keepends=True)
+
+
 def _read_gameserver_service_logs(
     service_id: str = "",
     *,
@@ -10432,7 +11148,7 @@ def _read_gameserver_service_logs(
     current_session_only: bool = False,
     hide_lifecycle: bool = False,
 ) -> Dict[str, Any]:
-    paths = _gameserver_log_source_paths(current_session_only=current_session_only)
+    paths = _gameserver_log_source_paths(current_session_only=current_session_only, service_id=service_id)
     if not paths:
         return {
             "lines": [],
@@ -10445,29 +11161,48 @@ def _read_gameserver_service_logs(
     merged: List[Tuple[int, str, str]] = []
     offset = 0
     seen_keys: set = set()
+    daemon_source = _is_daemon_log_source(paths)
     has_cluster_logs = any("cluster-" in os.path.basename(p) for p in paths)
     for path in paths:
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as fp:
-                for line in fp:
-                    if has_cluster_logs and "????" in line and _GS_LOG_LINE_RE.match(line.strip()):
-                        continue
+            for line in _read_text_file_lines(path):
+                if has_cluster_logs and line.count("\ufffd") >= 4:
+                    continue
+                if not daemon_source and not current_session_only and not has_cluster_logs:
                     key = _log_dedupe_key(line)
                     if key and key in seen_keys:
                         continue
                     if key:
                         seen_keys.add(key)
-                    merged.append((offset, line, path))
-                    offset += len(line.encode("utf-8", errors="replace"))
+                merged.append((offset, line, path))
+                offset += len(line.encode("utf-8", errors="replace"))
         except Exception:
             continue
 
     session_started_at = ""
     if current_session_only and merged:
-        merged, session_started_at = _slice_merged_from_current_session(merged)
+        if daemon_source:
+            merged, session_started_at = _slice_merged_from_daemon_session(merged)
+        else:
+            marker = _read_gameserver_session_marker(service_id=service_id)
+            marker_epoch = float(marker.get("epoch") or 0) if isinstance(marker, dict) else 0.0
+            if marker_epoch > 0:
+                merged, session_started_at = _filter_merged_from_session_epoch(merged, marker_epoch)
+                if marker.get("started_at"):
+                    session_started_at = str(marker.get("started_at") or session_started_at)
+            else:
+                merged, session_started_at = _slice_merged_from_current_session(merged)
 
     lv_filter = str(level or "all").strip().lower()
     q = str(query or "").strip().lower()
+    repo = _resolve_game_server_repo()
+    sid_lower = str(service_id or "").strip().lower()
+    instance_root = _gameserver_instance_dir(repo, sid_lower).replace("\\", "/").lower() if sid_lower else ""
+    skip_service_filter = bool(
+        instance_root
+        and _is_gameserver_process_service_id(sid_lower)
+        and any(instance_root in str(p or "").replace("\\", "/").lower() for p in paths)
+    )
     parsed_rows: List[Dict[str, Any]] = []
     for byte_offset, line, path in merged:
         if since_offset > 0 and byte_offset < since_offset:
@@ -10477,7 +11212,7 @@ def _read_gameserver_service_logs(
         parsed = _parse_gameserver_log_line(line, path)
         if lv_filter not in ("", "all") and parsed.get("level") != lv_filter:
             continue
-        if service_id and not _service_log_line_matches(service_id, parsed, line):
+        if service_id and not daemon_source and not skip_service_filter and not _service_log_line_matches(service_id, parsed, line):
             continue
         hay = f"{parsed.get('raw') or ''} {parsed.get('category') or ''} {parsed.get('message') or ''}".lower()
         if q and q not in hay:
@@ -10488,6 +11223,18 @@ def _read_gameserver_service_logs(
             "source": os.path.basename(path),
         })
 
+    def _log_row_epoch(row: Dict[str, Any]) -> float:
+        text = str(row.get("time") or row.get("raw") or "")
+        match = re.search(r"(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)", text)
+        if not match:
+            return 0.0
+        try:
+            return datetime.fromisoformat(match.group(1).replace(" ", "T")).replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            return 0.0
+
+    if parsed_rows:
+        parsed_rows.sort(key=_log_row_epoch)
     if tail > 0 and len(parsed_rows) > tail:
         parsed_rows = parsed_rows[-tail:]
 
@@ -10559,94 +11306,750 @@ def _local_service_status_snapshot(project_id: str, topology_node_id: str, servi
     }
 
 
-def _launch_local_game_server(reason: str = "", wait_ready: bool = True, timeout_sec: int = 180) -> Dict[str, Any]:
-    if not hasattr(_launch_local_game_server, "_lock"):
-        _launch_local_game_server._lock = threading.Lock()  # type: ignore[attr-defined]
-    lock: threading.Lock = _launch_local_game_server._lock  # type: ignore[attr-defined]
-    if not lock.acquire(blocking=False):
-        return {"success": False, "message": "GameServer 启动正在进行中，请稍候再试"}
+_GAMESERVER_LAUNCH_GUARD = threading.Lock()
+_GAMESERVER_LAUNCH_SLOTS: Dict[str, Dict[str, Any]] = {}
+_GAMESERVER_LAUNCH_LOCK_TTL_SEC = 180.0
+
+
+def _clear_gameserver_launch_slot(service_id: str) -> None:
+    sid = str(service_id or "").strip().lower()
+    if not sid:
+        return
+    with _GAMESERVER_LAUNCH_GUARD:
+        _GAMESERVER_LAUNCH_SLOTS.pop(sid, None)
+
+
+def _gameserver_launch_slot_active(service_id: str) -> bool:
+    sid = str(service_id or "").strip().lower()
+    if not sid:
+        return False
+    with _GAMESERVER_LAUNCH_GUARD:
+        slot = _GAMESERVER_LAUNCH_SLOTS.get(sid)
+        if not isinstance(slot, dict):
+            return False
+        if float(slot.get("until") or 0.0) <= time.monotonic():
+            _GAMESERVER_LAUNCH_SLOTS.pop(sid, None)
+            return False
+        return True
+
+
+def _try_acquire_gameserver_launch_slot(service_id: str, ttl_sec: float = _GAMESERVER_LAUNCH_LOCK_TTL_SEC) -> bool:
+    sid = str(service_id or "").strip().lower()
+    if not sid:
+        return False
+    now = time.monotonic()
+    with _GAMESERVER_LAUNCH_GUARD:
+        slot = _GAMESERVER_LAUNCH_SLOTS.get(sid)
+        if isinstance(slot, dict) and float(slot.get("until") or 0.0) > now:
+            return False
+        _GAMESERVER_LAUNCH_SLOTS[sid] = {
+            "until": now + max(30.0, float(ttl_sec)),
+            "thread": threading.current_thread().ident,
+        }
+        return True
+
+
+def _release_gameserver_launch_slot(service_id: str) -> None:
+    sid = str(service_id or "").strip().lower()
+    if not sid:
+        return
+    ident = threading.current_thread().ident
+    with _GAMESERVER_LAUNCH_GUARD:
+        slot = _GAMESERVER_LAUNCH_SLOTS.get(sid)
+        if isinstance(slot, dict) and slot.get("thread") not in (None, ident):
+            return
+        _GAMESERVER_LAUNCH_SLOTS.pop(sid, None)
+
+
+def _launch_gameserver_service(
+    service_id: str,
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 120,
+    node: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    sid = str(service_id or "").strip().lower()
+    _reconcile_gameserver_daemon_state(sid)
+    if _gameserver_service_live(sid, node):
+        live_pid = _find_gameserver_pid_by_service(sid) or int((_get_daemon_state(sid).get("pid") or 0))
+        tcp_port = _gameserver_tcp_probe_port(sid, node)
+        repo = _resolve_game_server_repo()
+        log_path = _gameserver_service_log_path(repo, sid)
+        try:
+            with open(log_path, "a", encoding="utf-8") as log_fp:
+                log_fp.write(
+                    f"[{_now_iso()}] daemon start skipped: {sid} already running "
+                    f"pid={live_pid or 0}{', port ' + str(tcp_port) if tcp_port > 0 else ''}\n"
+                )
+        except Exception:
+            pass
+        return {
+            "success": True,
+            "message": f"{sid} 已在运行 (pid {live_pid or '-'}{', port ' + str(tcp_port) if tcp_port > 0 else ''})",
+            "data": {"service_id": sid, "pid": live_pid, "already_running": True, "live": True, "log": log_path},
+        }
+    if _gameserver_launch_slot_active(sid) and not _gameserver_service_live(sid, node):
+        _clear_gameserver_launch_slot(sid)
+    if not _try_acquire_gameserver_launch_slot(sid, ttl_sec=max(60.0, float(timeout_sec) + 30.0)):
+        return {"success": False, "message": f"{sid} 启动正在进行中，请稍候再试"}
     try:
-        return _launch_local_game_server_impl(reason, wait_ready, timeout_sec)
+        return _launch_gameserver_service_impl(sid, reason, wait_ready, timeout_sec, node)
     finally:
-        lock.release()
+        _release_gameserver_launch_slot(sid)
 
 
-def _launch_local_game_server_impl(reason: str = "", wait_ready: bool = True, timeout_sec: int = 180) -> Dict[str, Any]:
-    repo = _resolve_game_server_repo()
-    script = os.path.join(repo, "scripts", "Start-GameServer.sh")
-    if not os.path.isfile(script):
-        return {"success": False, "message": f"未找到 GameServer 启动脚本: {script}"}
-    log_dir = os.path.join(repo, "tools", "SmokeTest", "artifacts")
-    os.makedirs(log_dir, exist_ok=True)
-    log_path = os.path.join(log_dir, "apk-site-service-start.log")
+def _launch_all_gameserver_services_in_order(
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 120,
+) -> Dict[str, Any]:
+    last: Dict[str, Any] = {"success": False, "message": "no services"}
+    for sid in _GAMESERVER_START_ORDER:
+        last = _launch_gameserver_service(sid, reason, wait_ready, timeout_sec)
+        if not last.get("success"):
+            return last
+        time.sleep(0.8)
+    return last
+
+
+def _launch_local_game_server(
+    service_id: str = "",
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 180,
+    node: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    sid = str(service_id or "").strip().lower()
+    if sid:
+        return _launch_gameserver_service(sid, reason, wait_ready, timeout_sec, node)
+    return _launch_all_gameserver_services_in_order(reason, wait_ready, timeout_sec)
+
+
+def _sync_gameserver_runtime_config(repo: str, cfg_dir: str) -> None:
+    import shutil
+
+    src_cfg = os.path.join(repo, "config")
+    os.makedirs(cfg_dir, exist_ok=True)
+    os.makedirs(os.path.join(cfg_dir, "config"), exist_ok=True)
+    for name in ("cluster.json", "appsettings.json"):
+        src = os.path.join(src_cfg, name)
+        if not os.path.isfile(src):
+            continue
+        for dst in (os.path.join(cfg_dir, name), os.path.join(cfg_dir, "config", name)):
+            try:
+                if os.path.isfile(dst):
+                    with open(src, "rb") as sfp, open(dst, "rb") as dfp:
+                        if sfp.read() == dfp.read():
+                            continue
+                shutil.copy2(src, dst)
+            except Exception:
+                pass
+
+
+def _gameserver_instance_dir(repo: str, service_id: str) -> str:
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", str(service_id or "gameserver").strip()) or "gameserver"
+    return os.path.join(repo, "tools", "SmokeTest", "artifacts", "instances", safe)
+
+
+def _prepare_gameserver_instance(repo: str, service_id: str) -> Tuple[str, str]:
+    """为每个服务准备独立运行目录，避免多进程争用同一份 cluster 日志。"""
+    import shutil
+
+    src_exe, src_dir = _resolve_gameserver_executable(repo)
+    if not src_exe:
+        return "", ""
+    inst_dir = _gameserver_instance_dir(repo, service_id)
+    inst_exe = os.path.join(inst_dir, os.path.basename(src_exe))
+    src_stamp = str(int(os.path.getmtime(src_exe)))
+    stamp_file = os.path.join(inst_dir, ".build_stamp")
+    need_copy = not os.path.isfile(inst_exe)
+    if os.path.isfile(stamp_file):
+        try:
+            with open(stamp_file, "r", encoding="utf-8") as fp:
+                need_copy = need_copy or fp.read().strip() != src_stamp
+        except Exception:
+            need_copy = True
+    else:
+        need_copy = True
+    if need_copy:
+        if os.path.isdir(inst_dir):
+            shutil.rmtree(inst_dir, ignore_errors=True)
+        shutil.copytree(src_dir, inst_dir)
+        os.makedirs(os.path.join(inst_dir, "logs"), exist_ok=True)
+        with open(stamp_file, "w", encoding="utf-8") as fp:
+            fp.write(src_stamp)
+    _sync_gameserver_runtime_config(repo, inst_dir)
+    return inst_exe, inst_dir
+
+
+def _resolve_gameserver_executable(repo: str) -> Tuple[str, str]:
+    for config in ("Debug", "Release"):
+        cfg_dir = os.path.join(repo, "game-server", "bin", config)
+        exe = os.path.join(cfg_dir, "GameServer.GameServerApp.exe")
+        if os.path.isfile(exe):
+            return exe, cfg_dir
+    return "", ""
+
+
+def _wait_gameserver_tcp_port_free(port: int, timeout_sec: float = 20.0) -> bool:
+    if port <= 0:
+        return True
+    deadline = time.time() + max(1.0, float(timeout_sec))
+    while time.time() < deadline:
+        if not _probe_tcp_open("127.0.0.1", port, timeout=0.25):
+            return True
+        time.sleep(0.4)
+    return not _probe_tcp_open("127.0.0.1", port, timeout=0.25)
+
+
+def _latest_instance_cluster_log_path(repo: str, service_id: str) -> str:
+    inst_logs = os.path.join(_gameserver_instance_dir(repo, service_id), "logs")
+    if not os.path.isdir(inst_logs):
+        return ""
+    candidates = [
+        os.path.join(inst_logs, name)
+        for name in os.listdir(inst_logs)
+        if name.startswith("cluster-") and name.endswith(".log")
+    ]
+    if not candidates:
+        return ""
     try:
-        with open(log_path, "a", encoding="utf-8") as log_fp:
-            log_fp.write(f"\n[{_now_iso()}] launch reason={reason or 'service-start'} wait_ready={wait_ready}\n")
-            log_fp.flush()
-        if not wait_ready:
-            proc = subprocess.Popen(
-                ["bash", script],
-                cwd=repo,
-                stdout=open(log_path, "a", encoding="utf-8"),
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
+        return max(candidates, key=lambda p: os.path.getmtime(p))
+    except Exception:
+        return candidates[0]
+
+
+def _sanitize_user_facing_text(text: str, max_len: int = 200) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\uFFFD]", "", raw)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    noise = ("可用命令", "cluster>", "--servers=", "--all", "--gm", "windows-native launch")
+    if any(token in cleaned for token in noise):
+        return ""
+    if max_len > 0 and len(cleaned) > max_len:
+        cleaned = cleaned[: max_len - 3] + "..."
+    return cleaned
+
+
+def _extract_cluster_error_hint(cluster_log_path: str, since_pos: int = 0) -> str:
+    if not cluster_log_path or not os.path.isfile(cluster_log_path):
+        return ""
+    try:
+        lines = _read_text_file_lines(cluster_log_path)
+        chunk = "".join(lines)
+        if since_pos > 0 and since_pos < len(chunk.encode("utf-8", errors="replace")):
+            chunk = chunk[max(0, since_pos // 2):]
+    except Exception:
+        return ""
+    hints: List[str] = []
+    for line in chunk.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        upper = text.upper()
+        if not any(token in text for token in ("[ERROR]", "异常", "失败", "FATAL", "IOException", "冲突")) and \
+                not any(token in upper for token in ("[ERROR]", "[FATAL]", "FAIL")):
+            continue
+        parsed = _sanitize_user_facing_text(text, max_len=180)
+        if parsed:
+            hints.append(parsed)
+    return hints[-1] if hints else ""
+
+
+def _gameserver_service_launch_args(service_id: str) -> List[str]:
+    sid = str(service_id or "").strip()
+    # 当前 Windows 构建仅识别 --headless-seconds；裸 --headless 需重编译后才常驻。
+    return [f"--servers={sid}", "--headless", "--headless-seconds=86400"]
+
+
+def _format_gameserver_launch_failure(
+    service_id: str,
+    *,
+    exit_code: Optional[int],
+    live: bool,
+    tcp_port: int,
+    repo: str,
+    log_path: str,
+    cluster_log_pos: int = 0,
+) -> str:
+    sid = str(service_id or "").strip()
+    parts: List[str] = []
+    if exit_code is not None and int(exit_code) != 0:
+        unsigned = int(exit_code) & 0xFFFFFFFF
+        if unsigned in (3221225794, 3221225477):
+            parts.append("进程初始化失败，常见原因是端口残留或实例文件损坏")
+        else:
+            parts.append(f"进程退出码 {exit_code}")
+    if tcp_port > 0 and not live:
+        parts.append(f"端口 {tcp_port} 未就绪")
+    cluster_hint = _extract_cluster_error_hint(_latest_instance_cluster_log_path(repo, sid), cluster_log_pos)
+    if cluster_hint:
+        parts.append(cluster_hint)
+    if not parts:
+        parts.append("请打开「查看日志」查看本次启动详情")
+    return f"{sid} 启动失败：{'；'.join(parts)}"
+
+
+def _launch_gameserver_service_impl(
+    service_id: str,
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 120,
+    node: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    sid = str(service_id or "").strip().lower()
+    if sid not in _GAMESERVER_PROCESS_SERVICE_IDS:
+        return {"success": False, "message": f"不支持的 GameServer 服务: {service_id}"}
+    port = _gameserver_service_port(sid, node)
+    tcp_port = _gameserver_tcp_probe_port(sid, node)
+    if _gameserver_service_live(sid, node):
+        live_pid = _find_gameserver_pid_by_service(sid) or int((_get_daemon_state(sid).get("pid") or 0))
+        return {
+            "success": True,
+            "message": f"{sid} 已在运行 (pid {live_pid or '-'}{', port ' + str(tcp_port) if tcp_port > 0 else ''})",
+            "data": {"service_id": sid, "port": port, "pid": live_pid, "already_running": True, "live": True},
+        }
+    stale_pid = _find_gameserver_pid_by_service(sid)
+    if stale_pid > 0:
+        _kill_tracked_pid(stale_pid)
+        time.sleep(0.8)
+    if tcp_port > 0:
+        if _find_gameserver_pid_by_service(sid) > 0 or _gameserver_service_live(sid, node):
+            _stop_gameserver_service(sid, node)
+        if _probe_tcp_open("127.0.0.1", tcp_port, timeout=0.25) and not _wait_gameserver_tcp_port_free(
+            tcp_port, timeout_sec=20.0
+        ):
+            return {
+                "success": False,
+                "message": f"{sid} 启动失败：端口 {tcp_port} 仍被占用，请稍后重试",
+                "data": {"service_id": sid, "port": port, "live": False},
+            }
+
+    repo = _resolve_game_server_repo()
+    log_path = _gameserver_service_log_path(repo, sid)
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    if os.name == "nt":
+        try:
+            return _launch_gameserver_service_windows(repo, sid, port, reason, wait_ready, timeout_sec, log_path)
+        except Exception as ex:
+            return {"success": False, "message": f"启动 {sid} 失败: {ex}"}
+
+    exe, cfg_dir = _resolve_gameserver_executable(repo)
+    if not exe:
+        script = os.path.join(repo, "scripts", "Start-GameServer.sh")
+        return {"success": False, "message": f"未找到 GameServer 可执行文件或脚本: {script}"}
+    return _launch_gameserver_service_windows(repo, sid, port, reason, wait_ready, timeout_sec, log_path)
+
+
+def _launch_gameserver_service_windows(
+    repo: str,
+    service_id: str,
+    port: int,
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 120,
+    log_path: str = "",
+) -> Dict[str, Any]:
+    """Windows 原生启动单个 GameServer 节点，禁止走 bash/WSL。"""
+    exe, cfg_dir = _prepare_gameserver_instance(repo, service_id)
+    if not exe:
+        return {"success": False, "message": "未找到 GameServer.GameServerApp.exe，请先在 game-server 目录编译 Debug/Release"}
+    server_args = _gameserver_service_launch_args(service_id)
+    reason_note = re.sub(r"[^\x20-\x7E\u4e00-\u9fff]", "", str(reason or "")).strip() or "service-action"
+    cluster_log_path = _latest_instance_cluster_log_path(repo, service_id)
+    cluster_log_pos = 0
+    try:
+        if cluster_log_path and os.path.isfile(cluster_log_path):
+            cluster_log_pos = os.path.getsize(cluster_log_path)
+    except Exception:
+        cluster_log_pos = 0
+    with open(log_path, "a", encoding="utf-8") as log_fp:
+        log_fp.write(
+            f"\n[{_now_iso()}] windows-native launch service={service_id} reason={reason_note} "
+            f"exe={exe} args={' '.join(server_args)}\n"
+        )
+        log_fp.flush()
+    proc = subprocess.Popen(
+        [exe, *server_args],
+        cwd=cfg_dir,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+    )
+    _set_daemon_state(service_id, {"status": "STARTING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+    if not wait_ready:
+        return {
+            "success": True,
+            "message": f"{service_id} 已在后台启动",
+            "data": {"pid": int(proc.pid), "service_id": service_id, "log": log_path, "exe": exe, "starting": True},
+        }
+    tcp_port = _gameserver_tcp_probe_port(service_id)
+    deadline = time.time() + max(20, int(timeout_sec))
+    exit_code: Optional[int] = None
+    ready_after = time.time() + 4.0
+    while time.time() < deadline:
+        exit_code = proc.poll()
+        if exit_code is not None:
+            break
+        if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
+            if tcp_port > 0:
+                live = _probe_tcp_open("127.0.0.1", tcp_port, timeout=0.35)
+            else:
+                live = time.time() >= ready_after
+        else:
+            live = _gameserver_service_live(service_id, pid=int(proc.pid))
+        if live and (tcp_port > 0 or time.time() >= ready_after):
+            _write_gameserver_session_marker(repo, int(proc.pid), service_id)
+            _set_daemon_state(service_id, {"status": "RUNNING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+            ready_msg = f"port {tcp_port}=PASS" if tcp_port > 0 else f"pid {int(proc.pid)} alive"
             return {
                 "success": True,
-                "message": "GameServer 启动脚本已在后台执行",
-                "data": {"pid": int(proc.pid), "log": log_path, "script": script, "starting": True},
+                "message": f"{service_id} 已就绪 ({ready_msg})",
+                "data": {"pid": int(proc.pid), "service_id": service_id, "port": port, "live": True, "log": log_path, "exe": exe},
             }
-        proc = subprocess.run(
-            ["bash", script],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            timeout=max(60, int(timeout_sec)),
+        time.sleep(0.8)
+    if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
+        live = _probe_tcp_open("127.0.0.1", tcp_port, timeout=0.5) if tcp_port > 0 else True
+    else:
+        live = _gameserver_service_live(service_id, pid=int(proc.pid))
+    ok = bool(live and exit_code is None)
+    if ok:
+        _write_gameserver_session_marker(repo, int(proc.pid), service_id)
+        _set_daemon_state(service_id, {"status": "RUNNING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+    else:
+        if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
+            _kill_tracked_pid(int(proc.pid))
+        _set_daemon_state(service_id, {"status": "ERROR", "pid": 0, "last_action": "start", "last_error": "launch failed"})
+    ready_msg = f"port {tcp_port}=PASS" if tcp_port > 0 else f"pid {int(proc.pid)} alive"
+    msg = (
+        f"{service_id} 已就绪 ({ready_msg})"
+        if ok
+        else _format_gameserver_launch_failure(
+            service_id,
+            exit_code=exit_code,
+            live=live,
+            tcp_port=tcp_port,
+            repo=repo,
+            log_path=log_path,
+            cluster_log_pos=cluster_log_pos,
         )
-        out_text = str(proc.stdout or "")
-        with open(log_path, "a", encoding="utf-8") as log_fp:
-            log_fp.write(out_text)
-        gateway_ok = _probe_tcp_open("127.0.0.1", 15050)
-        ops_ok = _probe_tcp_open("127.0.0.1", 5504)
-        ok = bool(proc.returncode == 0 and gateway_ok)
-        tail = out_text[-400:].strip().replace("\n", " ")
-        if ok:
-            msg = f"GameServer 已就绪 (exit=0, gateway:15050={'PASS' if gateway_ok else 'FAIL'}, ops:5504={'PASS' if ops_ok else 'FAIL'})"
+    )
+    return {
+        "success": ok,
+        "message": msg,
+        "data": {
+            "returncode": exit_code,
+            "service_id": service_id,
+            "port": port,
+            "live": live,
+            "log": log_path,
+            "exe": exe,
+        },
+    }
+
+
+def _stop_gameserver_service(service_id: str, node: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    sid = str(service_id or "").strip().lower()
+    if sid not in _GAMESERVER_PROCESS_SERVICE_IDS:
+        return {"success": False, "message": f"不支持的 GameServer 服务: {service_id}"}
+    _clear_gameserver_launch_slot(sid)
+    port = _gameserver_service_port(sid, node)
+    tcp_port = _gameserver_tcp_probe_port(sid, node)
+    state = _get_daemon_state(sid)
+    pid = int(state.get("pid") or 0) if str(state.get("pid") or "").strip().isdigit() else 0
+    if pid <= 0 or not _is_process_running(pid):
+        pid = _find_gameserver_pid_by_service(sid)
+    for _ in range(4):
+        if pid > 0:
+            _kill_tracked_pid(pid)
+        pid = _find_gameserver_pid_by_service(sid)
+        if pid <= 0 and tcp_port > 0:
+            port_pid = _find_pid_listening_on_port(tcp_port)
+            if port_pid > 4:
+                pid = port_pid
+        if pid <= 0:
+            break
+        time.sleep(0.4)
+    deadline = time.time() + 15.0
+    while time.time() < deadline:
+        if not _gameserver_service_live(sid, node):
+            _set_daemon_state(sid, {"status": "STOPPED", "pid": 0, "last_action": "stop", "last_error": ""})
+            _clear_gameserver_session_marker(service_id=sid)
+            detail = f"port {tcp_port}" if tcp_port > 0 else "process"
+            return {"success": True, "message": f"已停止 {sid} 独立进程 ({detail})"}
+        time.sleep(0.4)
+    return {"success": False, "message": f"{sid} 仍在运行，停止未完成"}
+
+
+def _stop_all_gameserver_services() -> Dict[str, Any]:
+    try:
+        for sid in reversed(_GAMESERVER_START_ORDER):
+            _stop_gameserver_service(sid)
+        if os.name == "nt":
+            for cmd in (
+                ["taskkill", "/F", "/IM", "GameServer.GameServerApp.exe"],
+                ["taskkill", "/F", "/T", "/FI", "IMAGENAME eq GameServer.GameServerApp.exe"],
+            ):
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20, check=False)
         else:
-            msg = f"GameServer 启动失败 (exit={proc.returncode}, gateway={'PASS' if gateway_ok else 'FAIL'}): {tail or '无日志输出'}"
-        return {
-            "success": ok,
-            "message": msg,
-            "data": {
-                "returncode": int(proc.returncode),
-                "gateway_live": gateway_ok,
-                "ops_live": ops_ok,
-                "log": log_path,
-                "script": script,
-            },
-        }
-    except subprocess.TimeoutExpired as ex:
-        partial = ""
-        try:
-            partial = (ex.stdout or b"").decode("utf-8", errors="replace")[-400:]
-        except Exception:
-            partial = ""
-        gateway_ok = _probe_tcp_open("127.0.0.1", 15050)
-        return {
-            "success": False,
-            "message": f"GameServer 启动超时 ({timeout_sec}s), gateway={'PASS' if gateway_ok else 'FAIL'}: {partial}",
-            "data": {"gateway_live": gateway_ok, "log": log_path, "timeout": True},
-        }
+            subprocess.call(["pkill", "-f", "GameServer.GameServerApp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for sid in _GAMESERVER_PROCESS_SERVICE_IDS:
+            _clear_gameserver_session_marker(service_id=sid)
+        open_ports = [p for p in _GAMESERVER_DEFAULT_PORTS.values() if _probe_tcp_open("127.0.0.1", p, timeout=0.25)]
+        if open_ports:
+            return {"success": False, "message": f"仍有 GameServer 端口在监听: {open_ports}"}
+        return {"success": True, "message": "已停止全部 GameServer 独立进程"}
     except Exception as ex:
-        return {"success": False, "message": f"启动 GameServer 失败: {ex}"}
+        return {"success": False, "message": f"停止 GameServer 失败: {ex}"}
 
 
 def _stop_local_game_server() -> Dict[str, Any]:
+    return _stop_all_gameserver_services()
+
+
+def _daemon_probe_proto(node: Dict[str, Any]) -> str:
+    role = str(node.get("role") or "").strip().lower()
+    return "redis_ping" if role in ("cache", "redis") else "mongo_ping"
+
+
+def _daemon_node_port(node: Dict[str, Any]) -> int:
+    if not isinstance(node, dict):
+        return 0
+    port = int(node.get("daemon_port") or (node.get("ui") or {}).get("remote", {}).get("port") or node.get("port") or 0)
+    if port > 0:
+        return port
     try:
-        subprocess.call(["pkill", "-f", "GameServer.GameServerApp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return {"success": True, "message": "已发送停止信号给 GameServer 进程"}
-    except Exception as ex:
-        return {"success": False, "message": f"停止 GameServer 失败: {ex}"}
+        contract = _resolve_node_contract_for_topology_node(node)
+        port = int(_resolve_topology_node_port(node, contract, None, None) or 0)
+        if port > 0:
+            return port
+    except Exception:
+        pass
+    nid = str(node.get("id") or "").strip().lower()
+    role = str(node.get("role") or "").strip().lower()
+    if role in ("cache", "redis") or "redis" in nid:
+        return 6379
+    if role in ("database", "mongo") or "mongo" in nid:
+        return 27017
+    return 0
+
+
+def _resolve_mongod_executable() -> str:
+    if os.name != "nt":
+        return ""
+    try:
+        import glob
+
+        hits = sorted(glob.glob(r"C:\Program Files\MongoDB\Server\*\bin\mongod.exe"), reverse=True)
+        if hits:
+            return str(hits[0])
+    except Exception:
+        pass
+    return ""
+
+
+def _wait_daemon_port_open(node: Dict[str, Any], timeout_sec: float = 30.0) -> bool:
+    port = _daemon_node_port(node)
+    if port <= 0:
+        return False
+    proto = _daemon_probe_proto(node)
+    deadline = time.time() + max(2.0, float(timeout_sec))
+    while time.time() < deadline:
+        if _probe_by_protocol("127.0.0.1", port, proto).get("ok"):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _start_external_daemon_node(node: Dict[str, Any], act: str = "start") -> Dict[str, Any]:
+    """本机守护进程启动：Windows 走服务/可执行文件，避免 Test-NetConnection 拖慢与误报成功。"""
+    nid = str(node.get("id") or "")
+    port = _daemon_node_port(node)
+    role = str(node.get("role") or "").strip().lower()
+    log_path = _daemon_log_path(nid)
+    lines: List[str] = [f"[{_now_iso()}] daemon {act} begin port={port} role={role}"]
+
+    if port > 0 and _probe_by_protocol("127.0.0.1", port, _daemon_probe_proto(node)).get("ok"):
+        try:
+            with open(log_path, "a", encoding="utf-8") as log_fp:
+                log_fp.write(f"[{_now_iso()}] daemon {act} skipped: port {port} already listening\n")
+        except Exception:
+            pass
+        state = _set_daemon_state(nid, {"status": "RUNNING", "pid": 0, "last_error": "", "last_action": act, "log_path": log_path})
+        return {
+            "success": True,
+            "message": f"daemon already running on port {port}",
+            "data": {"node_id": nid, "status": "RUNNING", "pid": 0, "state": state, "log_path": log_path},
+        }
+
+    if os.name == "nt":
+        if role in ("database", "mongo") or port == 27017:
+            db_dir = r"C:\data\gomeku-mongo"
+            os.makedirs(db_dir, exist_ok=True)
+            svc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "Start-Service MongoDB -ErrorAction SilentlyContinue; "
+                    "if ((Get-Service MongoDB -ErrorAction SilentlyContinue).Status -eq 'Running') { exit 0 } else { exit 1 }",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            lines.append(f"Start-Service MongoDB rc={svc.returncode} out={(svc.stdout or '').strip()} err={(svc.stderr or '').strip()}")
+            if svc.returncode != 0:
+                mongod = _resolve_mongod_executable()
+                if mongod:
+                    subprocess.Popen(
+                        [mongod, "--dbpath", db_dir, "--port", str(port or 27017), "--bind_ip", "127.0.0.1"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                    )
+                    lines.append(f"fallback mongod={mongod}")
+        elif role in ("cache", "redis") or port == 6379:
+            svc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "$s = Get-Service Memurai,MemuraiDeveloper,Redis -ErrorAction SilentlyContinue | "
+                    "Where-Object { $_.Status -eq 'Stopped' } | Select-Object -First 1; "
+                    "if ($s) { Start-Service $s.Name -ErrorAction SilentlyContinue }; "
+                    "if ((Get-Service Memurai,MemuraiDeveloper -ErrorAction SilentlyContinue | "
+                    "Where-Object { $_.Status -eq 'Running' } | Select-Object -First 1)) { exit 0 } else { exit 1 }",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            lines.append(f"Start-Service redis/memurai rc={svc.returncode} out={(svc.stdout or '').strip()} err={(svc.stderr or '').strip()}")
+    else:
+        start_cmd = str(node.get("daemon_start_cmd") or "").strip()
+        if start_cmd:
+            subprocess.Popen(start_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            lines.append(f"shell cmd={start_cmd[:200]}")
+
+    with open(log_path, "a", encoding="utf-8") as log_fp:
+        log_fp.write("\n".join(lines) + "\n")
+
+    live = _wait_daemon_port_open(node, timeout_sec=30.0)
+    if live:
+        state = _set_daemon_state(
+            nid,
+            {"status": "RUNNING", "pid": 0, "last_error": "", "last_action": act, "log_path": log_path},
+        )
+        return {
+            "success": True,
+            "message": f"daemon {act} ok, port {port} listening",
+            "data": {"node_id": nid, "status": "RUNNING", "pid": 0, "state": state, "log_path": log_path},
+        }
+
+    state = _set_daemon_state(
+        nid,
+        {"status": "ERROR", "pid": 0, "last_error": f"port {port} not listening", "last_action": act, "log_path": log_path},
+    )
+    return {
+        "success": False,
+        "message": f"daemon {act} failed: port {port} not listening (请检查 MongoDB/Memurai 服务是否已安装并可启动)",
+        "data": {"node_id": nid, "status": "ERROR", "state": state, "log_path": log_path},
+    }
+
+
+def _wait_daemon_port_closed(node: Dict[str, Any], timeout_sec: float = 12.0) -> bool:
+    port = _daemon_node_port(node)
+    if port <= 0:
+        return True
+    proto = _daemon_probe_proto(node)
+    deadline = time.time() + max(1.0, float(timeout_sec))
+    while time.time() < deadline:
+        if not _probe_by_protocol("127.0.0.1", port, proto).get("ok"):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _kill_tracked_pid(pid: int) -> bool:
+    if pid <= 0 or not _is_process_running(pid):
+        return False
+    try:
+        if os.name == "nt":
+            proc = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+            return proc.returncode == 0
+        os.kill(pid, signal.SIGTERM)
+        return True
+    except Exception:
+        return False
+
+
+def _stop_external_daemon_node(node: Dict[str, Any], act: str = "stop") -> Dict[str, Any]:
+    """停止本机 Mongo/Redis 等守护节点：优先 stop_cmd，再杀残留 PID，以端口关闭为准。"""
+    nid = str(node.get("id") or "")
+    stop_cmd = str(node.get("daemon_stop_cmd") or "").strip()
+    state = _get_daemon_state(nid)
+    pid = int(state.get("pid") or 0) if str(state.get("pid") or "").strip().isdigit() else 0
+    log_path = _daemon_log_path(nid)
+    with open(log_path, "a", encoding="utf-8") as log_fp:
+        log_fp.write(f"[{_now_iso()}] daemon {act} stop pid={pid} cmd={stop_cmd}\n")
+
+    if stop_cmd:
+        subprocess.call(stop_cmd, shell=True)
+
+    _kill_tracked_pid(pid)
+
+    port = _daemon_node_port(node)
+    closed = _wait_daemon_port_closed(node, timeout_sec=12.0)
+    if not closed and stop_cmd:
+        subprocess.call(stop_cmd, shell=True)
+        closed = _wait_daemon_port_closed(node, timeout_sec=8.0)
+
+    if not closed and os.name == "nt":
+        role = str(node.get("role") or "").strip().lower()
+        kill_images: List[str] = []
+        if role in ("database", "mongo") or port == 27017:
+            kill_images = ["mongod.exe"]
+        elif role in ("cache", "redis") or port == 6379:
+            kill_images = ["memurai.exe", "redis-server.exe"]
+        for image in kill_images:
+            subprocess.run(
+                ["taskkill", "/F", "/IM", image],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            )
+        closed = _wait_daemon_port_closed(node, timeout_sec=8.0)
+
+    if closed or port <= 0:
+        state = _set_daemon_state(nid, {"status": "STOPPED", "pid": 0, "last_error": "", "last_action": act, "log_path": log_path})
+        return {
+            "success": True,
+            "message": "daemon stopped",
+            "data": {"node_id": nid, "status": "STOPPED", "pid": 0, "state": state, "log_path": log_path},
+        }
+
+    state = _set_daemon_state(
+        nid,
+        {"status": "ERROR", "pid": 0, "last_error": f"port {port} still listening", "last_action": act, "log_path": log_path},
+    )
+    return {
+        "success": False,
+        "message": f"daemon stop failed: port {port} still listening",
+        "data": {"node_id": nid, "status": "ERROR", "state": state, "log_path": log_path},
+    }
 
 
 def _update_canonical_service_runtime(service_id: str, **fields: Any) -> None:
@@ -10678,9 +12081,51 @@ def _update_canonical_service_runtime(service_id: str, **fields: Any) -> None:
         _save_agent_registry_v2(reg)
 
 
-def _fallback_local_control_metrics() -> Dict[str, Any]:
-    """psutil 不可用时的轻量采样（macOS/Linux）。"""
+def _windows_control_metrics() -> Dict[str, Any]:
     now = _now_iso()
+    if os.name != "nt":
+        return {"source": "runtime.sample", "updated_at": now}
+    try:
+        proc = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "$os = Get-CimInstance Win32_OperatingSystem; "
+                "$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; "
+                "$disk = Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\"; "
+                "$mem = if ($os.TotalVisibleMemorySize -gt 0) { "
+                "(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100 } else { 0 }; "
+                "$dsk = if ($disk -and $disk.Size -gt 0) { (($disk.Size - $disk.FreeSpace) / $disk.Size) * 100 } else { 0 }; "
+                "[pscustomobject]@{cpu=[double]$cpu; mem=[double]$mem; disk=[double]$dsk} | ConvertTo-Json -Compress",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        raw = (proc.stdout or "").strip()
+        if not raw:
+            return {"source": "runtime.sample", "updated_at": now}
+        payload = json.loads(raw)
+        return {
+            "cpu_percent": round(float(payload.get("cpu") or 0.0), 1),
+            "mem_percent": round(float(payload.get("mem") or 0.0), 1),
+            "disk_percent": round(float(payload.get("disk") or 0.0), 1),
+            "source": "runtime.sample",
+            "updated_at": now,
+        }
+    except Exception:
+        return {"source": "runtime.sample", "updated_at": now}
+
+
+def _fallback_local_control_metrics() -> Dict[str, Any]:
+    """psutil 不可用时的轻量采样。"""
+    now = _now_iso()
+    if os.name == "nt":
+        sample = _windows_control_metrics()
+        if any(sample.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent")):
+            return sample
     out: Dict[str, Any] = {"source": "runtime.sample", "updated_at": now}
     try:
         if sys.platform == "darwin":
@@ -10719,10 +12164,11 @@ def _sample_local_control_metrics() -> Dict[str, Any]:
             "updated_at": now,
         }
     except Exception:
-        sample = _fallback_local_control_metrics()
-        if any(sample.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent")):
-            return sample
-        return {"source": "runtime.sample", "updated_at": now}
+        pass
+    sample = _fallback_local_control_metrics()
+    if any(sample.get(k) is not None for k in ("cpu_percent", "mem_percent", "disk_percent")):
+        return sample
+    return {"source": "runtime.sample", "updated_at": now}
 
 
 def _inject_live_control_metrics(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -10753,19 +12199,21 @@ def _refresh_services_live_state(
     host: str = "127.0.0.1",
     project_id: str = "",
     cluster_status: Optional[Dict[str, str]] = None,
+    agent: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     sample = _sample_local_control_metrics()
     cs_map = cluster_status if isinstance(cluster_status, dict) else {}
     if not cs_map and project_id:
         try:
-            cs_map = _fetch_cluster_runtime_status(_agents_v2_for_project(project_id))
+            cs_map = _fetch_cluster_runtime_status_cached(_agents_v2_for_project(project_id))
         except Exception:
             cs_map = {}
     out: List[Dict[str, Any]] = []
     for raw in services or []:
         if not isinstance(raw, dict):
             continue
-        svc = _resolve_service_runtime_state(raw, host=host, cluster_status=cs_map)
+        svc_host = _resolve_agent_probe_host(agent, raw) if agent else host
+        svc = _resolve_service_runtime_state(raw, host=svc_host, cluster_status=cs_map, probe_timeout=0.35)
         metrics = svc.get("metrics") if isinstance(svc.get("metrics"), dict) else {}
         merged = dict(metrics)
         if str(svc.get("probe_status") or "").upper() == "PASS":
@@ -10797,13 +12245,39 @@ def _execute_canonical_service_action(
     if _is_external_daemon_node(node):
         result = _ops_platform_daemon_action(node, act, reason, ticket_id, operator)
         ok = bool(result.get("success"))
+        data = result.get("data") if isinstance(result.get("data"), dict) else {}
+        if not ok:
+            return {
+                "ok": False,
+                "message": str(result.get("message") or "daemon action failed"),
+                "data": data,
+                "mode": "daemon",
+            }
         if ok:
-            st = "RUNNING" if act in ("start", "restart", "status") else "STOPPED"
+            contract = _resolve_node_contract_for_topology_node(node if isinstance(node, dict) else {})
+            port = _resolve_topology_node_port(node if isinstance(node, dict) else {}, contract, None, None)
+            role = str(node.get("role") or contract.get("role") or "").strip().lower()
+            probe_proto = str(contract.get("probe_strategy") or "tcp").strip().lower()
+            if role in ("cache", "redis"):
+                probe_proto = "redis_ping"
+            elif role in ("database", "mongo"):
+                probe_proto = "mongo_ping"
             live = False
-            if st == "RUNNING":
-                contract = _resolve_node_contract_for_topology_node(node if isinstance(node, dict) else {})
-                port = _resolve_topology_node_port(node if isinstance(node, dict) else {}, contract, None, None)
-                live = _probe_tcp_open("127.0.0.1", port) if port > 0 else False
+            if port > 0:
+                for attempt in range(24 if act in ("start", "restart") else 1):
+                    probe = _probe_by_protocol("127.0.0.1", port, probe_proto)
+                    live = bool(probe.get("ok"))
+                    if live or act not in ("start", "restart"):
+                        break
+                    time.sleep(0.5)
+            if act == "stop":
+                st = "STOPPED"
+            elif live:
+                st = "RUNNING"
+            elif act in ("start", "restart"):
+                st = "STARTING"
+            else:
+                st = "STOPPED"
             _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="PASS" if live else "FAIL")
         return {"ok": ok, "message": str(result.get("message") or ""), "data": result.get("data") or {}, "mode": "daemon"}
 
@@ -10817,6 +12291,74 @@ def _execute_canonical_service_action(
             "message": f"已读取 GameServer 日志（{log_payload.get('total', 0)} 条）",
             "data": log_payload,
             "mode": "direct-local",
+        }
+
+    if _is_gameserver_process_service_id(service_id) and act in ("start", "stop", "restart"):
+        _reconcile_gameserver_daemon_state(service_id)
+        port = _gameserver_service_port(service_id, node)
+        if act == "restart":
+            stop_res = _stop_gameserver_service(service_id, node)
+            if not stop_res.get("success"):
+                return {
+                    "ok": False,
+                    "message": str(stop_res.get("message") or "restart stop failed"),
+                    "data": {},
+                    "mode": "direct-local-process",
+                }
+            act = "start"
+        if act == "stop":
+            stop_res = _stop_gameserver_service(service_id, node)
+            ok = bool(stop_res.get("success"))
+            metrics = _sample_local_control_metrics()
+            if ok:
+                _apply_service_runtime_after_action(service_id, status="STOPPED", live=False, metrics=metrics)
+            else:
+                _update_canonical_service_runtime(
+                    service_id,
+                    status="ERROR",
+                    run_state="ERROR",
+                    probe_status="FAIL",
+                    last_action="stop",
+                    metrics=metrics,
+                )
+            canonical = _load_agent_registry_v2().get(CANONICAL_LOCAL_AGENT_ID)
+            if isinstance(canonical, dict):
+                _append_realtime_agent_sample(canonical)
+            return {
+                "ok": ok,
+                "message": str(stop_res.get("message") or ("已停止" if ok else "停止失败")),
+                "data": {"service_id": service_id, "port": port, "status": "STOPPED" if ok else "ERROR", "last_action": "stop"},
+                "mode": "direct-local-process",
+            }
+        launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
+        ok = bool(launch.get("success"))
+        live = bool((launch.get("data") or {}).get("live")) or _gameserver_service_live(service_id, node)
+        metrics = _sample_local_control_metrics()
+        if ok:
+            st = "RUNNING" if live else "STARTING"
+            _apply_service_runtime_after_action(service_id, status=st, live=live, metrics=metrics)
+            _update_canonical_service_runtime(service_id, last_action="start")
+        else:
+            _update_canonical_service_runtime(
+                service_id,
+                status="ERROR",
+                run_state="ERROR",
+                probe_status="FAIL",
+                last_action="start",
+                metrics=metrics,
+            )
+        canonical = _load_agent_registry_v2().get(CANONICAL_LOCAL_AGENT_ID)
+        if isinstance(canonical, dict):
+            _append_realtime_agent_sample(canonical)
+        return {
+            "ok": ok,
+            "message": str(launch.get("message") or ("启动成功" if ok else "启动失败")),
+            "data": {
+                **(launch.get("data") if isinstance(launch.get("data"), dict) else {}),
+                "status": "RUNNING" if ok and live else ("STARTING" if ok else "ERROR"),
+                "last_action": "start",
+            },
+            "mode": "direct-local-process",
         }
 
     ops_node = _resolve_ops_dispatch_node(project_id, "ops-cn-1") or node
@@ -10833,45 +12375,48 @@ def _execute_canonical_service_action(
     )
     ok = bool(result.get("success"))
 
-    if not ok and act == "start":
-        launch = _launch_local_game_server(reason)
+    if not ok and act == "start" and _is_gameserver_process_service_id(service_id):
+        launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
         if launch.get("success"):
-            port = int(node.get("port") or node.get("remote_game_server_port") or 0)
-            if port > 0 and _probe_tcp_open("127.0.0.1", port):
-                ok = True
-                result = {"success": True, "message": "服务已在运行", "data": launch.get("data") or {}}
-            else:
-                ok = True
-                result = {
-                    "success": True,
-                    "message": str(launch.get("message") or "GameServer 启动脚本已在后台执行"),
-                    "data": dict(launch.get("data") or {}, starting=True),
-                }
+            live = bool((launch.get("data") or {}).get("live")) or _gameserver_service_live(service_id, node)
+            ok = True
+            result = {
+                "success": True,
+                "message": str(launch.get("message") or ("服务已在运行" if live else "服务启动中")),
+                "data": dict(launch.get("data") or {}, starting=not live),
+            }
         else:
             result = launch
 
-    if not ok and act in ("stop", "restart"):
-        stop_res = _stop_local_game_server()
+    if not ok and act in ("stop", "restart") and _is_gameserver_process_service_id(service_id):
+        stop_res = _stop_gameserver_service(service_id, node)
         if stop_res.get("success"):
             ok = act == "stop"
             result = stop_res
             if act == "restart":
-                launch = _launch_local_game_server(reason)
+                launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
                 ok = bool(launch.get("success"))
                 result = launch
+        else:
+            result = stop_res
+
+    if not ok and act == "stop":
+        port = int(node.get("port") or node.get("remote_game_server_port") or 0)
+        if port > 0:
+            time.sleep(1.2)
+            if not _probe_tcp_open("127.0.0.1", port):
+                ok = True
+                result = {"success": True, "message": "服务端口已释放", "data": {"status": "STOPPED"}}
 
     if ok:
-        port = int(node.get("port") or node.get("remote_game_server_port") or 0)
-        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else bool((result.get("data") or {}).get("starting"))
+        live = _gameserver_service_live(service_id, node) if _is_gameserver_process_service_id(service_id) else (
+            _probe_tcp_open("127.0.0.1", int(node.get("port") or node.get("remote_game_server_port") or 0))
+            if int(node.get("port") or node.get("remote_game_server_port") or 0) > 0
+            else bool((result.get("data") or {}).get("starting"))
+        )
         st = "STARTING" if (result.get("data") or {}).get("starting") else ("RUNNING" if act != "stop" and live else ("STOPPED" if act == "stop" else "RUNNING"))
         metrics = _sample_local_control_metrics()
-        _update_canonical_service_runtime(
-            service_id,
-            status=st,
-            run_state=st,
-            probe_status="PASS" if live and st == "RUNNING" else "",
-            metrics=metrics,
-        )
+        _apply_service_runtime_after_action(service_id, status=st, live=live, metrics=metrics)
         canonical = _load_agent_registry_v2().get(CANONICAL_LOCAL_AGENT_ID)
         if isinstance(canonical, dict):
             _append_realtime_agent_sample(canonical)
@@ -10917,41 +12462,51 @@ def _ops_platform_daemon_action(node: Dict[str, Any], action: str, reason: str, 
         return result
 
     if act == "status":
-        running = _is_process_running(pid) if pid > 0 else False
-        now_status = "RUNNING" if running else str(state.get("status") or "ADDED")
-        if pid > 0 and not running and now_status == "RUNNING":
+        port = int(node.get("daemon_port") or (node.get("ui") or {}).get("remote", {}).get("port") or 0)
+        probe_role = str(node.get("role") or role or "").strip().lower()
+        proto = "redis_ping" if probe_role in ("cache", "redis") else "mongo_ping"
+        port_live = bool(_probe_by_protocol("127.0.0.1", port, proto).get("ok")) if port > 0 else False
+        proc_live = _is_process_running(pid) if pid > 0 else False
+        if port_live:
+            now_status = "RUNNING"
+            state = _set_daemon_state(nid, {"status": now_status, "last_error": "", "last_action": "status", "pid": pid if proc_live else 0})
+        elif proc_live:
+            now_status = "RUNNING"
+        elif pid > 0:
             now_status = "CRASHED"
             state = _set_daemon_state(nid, {"status": now_status, "last_error": "process not alive", "pid": 0, "last_action": "status"})
+        else:
+            now_status = str(state.get("status") or "ADDED")
         return {"success": True, "message": "daemon status (local fallback)", "data": {"node_id": nid, "status": now_status, "pid": pid, "state": state}}
 
-    if start_cmd and act in ("start", "restart"):
-        if act == "restart":
-            try:
-                if pid > 0 and _is_process_running(pid):
-                    os.kill(pid, signal.SIGTERM)
-            except Exception:
-                pass
-        proc = subprocess.Popen(start_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        state = _set_daemon_state(nid, {"status": "RUNNING", "pid": int(proc.pid), "last_error": "", "last_action": act})
-        return {"success": True, "message": f"daemon {act} via local cmd", "data": {"node_id": nid, "status": "RUNNING", "pid": proc.pid, "state": state}}
+    port = int(node.get("daemon_port") or (node.get("ui") or {}).get("remote", {}).get("port") or 0)
+    if act in ("start", "restart") and port > 0:
+        role = str(node.get("role") or "").strip().lower()
+        proto = "redis_ping" if role in ("cache", "redis") else "mongo_ping"
+        if _probe_by_protocol("127.0.0.1", port, proto).get("ok"):
+            log_path = _daemon_log_path(nid)
+            with open(log_path, "a", encoding="utf-8") as log_fp:
+                log_fp.write(f"[{_now_iso()}] daemon {act} skipped: port {port} already listening\n")
+            state = _set_daemon_state(nid, {"status": "RUNNING", "pid": pid or 0, "last_error": "", "last_action": act, "log_path": log_path})
+            return {
+                "success": True,
+                "message": f"daemon already running on port {port}",
+                "data": {"node_id": nid, "status": "RUNNING", "pid": pid, "state": state, "log_path": log_path},
+            }
 
-    if act in ("stop", "restart"):
-        stopped = False
-        if pid > 0 and _is_process_running(pid):
-            try:
-                os.kill(pid, signal.SIGTERM)
-                stopped = True
-            except Exception as ex:
-                _set_daemon_state(nid, {"status": "ERROR", "last_error": str(ex), "last_action": act})
-                return {"success": False, "message": f"daemon stop failed: {ex}", "data": {"node_id": nid}}
-        elif stop_cmd:
-            code = subprocess.call(stop_cmd, shell=True)
-            stopped = code == 0
-        if stopped:
-            state = _set_daemon_state(nid, {"status": "STOPPED", "pid": 0, "last_error": "", "last_action": act})
-            if act == "restart" and server_id:
-                pass
-            return {"success": True, "message": "daemon stopped", "data": {"node_id": nid, "status": "STOPPED", "state": state}}
+    if act == "restart":
+        stop_res = _stop_external_daemon_node(node, "restart")
+        if not stop_res.get("success"):
+            return stop_res
+        act = "start"
+        state = _get_daemon_state(nid)
+        pid = 0
+
+    if act in ("start", "restart") and (local_daemon or start_cmd):
+        return _start_external_daemon_node(node, act)
+
+    if act == "stop":
+        return _stop_external_daemon_node(node, "stop")
 
     return {"success": False, "message": "no daemon control profile configured for this node", "data": {"node_id": nid, "role": role}}
 
@@ -11885,11 +13440,6 @@ def _runtime_orchestrate_start_worker(
         _runtime_run_patch(run_id, items=items, status="failed")
         return
 
-    game_launched = False
-    launch: Dict[str, Any] = {}
-    gateway_live = False
-    ops_live = False
-
     for seq, nid in enumerate(ordered_ids, start=1):
         topo_node = id_to_node.get(nid)
         if not isinstance(topo_node, dict):
@@ -11920,46 +13470,20 @@ def _runtime_orchestrate_start_worker(
                 ok = wait_ok
                 detail = wait_msg if wait_ok else (detail + "; " + wait_msg)
         else:
-            if not game_launched:
-                _runtime_orchestrator_log(run_id, "cluster", "info", f"Step {seq}/{total}: 启动 GameServer 进程（含 gateway/auth/game/ops）")
-                launch = _launch_local_game_server(reason, wait_ready=True, timeout_sec=180)
-                game_launched = bool(launch.get("success"))
-                gateway_live = bool((launch.get("data") or {}).get("gateway_live")) or _probe_tcp_open("127.0.0.1", 15050)
-                ops_live = bool((launch.get("data") or {}).get("ops_live")) or _probe_tcp_open("127.0.0.1", 5504)
-                detail = str(launch.get("message") or "")
-                if not game_launched:
-                    ok = False
-                else:
-                    wait_ok, wait_msg = _wait_topology_node_live(
-                        pid,
-                        env,
-                        tid,
-                        topo_node,
-                        timeout_sec=25.0,
-                        gateway_live=gateway_live,
-                        ops_live=ops_live,
-                    )
-                    ok = wait_ok
-                    detail = wait_msg
-            else:
-                wait_ok, wait_msg = _wait_topology_node_live(
-                    pid,
-                    env,
-                    tid,
-                    topo_node,
-                    timeout_sec=20.0,
-                    gateway_live=gateway_live,
-                    ops_live=ops_live,
-                )
+            service_id = str((service_bindings or {}).get(nid) or nid).strip()
+            _runtime_orchestrator_log(run_id, "cluster", "info", f"Step {seq}/{total}: 启动独立进程 {service_id}")
+            launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
+            ok = bool(launch.get("success"))
+            detail = str(launch.get("message") or "")
+            if ok:
+                wait_ok, wait_msg = _wait_topology_node_live(pid, env, tid, topo_node, timeout_sec=25.0)
                 ok = wait_ok
-                detail = wait_msg
+                detail = wait_msg if wait_ok else (detail + "; " + wait_msg)
 
         if ok:
             _runtime_orchestrator_set_item(items, nid, "SUCCESS", step=seq, step_total=total)
             _runtime_orchestrator_log(run_id, nid, "info", f"Step {seq}/{total}: 节点 {nid} 启动成功 — {detail}")
             _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
-            gateway_live = _probe_tcp_open("127.0.0.1", 15050)
-            ops_live = _probe_tcp_open("127.0.0.1", 5504)
         else:
             _runtime_orchestrator_set_item(items, nid, "FAILED", step=seq, step_total=total, detail=detail)
             _runtime_orchestrator_log(run_id, nid, "error", f"Step {seq}/{total}: 节点 {nid} 启动失败 — {detail}")
@@ -11974,16 +13498,14 @@ def _runtime_orchestrate_start_worker(
 
     probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
     gateway_live = bool(probe_stat.get("gateway_live"))
-    game_ok = bool(game_launched and gateway_live and fail == 0)
-    if fail == 0 and not game_ok:
-        fail = 1
+    game_ok = bool(fail == 0 and gateway_live)
     _consolidate_runtime_agents_to_canonical(pid)
     final_status = "success" if fail == 0 else "failed"
     _runtime_orchestrator_log(
         run_id,
         "cluster",
         "info" if fail == 0 else "error",
-        f"启动编排结束: status={final_status}, game_ok={game_ok}, live={probe_stat.get('live_count')}/{probe_stat.get('total')}, failed={fail}",
+        f"启动编排结束: status={final_status}, gateway_live={gateway_live}, live={probe_stat.get('live_count')}/{probe_stat.get('total')}, failed={fail}",
     )
     _runtime_run_patch(run_id, items=items, status=final_status)
 
@@ -12056,8 +13578,6 @@ def _runtime_orchestrate_stop_worker(
         _runtime_run_patch(run_id, items=items)
     total = len(ordered_ids)
     fail = 0
-    game_stopped = False
-
     for seq, nid in enumerate(ordered_ids, start=1):
         topo_node = id_to_node.get(nid)
         if not isinstance(topo_node, dict):
@@ -12088,18 +13608,16 @@ def _runtime_orchestrate_stop_worker(
                 st = "STOPPED" if ok else "FAILED"
                 _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="FAIL")
         else:
-            if not game_stopped:
-                gs_stop = _stop_local_game_server()
-                game_stopped = True
-                detail = str(gs_stop.get("message") or "GameServer stop signal sent")
-                time.sleep(1.2)
+            stop_res = _stop_gameserver_service(service_id, node)
+            ok = bool(stop_res.get("success"))
+            detail = str(stop_res.get("message") or "")
             if port > 0:
                 down_ok, down_msg = _wait_topology_node_down(port, timeout_sec=12.0)
-                ok = down_ok
-                detail = down_msg
-            else:
-                ok = not _probe_tcp_open("127.0.0.1", 15050)
-                detail = f"gateway:15050={'DOWN' if ok else 'UP'}"
+                ok = ok and down_ok
+                detail = detail + "; " + down_msg
+            if service_id:
+                st = "STOPPED" if ok else "FAILED"
+                _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="FAIL")
 
         if ok:
             _runtime_orchestrator_set_item(items, nid, "SUCCESS", step=seq, step_total=total)
@@ -12227,39 +13745,30 @@ def _runtime_cluster_start_all(
             }
         )
 
-    launch = _launch_local_game_server(reason, wait_ready=True, timeout_sec=180)
-    game_launched = bool(launch.get("success"))
-    game_launch_msg = str(launch.get("message") or "")
-    logs.append(
-        {
-            "ts": _now_iso(),
-            "level": "info" if game_launched else "error",
-            "node_id": "cluster",
-            "message": game_launch_msg or ("GameServer 已就绪" if game_launched else "GameServer 启动失败"),
-        }
-    )
-
-    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
-    gateway_live = bool(probe_stat.get("gateway_live"))
     for nid in app_ids:
         topo_node = id_to_node.get(nid)
         if not isinstance(topo_node, dict):
             continue
+        node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
+        service_id = str((service_bindings or {}).get(nid) or nid).strip()
         contract = _resolve_node_contract_for_topology_node(topo_node)
         port = _resolve_topology_node_port(topo_node, contract, None, None)
-        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else gateway_live
-        if not live:
-            live = gateway_live
-        ok = game_launched and live
+        launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
+        ok = bool(launch.get("success"))
+        live = bool((launch.get("data") or {}).get("live")) or _gameserver_service_live(service_id, node)
+        ok = ok and live
         items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "direct"})
         logs.append(
             {
                 "ts": _now_iso(),
                 "level": "info" if ok else "error",
                 "node_id": nid,
-                "message": f"{'live' if live else 'down'} port={port or '-'}; gateway={gateway_live}",
+                "message": str(launch.get("message") or (f"{'live' if live else 'down'} port={port or '-'}")),
             }
         )
+
+    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    gateway_live = bool(probe_stat.get("gateway_live"))
 
     for nid in daemon_ids:
         if any(str(x.get("node_id") or "") == nid and str(x.get("status") or "").upper() == "FAILED" for x in items if isinstance(x, dict)):
@@ -12276,10 +13785,8 @@ def _runtime_cluster_start_all(
 
     _consolidate_runtime_agents_to_canonical(pid)
     item_fail = len([x for x in items if isinstance(x, dict) and str(x.get("status") or "").upper() != "SUCCESS"])
-    game_ok = bool(game_launched and gateway_live and bool((launch.get("data") or {}).get("gateway_live")))
+    game_ok = bool(gateway_live and item_fail == 0)
     fail = item_fail
-    if not game_ok:
-        fail = max(fail, 1)
     logs.append(
         {
             "ts": _now_iso(),
@@ -13083,11 +14590,14 @@ def ops_platform_agent_jobs():
 def ops_platform_agent_detail():
     if not _allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
+    _ensure_probe_bg_started()
     project_id = str(request.args.get("project_id") or "").strip()
     agent_id = str(request.args.get("agent_id") or "").strip()
+    include = str(request.args.get("include") or "all").strip()
+    force_live = str(request.args.get("live") or "").strip().lower() in ("1", "true", "yes")
     if not agent_id:
         return jsonify({"ok": False, "error": "missing_agent_id"}), 400
-    detail = _build_agent_detail(project_id, agent_id)
+    detail = _build_agent_detail(project_id, agent_id, include=include, force_live=force_live)
     if not detail:
         return jsonify({"ok": False, "error": "agent_not_found"}), 404
     return jsonify({"ok": True, **detail})

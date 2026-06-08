@@ -140,7 +140,7 @@ def _get(base: str, path: str, cookie: str = "") -> Dict[str, Any]:
 
 def login(base: str, username: str = "", password: str = "") -> Tuple[bool, str]:
     username = (username or os.getenv("OPS_USERNAME") or "admin").strip()
-    password = (password or os.getenv("OPS_PASSWORD") or "123456").strip()
+    password = (password or os.getenv("OPS_PASSWORD") or "admin123").strip()
     s = requests.Session()
     r = s.get(f"{base}/login", timeout=10)
     if "登录次数过多" in (r.text or ""):

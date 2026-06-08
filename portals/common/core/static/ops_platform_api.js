@@ -213,10 +213,13 @@
     if (limit) q.push('limit=' + encodeURIComponent(limit));
     return api.getJSON('/api/ops-platform/agent/jobs' + (q.length ? ('?' + q.join('&')) : ''));
   };
-  api.agentDetail = (projectId, agentId) => {
+  api.agentDetail = (projectId, agentId, options) => {
+    const opts = options && typeof options === 'object' ? options : {};
     const q = [];
     if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
     if (agentId) q.push('agent_id=' + encodeURIComponent(agentId));
+    if (opts.include) q.push('include=' + encodeURIComponent(String(opts.include)));
+    if (opts.live) q.push('live=1');
     return api.getJSON('/api/ops-platform/agent/detail' + (q.length ? ('?' + q.join('&')) : ''));
   };
   api.agentAudit = (projectId, agentId, limit) => {

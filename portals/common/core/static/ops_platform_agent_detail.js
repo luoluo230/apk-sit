@@ -32,6 +32,18 @@
       hideLifecycle: true,
       mode: "logs",
     },
+    loadedSections: new Set(["overview", "services"]),
+    tabLoading: false,
+  };
+
+  const TAB_INCLUDE_MAP = {
+    metrics: "metrics",
+    jobs: "jobs",
+    events: "events",
+    audit: "audits",
+    config: "config",
+    device: "node",
+    logs: "events",
   };
 
   const nodes = {
@@ -137,12 +149,32 @@
 
     if (kind === "service" || kind === "agent") {
       const probe = String((item && item.probe_status) || "").toUpperCase();
-      if (probe === "FAIL") return { tone: "offline", text: "已停止" };
-      if (probe === "PASS" && ["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) {
+      const runState = String((item && item.run_state) || status || "").trim().toUpperCase();
+      const lastAction = String((item && item.last_action) || "").trim().toLowerCase();
+      if (runState === "STARTING" || status === "STARTING") {
+        return { tone: "info", text: "启动中" };
+      }
+      if (runState === "STOPPING" || status === "STOPPING") {
+        return { tone: "info", text: "停止中" };
+      }
+      if (["ERROR", "FAILED"].includes(runState) || ["ERROR", "FAILED"].includes(status)) {
+        if (lastAction === "stop") {
+          return { tone: "offline", text: "停止失败" };
+        }
+        return { tone: "offline", text: "启动失败" };
+      }
+      if (["STOPPED", "OFFLINE"].includes(runState) || ["STOPPED", "OFFLINE"].includes(status)) {
+        return { tone: "offline", text: "已停止" };
+      }
+      if (probe === "PASS" || ["ONLINE", "READY", "RUNNING", "SUCCESS", "PASS", "HEALTHY"].includes(status)) {
         return { tone: "ok", text: "运行中" };
       }
-      if (["OFFLINE", "STOPPED"].includes(status)) return { tone: "offline", text: "已停止" };
-      if (["ONLINE", "READY", "RUNNING", "SUCCESS"].includes(status)) return { tone: "warn", text: "未知" };
+      if (probe === "FAIL") {
+        return { tone: "warn", text: "探活失败" };
+      }
+      if (["ONLINE", "READY", "RUNNING", "SUCCESS"].includes(status)) {
+        return { tone: "warn", text: "未知" };
+      }
       return { tone: "info", text: "未知" };
     }
 
@@ -169,6 +201,25 @@
     if (status === "OFFLINE") return "agent-state-pill--offline";
     if (status === "WARN") return "agent-state-pill--warn";
     return "agent-state-pill--info";
+  }
+
+  function formatLogTime(value, raw) {
+    const sources = [String(value || "").trim(), String(raw || "").trim()];
+    for (let i = 0; i < sources.length; i += 1) {
+      const text = sources[i];
+      if (!text) continue;
+      const match = text.match(/(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+      if (!match) continue;
+      let iso = match[1].replace(" ", "T");
+      if (!/Z|[+-]\d{2}:?\d{2}$/.test(iso)) {
+        iso += "Z";
+      }
+      const ms = Date.parse(iso);
+      if (Number.isFinite(ms)) {
+        return formatDate(iso);
+      }
+    }
+    return String(value || "").trim();
   }
 
   function formatDate(value) {
@@ -418,17 +469,36 @@
       "</div>";
   }
 
+  function serviceIsBusy(service) {
+    const runState = String((service && service.run_state) || (service && service.status) || "").trim().toUpperCase();
+    return runState === "STARTING" || runState === "STOPPING";
+  }
+
+  function patchServiceRow(serviceId, patch) {
+    if (!state.detail || !Array.isArray(state.detail.services) || !serviceId) return;
+    state.detail.services = state.detail.services.map(function (row) {
+      if (String(row.service_id || "") !== String(serviceId)) return row;
+      const next = Object.assign({}, row, patch || {});
+      next.updated_at = new Date().toISOString();
+      return next;
+    });
+    renderAll({ skipFocusScroll: true });
+  }
+
   function serviceActionButtons(service) {
+    const runState = String(service.run_state || service.status || "").trim().toUpperCase();
     const status = statusMeta(service.status || service.run_state, "service", service).tone;
+    const busy = serviceIsBusy(service);
     const serviceId = String(service.service_id || "");
+    const disabledAttr = busy ? ' disabled aria-disabled="true"' : "";
     const buttons = [
       '<button class="agent-table-action agent-table-action--view" type="button" data-service-action="status" data-service-id="' + esc(serviceId) + '">查看状态</button>',
     ];
-    if (status === "ok") {
-      buttons.push('<button class="agent-table-action agent-table-action--stop" type="button" data-service-action="stop" data-service-id="' + esc(serviceId) + '">停止</button>');
-      buttons.push('<button class="agent-table-action agent-table-action--restart" type="button" data-service-action="restart" data-service-id="' + esc(serviceId) + '">重启</button>');
-    } else {
-      buttons.push('<button class="agent-table-action agent-table-action--start" type="button" data-service-action="start" data-service-id="' + esc(serviceId) + '">启动</button>');
+    if (status === "ok" && !busy) {
+      buttons.push('<button class="agent-table-action agent-table-action--stop" type="button" data-service-action="stop" data-service-id="' + esc(serviceId) + '"' + disabledAttr + '>停止</button>');
+      buttons.push('<button class="agent-table-action agent-table-action--restart" type="button" data-service-action="restart" data-service-id="' + esc(serviceId) + '"' + disabledAttr + '>重启</button>');
+    } else if (!busy && runState !== "STARTING" && runState !== "STOPPING" && status !== "ok") {
+      buttons.push('<button class="agent-table-action agent-table-action--start" type="button" data-service-action="start" data-service-id="' + esc(serviceId) + '"' + disabledAttr + '>启动</button>');
     }
     buttons.push('<button class="agent-table-action agent-table-action--edit" type="button" data-service-action="edit" data-service-id="' + esc(serviceId) + '">编辑</button>');
     buttons.push('<button class="agent-table-action agent-table-action--neutral" type="button" data-service-action="logs" data-service-id="' + esc(serviceId) + '">查看日志</button>');
@@ -766,8 +836,7 @@
       "</div>";
   }
 
-  function renderAll(options) {
-    const skipFocusScroll = !!(options && options.skipFocusScroll);
+  function renderHeader() {
     const detail = state.detail || {};
     const agent = detail.agent || {};
     const status = agentStatus();
@@ -783,31 +852,93 @@
       "最近心跳: " + relativeTime(agent.last_seen),
       "安装时间: " + formatDate(agent.created_at || agent.updated_at || agent.last_seen),
     ].join("  |  ");
+  }
 
+  function renderTabPanel(tab) {
+    const panel = document.getElementById("tab-" + tab);
+    if (!panel) return;
+    if (tab === "overview") panel.innerHTML = overviewMarkup();
+    else if (tab === "device") panel.innerHTML = deviceMarkup();
+    else if (tab === "services") panel.innerHTML = serviceConsole("服务与进程");
+    else if (tab === "metrics") panel.innerHTML = metricsMarkup();
+    else if (tab === "jobs") panel.innerHTML = jobsMarkup();
+    else if (tab === "logs") panel.innerHTML = logsMarkup();
+    else if (tab === "config") panel.innerHTML = configMarkup();
+    else if (tab === "events") panel.innerHTML = eventsMarkup();
+    else if (tab === "audit") panel.innerHTML = auditMarkup();
+  }
+
+  function renderStatusRefresh() {
     applyServiceFocusSelection();
-    document.getElementById("tab-overview").innerHTML = overviewMarkup();
-    document.getElementById("tab-device").innerHTML = deviceMarkup();
-    document.getElementById("tab-services").innerHTML = serviceConsole("服务与进程");
-    document.getElementById("tab-metrics").innerHTML = metricsMarkup();
-    document.getElementById("tab-jobs").innerHTML = jobsMarkup();
-    document.getElementById("tab-logs").innerHTML = logsMarkup();
-    document.getElementById("tab-config").innerHTML = configMarkup();
-    document.getElementById("tab-events").innerHTML = eventsMarkup();
-    document.getElementById("tab-audit").innerHTML = auditMarkup();
-
+    renderHeader();
+    renderTabPanel("overview");
+    renderTabPanel("services");
+    if (state.activeTab !== "overview" && state.activeTab !== "services") {
+      renderTabPanel(state.activeTab);
+    }
     bindDynamic();
-    switchTab(state.activeTab);
+    switchTab(state.activeTab, { skipLazyLoad: true });
+  }
+
+  function renderAll(options) {
+    const skipFocusScroll = !!(options && options.skipFocusScroll);
+    const tabs = ["overview", "device", "services", "metrics", "jobs", "logs", "config", "events", "audit"];
+    applyServiceFocusSelection();
+    renderHeader();
+    tabs.forEach(function (tab) {
+      renderTabPanel(tab);
+    });
+    bindDynamic();
+    switchTab(state.activeTab, { skipLazyLoad: true });
     if (!skipFocusScroll) scrollFocusedServiceRowIntoView();
   }
 
-  function switchTab(tab) {
-    state.activeTab = tab;
+  function mergeDetailResponse(response, include) {
+    if (!response) return;
+    const mode = String(include || "all");
+    if (!state.detail || mode === "all") {
+      state.detail = response;
+      return;
+    }
+    const next = Object.assign({}, state.detail);
+    ["agent", "services", "service_summary", "overview", "actions", "member_agent_ids", "member_node_ids", "meta", "node", "metrics_history"].forEach(function (key) {
+      if (response[key] !== undefined) next[key] = response[key];
+    });
+    ["jobs", "events", "traces", "audits", "config"].forEach(function (key) {
+      if (response[key] !== undefined) next[key] = response[key];
+    });
+    state.detail = next;
+  }
+
+  async function ensureTabData(tab) {
+    const extra = TAB_INCLUDE_MAP[tab];
+    if (!extra || state.loadedSections.has(tab) || state.tabLoading) return;
+    state.tabLoading = true;
+    try {
+      const response = await window.OpsApi.agentDetail(state.projectId, state.agentId, { include: "core," + extra });
+      if (response && response.ok) {
+        mergeDetailResponse(response, "core," + extra);
+        state.loadedSections.add(tab);
+        renderTabPanel(tab);
+        bindDynamic();
+      }
+    } finally {
+      state.tabLoading = false;
+    }
+  }
+
+  function switchTab(tab, options) {
+    const nextTab = String(tab || "overview");
+    state.activeTab = nextTab;
     nodes.tabs.forEach(function (node) {
-      node.classList.toggle("is-active", node.dataset.tab === tab);
+      node.classList.toggle("is-active", node.dataset.tab === nextTab);
     });
     nodes.panels.forEach(function (panel) {
-      panel.classList.toggle("is-active", panel.id === "tab-" + tab);
+      panel.classList.toggle("is-active", panel.id === "tab-" + nextTab);
     });
+    if (!(options && options.skipLazyLoad)) {
+      ensureTabData(nextTab);
+    }
   }
 
   function fillEdit() {
@@ -901,7 +1032,7 @@
     }
     nodes.logLines.innerHTML = lines.map(function (row) {
       const level = String(row.level || "info");
-      const time = esc(row.time || "");
+      const time = esc(formatLogTime(row.time, row.raw || row.message || ""));
       const category = esc(row.category || "");
       const message = esc(row.message || row.raw || "");
       return '<div class="agent-log-line agent-log-line--' + esc(level) + '">' +
@@ -918,7 +1049,9 @@
     const counts = payload.counts || {};
     const sources = Array.isArray(payload.sources) ? payload.sources.join(", ") : "--";
     const filters = payload.filters || {};
-    const sessionAt = payload.session_started_at ? (" | 当前启动 " + payload.session_started_at) : "";
+    const sessionAt = payload.session_started_at
+      ? (" | 当前启动 " + formatLogTime(payload.session_started_at, payload.session_started_at))
+      : "";
     const filterNote = (filters.current_session_only ? " | 仅当前启动" : "") + (filters.hide_lifecycle ? " | 隐藏注销/重载" : "");
     nodes.logStats.textContent =
       "来源: " + sources +
@@ -977,6 +1110,21 @@
     }, 2500);
   }
 
+  function isDaemonInfraService(service) {
+    const sid = String((service && service.service_id) || "").trim().toLowerCase();
+    const stype = String((service && (service.service_type || service.type)) || "").trim().toLowerCase();
+    return sid === "mongo-db-cn-1" || sid === "redis-cache-cn-1" || stype === "database" || stype === "cache";
+  }
+
+  function gameserverProcessIds() {
+    return ["gateway-cn-1", "auth-cn-1", "game-cn-1", "ops-cn-1"];
+  }
+
+  function isGameserverProcessService(service) {
+    const sid = String((service && service.service_id) || "").trim().toLowerCase();
+    return gameserverProcessIds().indexOf(sid) >= 0;
+  }
+
   async function openLiveLogModal(service) {
     state.logViewer.mode = "logs";
     const toolbar = document.querySelector(".agent-log-toolbar");
@@ -987,11 +1135,21 @@
     state.logViewer.query = nodes.logSearch ? String(nodes.logSearch.value || "").trim() : "";
     state.logViewer.sinceOffset = 0;
     state.logViewer.autoRefresh = !!(nodes.logAutoRefresh && nodes.logAutoRefresh.checked);
+    const daemonInfra = isDaemonInfraService(service);
+    const gameserverProcess = isGameserverProcessService(service);
+    if (nodes.logCurrentSession) {
+      nodes.logCurrentSession.checked = gameserverProcess ? true : (daemonInfra ? false : true);
+    }
+    if (nodes.logHideLifecycle) nodes.logHideLifecycle.checked = (daemonInfra || gameserverProcess) ? false : true;
     state.logViewer.currentSession = !!(nodes.logCurrentSession && nodes.logCurrentSession.checked);
     state.logViewer.hideLifecycle = !!(nodes.logHideLifecycle && nodes.logHideLifecycle.checked);
 
     nodes.logTitle.textContent = "服务日志: " + state.logViewer.serviceName;
-    nodes.logSub.textContent = "默认仅显示当前进程启动后的日志，并隐藏注销/重载噪声。";
+    nodes.logSub.textContent = daemonInfra
+      ? "Mongo/Redis 显示守护进程操作日志。勾选「仅当前启动」时从最近一次启动/跳过记录起显示；若服务已在运行，再次点启动会追加一条 skipped 记录。"
+      : (gameserverProcess
+        ? "每个服务独立进程；默认仅显示本次启动日志（读取该服务实例目录）。取消勾选可查看完整历史。"
+        : "默认仅显示当前进程启动后的日志，并隐藏注销/重载噪声。");
     if (nodes.logContent) nodes.logContent.classList.add("is-hidden");
     if (nodes.logLines) nodes.logLines.classList.remove("is-hidden");
     nodes.logModal.classList.remove("is-hidden");
@@ -1129,14 +1287,26 @@
   }
 
   async function runServiceAction(service, action) {
+    const serviceId = String(service.service_id || "");
     const response = await window.OpsApi.serviceAction({
       project_id: state.projectId,
-      service_id: String(service.service_id || ""),
+      service_id: serviceId,
       agent_id: String(service.agent_id || primaryMemberAgentId()),
-      node_id: String(service.node_id || ""),
+      node_id: String(service.node_id || serviceId || ""),
       action: action,
     });
-    if (!ensureOk(response, "服务操作失败")) return null;
+    if (response && (response.error_code === "OPS_AUTH_REQUIRED" || response.error === "auth_redirect")) {
+      window.location.href = "/login";
+      return null;
+    }
+    if (action === "status") {
+      if (!ensureOk(response, "服务操作失败")) return null;
+      return response;
+    }
+    if (!response) {
+      flash("请求失败", "error");
+      return null;
+    }
     return response;
   }
 
@@ -1175,10 +1345,50 @@
       actionLabel(action) + "服务器",
       "确认" + actionLabel(action) + "服务 " + (service.display_name || service.service_id || "") + " 吗？",
       async function () {
+        const sid = String(service.service_id || "");
+        const pendingState = action === "stop" ? "STOPPING" : "STARTING";
+        patchServiceRow(sid, {
+          status: pendingState,
+          run_state: pendingState,
+          last_action: action,
+          probe_status: "",
+        });
         const response = await runServiceAction(service, action);
-        if (!response) return;
-        flash(actionLabel(action) + "请求已提交", "success");
-        await load();
+        if (!response) {
+          await load();
+          return;
+        }
+        const data = response.data && typeof response.data === "object" ? response.data : {};
+        const nested = data.state && typeof data.state === "object" ? data.state : {};
+        let st = String(
+          data.status || nested.status || data.run_state || nested.run_state || ""
+        ).toUpperCase();
+        const lastAction = String(data.last_action || action || "").toLowerCase();
+        if (!response.ok) {
+          st = "ERROR";
+          if (/已在运行|already_running/i.test(String(response.message || ""))) {
+            st = "RUNNING";
+          } else if (/启动正在进行中/i.test(String(response.message || ""))) {
+            st = "STARTING";
+          }
+        } else if (!st) {
+          st = action === "stop" ? "STOPPED" : "RUNNING";
+        }
+        const probePass = st === "RUNNING" || (response.ok && st === "STARTING");
+        patchServiceRow(sid, {
+          status: st,
+          run_state: st,
+          last_action: lastAction,
+          probe_status: probePass ? "PASS" : (st === "STOPPED" || st === "ERROR" ? "FAIL" : ""),
+        });
+        flash(
+          String(response.message || (actionLabel(action) + (response.ok ? "完成" : "失败"))),
+          response.ok ? "success" : "error"
+        );
+        if (action === "start" || action === "restart") {
+          await new Promise(function (resolve) { window.setTimeout(resolve, 800); });
+        }
+        await load({ include: "all", live: true });
       }
     );
   }
@@ -1252,12 +1462,15 @@
 
   async function load(options) {
     const silent = !!(options && options.silent);
+    const partial = !!(options && options.partial);
+    const include = String((options && options.include) || (silent ? "core" : "all"));
+    const live = !!(options && options.live);
     if (state.loading && silent) {
       return;
     }
     state.loading = true;
     try {
-      const response = await window.OpsApi.agentDetail(state.projectId, state.agentId);
+      const response = await window.OpsApi.agentDetail(state.projectId, state.agentId, { include: include, live: live });
       if (response && (response.error_code === "OPS_AUTH_REQUIRED" || response.error === "auth_redirect")) {
         window.location.href = "/login";
         return;
@@ -1269,10 +1482,18 @@
         }
         return;
       }
-      state.detail = response;
+      mergeDetailResponse(response, include);
       nodes.loading.classList.add("is-hidden");
-      renderAll();
-      fillEdit();
+      if (silent && include === "core" && !partial) {
+        renderStatusRefresh();
+      } else if (partial) {
+        renderTabPanel(state.activeTab);
+        bindDynamic();
+      } else {
+        state.loadedSections = new Set(["overview", "services", "metrics", "jobs", "events", "audit", "config", "device", "logs"]);
+        renderAll();
+        fillEdit();
+      }
     } finally {
       state.loading = false;
     }
@@ -1325,7 +1546,7 @@
     };
     document.getElementById("detailMoreRefresh").onclick = async function () {
       toggleMoreMenu(false);
-      await load();
+      await load({ include: "all", live: true });
       flash("详情已刷新", "success");
     };
 
@@ -1420,7 +1641,7 @@
       state.refreshTimer = null;
     }
   });
-  load().catch(function (error) {
+  load({ include: "all", live: true }).catch(function (error) {
     console.error("[agent-detail] init failed", error);
     flash("Agent 详情初始化失败", "error");
     nodes.loading.classList.add("is-hidden");

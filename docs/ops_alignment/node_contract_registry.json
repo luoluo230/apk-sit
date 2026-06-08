@@ -1,6 +1,18 @@
 {
   "version": "1",
   "env_profiles": {
+    "local_windows": {
+      "redis_cache": {
+        "StartCommand": "powershell -NoProfile -Command \"$up=$false; try{{$c=New-Object Net.Sockets.TcpClient;$c.Connect('127.0.0.1',{port});$up=$true;$c.Close()}}catch{{}}; if(-not $up){{$s=Get-Service Memurai,MemuraiDeveloper,Redis -EA SilentlyContinue|?{{$_.Status -eq 'Stopped'}}|Select -First 1; if($s){{Start-Service $s.Name -EA SilentlyContinue}}}}\"",
+        "StopCommand": "powershell -NoProfile -Command \"$s = Get-Service -Name 'Memurai','MemuraiDeveloper','Redis' -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Running' } | Select-Object -First 1; if ($s) { Stop-Service $s.Name -Force }\"",
+        "HealthCheckCommand": "memurai-cli -p {port} ping"
+      },
+      "mongo_db": {
+        "StartCommand": "powershell -NoProfile -Command \"$db='C:\\\\data\\\\gomeku-mongo'; New-Item -ItemType Directory -Force -Path $db|Out-Null; $up=$false; try{{$c=New-Object Net.Sockets.TcpClient;$c.Connect('127.0.0.1',{port});$up=$true;$c.Close()}}catch{{}}; if(-not $up){{$s=Get-Service MongoDB -EA SilentlyContinue; if($s -and $s.Status -eq 'Stopped'){{Start-Service MongoDB -EA SilentlyContinue}} else {{$md=(Get-ChildItem 'C:\\\\Program Files\\\\MongoDB\\\\Server\\\\*\\\\bin\\\\mongod.exe' -EA SilentlyContinue|Select-Object -First 1).FullName; if($md){{Start-Process $md -ArgumentList @('--dbpath',$db,'--port','{port}','--bind_ip','127.0.0.1') -WindowStyle Hidden}}}}}}\"",
+        "StopCommand": "powershell -NoProfile -Command \"$s = Get-Service -Name 'MongoDB' -ErrorAction SilentlyContinue; if ($s -and $s.Status -eq 'Running') { Stop-Service MongoDB -Force } else { Get-Process mongod -ErrorAction SilentlyContinue | Stop-Process -Force }\"",
+        "HealthCheckCommand": "powershell -NoProfile -Command \"Test-NetConnection -ComputerName 127.0.0.1 -Port {port} -WarningAction SilentlyContinue | Select-Object -ExpandProperty TcpTestSucceeded\""
+      }
+    },
     "local_macos": {
       "redis_cache": {
         "StartCommand": "redis-server --port {port}",
