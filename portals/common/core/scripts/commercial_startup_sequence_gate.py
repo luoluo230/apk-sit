@@ -130,7 +130,7 @@ def main() -> int:
         indent=2,
     ))
     print("\n=== ALL WEB GATES PASSED ===")
-    print("Unity T4–T7: run unity_client_hotupdate_runner (scenario=smoke|basic)")
+    print("Unity T4–T7: run unity_client_hotupdate_runner (scenario=smoke|basic|session)")
     return 0
 
 

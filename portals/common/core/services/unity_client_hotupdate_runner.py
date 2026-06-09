@@ -50,6 +50,9 @@ def run_unity_client_startup_acceptance(
     use_unified_bootstrap: bool | None = None,
     game_id: str | None = None,
     game_key: str | None = None,
+    username: str | None = None,
+    password: str | None = None,
+    server_id: str | None = None,
 ) -> dict[str, Any]:
     project = Path(unity_project).resolve()
     if not (project / "Assets").is_dir():
@@ -99,6 +102,12 @@ def run_unity_client_startup_acceptance(
         args.extend(["-clientAcceptanceGameId", game_id])
     if game_key:
         args.extend(["-clientAcceptanceGameKey", game_key])
+    if username:
+        args.extend(["-clientAcceptanceUsername", username])
+    if password:
+        args.extend(["-clientAcceptancePassword", password])
+    if server_id:
+        args.extend(["-clientAcceptanceServerId", server_id])
 
     import time
 
@@ -111,6 +120,13 @@ def run_unity_client_startup_acceptance(
         child_env["CLIENT_ACCEPTANCE_GAME_KEY"] = game_key
     if scenario:
         child_env["CLIENT_ACCEPTANCE_SCENARIO"] = scenario
+    child_env["CLIENT_ACCEPTANCE_TIMEOUT_SEC"] = str(timeout_sec)
+    if username:
+        child_env["CLIENT_ACCEPTANCE_USERNAME"] = username
+    if password:
+        child_env["CLIENT_ACCEPTANCE_PASSWORD"] = password
+    if server_id:
+        child_env["CLIENT_ACCEPTANCE_SERVER_ID"] = server_id
 
     proc = subprocess.Popen(
         args,
@@ -118,7 +134,8 @@ def run_unity_client_startup_acceptance(
         stderr=subprocess.DEVNULL,
         env=child_env,
     )
-    deadline = time.time() + timeout_sec + 90
+    runner_buffer = 120 if scenario == "session" else 90
+    deadline = time.time() + timeout_sec + runner_buffer
     combined = ""
     while time.time() < deadline:
         if report_path.is_file():
@@ -158,6 +175,9 @@ def run_unity_client_startup_acceptance(
         "tier": report.get("Tier") or report.get("tier") or ("entered_login" if passed else "failed"),
         "summary": report.get("Summary") or report.get("summary") or _extract_failure_summary(combined),
         "final_state": report.get("FinalState") or report.get("finalState"),
+        "player_id": report.get("PlayerId") or report.get("playerId"),
+        "server_id": report.get("ServerId") or report.get("serverId"),
+        "profile_fetched": report.get("ProfileFetched") or report.get("profileFetched"),
         "catalog_url": report.get("CatalogUrl") or report.get("catalogUrl"),
         "report_path": str(report_path),
         "unity_log_tail": combined[-4000:],
