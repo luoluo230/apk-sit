@@ -2,8 +2,8 @@
   {
     "project_id": "GomeKu",
     "project_slug": "gomeku",
-    "game_id": "gomeku-game-id",
-    "game_key": "gomeku-game-key",
+    "game_id": "gomeku-fb64779f94b161d0",
+    "game_key": "zpf2zNQPoVfiqWjRCSpt70Rx9x4wjTWf",
     "client_repo": "maclient",
     "game_server_repo": "game-server",
     "cluster_sync_target": "game-server/config/cluster.json",

@@ -690,6 +690,70 @@ public static ApplyResult Apply(NetworkProfileDto profile, NetworkApplyOptions o
 
 实现 BootstrapContract 即可：HTTP bootstrap → 热更路径 → `network_profile.gateway_ws` → 缓存 `active_bundle_id`。
 
+### 10.9 商业手游标准冷启动时序（T0–T7）
+
+国内成熟商业手游（渠道包 + OSS 热更 + 网关登录）的 **玩家侧单次冷启动** 规范顺序如下。运营侧发版顺序见 §11。
+
+#### 玩家侧时序
+
+| 阶段 | 行为 | 本仓库入口 | 验收要点 |
+|------|------|------------|----------|
+| **T0** | App 启动，读 APK `version_name`、渠道参数 | `HotUpdateConfig.asset` | 包体版本非空 |
+| **T1** | 解析 **ReleaseScope** `(project, env_key, channel_id)` | manifest + `normalize_release_env_key` | 与 GM 发版 scope 一致 |
+| **T2** | 一次 HTTP 拉配置 | `GET /api/public/runtime-bootstrap` | paths + network + bundle + 门禁字段 |
+| **T3** | 门禁（强更/吊销/灰度）+ `NetworkProfileInjector` | bootstrap 响应 + `NetworkProfileInjector.cs` | gateway 注入成功 |
+| **T4** | OSS 热更 catalog → config → code | `StartupUpdateOrchestrator.cs` | 三阶段完成 |
+| **T5** | Gateway WebSocket 登录 | `LoginState` + `gateway_ws` | 连上 `:15050`（Development 示例） |
+| **T6** | **GameShard 选服**（登录后） | `ResolveServerSelectionStage` | **不决定**热更 catalog 版本 |
+| **T7** | 进游戏逻辑服 | GameState | 主循环 |
+
+```mermaid
+sequenceDiagram
+  participant App as Client
+  participant Web as apk_site
+  participant OSS as OSS_CDN
+  participant GW as Gateway
+
+  App->>App: T0_T1_scope
+  App->>Web: T2_runtime_bootstrap
+  Web-->>App: paths_network_gates
+  alt T3_force_update_or_revoked
+    App->>App: block_or_store
+  else continue
+    App->>App: T3_inject_gateway
+    App->>OSS: T4_hot_update
+    App->>GW: T5_login
+    App->>App: T6_shard_select
+    App->>App: T7_enter_game
+  end
+```
+
+#### 术语表（避免混用）
+
+| 术语 | 含义 | 决定热更版本？ |
+|------|------|----------------|
+| **ReleaseScope** | 环境 + 渠道，如 `gomeku:development:1001` | **是** |
+| **GameShard** | 登录后选服（一区、新服） | **否** |
+| **ReleaseBundle** | 一次 GM Publish 锁定的 client+server 快照 | 绑定 active 版本 |
+| **network_profile** | gateway/login/game 地址（来自 Ops 拓扑） | 否（只决定连哪） |
+
+#### 运营侧发版时序（单次）
+
+```text
+Jenkins Step1–3 → OSS 上传
+→ Ops 拓扑保存/sync
+→ GM precheck → POST /api/gm-ops/release/publish → ReleaseBundle + active_bundle_id
+→ 客户端下次 T2 bootstrap 自动对齐
+```
+
+#### 阶段验收命令
+
+```bash
+python portals/common/core/scripts/release_platform_ci_gate.py --scope-id gomeku:development:1001
+python portals/common/core/scripts/verify_e2e_release.py
+python portals/common/core/scripts/commercial_startup_sequence_gate.py
+```
+
 ---
 
 ## 11. 端到端闭环与对账

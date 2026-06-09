@@ -28,9 +28,10 @@ from services.authz import admin_required, can_access_module, has_scope
 from services.game_ops_client import GameOpsClient
 from services.release.bundle_service import create_bundle_from_publish, find_active_bundle, rollback_bundle, run_scope_precheck
 from services.release.env_registry import env_key_to_gm_env, normalize_release_env_key
-from services.release.manifest_service import resolve_channel_id
+from services.release.scope_ids import resolve_channel_id
 from services.release.release_context import release_matches_env, resolve_release_context
 from services.release.scope_resolver import resolve_scope_by_inputs
+from services.release.storage import find_manifest
 
 bp = Blueprint("gm_ops", __name__)
 _client = GameOpsClient()
@@ -226,6 +227,121 @@ def _find_best_release(project_id: str, env: str, channel: str, platform: str, v
     return candidates[0]
 
 
+def _parse_version_tuple(version_text: str) -> Tuple[int, ...]:
+    text = (version_text or "").strip()
+    if not text:
+        return (0,)
+    parts: List[int] = []
+    for segment in text.replace("-", ".").split("."):
+        segment = segment.strip()
+        if not segment:
+            continue
+        digits = "".join(ch for ch in segment if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts) if parts else (0,)
+
+
+def _version_less_than(left: str, right: str) -> bool:
+    return _parse_version_tuple(left) < _parse_version_tuple(right)
+
+
+def _bootstrap_gate_fields(release: Dict[str, Any], client_version_name: str = "") -> Dict[str, Any]:
+    version_name = str(release.get("version_name") or "").strip()
+    min_client = str(release.get("min_client_version") or version_name).strip()
+    max_client = str(release.get("max_client_version") or version_name).strip()
+    rollout_raw = release.get("rollout_percentage")
+    if rollout_raw is None:
+        rollout_raw = 100
+    try:
+        rollout_percentage = float(rollout_raw)
+    except (TypeError, ValueError):
+        rollout_percentage = 100.0
+    is_revoked = bool(release.get("is_revoked") or release.get("version_status") == "revoked")
+    apk_url = str(release.get("apk_url") or release.get("apk_path") or "").strip()
+    force_update = bool(release.get("force_update"))
+    client_v = (client_version_name or "").strip()
+    if not force_update and apk_url and client_v and min_client:
+        force_update = _version_less_than(client_v, min_client)
+    return {
+        "min_client_version": min_client,
+        "max_client_version": max_client,
+        "rollout_percentage": rollout_percentage,
+        "is_revoked": is_revoked,
+        "force_update": force_update,
+        "apk_path": apk_url,
+    }
+
+
+def _execute_release_publish(
+    resolved: str,
+    release: Dict[str, Any],
+    *,
+    env: str,
+    channel: str,
+    approved_ref: Optional[Dict[str, Any]] = None,
+    trace_id: str = "",
+    published_by: str = "",
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """GM 发布唯一写 Bundle 路径：precheck 由调用方保证或在此前执行。"""
+    scope = resolve_scope_by_inputs(resolved, env, channel)
+    precheck = run_scope_precheck(scope, release)
+    if not precheck.get("ok"):
+        raise ValueError(json.dumps({"error": "precheck failed", "precheck": precheck}, ensure_ascii=False))
+
+    bundle = create_bundle_from_publish(scope, release, published_by=published_by or _current_user())
+    release = dict(release)
+    release["publish_status"] = "published"
+    release["active_bundle_id"] = bundle.get("bundle_id")
+    release["approval_id"] = str((approved_ref or {}).get("id") or release.get("approval_id") or "")
+    release["publish_trace_id"] = trace_id or uuid.uuid4().hex[:16]
+    release["updated_at"] = datetime.now().isoformat()
+    release["updated_by"] = published_by or _current_user()
+
+    versions = project_versions_db.get(resolved) or []
+    for i, item in enumerate(versions):
+        if str(item.get("id") or "") == str(release.get("id") or ""):
+            versions[i] = release
+            break
+    project_versions_db[resolved] = versions
+    save_project_versions()
+    return release, bundle
+
+
+def _execute_release_rollback(
+    resolved: str,
+    release: Dict[str, Any],
+    *,
+    env: str,
+    channel: str,
+    bundle_id: str = "",
+    trace_id: str = "",
+    rolled_by: str = "",
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    scope = resolve_scope_by_inputs(resolved, env, channel)
+    target_bundle_id = str(bundle_id or release.get("active_bundle_id") or "").strip()
+    bundle: Dict[str, Any] = {}
+    if target_bundle_id:
+        bundle = rollback_bundle(str(scope.get("scope_id") or ""), target_bundle_id, rolled_by=rolled_by or _current_user()) or {}
+        if bundle:
+            release = dict(release)
+            release["active_bundle_id"] = bundle.get("bundle_id")
+
+    release = dict(release)
+    release["publish_status"] = "rolled_back"
+    release["rollback_trace_id"] = trace_id or uuid.uuid4().hex[:16]
+    release["updated_at"] = datetime.now().isoformat()
+    release["updated_by"] = rolled_by or _current_user()
+
+    versions = project_versions_db.get(resolved) or []
+    for i, item in enumerate(versions):
+        if str(item.get("id") or "") == str(release.get("id") or ""):
+            versions[i] = release
+            break
+    project_versions_db[resolved] = versions
+    save_project_versions()
+    return release, bundle
+
+
 def _build_public_release_payload(
     project_id: str,
     release: Dict[str, Any],
@@ -342,21 +458,18 @@ def _apply_local_release_state(action_type: str, action_payload: Dict[str, Any],
     if not release:
         return
     if action_type == "release_publish":
-        release["publish_status"] = "published"
-        release["approval_id"] = str((approved_ref or {}).get("id") or "")
-        release["publish_trace_id"] = uuid.uuid4().hex[:16]
+        try:
+            _execute_release_publish(
+                resolved,
+                release,
+                env=env,
+                channel=channel,
+                approved_ref=approved_ref,
+            )
+        except ValueError:
+            return
     elif action_type == "release_rollback":
-        release["publish_status"] = "rolled_back"
-        release["rollback_trace_id"] = uuid.uuid4().hex[:16]
-    release["updated_at"] = datetime.now().isoformat()
-    release["updated_by"] = _current_user()
-    versions = project_versions_db.get(resolved) or []
-    for i, item in enumerate(versions):
-        if str(item.get("id") or "") == str(release.get("id") or ""):
-            versions[i] = release
-            break
-    project_versions_db[resolved] = versions
-    save_project_versions()
+        _execute_release_rollback(resolved, release, env=env, channel=channel)
 
 
 def _get_project_credentials(project_id: str) -> Dict[str, Any]:
@@ -380,7 +493,13 @@ def _project_envs_and_channels(project_id: str) -> Dict[str, List[str]]:
     if not envs:
         envs = ["dev", "test", "staging", "prod"]
     if not channels:
-        channels = [str(c).strip() for c in ((projects_db.get(project_id) or {}).get("channels") or []) if str(c).strip()]
+        manifest = find_manifest(project_id)
+        manifest_channels = manifest.get("channels") if isinstance(manifest, dict) else None
+        if isinstance(manifest_channels, list) and manifest_channels:
+            channels = sorted({str(mc.get("channel_id") or "").strip() for mc in manifest_channels
+                               if isinstance(mc, dict) and str(mc.get("channel_id") or "").strip()})
+        if not channels:
+            channels = [str(c).strip() for c in ((projects_db.get(project_id) or {}).get("channels") or []) if str(c).strip()]
     return {"envs": envs, "channels": channels}
 
 
@@ -688,6 +807,10 @@ def gm_ops_page():
       </div>
 
       <div class="gm-release-step-pane hidden" data-step="5">
+        <div class="gm-fieldset text-xs text-slate-600 mb-3">
+          <h4>术语（商业手游标准时序）</h4>
+          <p><strong>ReleaseScope</strong>（本页 env + channel）决定客户端 bootstrap 与热更版本；<strong>GameShard</strong> 是玩家登录后选服，不参与版本解析。发布执行请走「正式发布」接口以写入 ReleaseBundle。</p>
+        </div>
         <div class="gm-fieldset">
           <h4>执行链路状态</h4>
           <div id="releaseChainStatus" class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"></div>
@@ -1169,9 +1292,7 @@ async function releaseExecute(){
   setReleaseChainState('execute','pending');
   try{
     const base=currentReleasePayload();
-    const target=`${base.project_id}:${base.version_name}`;
-    const p={actionType:'release_publish',domain:'release',target:target,payload:base,approvalContext:{approved:true},operatorContext:{reason:'发布执行'}};
-    const r=await fetch('/api/gm-ops/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    const r=await fetch('/api/gm-ops/release/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(base)});
     const d=await r.json();
     setReleaseChainState('execute', d.ok===false ? 'fail' : 'success');
     updateResult(d);
@@ -1350,11 +1471,22 @@ def gm_projects_catalog():
         default_env = str(item.get("default_env") or (ec["envs"][0] if ec["envs"] else "dev")).strip() or "dev"
         default_channel = str(item.get("default_channel") or (ec["channels"][0] if ec["channels"] else "default")).strip() or "default"
         channel_options = []
-        for item_channel in get_channels_for_project(pid):
-            cid = str(item_channel.get("id") or "").strip()
-            cname = str(item_channel.get("name") or cid).strip()
-            if cid:
-                channel_options.append({"id": cid, "name": cname})
+        manifest = find_manifest(pid)
+        manifest_channels = manifest.get("channels") if isinstance(manifest, dict) else None
+        if isinstance(manifest_channels, list) and manifest_channels:
+            for mc in manifest_channels:
+                if not isinstance(mc, dict):
+                    continue
+                cid = str(mc.get("channel_id") or "").strip()
+                ckey = str(mc.get("channel_key") or "").strip()
+                if cid:
+                    channel_options.append({"id": cid, "name": ckey or cid})
+        else:
+            for item_channel in get_channels_for_project(pid):
+                cid = str(item_channel.get("id") or "").strip()
+                cname = str(item_channel.get("name") or cid).strip()
+                if cid:
+                    channel_options.append({"id": cid, "name": cname})
         rows.append(
             {
                 "project_id": pid,
@@ -1675,26 +1807,23 @@ def gm_release_publish():
     if not approved_ref:
         return jsonify({"ok": False, "error": "approval required", "message": "请先审批 version_publish。", "target_id": target_id}), 412
 
-    scope = resolve_scope_by_inputs(resolved, env, channel)
-    precheck = run_scope_precheck(scope, release)
-    if not precheck.get("ok"):
-        return jsonify({"ok": False, "error": "precheck failed", "precheck": precheck}), 412
-
-    bundle = create_bundle_from_publish(scope, release, published_by=_current_user())
-    release["publish_status"] = "published"
-    release["active_bundle_id"] = bundle.get("bundle_id")
-    release["approval_id"] = approved_ref.get("id") or ""
-    release["publish_trace_id"] = uuid.uuid4().hex[:16]
-    release["updated_at"] = datetime.now().isoformat()
-    release["updated_by"] = _current_user()
-
-    versions = project_versions_db.get(resolved) or []
-    for i, item in enumerate(versions):
-        if str(item.get("id") or "") == str(release.get("id") or ""):
-            versions[i] = release
-            break
-    project_versions_db[resolved] = versions
-    save_project_versions()
+    try:
+        release, bundle = _execute_release_publish(
+            resolved,
+            release,
+            env=env,
+            channel=channel,
+            approved_ref=approved_ref,
+            published_by=_current_user(),
+        )
+    except ValueError as exc:
+        try:
+            err_payload = json.loads(str(exc))
+        except json.JSONDecodeError:
+            err_payload = {"error": str(exc)}
+        if err_payload.get("precheck"):
+            return jsonify({"ok": False, **err_payload}), 412
+        return jsonify({"ok": False, **err_payload}), 400
 
     log_audit("gm_release_publish", f"project={resolved}; version={release.get('version_name')}; bundle={bundle.get('bundle_id')}; trace={release.get('publish_trace_id')}")
     return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle})
@@ -1721,26 +1850,14 @@ def gm_release_rollback():
     if not release:
         return jsonify({"ok": False, "error": "release not found"}), 404
 
-    scope = resolve_scope_by_inputs(resolved, env, channel)
-    target_bundle_id = str(payload.get("bundle_id") or release.get("active_bundle_id") or "").strip()
-    bundle = {}
-    if target_bundle_id:
-        bundle = rollback_bundle(str(scope.get("scope_id") or ""), target_bundle_id, rolled_by=_current_user())
-        if bundle:
-            release["active_bundle_id"] = bundle.get("bundle_id")
-
-    release["publish_status"] = "rolled_back"
-    release["rollback_trace_id"] = uuid.uuid4().hex[:16]
-    release["updated_at"] = datetime.now().isoformat()
-    release["updated_by"] = _current_user()
-
-    versions = project_versions_db.get(resolved) or []
-    for i, item in enumerate(versions):
-        if str(item.get("id") or "") == str(release.get("id") or ""):
-            versions[i] = release
-            break
-    project_versions_db[resolved] = versions
-    save_project_versions()
+    release, bundle = _execute_release_rollback(
+        resolved,
+        release,
+        env=env,
+        channel=channel,
+        bundle_id=str(payload.get("bundle_id") or ""),
+        rolled_by=_current_user(),
+    )
 
     log_audit("gm_release_rollback", f"project={resolved}; version={release.get('version_name')}; trace={release.get('rollback_trace_id')}")
     return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle})
@@ -2110,22 +2227,33 @@ def gm_ops_execute_action():
         release = _find_best_release(resolved, env, channel, platform, version_name, published_only=False)
         if not release:
             return jsonify({"ok": False, "error": "release not found"}), 404
-        if action_type == "release_publish":
-            release["publish_status"] = "published"
-            release["approval_id"] = str(((approved_ref or {}).get("id") or ((payload.get("approvalContext") or {}).get("approvalId") or "")).strip())
-            release["publish_trace_id"] = trace_id
-        else:
-            release["publish_status"] = "rolled_back"
-            release["rollback_trace_id"] = trace_id
-        release["updated_at"] = datetime.now().isoformat()
-        release["updated_by"] = _current_user()
-        versions = project_versions_db.get(resolved) or []
-        for i, item in enumerate(versions):
-            if str(item.get("id") or "") == str(release.get("id") or ""):
-                versions[i] = release
-                break
-        project_versions_db[resolved] = versions
-        save_project_versions()
+        try:
+            if action_type == "release_publish":
+                release, bundle = _execute_release_publish(
+                    resolved,
+                    release,
+                    env=env,
+                    channel=channel,
+                    approved_ref=approved_ref,
+                    trace_id=trace_id,
+                )
+            else:
+                release, bundle = _execute_release_rollback(
+                    resolved,
+                    release,
+                    env=env,
+                    channel=channel,
+                    trace_id=trace_id,
+                )
+        except ValueError as exc:
+            try:
+                err_payload = json.loads(str(exc))
+            except json.JSONDecodeError:
+                err_payload = {"error": str(exc)}
+            log_audit("gm_ops_action_execute", f"action={action_type}; domain={domain}; target={target}; trace={trace_id}; success=False; local=True")
+            status = 412 if err_payload.get("precheck") else 400
+            return jsonify({"ok": False, "traceId": trace_id, **err_payload}), status
+
         local_result = {
             "success": True,
             "status": 200,
@@ -2135,10 +2263,12 @@ def gm_ops_execute_action():
                 "release_id": release.get("id"),
                 "version_name": release.get("version_name"),
                 "publish_status": release.get("publish_status"),
+                "active_bundle_id": release.get("active_bundle_id"),
+                "bundle_id": bundle.get("bundle_id"),
             },
         }
         log_audit("gm_ops_action_execute", f"action={action_type}; domain={domain}; target={target}; trace={trace_id}; success=True; local=True")
-        return jsonify({"ok": True, "traceId": trace_id, "result": local_result})
+        return jsonify({"ok": True, "traceId": trace_id, "result": local_result, "bundle": bundle})
 
     request_model = {
         "actionType": action_type,
@@ -2264,6 +2394,7 @@ def gm_public_runtime_bootstrap():
     ctx = built["ctx"]
     paths = built["paths"]
     profile = built["profile"]
+    gate_fields = _bootstrap_gate_fields(release, version_name)
     return jsonify(
         {
             "ok": True,
@@ -2280,6 +2411,10 @@ def gm_public_runtime_bootstrap():
             "profile_source": ctx.get("profile_source"),
             "network_profile": profile,
             "server_snapshot": ctx.get("server_snapshot"),
+            "maintenance": {
+                "notice_url": str(profile.get("notice_url") or "").strip(),
+                "is_revoked": gate_fields.get("is_revoked"),
+            },
             "bootstrap": {
                 "version_name": release.get("version_name"),
                 "version_code": release.get("version_code"),
@@ -2302,6 +2437,12 @@ def gm_public_runtime_bootstrap():
                 "notes": release.get("notes"),
                 "publish_status": release.get("publish_status"),
                 "updated_at": release.get("updated_at"),
+                "min_client_version": gate_fields.get("min_client_version"),
+                "max_client_version": gate_fields.get("max_client_version"),
+                "rollout_percentage": gate_fields.get("rollout_percentage"),
+                "is_revoked": gate_fields.get("is_revoked"),
+                "force_update": gate_fields.get("force_update"),
+                "apk_path": gate_fields.get("apk_path"),
             },
         }
     )

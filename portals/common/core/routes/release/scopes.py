@@ -142,7 +142,39 @@ def release_manifest_upsert():
         saved = upsert_manifest(payload)
     except ValueError as ex:
         return jsonify({"ok": False, "error": str(ex)}), 400
-    return jsonify({"ok": True, "manifest": saved})
+
+    project_bootstrapped = False
+    pid = str(saved.get("project_id") or "").strip()
+    if pid and payload.get("bootstrap_project", False):
+        project_bootstrapped = _ensure_project_db_entry(pid, saved)
+
+    return jsonify({"ok": True, "manifest": saved, "project_bootstrapped": project_bootstrapped})
+
+
+def _ensure_project_db_entry(project_id: str, manifest: dict) -> bool:
+    from datetime import datetime
+    from models.data import projects_db, save_projects
+
+    if project_id in projects_db:
+        return False
+    channels = []
+    for mc in (manifest.get("channels") or []):
+        if isinstance(mc, dict) and str(mc.get("channel_id") or "").strip():
+            channels.append(str(mc["channel_id"]).strip())
+    projects_db[project_id] = {
+        "name": str(manifest.get("project_slug") or project_id),
+        "name_en": project_id,
+        "description": "",
+        "created_at": datetime.now().isoformat(),
+        "created_by": "release-onboarding",
+        "order": len(projects_db) + 1,
+        "status": "active",
+        "channels": channels,
+        "game_id": str(manifest.get("game_id") or "").strip(),
+        "game_key": str(manifest.get("game_key") or "").strip(),
+    }
+    save_projects()
+    return True
 
 
 @release_bp.route("/api/release/manifests/<project_id>/bootstrap-scopes", methods=["POST"])

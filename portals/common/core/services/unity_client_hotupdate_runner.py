@@ -12,6 +12,8 @@ from typing import Any
 
 
 DEFAULT_UNITY_CANDIDATES = (
+    r"C:\Program Files\Unity\Hub\Editor\6000.3.15f1\Editor\Unity.exe",
+    r"C:\Program Files\Unity\Hub\Editor\6000.3.8f1\Editor\Unity.exe",
     "/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity",
     os.path.expanduser("~/Applications/Unity/Hub/Editor/6000.3.8f1/Unity.app/Contents/MacOS/Unity"),
 )
@@ -42,9 +44,12 @@ def run_unity_client_startup_acceptance(
     version_code: str = "",
     platform: str = "Android",
     resource_server: str = "https://wlhotupdate1.oss-cn-beijing.aliyuncs.com/MyGame1",
-    scenario: str = "basic",
+    scenario: str = "smoke",
     timeout_sec: int = 45,
     unity_path: str | None = None,
+    use_unified_bootstrap: bool | None = None,
+    game_id: str | None = None,
+    game_key: str | None = None,
 ) -> dict[str, Any]:
     project = Path(unity_project).resolve()
     if not (project / "Assets").is_dir():
@@ -88,15 +93,37 @@ def run_unity_client_startup_acceptance(
         str(project / "Library/ClientAcceptance/unity-client-acceptance.log"),
     ]
 
+    if use_unified_bootstrap is not None:
+        args.extend(["-clientAcceptanceUseUnifiedBootstrap", "true" if use_unified_bootstrap else "false"])
+    if game_id:
+        args.extend(["-clientAcceptanceGameId", game_id])
+    if game_key:
+        args.extend(["-clientAcceptanceGameKey", game_key])
+
     import time
 
-    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    child_env = os.environ.copy()
+    if use_unified_bootstrap is not None:
+        child_env["CLIENT_ACCEPTANCE_USE_UNIFIED_BOOTSTRAP"] = "true" if use_unified_bootstrap else "false"
+    if game_id:
+        child_env["CLIENT_ACCEPTANCE_GAME_ID"] = game_id
+    if game_key:
+        child_env["CLIENT_ACCEPTANCE_GAME_KEY"] = game_key
+    if scenario:
+        child_env["CLIENT_ACCEPTANCE_SCENARIO"] = scenario
+
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=child_env,
+    )
     deadline = time.time() + timeout_sec + 90
     combined = ""
     while time.time() < deadline:
         if report_path.is_file():
             try:
-                report_probe = json.loads(report_path.read_text(encoding="utf-8"))
+                report_probe = json.loads(report_path.read_text(encoding="utf-8-sig"))
                 if report_probe.get("Passed") or report_probe.get("passed"):
                     break
             except Exception:
@@ -119,7 +146,7 @@ def run_unity_client_startup_acceptance(
     report: dict[str, Any] = {}
     if report_path.is_file():
         try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report = json.loads(report_path.read_text(encoding="utf-8-sig"))
         except Exception as exc:
             report = {"passed": False, "summary": f"报告解析失败: {exc}"}
 
@@ -139,6 +166,41 @@ def run_unity_client_startup_acceptance(
 
 def _force_kill_unity_for_project(project_path: str) -> None:
     """Unity batchmode 偶发 Exit 后仍挂起，清理占用工程锁的进程。"""
+    project_path = project_path.strip()
+    if os.name == "nt":
+        try:
+            out = subprocess.check_output(
+                [
+                    "wmic",
+                    "process",
+                    "where",
+                    "name='Unity.exe'",
+                    "get",
+                    "ProcessId,CommandLine",
+                    "/FORMAT:CSV",
+                ],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            return
+        for line in out.splitlines():
+            if project_path not in line:
+                continue
+            parts = [p.strip() for p in line.split(",") if p.strip()]
+            if not parts or not parts[-1].isdigit():
+                continue
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", parts[-1]],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except Exception:
+                pass
+        return
+
     try:
         import signal
 
@@ -146,7 +208,6 @@ def _force_kill_unity_for_project(project_path: str) -> None:
     except Exception:
         return
 
-    project_path = project_path.strip()
     for line in out.splitlines():
         if "Unity.app/Contents/MacOS/Unity" not in line or project_path not in line:
             continue

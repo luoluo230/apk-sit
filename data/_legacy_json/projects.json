@@ -25,6 +25,10 @@
     },
     "channels": [
       "1001"
-    ]
+    ],
+    "game_id": "gomeku-fb64779f94b161d0",
+    "game_key": "zpf2zNQPoVfiqWjRCSpt70Rx9x4wjTWf",
+    "game_key_updated_at": "2026-06-09T14:00:00+08:00",
+    "game_key_updated_by": "admin"
   }
 }

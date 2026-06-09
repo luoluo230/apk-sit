@@ -14,6 +14,7 @@ from services.commercial_release_plan import (
     build_runtime_resolve_paths,
     normalize_release_channel,
     normalize_release_environment,
+    normalize_release_platform,
 )
 from services.release.release_context import apply_scope_fields_to_version_row
 from services.release.env_registry import normalize_release_env_key, env_key_to_gm_env, stage_to_env_key
@@ -203,7 +204,7 @@ def _derive_runtime_paths(version_row: Dict[str, Any]) -> Dict[str, str]:
     version_code = str(version_row.get("version_code") or "").strip()
     release_env = normalize_release_environment("", stage_id)
     release_channel = normalize_release_channel(channel_raw)
-    release_platform = "ios" if platform_raw == "ios" else "android"
+    release_platform = normalize_release_platform(platform_raw)
     runtime_paths = build_runtime_resolve_paths(
         resource_server_url=str(version_row.get("resource_server_url") or ""),
         release_environment=release_env,

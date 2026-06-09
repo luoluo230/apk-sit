@@ -5,7 +5,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from services.commercial_release_plan import build_runtime_resolve_paths, normalize_release_channel, normalize_release_environment
+from services.commercial_release_plan import (
+    build_runtime_resolve_paths,
+    normalize_release_channel,
+    normalize_release_environment,
+    normalize_release_platform,
+)
 from services.release.bundle_service import find_active_bundle
 from services.release.env_registry import env_key_to_gm_env, env_key_to_jenkins_env, normalize_release_env_key
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
@@ -63,12 +68,12 @@ def resolve_release_context(
         release_env = env_key_to_jenkins_env(env_key)
         row_channel = normalize_release_channel(str(version_row.get("channel") or channel_id))
         platform_raw = str(version_row.get("platform") or "android").strip().lower()
-        platform_title = "iOS" if platform_raw == "ios" else "Android"
+        platform_segment = normalize_release_platform(platform_raw)
         runtime_paths = build_runtime_resolve_paths(
             resource_server_url=str(version_row.get("resource_server_url") or ""),
             release_environment=release_env,
             release_channel=row_channel,
-            release_platform=platform_title,
+            release_platform=platform_segment,
             release_version=str(version_row.get("version_name") or ""),
             version_code=str(version_row.get("version_code") or ""),
         )

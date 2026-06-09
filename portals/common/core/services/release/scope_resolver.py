@@ -82,8 +82,14 @@ def _load_topology_for_scope(scope: Dict[str, Any]) -> Dict[str, Any]:
     env_key = normalize_release_env_key(scope.get("env_key"))
     topology_id = resolve_topology_id(scope)
     loaded = _load_topology_scoped(project_id, env_key, topology_id)
-    topo = loaded.get("topology") if isinstance(loaded, dict) else loaded
-    return topo if isinstance(topo, dict) else {}
+    if not isinstance(loaded, dict):
+        return {}
+    nested = loaded.get("topology")
+    if isinstance(nested, dict) and nested.get("nodes"):
+        return nested
+    if loaded.get("nodes"):
+        return loaded
+    return {}
 
 
 def _load_legacy_gm_profiles() -> List[Dict[str, Any]]:
