@@ -15,6 +15,8 @@ from services.commercial_release_plan import (
     normalize_release_channel,
     normalize_release_environment,
 )
+from services.release.release_context import apply_scope_fields_to_version_row
+from services.release.env_registry import normalize_release_env_key, env_key_to_gm_env, stage_to_env_key
 
 VERSION_STAGES = [("dev", "开发"), ("test", "测试"), ("production", "线上")]
 VERSION_STATUSES = [("draft", "草稿"), ("testing", "测试中"), ("active", "有效"), ("disabled", "失效"), ("archived", "归档")]
@@ -177,6 +179,22 @@ def _validate_version_payload(platform, version):
     return None
 
 
+def _enrich_version_scope_fields(project_id: str, row: dict) -> dict:
+    enriched = apply_scope_fields_to_version_row(row, project_id)
+    env_key = normalize_release_env_key(enriched.get("env_key") or enriched.get("stage"))
+    enriched["env_key"] = env_key
+    enriched["env"] = env_key_to_gm_env(env_key)
+    if not str(enriched.get("scope_id") or "").strip():
+        from services.release.scope_ids import build_scope_id, project_slug
+
+        enriched["scope_id"] = build_scope_id(
+            project_slug(project_id),
+            env_key,
+            str(enriched.get("channel") or ""),
+        )
+    return enriched
+
+
 def _derive_runtime_paths(version_row: Dict[str, Any]) -> Dict[str, str]:
     stage_id = str(version_row.get("stage") or "dev").strip()
     channel_raw = str(version_row.get("channel") or "common").strip()
@@ -313,6 +331,7 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     v.update(_clean_version_platform_fields(data, platform))
     v.update(_resolve_runtime_compat_fields(data))
     v.update(_derive_runtime_paths(v))
+    v = _enrich_version_scope_fields(project_id, v)
     if not v.get("apk_path") and v.get("version_code"):
         try:
             from services.apk_artifact_service import default_version_apk_rel_path
@@ -403,6 +422,7 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
         update_payload["pipeline"] = _sync_pipeline_release_fields(pipeline)
     update_payload.update(_clean_version_platform_fields(data, platform, current_row))
     update_payload.update(_derive_runtime_paths(update_payload))
+    update_payload = _enrich_version_scope_fields(project_id, update_payload)
     if not (update_payload.get("apk_path") or "").strip() and (update_payload.get("version_code") or "").strip():
         try:
             from services.apk_artifact_service import default_version_apk_rel_path

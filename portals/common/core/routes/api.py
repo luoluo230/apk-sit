@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 from config import Config
 from services.authz import login_required
 from services.admin.version_domain import normalize_version_status
+from services.release.env_registry import normalize_release_env_key
 from models.data import (
     extract_package_info, download_stats, projects_db,
     users_db, project_versions_db, iter_package_files, detect_platform,
@@ -167,20 +168,27 @@ def resolve_runtime_version():
     include_status_raw = (request.args.get('include_status') or '').strip()
     version_code_exact = (request.args.get('version_code') or '').strip()
     device_id = (request.args.get('device_id') or '').strip()
+    scope_id_param = (request.args.get('scope_id') or '').strip()
+    env_key_param = (request.args.get('env_key') or '').strip()
     stage_param = (request.args.get('stage') or '').strip().lower()
     environment = (request.args.get('environment') or '').strip().lower()
     effective_stage = ''
+    effective_env_key = normalize_release_env_key(env_key_param) if env_key_param else ''
     if device_id:
         from services.test_device_service import resolve_stage_for_device
         effective_stage = resolve_stage_for_device(project_id, device_id) or ''
-    elif stage_param in ('dev', 'test', 'production'):
+    elif scope_id_param:
+        from services.release.storage import find_scope as _find_scope
+        scope_row = _find_scope(scope_id_param)
+        if scope_row:
+            effective_env_key = normalize_release_env_key(scope_row.get('env_key'))
+            effective_stage = {'development': 'dev', 'testing': 'test', 'staging': 'staging', 'production': 'production'}.get(effective_env_key, '')
+    elif stage_param in ('dev', 'test', 'production', 'staging'):
         effective_stage = stage_param
-    elif environment in ('development', 'dev'):
-        effective_stage = 'dev'
-    elif environment in ('testing', 'test'):
-        effective_stage = 'test'
-    elif environment in ('production', 'prod', 'online'):
-        effective_stage = 'production'
+        effective_env_key = normalize_release_env_key(stage_param)
+    elif environment:
+        effective_env_key = normalize_release_env_key(environment)
+        effective_stage = {'development': 'dev', 'testing': 'test', 'staging': 'staging', 'production': 'production'}.get(effective_env_key, '')
     include_statuses = set()
     if include_status_raw:
         for item in include_status_raw.split(','):
@@ -219,6 +227,8 @@ def resolve_runtime_version():
             continue
         if effective_stage and str(row.get('stage') or 'dev').strip() != effective_stage:
             continue
+        if effective_env_key and normalize_release_env_key(row.get('env_key') or row.get('stage')) != effective_env_key:
+            continue
         candidates.append(row)
 
     if not candidates:
@@ -244,6 +254,10 @@ def resolve_runtime_version():
         normalize_release_channel,
         DEFAULT_RESOURCE_SERVER,
     )
+    from services.release.release_context import resolve_release_context
+
+    row_env_key = normalize_release_env_key(selected.get('env_key') or selected.get('stage') or effective_env_key or 'development')
+    release_ctx = resolve_release_context(project_id, row_env_key, str(selected.get('channel') or channel or ''), version_row=selected)
 
     row_channel = normalize_release_channel(str(selected.get('channel') or channel or 'common'))
     row_platform_raw = str(selected.get('platform') or platform or 'android')
@@ -312,6 +326,10 @@ def resolve_runtime_version():
             'resource_server_url': resource_base,
             'apk_path': selected.get('apk_path') or '',
             'updated_at': selected.get('updated_at') or '',
+            'scope_id': release_ctx.get('scope_id') or selected.get('scope_id') or '',
+            'env_key': row_env_key,
+            'channel_id': str(selected.get('channel') or ''),
+            'active_bundle_id': release_ctx.get('active_bundle_id') or selected.get('active_bundle_id') or '',
             'version_record': dict(selected),
         },
         'meta': {
@@ -323,6 +341,8 @@ def resolve_runtime_version():
                 'version_code': version_code_exact,
                 'device_id': device_id,
                 'effective_stage': effective_stage,
+                'effective_env_key': effective_env_key or row_env_key,
+                'scope_id': scope_id_param,
             },
         },
     })

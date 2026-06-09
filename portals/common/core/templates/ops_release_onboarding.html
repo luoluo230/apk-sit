@@ -1,0 +1,67 @@
+<div class="space-y-6 p-5">
+  <header>
+    <h1 class="text-xl font-semibold text-slate-800">统一发版平台 · 七步 Onboarding</h1>
+    <p class="text-sm text-slate-500 mt-1">注册 Manifest → 生成 Scope → 拓扑 → 发布 → 客户端 Bootstrap</p>
+  </header>
+
+  <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-sm font-semibold text-slate-700 mb-3">1. 项目 Manifest</h2>
+    <form id="manifestForm" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+      <label class="block">project_id<input id="projectId" class="mt-1 w-full rounded-lg border px-3 py-2" value="GomeKu"></label>
+      <label class="block">game_id<input id="gameId" class="mt-1 w-full rounded-lg border px-3 py-2"></label>
+      <label class="block">game_key<input id="gameKey" class="mt-1 w-full rounded-lg border px-3 py-2"></label>
+      <label class="block">oss_project_root<input id="ossRoot" class="mt-1 w-full rounded-lg border px-3 py-2" value="MyGame1"></label>
+      <label class="block md:col-span-2">channels JSON<textarea id="channelsJson" class="mt-1 w-full rounded-lg border px-3 py-2 h-24">[{"channel_id":"1001","channel_key":"wechat","platforms":["android","ios"]}]</textarea></label>
+    </form>
+    <div class="flex flex-wrap gap-2 mt-4">
+      <button type="button" id="btnUpsert" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm">保存 Manifest</button>
+      <button type="button" id="btnBootstrapScopes" class="px-4 py-2 rounded-lg border border-slate-200 text-sm">生成 Scope (4×N)</button>
+    </div>
+    <pre id="manifestResult" class="mt-3 text-xs bg-slate-50 border rounded-lg p-3 overflow-auto max-h-48">就绪</pre>
+  </section>
+
+  <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-sm font-semibold text-slate-700 mb-3">Checklist 状态</h2>
+    <ol id="checklist" class="space-y-2 text-sm text-slate-600 list-decimal list-inside"></ol>
+  </section>
+</div>
+<script>
+(function(){
+  var steps=[
+    '注册 ProjectReleaseManifest',
+    'bootstrap-scopes 生成 ReleaseScope',
+    'Ops 拓扑 topology-{slug}-{env}-default',
+    'GM Publish 产生 ReleaseBundle',
+    'Step4 激活绑定 active_bundle_id',
+    '客户端 runtime-bootstrap + gateway overlay',
+    '第二项目仅改 manifest 复跑 E2E'
+  ];
+  var list=document.getElementById('checklist');
+  steps.forEach(function(s,i){ list.innerHTML+='<li>'+(i+1)+'. '+s+'</li>'; });
+
+  function show(obj){ document.getElementById('manifestResult').textContent=JSON.stringify(obj,null,2); }
+  document.getElementById('btnUpsert').onclick=function(){
+    var payload={
+      project_id: document.getElementById('projectId').value.trim(),
+      game_id: document.getElementById('gameId').value.trim(),
+      game_key: document.getElementById('gameKey').value.trim(),
+      oss_project_root: document.getElementById('ossRoot').value.trim(),
+      channels: JSON.parse(document.getElementById('channelsJson').value||'[]')
+    };
+    fetch('/api/release/manifests/upsert',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)})
+      .then(function(r){return r.json();}).then(show).catch(function(e){show({ok:false,error:String(e)});});
+  };
+  document.getElementById('btnBootstrapScopes').onclick=function(){
+    var pid=document.getElementById('projectId').value.trim();
+    fetch('/api/release/manifests/'+encodeURIComponent(pid)+'/bootstrap-scopes',{method:'POST',credentials:'same-origin'})
+      .then(function(r){return r.json();}).then(show).catch(function(e){show({ok:false,error:String(e)});});
+  };
+  fetch('/api/release/manifests/GomeKu',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
+    if(!d.ok||!d.manifest){ return; }
+    var m=d.manifest;
+    document.getElementById('gameId').value=m.game_id||'';
+    document.getElementById('gameKey').value=m.game_key||'';
+    if(m.channels){ document.getElementById('channelsJson').value=JSON.stringify(m.channels,null,2); }
+  }).catch(function(){});
+})();
+</script>

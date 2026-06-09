@@ -182,6 +182,7 @@ def _register_blueprints():
         from routes.gm_ops import bp as gm_ops_bp
         from routes.gm_legacy import bp as gm_legacy_bp
         from routes.commercial_release_routes import bp as commercial_release_bp
+        from routes.release import release_bp
         if mode == "all":
             from routes.player_community import bp as player_community_bp
             from routes.products_public import bp as products_public_bp
@@ -207,6 +208,7 @@ def _register_blueprints():
         app.register_blueprint(gm_ops_bp)
         app.register_blueprint(gm_legacy_bp)
         app.register_blueprint(commercial_release_bp)
+        app.register_blueprint(release_bp)
         if _csrf_enabled and csrf is not None:
             # Ops/Gm legacy frontend uses JSON fetch API; exempt this blueprint to avoid CSRF 400 on internal ops calls.
             csrf.exempt(gm_legacy_bp)

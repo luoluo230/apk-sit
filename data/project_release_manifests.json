@@ -1,0 +1,23 @@
+[
+  {
+    "project_id": "GomeKu",
+    "project_slug": "gomeku",
+    "game_id": "gomeku-game-id",
+    "game_key": "gomeku-game-key",
+    "client_repo": "maclient",
+    "game_server_repo": "game-server",
+    "cluster_sync_target": "game-server/config/cluster.json",
+    "oss_project_root": "MyGame1",
+    "oss_base_url": "https://wlhotupdate1.oss-cn-beijing.aliyuncs.com",
+    "channels": [
+      { "channel_id": "1001", "channel_key": "wechat", "platforms": ["android", "ios"] },
+      { "channel_id": "1002", "channel_key": "douyin", "platforms": ["android"] }
+    ],
+    "default_scopes_per_env": true,
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "bootstrap_entry": "/api/public/runtime-bootstrap",
+    "notice_url": "",
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  }
+]

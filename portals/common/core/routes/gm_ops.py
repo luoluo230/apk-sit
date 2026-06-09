@@ -26,6 +26,11 @@ from models.data import (
 )
 from services.authz import admin_required, can_access_module, has_scope
 from services.game_ops_client import GameOpsClient
+from services.release.bundle_service import create_bundle_from_publish, find_active_bundle, rollback_bundle, run_scope_precheck
+from services.release.env_registry import env_key_to_gm_env, normalize_release_env_key
+from services.release.manifest_service import resolve_channel_id
+from services.release.release_context import release_matches_env, resolve_release_context
+from services.release.scope_resolver import resolve_scope_by_inputs
 
 bp = Blueprint("gm_ops", __name__)
 _client = GameOpsClient()
@@ -198,11 +203,13 @@ def _save_release_profiles(profiles: List[Dict[str, Any]]) -> None:
 
 def _find_best_release(project_id: str, env: str, channel: str, platform: str, version_name: str, published_only: bool = False) -> Dict[str, Any]:
     versions = project_versions_db.get(project_id) or []
+    channel_id = resolve_channel_id(project_id, channel) or str(channel or "").strip()
     candidates = []
     for item in versions:
-        if env and str(item.get("env") or "").strip() != env:
+        if env and not release_matches_env(item, env):
             continue
-        if channel and str(item.get("channel") or "").strip() != channel:
+        row_channel = str(item.get("channel") or "").strip()
+        if channel_id and row_channel and row_channel != channel_id:
             continue
         if platform and str(item.get("platform") or "android").strip().lower() != platform.lower():
             continue
@@ -217,6 +224,24 @@ def _find_best_release(project_id: str, env: str, channel: str, platform: str, v
 
     candidates.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
     return candidates[0]
+
+
+def _build_public_release_payload(
+    project_id: str,
+    release: Dict[str, Any],
+    env: str,
+    channel: str,
+    platform: str,
+) -> Dict[str, Any]:
+    ctx = resolve_release_context(project_id, env, channel, version_row=release)
+    paths = ctx.get("bootstrap_paths") or {}
+    profile = ctx.get("network_profile") or {}
+    return {
+        "ctx": ctx,
+        "paths": paths,
+        "profile": profile,
+        "platform": platform,
+    }
 
 
 def _resolve_profile(server_profile: str, env: str, channel: str) -> Dict[str, Any]:
@@ -368,6 +393,16 @@ def _find_project_by_game_credentials(game_id: str, game_key: str) -> Optional[s
         item = payload if isinstance(payload, dict) else {}
         if str(item.get("game_id") or "").strip() == gid and str(item.get("game_key") or "").strip() == gk:
             return str(project_id)
+    try:
+        from services.release.storage import load_manifests
+
+        for manifest in load_manifests():
+            if not isinstance(manifest, dict):
+                continue
+            if str(manifest.get("game_id") or "").strip() == gid and str(manifest.get("game_key") or "").strip() == gk:
+                return str(manifest.get("project_id") or "").strip() or None
+    except Exception:
+        pass
     return None
 
 
@@ -656,6 +691,19 @@ def gm_ops_page():
         <div class="gm-fieldset">
           <h4>执行链路状态</h4>
           <div id="releaseChainStatus" class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"></div>
+        </div>
+        <div class="gm-fieldset mt-3">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <h4>Scope / Bundle 预览</h4>
+            <button type="button" class="gm-tab-btn" onclick="loadReleaseScopePanel()">刷新</button>
+          </div>
+          <div id="releaseScopeSummary" class="text-xs text-slate-600 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 mb-2">尚未加载</div>
+          <div class="overflow-auto max-h-48">
+            <table class="min-w-full text-xs border border-slate-200">
+              <thead class="bg-slate-100"><tr><th class="px-2 py-1 text-left border-b">版本</th><th class="px-2 py-1 text-left border-b">scope_id</th><th class="px-2 py-1 text-left border-b">active_bundle_id</th><th class="px-2 py-1 text-left border-b">publish</th></tr></thead>
+              <tbody id="releaseVersionTableBody"><tr><td class="px-2 py-2 text-slate-400" colspan="4">点击刷新加载</td></tr></tbody>
+            </table>
+          </div>
         </div>
         <div class="gm-actions">
           <button onclick="releasePrecheck()" class="gm-primary-btn bg-indigo-600">1.预检</button>
@@ -953,6 +1001,7 @@ function setReleaseStep(step){
   applyReleaseRequiredFilter();
   renderReleaseStepStatus();
   renderReleaseChainStatus();
+  if(__releaseStep===5){ loadReleaseScopePanel(); }
 }
 function prevReleaseStep(){ setReleaseStep(__releaseStep-1); }
 function nextReleaseStep(){
@@ -1033,6 +1082,52 @@ function renderBeforeAfterDiff(beforeObj, afterObj){
 }
 async function loadCatalog(){ const r=await fetch('/api/gm-ops/projects/catalog'); const d=await r.json(); if(!d.ok){ updateResult(d); return; } const rows=d.data||[]; const sel=document.getElementById('projectSelect'); sel.innerHTML=rows.map(p=>`<option value="${p.project_id}">${p.project_id} / ${p.project_name}</option>`).join(''); const q=new URLSearchParams(window.location.search); const qpid=(q.get('project_id')||'').trim(); if(qpid && rows.some(x=>String(x.project_id)===qpid)){ sel.value=qpid; } refreshContextHeader(); if(rows.length){ document.getElementById('projectId').value=(sel.value||rows[0].project_id); await loadWorkspace(); } }
 async function loadWorkspace(){ const pid=(document.getElementById('projectSelect').value||'').trim(); if(!pid){ return; } document.getElementById('projectId').value=pid; const rs=await fetch('/api/gm-ops/projects/catalog?project_id='+encodeURIComponent(pid)); const d=await rs.json(); if(!d.ok){ updateResult(d); return; } const item=(d.data||[])[0]||{}; upsertOptions(document.getElementById('env'), item.envs || ['dev','test','staging','prod'], item.default_env || 'dev'); upsertChannelOptions(document.getElementById('channel'), item.channel_options || [], item.default_channel || 'default'); document.getElementById('gameId').value=item.game_id||''; document.getElementById('gameKeyMasked').value=item.game_key_masked||'***'; document.getElementById('serverProfile').value=item.default_server_profile||'default'; document.getElementById('credentialSummary').innerText=`gameId: ${item.game_id||'-'} | gameKey: ${item.game_key_masked||'***'} | 更新时间: ${item.updated_at||'-'}`; document.getElementById('workspaceSummary').innerText=`项目 ${item.project_id||pid}，可用环境 ${(item.envs||[]).join('/')||'-'}，可用渠道 ${(item.channel_options||[]).map(x=>x.id+'·'+x.name).join('/')||'-'}`; refreshContextHeader(); refreshPreview(); updateResult({ok:true, workspace:item}); }
+async function loadReleaseScopePanel(){
+  const pid=selectedProjectId();
+  if(!pid){ return; }
+  const env=selectedEnv();
+  const channel=selectedChannel();
+  const summaryEl=document.getElementById('releaseScopeSummary');
+  const bodyEl=document.getElementById('releaseVersionTableBody');
+  if(summaryEl){ summaryEl.innerText='加载中…'; }
+  try{
+    const scopesResp=await fetch('/api/release/scopes?project_id='+encodeURIComponent(pid));
+    const scopesData=await scopesResp.json();
+    const scopes=(scopesData.scopes||[]);
+    const scopeRow=scopes.find(function(s){
+      const ek=String(s.env_key||'').toLowerCase();
+      const envMatch=ek===String(env||'').toLowerCase() || ek===String(env||'').replace(/^prod$/i,'production').toLowerCase();
+      const ch=String(channel||'');
+      const cid=String(s.channel_id||'');
+      const ckey=String(s.channel_key||'');
+      return envMatch && (ch===cid || ch===ckey || !ch);
+    }) || scopes[0] || {};
+    const scopeId=scopeRow.scope_id||'';
+    let resolved={};
+    if(scopeId){
+      const scopeResp=await fetch('/api/release/scopes/'+encodeURIComponent(scopeId));
+      const scopeData=await scopeResp.json();
+      resolved=(scopeData.resolved)||{};
+    }
+    const profile=(resolved.network_profile_preview)||{};
+    if(summaryEl){
+      summaryEl.innerText='scope_id='+(scopeId||'-')+' | profile_source='+(resolved.profile_source||'-')+' | gateway_ws='+(profile.gateway_ws||'-')+' | active_bundle_id='+(resolved.active_bundle_id||'-');
+    }
+    const verResp=await fetch('/api/gm-ops/release/versions?project_id='+encodeURIComponent(pid));
+    const verData=await verResp.json();
+    const rows=(verData.data||[]).slice(0,20);
+    if(bodyEl){
+      if(!rows.length){ bodyEl.innerHTML='<tr><td class="px-2 py-2 text-slate-400" colspan="4">暂无版本</td></tr>'; }
+      else{
+        bodyEl.innerHTML=rows.map(function(r){
+          return '<tr><td class="px-2 py-1 border-b">'+(r.version_name||'-')+'</td><td class="px-2 py-1 border-b font-mono">'+(r.scope_id||'-')+'</td><td class="px-2 py-1 border-b font-mono">'+(r.active_bundle_id||'-')+'</td><td class="px-2 py-1 border-b">'+(r.publish_status||'-')+'</td></tr>';
+        }).join('');
+      }
+    }
+  }catch(e){
+    if(summaryEl){ summaryEl.innerText='加载失败: '+String(e); }
+  }
+}
 async function saveReleaseProfile(){ const r=await fetch('/api/gm-ops/release/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentProfilePayload())}); updateResult(await r.json()); }
 async function ensureReleaseEntry(){ const r=await fetch('/api/gm-ops/release/versions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentReleasePayload())}); return await r.json(); }
 async function releasePrecheck(){
@@ -1198,13 +1293,12 @@ def _quality_gate_core(project_id_raw: str, env: str, channel: str, platform: st
 
     release = _find_best_release(resolved, env, channel, platform, version_name, published_only=False)
     if release:
-        required_keys = ["apk_url", "resource_url", "config_url", "apk_version", "resource_version", "config_version"]
-        missing = [k for k in required_keys if not str(release.get(k) or "").strip()]
-        profile = _resolve_profile(str(release.get("server_profile") or ""), str(release.get("env") or env), str(release.get("channel") or channel))
-        profile_missing = [k for k in ("gateway_ws", "login_http", "game_ws", "ops_http") if not str((profile or {}).get(k) or "").strip()]
-        precheck_data = {"ok": len(missing) == 0 and len(profile_missing) == 0, "missing_release_fields": missing, "missing_profile_fields": profile_missing}
+        scope = resolve_scope_by_inputs(resolved, env, channel)
+        precheck_data = run_scope_precheck(scope, release)
+        precheck_data["scope_resolved"] = bool(scope.get("scope_id"))
+        precheck_data["bundle_server_snapshot"] = bool(find_active_bundle(str(scope.get("scope_id") or "")).get("server"))
     else:
-        precheck_data = {"ok": False, "error": "release not found"}
+        precheck_data = {"ok": False, "error": "release not found", "scope_resolved": False}
     precheck_ok = bool(precheck_data.get("ok"))
 
     evidence = _build_closure_evidence(resolved, env, channel, platform, version_name)
@@ -1214,6 +1308,9 @@ def _quality_gate_core(project_id_raw: str, env: str, channel: str, platform: st
 
     gates = [
         {"name": "release_precheck", "ok": precheck_ok, "detail": precheck_data},
+        {"name": "scope_resolved", "ok": bool(precheck_data.get("scope_resolved")), "detail": {"scope_id": precheck_data.get("scope_id")}},
+        {"name": "topology_runtime_aligned", "ok": bool(precheck_data.get("topology_runtime_aligned", True)), "detail": precheck_data},
+        {"name": "profile_probe_pass", "ok": not precheck_data.get("missing_profile_fields"), "detail": precheck_data.get("network_profile_preview")},
         {"name": "closure_evidence", "ok": evidence_ok, "detail": evidence},
         {"name": "infra_mongo_redis", "ok": infra_ok, "detail": {"mongo": infra_data.get("mongo"), "redis": infra_data.get("redis")}},
     ]
@@ -1533,22 +1630,23 @@ def gm_release_precheck():
     if not release:
         return jsonify({"ok": False, "error": "release not found"}), 404
 
-    required_keys = ["apk_url", "resource_url", "config_url", "apk_version", "resource_version", "config_version"]
-    missing = [k for k in required_keys if not str(release.get(k) or "").strip()]
-    profile = _resolve_profile(str(release.get("server_profile") or ""), str(release.get("env") or env), str(release.get("channel") or channel))
-    profile_missing = [k for k in ("gateway_ws", "login_http", "game_ws", "ops_http") if not str((profile or {}).get(k) or "").strip()]
+    scope = resolve_scope_by_inputs(resolved, env, channel)
+    precheck = run_scope_precheck(scope, release)
     return jsonify(
         {
-            "ok": len(missing) == 0 and len(profile_missing) == 0,
+            "ok": bool(precheck.get("ok")),
             "project_id": resolved,
             "version_id": release.get("id"),
             "version_name": release.get("version_name"),
-            "missing_release_fields": missing,
-            "missing_profile_fields": profile_missing,
+            "scope_id": precheck.get("scope_id"),
+            "missing_release_fields": precheck.get("missing_client_fields"),
+            "missing_profile_fields": precheck.get("missing_profile_fields"),
+            "topology_runtime_aligned": precheck.get("topology_runtime_aligned"),
+            "profile_source": precheck.get("profile_source"),
             "publish_status": release.get("publish_status"),
-            "checked_at": datetime.now().isoformat(),
+            "checked_at": precheck.get("checked_at"),
         }
-    )
+    ), (200 if precheck.get("ok") else 412)
 
 
 @bp.route("/api/gm-ops/release/publish", methods=["POST"])
@@ -1577,7 +1675,14 @@ def gm_release_publish():
     if not approved_ref:
         return jsonify({"ok": False, "error": "approval required", "message": "请先审批 version_publish。", "target_id": target_id}), 412
 
+    scope = resolve_scope_by_inputs(resolved, env, channel)
+    precheck = run_scope_precheck(scope, release)
+    if not precheck.get("ok"):
+        return jsonify({"ok": False, "error": "precheck failed", "precheck": precheck}), 412
+
+    bundle = create_bundle_from_publish(scope, release, published_by=_current_user())
     release["publish_status"] = "published"
+    release["active_bundle_id"] = bundle.get("bundle_id")
     release["approval_id"] = approved_ref.get("id") or ""
     release["publish_trace_id"] = uuid.uuid4().hex[:16]
     release["updated_at"] = datetime.now().isoformat()
@@ -1591,8 +1696,8 @@ def gm_release_publish():
     project_versions_db[resolved] = versions
     save_project_versions()
 
-    log_audit("gm_release_publish", f"project={resolved}; version={release.get('version_name')}; trace={release.get('publish_trace_id')}")
-    return jsonify({"ok": True, "project_id": resolved, "entry": release})
+    log_audit("gm_release_publish", f"project={resolved}; version={release.get('version_name')}; bundle={bundle.get('bundle_id')}; trace={release.get('publish_trace_id')}")
+    return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle})
 
 
 @bp.route("/api/gm-ops/release/rollback", methods=["POST"])
@@ -1616,6 +1721,14 @@ def gm_release_rollback():
     if not release:
         return jsonify({"ok": False, "error": "release not found"}), 404
 
+    scope = resolve_scope_by_inputs(resolved, env, channel)
+    target_bundle_id = str(payload.get("bundle_id") or release.get("active_bundle_id") or "").strip()
+    bundle = {}
+    if target_bundle_id:
+        bundle = rollback_bundle(str(scope.get("scope_id") or ""), target_bundle_id, rolled_by=_current_user())
+        if bundle:
+            release["active_bundle_id"] = bundle.get("bundle_id")
+
     release["publish_status"] = "rolled_back"
     release["rollback_trace_id"] = uuid.uuid4().hex[:16]
     release["updated_at"] = datetime.now().isoformat()
@@ -1630,7 +1743,7 @@ def gm_release_rollback():
     save_project_versions()
 
     log_audit("gm_release_rollback", f"project={resolved}; version={release.get('version_name')}; trace={release.get('rollback_trace_id')}")
-    return jsonify({"ok": True, "project_id": resolved, "entry": release})
+    return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle})
 
 
 @bp.route("/api/gm-ops/release/reconcile")
@@ -2061,7 +2174,8 @@ def gm_ops_execute_action():
 def gm_public_release_config():
     """前端启动拉取发布配置（按 project_id）。"""
     project_id = (request.args.get("project_id") or "").strip()
-    env = (request.args.get("env") or "").strip()
+    env_key = (request.args.get("env_key") or "").strip()
+    env = (request.args.get("env") or env_key or "").strip()
     channel = (request.args.get("channel") or "").strip()
     platform = (request.args.get("platform") or "android").strip().lower()
     version_name = (request.args.get("version_name") or "").strip()
@@ -2075,35 +2189,49 @@ def gm_public_release_config():
     if not release:
         return jsonify({"ok": False, "error": "release config not found"}), 404
 
-    profile = _resolve_profile(str(release.get("server_profile") or ""), str(release.get("env") or env), str(release.get("channel") or channel))
+    built = _build_public_release_payload(project_id, release, env, channel, platform)
+    ctx = built["ctx"]
+    paths = built["paths"]
+    profile = built["profile"]
 
     response = {
         "ok": True,
         "project_id": project_id,
-        "env": release.get("env") or env,
+        "scope_id": ctx.get("scope_id"),
+        "env_key": ctx.get("env_key"),
+        "channel_id": ctx.get("channel_id"),
+        "channel_key": ctx.get("channel_key"),
+        "env": release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
         "channel": release.get("channel") or channel,
         "platform": release.get("platform") or platform,
-            "version": {
-                "version_name": release.get("version_name"),
-                "version_code": release.get("version_code"),
-                "apk_version": release.get("apk_version"),
-                "resource_version": release.get("resource_version"),
-                "config_version": release.get("config_version"),
-                "apk_url": release.get("apk_url"),
-                "resource_url": release.get("resource_url"),
-                "config_url": release.get("config_url"),
-                "distribution_method": release.get("distribution_method"),
-                "package_name": release.get("package_name"),
-                "bundle_id": release.get("bundle_id"),
-                "min_sdk": release.get("min_sdk"),
-                "min_ios_version": release.get("min_ios_version"),
-                "changelog": release.get("changelog"),
-                "notes": release.get("notes"),
-                "server_profile": release.get("server_profile"),
-                "publish_status": release.get("publish_status"),
-                "updated_at": release.get("updated_at"),
-            },
+        "active_bundle_id": ctx.get("active_bundle_id"),
+        "profile_source": ctx.get("profile_source"),
+        "version": {
+            "version_name": release.get("version_name"),
+            "version_code": release.get("version_code"),
+            "apk_version": release.get("apk_version"),
+            "resource_version": release.get("resource_version"),
+            "config_version": release.get("config_version"),
+            "apk_url": release.get("apk_url"),
+            "resource_url": release.get("resource_url"),
+            "config_url": release.get("config_url"),
+            "distribution_method": release.get("distribution_method"),
+            "package_name": release.get("package_name"),
+            "bundle_id": release.get("bundle_id"),
+            "min_sdk": release.get("min_sdk"),
+            "min_ios_version": release.get("min_ios_version"),
+            "changelog": release.get("changelog"),
+            "notes": release.get("notes"),
+            "server_profile": release.get("server_profile"),
+            "publish_status": release.get("publish_status"),
+            "updated_at": release.get("updated_at"),
+            "resource_relative_path": paths.get("resource_relative_path"),
+            "config_relative_path": paths.get("config_relative_path"),
+            "code_relative_path": paths.get("code_relative_path"),
+            "catalog_file_name": paths.get("catalog_file_name"),
+        },
         "network_profile": profile,
+        "server_snapshot": ctx.get("server_snapshot"),
     }
     return jsonify(response)
 
@@ -2113,7 +2241,8 @@ def gm_public_runtime_bootstrap():
     """前端运行时拉取入口（按 game_id + game_key）。"""
     game_id = (request.args.get("game_id") or "").strip()
     game_key = (request.args.get("game_key") or "").strip()
-    env = (request.args.get("env") or "").strip()
+    env_key = (request.args.get("env_key") or "").strip()
+    env = (request.args.get("env") or env_key or "").strip()
     channel = (request.args.get("channel") or "").strip()
     platform = (request.args.get("platform") or "android").strip().lower()
     version_name = (request.args.get("version_name") or "").strip()
@@ -2131,15 +2260,26 @@ def gm_public_runtime_bootstrap():
     if not release:
         return jsonify({"ok": False, "error": "release config not found"}), 404
 
-    profile = _resolve_profile(str(release.get("server_profile") or ""), str(release.get("env") or env), str(release.get("channel") or channel))
+    built = _build_public_release_payload(project_id, release, env, channel, platform)
+    ctx = built["ctx"]
+    paths = built["paths"]
+    profile = built["profile"]
     return jsonify(
         {
             "ok": True,
             "project_id": project_id,
             "game_id": game_id,
-            "env": release.get("env") or env,
+            "scope_id": ctx.get("scope_id"),
+            "env_key": ctx.get("env_key"),
+            "channel_id": ctx.get("channel_id"),
+            "channel_key": ctx.get("channel_key"),
+            "env": release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
             "channel": release.get("channel") or channel,
             "platform": release.get("platform") or platform,
+            "active_bundle_id": ctx.get("active_bundle_id"),
+            "profile_source": ctx.get("profile_source"),
+            "network_profile": profile,
+            "server_snapshot": ctx.get("server_snapshot"),
             "bootstrap": {
                 "version_name": release.get("version_name"),
                 "version_code": release.get("version_code"),
@@ -2149,6 +2289,10 @@ def gm_public_runtime_bootstrap():
                 "apk_url": release.get("apk_url"),
                 "resource_url": release.get("resource_url"),
                 "config_url": release.get("config_url"),
+                "resource_relative_path": paths.get("resource_relative_path"),
+                "config_relative_path": paths.get("config_relative_path"),
+                "code_relative_path": paths.get("code_relative_path"),
+                "catalog_file_name": paths.get("catalog_file_name"),
                 "distribution_method": release.get("distribution_method"),
                 "package_name": release.get("package_name"),
                 "bundle_id": release.get("bundle_id"),
@@ -2157,7 +2301,7 @@ def gm_public_runtime_bootstrap():
                 "changelog": release.get("changelog"),
                 "notes": release.get("notes"),
                 "publish_status": release.get("publish_status"),
-                "network": profile,
+                "updated_at": release.get("updated_at"),
             },
         }
     )

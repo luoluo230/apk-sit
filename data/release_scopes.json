@@ -1,0 +1,94 @@
+[
+  {
+    "scope_id": "gomeku:development:1001",
+    "project_id": "GomeKu",
+    "env_key": "development",
+    "channel_id": "1001",
+    "channel_key": "wechat",
+    "default_topology_id": "topology-gomeku-development-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:testing:1001",
+    "project_id": "GomeKu",
+    "env_key": "testing",
+    "channel_id": "1001",
+    "channel_key": "wechat",
+    "default_topology_id": "topology-gomeku-testing-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:staging:1001",
+    "project_id": "GomeKu",
+    "env_key": "staging",
+    "channel_id": "1001",
+    "channel_key": "wechat",
+    "default_topology_id": "topology-gomeku-staging-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:production:1001",
+    "project_id": "GomeKu",
+    "env_key": "production",
+    "channel_id": "1001",
+    "channel_key": "wechat",
+    "default_topology_id": "topology-gomeku-production-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:development:1002",
+    "project_id": "GomeKu",
+    "env_key": "development",
+    "channel_id": "1002",
+    "channel_key": "douyin",
+    "default_topology_id": "topology-gomeku-development-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:testing:1002",
+    "project_id": "GomeKu",
+    "env_key": "testing",
+    "channel_id": "1002",
+    "channel_key": "douyin",
+    "default_topology_id": "topology-gomeku-testing-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:staging:1002",
+    "project_id": "GomeKu",
+    "env_key": "staging",
+    "channel_id": "1002",
+    "channel_key": "douyin",
+    "default_topology_id": "topology-gomeku-staging-default",
+    "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "scope_id": "gomeku:production:1002",
+    "project_id": "GomeKu",
+    "env_key": "production",
+    "channel_id": "1002",
+    "channel_key": "douyin",
+    "default_topology_id": "topology-gomeku-production-default",
+    "override": {
+      "topology_id": "",
+      "server_profile_id": "douyin-prod-gateway",
+      "use_auto_profile": false
+    },
+    "status": "active",
+    "updated_at": "2026-06-09T12:00:00+08:00"
+  }
+]
