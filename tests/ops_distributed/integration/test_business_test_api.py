@@ -26,7 +26,10 @@ def test_bt07_business_test_preflight_fail(admin_client, monkeypatch, gm_legacy)
             "message": "gateway down",
         },
     )
-    monkeypatch.setattr(gm_legacy, "get_plan", lambda repo, plan_id: {"plan_id": plan_id})
+    monkeypatch.setattr(
+        "services.business_test_catalog.get_plan",
+        lambda repo, plan_id: {"plan_id": plan_id},
+    )
     resp = admin_client.post(
         "/api/ops-platform/business-test/run",
         json={"plan_id": "auth-login-lifecycle", "transport": "websocket"},

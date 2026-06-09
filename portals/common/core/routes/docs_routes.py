@@ -328,7 +328,7 @@ def docs_list_page():
     rows_html = ''.join(rows) if rows else '<tr><td colspan="4" class="px-4 py-12 text-center text-slate-500">暂无文档，可使用下方模板快速创建</td></tr>'
     filter_mod_opts = ''.join('<option value="%s"%s>%s</option>' % (mid, ' selected' if filter_module == mid else '', html.escape(mname)) for mid, mname in [('', '全部模块')] + list(DOC_MODULES))
     filter_cat_opts = ''.join('<option value="%s"%s>%s</option>' % (cid, ' selected' if filter_category == cid else '', html.escape(cname)) for cid, cname in [('', '全部分类')] + list(DOC_CATEGORIES))
-    filter_project_opts = ''.join('<option value="%s"%s>%s</option>' % (html.escape(project['id']), ' selected' if filter_project == project['id'] else '', html.escape(project['name'])) for project in ([{'id': '', 'name': '鍏ㄩ儴椤圭洰'}] + _project_choices(filter_project)))
+    filter_project_opts = ''.join('<option value="%s"%s>%s</option>' % (html.escape(project['id']), ' selected' if filter_project == project['id'] else '', html.escape(project['name'])) for project in ([{'id': '', 'name': '全部项目'}] + _project_choices(filter_project)))
     content = '''
     <div class="space-y-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -587,7 +587,7 @@ def _doc_edit_page(doc, template=None):
         att_list = ''.join('<span class="inline-flex items-center gap-1 mr-2 mb-1 px-2 py-1 bg-gray-100 rounded text-xs">%s <a href="#" class="doc-del-att text-red-500" data-id="%s">×</a></span>' % (html.escape(a.get('name', '')), html.escape(a.get('id', ''))) for a in doc.get('attachments', []))
     mod_opts = ''.join('<option value="%s"%s>%s</option>' % (mid, ' selected' if module == mid else '', html.escape(mname)) for mid, mname in [('', '-- 选择模块 --')] + list(DOC_MODULES))
     cat_opts = ''.join('<option value="%s"%s>%s</option>' % (cid, ' selected' if category == cid else '', html.escape(cname)) for cid, cname in [('', '-- 选择分类 --')] + list(DOC_CATEGORIES))
-    project_opts = ''.join('<option value="%s"%s>%s</option>' % (html.escape(project['id']), ' selected' if project_id == project['id'] else '', html.escape(project['name'])) for project in ([{'id': '', 'name': '-- 閫夋嫨椤圭洰 --'}] + _project_choices(project_id)))
+    project_opts = ''.join('<option value="%s"%s>%s</option>' % (html.escape(project['id']), ' selected' if project_id == project['id'] else '', html.escape(project['name'])) for project in ([{'id': '', 'name': '-- 选择项目 --'}] + _project_choices(project_id)))
     html_content = '''
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <form id="docForm">

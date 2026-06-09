@@ -26,7 +26,7 @@ def repo_root() -> Path:
 @pytest.fixture(scope="session")
 def gm_legacy():
     os.environ.setdefault("APP_PORTAL_MODE", "admin")
-    from routes import gm_legacy as mod  # type: ignore
+    import services.ops.helpers as mod  # type: ignore
 
     return mod
 

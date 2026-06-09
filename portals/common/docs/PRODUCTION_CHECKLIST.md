@@ -81,6 +81,27 @@
 
 ---
 
+## 八、Admin Ops 管理端（模块化）
+
+| # | 项 | 说明 | 状态 |
+|---|---|----|------|
+| 8.1 | 入口 | `portals/intranet/wsgi.py`，`APP_PORTAL_MODE=admin` | ✅ |
+| 8.2 | 后端结构 | `routes/ops/*` + `services/ops/*`，`gm_legacy.py` 为 shim | ✅ |
+| 8.3 | 前端 workbench | `static/ops/workbench/*.js` 顺序加载 | ✅ |
+| 8.4 | 回归门禁 | `py -3 dev/tools/run_admin_regression_gate.py --strict --skip-live` | ✅ |
+| 8.5 | Admin-only 发布包 | `py scripts/build_split_deploy_bundles.py --profile admin` → `release_bundles/admin-only/manifest.json` | ✅ |
+| 8.6 | 模块边界 | `docs/ops_alignment/10_admin_module_boundaries.md` | ✅ |
+
+**Admin-only 部署步骤（摘要）**
+
+1. 在 `portals/common/core` 执行：`py scripts/build_split_deploy_bundles.py --profile admin`
+2. 将 `release_bundles/admin-only/` 整目录复制到目标主机
+3. 编辑 `portals/common/core/.env.example` 复制为 `.env`，设置 `APP_PORTAL_MODE=admin`
+4. 运行 `start_admin.bat`（或 `start_admin.ps1 -Port 5003`）
+5. 对照 `manifest.json` 验收：应含 `portals/intranet`、core 代码、4 个 `tools/*agent*.py`，**不应**含 `tests/`、`docs/`、`.cursor/`
+
+---
+
 ## 使用与迁移流程（目标）
 
 1. **复制项目**到新机器（Windows 或 Mac）。

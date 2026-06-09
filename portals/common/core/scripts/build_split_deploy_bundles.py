@@ -18,7 +18,32 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_OUT = ROOT / "release_bundles"
+
+ADMIN_AGENT_TOOLS = [
+    "canonical_local_agent_daemon.py",
+    "local_ops_agent.py",
+    "gameserver_agent_exec.py",
+    "ecosystem_supervisor.py",
+]
+
+ADMIN_BUNDLE_EXCLUDES = {
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+    ".git",
+    ".DS_Store",
+    "tests",
+    "docs",
+    ".cursor",
+    "archives",
+    "tmp",
+    "release_bundles",
+    "extranet",
+    "forum",
+}
 
 COMMON_DIRS = [
     "config",
@@ -44,7 +69,8 @@ COMMON_FILES = [
     "player_wsgi.py",
 ]
 
-IGNORE_NAMES = {"__pycache__", "node_modules", "venv", ".venv", ".git", ".DS_Store"}
+IGNORE_NAMES = {"__pycache__", "node_modules", "venv", ".venv", ".git", ".DS_Store", "release_bundles"}
+IGNORE_SUFFIXES = (".pyc", ".pyo", ".rdb")
 
 
 def _ignore_filter(_src, names):
@@ -56,7 +82,7 @@ def _ignore_filter(_src, names):
         if name.startswith("._"):
             ignored.add(name)
             continue
-        if name.endswith(".pyc") or name.endswith(".pyo"):
+        if name.endswith(".pyc") or name.endswith(".pyo") or name.endswith(".rdb"):
             ignored.add(name)
             continue
     return ignored
@@ -919,9 +945,95 @@ def _build_player_static_bundle(target_dir: Path, player_base: str, forum_base: 
     _write_text(target_dir / "README.md", _player_static_readme())
 
 
+def _admin_ignore_filter(_src, names):
+    ignored = set()
+    for name in names:
+        if name in IGNORE_NAMES or name in ADMIN_BUNDLE_EXCLUDES:
+            ignored.add(name)
+            continue
+        if name.startswith("._"):
+            ignored.add(name)
+            continue
+        if name.endswith(".pyc") or name.endswith(".pyo") or name.endswith(".rdb"):
+            ignored.add(name)
+            continue
+    return ignored
+
+
+def _build_admin_only_bundle(target_dir: Path) -> dict:
+    """Admin-only deploy bundle: intranet portal + common/core + ops agent tools."""
+    if target_dir.exists():
+        _safe_rmtree(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest: dict = {
+        "profile": "admin",
+        "built_at": datetime.now().isoformat(),
+        "includes": [],
+        "excludes": sorted(ADMIN_BUNDLE_EXCLUDES),
+    }
+
+    intranet_src = REPO_ROOT / "portals" / "intranet"
+    intranet_dst = target_dir / "portals" / "intranet"
+    if intranet_src.exists():
+        shutil.copytree(intranet_src, intranet_dst, ignore=_admin_ignore_filter)
+        manifest["includes"].append("portals/intranet")
+
+    core_src = REPO_ROOT / "portals" / "common" / "core"
+    core_dst = target_dir / "portals" / "common" / "core"
+    if core_src.exists():
+        shutil.copytree(core_src, core_dst, ignore=_admin_ignore_filter)
+        manifest["includes"].append("portals/common/core")
+
+    common_docs = REPO_ROOT / "portals" / "common" / "docs" / "OPERATIONS.md"
+    if common_docs.exists():
+        op_dst = target_dir / "portals" / "common" / "docs" / "OPERATIONS.md"
+        _safe_copy_file(common_docs, op_dst)
+        manifest["includes"].append("portals/common/docs/OPERATIONS.md")
+
+    tools_dst = target_dir / "tools"
+    tools_dst.mkdir(parents=True, exist_ok=True)
+    for name in ADMIN_AGENT_TOOLS:
+        src = REPO_ROOT / "tools" / name
+        if src.exists():
+            _safe_copy_file(src, tools_dst / name)
+            manifest["includes"].append(f"tools/{name}")
+
+    _sanitize_settings_file(core_dst / "config" / "settings.json", mode="admin", default_port=5003)
+    _sanitize_settings_file(core_dst / "config" / "settings.example.json", mode="admin", default_port=5003)
+    _rewrite_env_example(core_dst / ".env.example", mode="admin", default_port=5003)
+    _sanitize_bundle_data(core_dst)
+
+    script_name = "start_admin"
+    ps1 = _runtime_ps1(mode="admin", default_port=5003, entry="portals.intranet.wsgi:app")
+    ps1 = ps1.replace(
+        'Set-Location $PSScriptRoot',
+        'Set-Location $PSScriptRoot\n        $env:PYTHONPATH = $PSScriptRoot',
+        1,
+    )
+    _write_text(target_dir / f"{script_name}.ps1", ps1)
+    _write_text(target_dir / f"{script_name}.bat", _runtime_bat(script_name=script_name, default_port=5003))
+    _write_text(target_dir / "setup_jenkins.ps1", _jenkins_setup_ps1())
+    _write_text(target_dir / "setup_jenkins.bat", _jenkins_setup_bat())
+    _write_text(
+        target_dir / "README.md",
+        _runtime_readme(mode="admin", default_port=5003, script_name=script_name, include_jenkins=True),
+    )
+
+    manifest_path = target_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return manifest
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build split deployment bundles")
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="output root directory")
+    parser.add_argument(
+        "--profile",
+        choices=("all", "admin"),
+        default="all",
+        help="all=admin+forum+player-static bundles; admin=admin-only ops bundle",
+    )
     parser.add_argument("--player-base", default="", help="player public base url")
     parser.add_argument("--forum-base", default="", help="forum public base url")
     parser.add_argument("--admin-base", default="", help="admin public base url")
@@ -929,6 +1041,14 @@ def main():
 
     out_root = Path(args.out).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
+
+    if args.profile == "admin":
+        admin_dir = out_root / "admin-only"
+        manifest = _build_admin_only_bundle(admin_dir)
+        print("[DONE] admin-only bundle built:")
+        print(" -", admin_dir)
+        print(" - manifest entries:", len(manifest.get("includes") or []))
+        return 0
 
     admin_dir = out_root / "admin-backend"
     forum_dir = out_root / "forum-backend"

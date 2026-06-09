@@ -84,7 +84,8 @@ powershell -File E:/maclient/game-server/tools/Check-Cluster-Health.ps1
 
 | ID | 实现 |
 |----|------|
-| RG-02 | `ops_ecosystem_chain.py --distributed` |
+| RG-01 | `dev/tools/run_admin_regression_gate.py --strict`（含 `ops_platform_smoke`、`ops_workbench_chain_audit`） |
+| RG-02 | `dev/tools/ops_ecosystem_chain.py --distributed` |
 | RG-04 | `TEST_SKILL.md` 分布式章节 |
 
 ## 一期验收门槛（live）
