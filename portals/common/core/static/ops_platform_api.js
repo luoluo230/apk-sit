@@ -107,7 +107,16 @@
         };
       }
       if(!r.ok || (data && data.ok===false)){
-        return Object.assign({}, data || {}, normalizeError(data, r.status));
+        const err = normalizeError(data, r.status);
+        const out = Object.assign({}, err, data || {}, { ok: false });
+        if (data && data.message) out.message = String(data.message);
+        else if (data && data.summary) out.message = String(data.summary);
+        else if (data && data.stderr) {
+          const tail = String(data.stderr).trim().split(/\r?\n/).filter(Boolean).pop();
+          if (tail) out.message = (err.message || '请求失败') + ': ' + tail;
+        }
+        out._http_status = r.status || out._http_status || 0;
+        return out;
       }
       if(data && typeof data==='object') return Object.assign({_http_status:r.status}, data);
       return {ok:true, data:data, _http_status:r.status};

@@ -1,0 +1,59 @@
+{
+  "category": "Auth",
+  "context": {
+    "password": "123456",
+    "server_id": "game-cn-1",
+    "user_prefix": "biztest"
+  },
+  "endpoint": {
+    "http": "http://127.0.0.1:15603/transport/message",
+    "kcp": "kcp://127.0.0.1:5602",
+    "tcp": "tcp://127.0.0.1:5601",
+    "ws": "ws://127.0.0.1:15050/ws/"
+  },
+  "name": "登录选服创角",
+  "plan_id": "auth-login-lifecycle",
+  "source": "builtin",
+  "steps": [
+    {
+      "assertions": [
+        {
+          "field": "ErrorCode",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "expect_response": "Login_s2c",
+      "extract": {
+        "token": "$.Token"
+      },
+      "id": "s1",
+      "on_blocked": "skip",
+      "protocol": "Login_c2s"
+    },
+    {
+      "expect_response": "SelectServer_s2c",
+      "id": "s2",
+      "on_blocked": "skip",
+      "protocol": "SelectServer_c2s"
+    },
+    {
+      "expect_response": "GetPlayerProfile_s2c",
+      "id": "s3",
+      "on_blocked": "skip",
+      "protocol": "GetPlayerProfile_c2s"
+    },
+    {
+      "expect_response": "CreateRole_s2c",
+      "id": "s4",
+      "on_blocked": "skip",
+      "protocol": "CreateRole_c2s"
+    }
+  ],
+  "tags": [
+    "core",
+    "auth"
+  ],
+  "transport": "websocket",
+  "version": 1
+}

@@ -35,6 +35,16 @@ from models.data import (
 from services.authz import admin_required, can_access_module, has_scope, is_admin
 from services.legacy_gm_bridge_client import LegacyGmBridgeClient
 from services.ops_platform_gateway import OpsPlatformGateway
+from services.business_test_catalog import (
+    build_catalog_view,
+    delete_custom_plan,
+    get_plan,
+    list_plans,
+    resolve_gateway_endpoint,
+    resolve_paths,
+    save_custom_plan,
+    validate_plan_dict,
+)
 
 bp = Blueprint("gm_legacy", __name__)
 _client = LegacyGmBridgeClient()
@@ -1641,6 +1651,9 @@ OPS_RUNTIME_RUNS_KEY = "OPS_PLATFORM_RUNTIME_RUNS"
 OPS_CHANGE_FREEZE_KEY = "OPS_PLATFORM_CHANGE_FREEZE"
 CANONICAL_LOCAL_AGENT_ID = "agent-local-cn-1"
 CANONICAL_LOCAL_DEVICE_ID = "local-game-server"
+DEFAULT_LOOPBACK = "127.0.0.1"
+_RUNTIME_GATEWAY_PROBE_PORT = 15050
+_RUNTIME_OPS_PROBE_PORT = 5504
 
 
 def _now_iso() -> str:
@@ -3002,13 +3015,19 @@ def _format_contract_command(template: str, port: int, extras: Optional[Dict[str
     text = str(template or "").strip()
     if not text:
         return ""
-    merged = {"port": int(port or 0), "qps": 300, "duration_sec": 180}
+    merged = {
+        "port": int(port or 0),
+        "qps": 300,
+        "duration_sec": 180,
+        "data_dir": _gomeku_mongo_dbpath(),
+    }
     if isinstance(extras, dict):
         merged.update(extras)
     try:
         return text.format(**merged)
     except Exception:
-        return text.replace("{port}", str(int(port or 0)))
+        out = text.replace("{port}", str(int(port or 0)))
+        return out.replace("{data_dir}", str(merged.get("data_dir") or _gomeku_mongo_dbpath()))
 
 
 def _resolve_node_contract_for_topology_node(node: Dict[str, Any]) -> Dict[str, Any]:
@@ -3111,6 +3130,29 @@ def _resolve_topology_node_port(
         if candidate > 0:
             return candidate
     return 0
+
+
+def _cluster_relay_port_for_type(cluster_type: str, role: str) -> int:
+    t = str(cluster_type or "").strip().lower()
+    r = str(role or "").strip().lower()
+    if t == "auth" or r == "auth":
+        return 15501
+    if t in ("game", "cross") or r in ("game", "business"):
+        return 15502 if t != "cross" else 15503
+    return 0
+
+
+def _enrich_cluster_relay_metadata(
+    metadata: Dict[str, Any],
+    cluster_type: str,
+    role: str,
+) -> Dict[str, Any]:
+    meta = dict(metadata or {})
+    relay_port = _cluster_relay_port_for_type(cluster_type, role)
+    if relay_port > 0:
+        meta.setdefault("ClusterRelayPort", str(relay_port))
+    meta.setdefault("ClusterRelayToken", _CLUSTER_RELAY_TOKEN_DEFAULT)
+    return meta
 
 
 def _build_daemon_metadata(
@@ -3228,25 +3270,34 @@ def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str
         remote_port = service_port
         runtime_status = str((service or {}).get("status") or (service or {}).get("run_state") or (agent or {}).get("status") or (agent or {}).get("run_state") or "UNKNOWN").upper()
         cluster_type = _cluster_type_for_contract(contract, role)
-        probe_host = endpoint_host or "127.0.0.1"
+        probe_host = _resolve_agent_probe_host(agent, service, node)
         if probe_host in ("0.0.0.0", "*", ""):
-            probe_host = "127.0.0.1"
+            probe_host = endpoint_host or DEFAULT_LOOPBACK
         bind_host = endpoint_host or ("0.0.0.0" if role in ("gateway", "transport", "edge") else "127.0.0.1")
+        relay_port = _cluster_relay_port_for_type(cluster_type, role)
         base_meta = {
-                    "ProjectId": str(project_id or ""),
-                    "EnvKey": _normalize_env_key(env_key),
-                    "TopologyId": str(topology_id or ""),
-                    "TopologyName": str(row.get("name") or ""),
-                    "VersionLabel": str(row.get("version_label") or ""),
-                    "NodeId": node_id,
-                    "AgentId": agent_id,
-                    "ServiceId": str((service or {}).get("service_id") or ""),
-                    "AgentWs": str(endpoint or ""),
+            "ProjectId": str(project_id or ""),
+            "EnvKey": _normalize_env_key(env_key),
+            "TopologyId": str(topology_id or ""),
+            "TopologyName": str(row.get("name") or ""),
+            "VersionLabel": str(row.get("version_label") or ""),
+            "NodeId": node_id,
+            "AgentId": agent_id,
+            "ServiceId": str((service or {}).get("service_id") or ""),
+            "AgentWs": str(endpoint or ""),
             "RemoteGameServerPort": str(remote_port or ""),
+            "ProbeHost": probe_host,
             "PresetId": str(node.get("preset_id") or contract.get("preset_id") or ""),
             "ProbeStrategy": str(contract.get("probe_strategy") or "tcp"),
         }
-        metadata = _build_daemon_metadata(node, contract, service_port, base_meta)
+        if relay_port > 0:
+            base_meta["ClusterRelayPort"] = str(relay_port)
+        base_meta["ClusterRelayToken"] = _CLUSTER_RELAY_TOKEN_DEFAULT
+        metadata = _enrich_cluster_relay_metadata(
+            _build_daemon_metadata(node, contract, service_port, base_meta),
+            cluster_type,
+            role,
+        )
         cluster_servers.append(
             {
                 "ServerId": str(node.get("server_id") or node_id),
@@ -3297,12 +3348,19 @@ def _service_dict_from_topology_node(project_id: str, node: Dict[str, Any], now:
     port = _resolve_topology_node_port(node, contract, None, None)
     ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
     network = ui.get("network") if isinstance(ui.get("network"), dict) else {}
+    remote = ui.get("remote") if isinstance(ui.get("remote"), dict) else {}
     endpoints = network.get("endpoints") if isinstance(network.get("endpoints"), list) else []
-    host = "127.0.0.1"
-    if endpoints:
+    host = _resolve_agent_probe_host(None, None, node)
+    if host in ("0.0.0.0", "*", ""):
+        host = "127.0.0.1"
+    if endpoints and host == DEFAULT_LOOPBACK:
         ep = str(endpoints[0] or "")
         if ":" in ep:
             host = ep.split(":")[0].strip() or host
+    elif str(remote.get("host") or remote.get("probe_host") or "").strip():
+        host = str(remote.get("host") or remote.get("probe_host") or "").strip()
+    cluster_type = _cluster_type_for_contract(contract, role)
+    relay_port = _cluster_relay_port_for_type(cluster_type, role)
     return {
         "service_id": node_id,
         "node_id": node_id,
@@ -3313,12 +3371,15 @@ def _service_dict_from_topology_node(project_id: str, node: Dict[str, Any], now:
         "service_type": role,
         "service_port": int(port or 0),
         "remote_game_server_port": int(port or 0),
+        "probe_host": host,
+        "cluster_relay_port": relay_port,
         "run_state": "UNKNOWN",
         "status": "UNKNOWN",
         "probe_status": "",
         "probe_rtt_ms": 0.0,
         "metrics": {},
         "endpoints": endpoints or ([f"{host}:{port}"] if port else []),
+        "public_ports": {"gateway": 15050, "relay": relay_port} if relay_port else {"gateway": port if role == "gateway" else 0},
         "updated_at": now or _now_iso(),
         "registration_origin": "topology.save",
     }
@@ -3762,31 +3823,49 @@ def _load_agent_policy() -> Dict[str, Any]:
 # ──────────────────────────────────────────────────────────────────────
 
 def _gomeku_mongo_dbpath() -> str:
-    """Mongo 数据目录：Windows 用项目 DATA_DIR，Unix 用 /tmp。"""
-    if os.name == "nt":
-        return os.path.join(DATA_DIR, "gomeku-mongo")
-    return "/tmp/gomeku-mongo"
+    """Mongo 数据目录：全平台统一使用项目 DATA_DIR。"""
+    return os.path.join(DATA_DIR, "gomeku-mongo")
+
+
+def _gameserver_repo_has_executable(repo: str) -> bool:
+    root = str(repo or "").strip()
+    if not root or not os.path.isdir(root):
+        return False
+    names = ("GameServer.GameServerApp.exe", "GameServer.GameServerApp")
+    for config in ("Debug", "Release"):
+        cfg_dir = os.path.join(root, "game-server", "bin", config)
+        for name in names:
+            if os.path.isfile(os.path.join(cfg_dir, name)):
+                return True
+        if os.path.isfile(os.path.join(cfg_dir, "GameServer.GameServerApp.dll")):
+            return True
+    return False
 
 
 def _resolve_game_server_repo() -> str:
     env = str(os.getenv("GAME_SERVER_REPO") or "").strip()
     if env and os.path.isdir(env):
         return env
+    candidates: List[str] = [os.path.join(os.path.expanduser("~"), "game-server")]
     if os.name == "nt":
-        candidates = [
-            r"E:\maclient\game-server",
-            r"D:\maclient\game-server",
-            os.path.join(os.path.expanduser("~"), "game-server"),
-        ]
+        candidates.extend([r"E:\maclient\game-server", r"D:\maclient\game-server"])
     else:
-        candidates = [
-            "/Users/wangling/Desktop/MyGame/GameClient/game-server",
-            os.path.join(os.path.expanduser("~"), "game-server"),
-        ]
+        candidates.append(os.path.join(os.path.expanduser("~"), "GameClient", "game-server"))
+    seen: set = set()
+    ordered: List[str] = []
     for path in candidates:
+        norm = os.path.normcase(os.path.abspath(path))
+        if norm in seen:
+            continue
+        seen.add(norm)
+        ordered.append(path)
+    for path in ordered:
+        if _gameserver_repo_has_executable(path):
+            return path
+    for path in ordered:
         if os.path.isdir(path):
             return path
-    return env or candidates[0]
+    return env or ordered[0]
 
 
 CLUSTER_JSON_PATH = os.path.join(_resolve_game_server_repo(), "config", "cluster.json")
@@ -4595,14 +4674,17 @@ _GAMESERVER_PROCESS_SERVICE_IDS = frozenset(
 )
 _GAMESERVER_DEFAULT_PORTS: Dict[str, int] = {
     "gateway-cn-1": 15050,
-    "auth-cn-1": 5501,
-    "game-cn-1": 5502,
     "ops-cn-1": 5504,
 }
 _GAMESERVER_TCP_PROBE_PORTS: Dict[str, int] = {
     "gateway-cn-1": 15050,
     "ops-cn-1": 5504,
 }
+_CLUSTER_RELAY_PROBE_PORTS: Dict[str, int] = {
+    "auth-cn-1": 15501,
+    "game-cn-1": 15502,
+}
+_CLUSTER_RELAY_TOKEN_DEFAULT = "ma-cluster-relay-dev"
 _GAMESERVER_START_ORDER: Tuple[str, ...] = ("auth-cn-1", "game-cn-1", "ops-cn-1", "gateway-cn-1")
 
 
@@ -4619,24 +4701,151 @@ def _is_daemon_infra_service(service: Dict[str, Any]) -> bool:
     return sid in ("mongo-db-cn-1", "redis-cache-cn-1") or stype in ("database", "cache", "mongo", "redis")
 
 
+def _default_probe_host() -> str:
+    return str(os.getenv("OPS_DEFAULT_PROBE_HOST") or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
+
+
+def _is_local_runtime_agent(agent_id: str = "", device_id: str = "") -> bool:
+    aid = str(agent_id or "").strip()
+    did = str(device_id or "").strip()
+    return aid == CANONICAL_LOCAL_AGENT_ID or did == CANONICAL_LOCAL_DEVICE_ID
+
+
+def _resolve_bound_agent(
+    agent_bindings: Optional[Dict[str, str]],
+    node_id: str,
+    reg: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    nid = str(node_id or "").strip()
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else {}
+    agent_id = str(bindings.get(nid) or "").strip()
+    if not agent_id:
+        return None
+    registry = reg if isinstance(reg, dict) else _load_agent_registry_v2()
+    hit = registry.get(agent_id) if isinstance(registry.get(agent_id), dict) else None
+    return dict(hit) if isinstance(hit, dict) else None
+
+
 def _resolve_agent_probe_host(
     agent: Optional[Dict[str, Any]] = None,
     service: Optional[Dict[str, Any]] = None,
+    topo_node: Optional[Dict[str, Any]] = None,
 ) -> str:
     """统一服务探活地址：probe_host 优先；本机 runtime / 守护进程固定 loopback。"""
     agent_obj = agent if isinstance(agent, dict) else {}
     service_obj = service if isinstance(service, dict) else {}
-    explicit = str(service_obj.get("probe_host") or agent_obj.get("probe_host") or "").strip()
-    if explicit:
-        return explicit
-    if _is_daemon_infra_service(service_obj):
-        return "127.0.0.1"
-    if str(agent_obj.get("device_id") or "").strip() == CANONICAL_LOCAL_DEVICE_ID:
-        return "127.0.0.1"
-    if str(agent_obj.get("agent_id") or "").strip() == CANONICAL_LOCAL_AGENT_ID:
-        return "127.0.0.1"
+    node_obj = topo_node if isinstance(topo_node, dict) else {}
+    ui = node_obj.get("ui") if isinstance(node_obj.get("ui"), dict) else {}
+    remote = ui.get("remote") if isinstance(ui.get("remote"), dict) else {}
+    network = ui.get("network") if isinstance(ui.get("network"), dict) else {}
+    for candidate in (
+        str(service_obj.get("probe_host") or "").strip(),
+        str(agent_obj.get("probe_host") or "").strip(),
+        str(remote.get("host") or remote.get("probe_host") or "").strip(),
+        str(network.get("probe_host") or "").strip(),
+    ):
+        if candidate and candidate not in ("0.0.0.0", "*"):
+            return candidate
+    if _is_daemon_infra_service(service_obj) and _is_local_runtime_agent(
+        str(agent_obj.get("agent_id") or ""),
+        str(agent_obj.get("device_id") or ""),
+    ):
+        return DEFAULT_LOOPBACK
+    if _is_local_runtime_agent(str(agent_obj.get("agent_id") or ""), str(agent_obj.get("device_id") or "")):
+        return DEFAULT_LOOPBACK
     fallback = str(agent_obj.get("host_ip") or agent_obj.get("host_name") or "").strip()
-    return fallback or "127.0.0.1"
+    if fallback and fallback not in ("0.0.0.0", "*"):
+        return fallback
+    return _default_probe_host()
+
+
+def _resolve_runtime_probe_host(
+    agent: Optional[Dict[str, Any]] = None,
+    service: Optional[Dict[str, Any]] = None,
+    topo_node: Optional[Dict[str, Any]] = None,
+) -> str:
+    return _resolve_agent_probe_host(agent, service, topo_node)
+
+
+def _is_embedded_topology_node(node: Dict[str, Any], contract: Optional[Dict[str, Any]] = None) -> bool:
+    if not isinstance(node, dict):
+        return False
+    contract_obj = contract if isinstance(contract, dict) else _resolve_node_contract_for_topology_node(node)
+    execution_model = str(contract_obj.get("execution_model") or "").strip().lower()
+    probe_strategy = str(contract_obj.get("probe_strategy") or "").strip().lower()
+    if execution_model == "embedded" or probe_strategy == "cluster_embedded":
+        return True
+    nid = str(node.get("id") or node.get("node_id") or "").strip().lower()
+    if nid in ("auth-cn-1", "game-cn-1"):
+        return True
+    role = str(node.get("role") or contract_obj.get("role") or "").strip().lower()
+    if role in ("auth", "business", "game") and (nid.startswith("auth-") or nid.startswith("game-")):
+        return True
+    return False
+
+
+def _resolve_topology_probe_port(
+    node: Dict[str, Any],
+    contract: Dict[str, Any],
+    service: Optional[Dict[str, Any]] = None,
+    agent: Optional[Dict[str, Any]] = None,
+) -> int:
+    if _is_embedded_topology_node(node, contract):
+        return 0
+    return _resolve_topology_node_port(node, contract, service, agent)
+
+
+def _resolve_runtime_probe_ports(contract: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+    return {
+        "gateway": _RUNTIME_GATEWAY_PROBE_PORT,
+        "ops": _RUNTIME_OPS_PROBE_PORT,
+    }
+
+
+def _resolve_orchestration_probe_host(
+    project_id: str,
+    topology_id: str,
+    topo_node: Dict[str, Any],
+    agent_bindings: Optional[Dict[str, str]] = None,
+    reg: Optional[Dict[str, Any]] = None,
+) -> str:
+    nid = str(topo_node.get("id") or "").strip()
+    agent = _resolve_bound_agent(agent_bindings, nid, reg)
+    if agent:
+        return _resolve_runtime_probe_host(agent, None, topo_node)
+    if _project_uses_runtime_topology(project_id):
+        return DEFAULT_LOOPBACK
+    return _default_probe_host()
+
+
+def _resolve_orchestration_scope(
+    project_id: str,
+    topology_id: str,
+    agent_bindings: Optional[Dict[str, str]] = None,
+    reg: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else {}
+    registry = reg if isinstance(reg, dict) else _load_agent_registry_v2()
+    hosts: List[str] = []
+    has_remote = False
+    for _nid, aid in bindings.items():
+        agent_id = str(aid or "").strip()
+        if not agent_id:
+            continue
+        if not _is_local_runtime_agent(agent_id):
+            has_remote = True
+        agent = registry.get(agent_id) if isinstance(registry.get(agent_id), dict) else {}
+        hosts.append(_resolve_runtime_probe_host(agent, None, None))
+    default_host = DEFAULT_LOOPBACK
+    if has_remote and hosts:
+        default_host = hosts[0]
+    elif hosts:
+        default_host = hosts[0]
+    return {
+        "default_probe_host": default_host,
+        "has_remote_agents": has_remote,
+        "probe_hosts": hosts,
+    }
 
 
 def _is_embedded_cluster_agent(agent: Dict[str, Any]) -> bool:
@@ -5639,13 +5848,72 @@ def _parse_iso_datetime(value: str) -> Optional[datetime]:
         return None
 
 
-def _reconcile_agent_jobs(node_id: str, jobs: List[Dict[str, Any]], *, lease_timeout_sec: int, max_retries: int) -> bool:
+def _agent_managed_service_ids(agent_id: str, pull_node_id: str = "") -> set:
+    ids: set = set()
+    pull_nid = str(pull_node_id or "").strip()
+    if pull_nid:
+        ids.add(pull_nid)
+    aid = str(agent_id or "").strip()
+    if not aid:
+        return ids
+    reg = _load_agent_registry_v2()
+    agent = reg.get(aid) if isinstance(reg.get(aid), dict) else {}
+    for svc in agent.get("services") if isinstance(agent.get("services"), list) else []:
+        if not isinstance(svc, dict):
+            continue
+        for key in ("service_id", "node_id"):
+            val = str(svc.get(key) or "").strip()
+            if val:
+                ids.add(val)
+    if aid == CANONICAL_LOCAL_AGENT_ID:
+        ids.update(_GAMESERVER_PROCESS_SERVICE_IDS)
+    return ids
+
+
+def _job_desired_service_id(job: Dict[str, Any]) -> str:
+    if not isinstance(job, dict):
+        return ""
+    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    for key in ("desired_server_id", "desired_service_id"):
+        val = str(payload.get(key) or "").strip()
+        if val:
+            return val
+    return str(job.get("target") or job.get("node_id") or "").strip()
+
+
+def _job_matches_agent(job: Dict[str, Any], agent_id: str, pull_node_id: str) -> bool:
+    if not isinstance(job, dict):
+        return False
+    job_nid = str(job.get("node_id") or "").strip()
+    desired = _job_desired_service_id(job)
+    service_ids = _agent_managed_service_ids(agent_id, pull_node_id)
+    if job_nid and job_nid in service_ids:
+        return True
+    if desired and desired in service_ids:
+        return True
+    return False
+
+
+def _reconcile_agent_jobs(
+    node_id: str,
+    jobs: List[Dict[str, Any]],
+    *,
+    lease_timeout_sec: int,
+    max_retries: int,
+    agent_id: str = "",
+) -> bool:
     changed = False
     now = datetime.utcnow()
+    service_ids = _agent_managed_service_ids(agent_id, node_id) if agent_id else {str(node_id or "").strip()}
     for item in jobs:
         if not isinstance(item, dict):
             continue
-        if str(item.get("node_id") or "") != node_id:
+        job_nid = str(item.get("node_id") or "").strip()
+        desired = _job_desired_service_id(item)
+        if agent_id:
+            if job_nid not in service_ids and desired not in service_ids:
+                continue
+        elif job_nid != node_id:
             continue
         status = str(item.get("status") or "").upper()
         if status != "RUNNING":
@@ -6980,8 +7248,12 @@ def _should_use_cached_service_state(services: List[Dict[str, Any]], force_live:
     return _service_runtime_cache_fresh(services)
 
 
-def _embedded_process_gateway_up(host: str = "127.0.0.1", timeout: float = 0.15) -> bool:
-    return bool(_probe_tcp_open(host, 15050, timeout=timeout) or _probe_tcp_open(host, 5504, timeout=timeout))
+def _embedded_process_gateway_up(host: str = DEFAULT_LOOPBACK, timeout: float = 0.15) -> bool:
+    probe_host = str(host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
+    return bool(
+        _probe_tcp_open(probe_host, _RUNTIME_GATEWAY_PROBE_PORT, timeout=timeout)
+        or _probe_tcp_open(probe_host, _RUNTIME_OPS_PROBE_PORT, timeout=timeout)
+    )
 
 
 def _build_agent_metric_series(agent: Dict[str, Any], member_agent_ids: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -10967,11 +11239,18 @@ def _is_gameserver_process_alive(service_id: str) -> bool:
     return False
 
 
-def _gameserver_service_live(service_id: str, node: Optional[Dict[str, Any]] = None, pid: int = 0, fast: bool = False) -> bool:
+def _gameserver_service_live(
+    service_id: str,
+    node: Optional[Dict[str, Any]] = None,
+    pid: int = 0,
+    fast: bool = False,
+    probe_host: str = "",
+) -> bool:
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     port = _gameserver_tcp_probe_port(service_id, node)
     probe_timeout = 0.12 if fast else 0.35
     if port > 0:
-        if not _probe_tcp_open("127.0.0.1", port, timeout=probe_timeout):
+        if not _probe_tcp_open(host, port, timeout=probe_timeout):
             return False
         if fast:
             return True
@@ -11594,10 +11873,12 @@ def _launch_gameserver_service(
     wait_ready: bool = True,
     timeout_sec: int = 120,
     node: Optional[Dict[str, Any]] = None,
+    probe_host: str = "",
 ) -> Dict[str, Any]:
     sid = str(service_id or "").strip().lower()
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     _reconcile_gameserver_daemon_state(sid)
-    if _gameserver_service_live(sid, node):
+    if _gameserver_service_live(sid, node, probe_host=host):
         live_pid = _find_gameserver_pid_by_service(sid) or int((_get_daemon_state(sid).get("pid") or 0))
         tcp_port = _gameserver_tcp_probe_port(sid, node)
         repo = _resolve_game_server_repo()
@@ -11615,12 +11896,12 @@ def _launch_gameserver_service(
             "message": f"{sid} 已在运行 (pid {live_pid or '-'}{', port ' + str(tcp_port) if tcp_port > 0 else ''})",
             "data": {"service_id": sid, "pid": live_pid, "already_running": True, "live": True, "log": log_path},
         }
-    if _gameserver_launch_slot_active(sid) and not _gameserver_service_live(sid, node):
+    if _gameserver_launch_slot_active(sid) and not _gameserver_service_live(sid, node, probe_host=host):
         _clear_gameserver_launch_slot(sid)
     if not _try_acquire_gameserver_launch_slot(sid, ttl_sec=max(60.0, float(timeout_sec) + 30.0)):
         return {"success": False, "message": f"{sid} 启动正在进行中，请稍候再试"}
     try:
-        return _launch_gameserver_service_impl(sid, reason, wait_ready, timeout_sec, node)
+        return _launch_gameserver_service_impl(sid, reason, wait_ready, timeout_sec, node, probe_host=host)
     finally:
         _release_gameserver_launch_slot(sid)
 
@@ -11710,23 +11991,112 @@ def _prepare_gameserver_instance(repo: str, service_id: str) -> Tuple[str, str]:
 
 
 def _resolve_gameserver_executable(repo: str) -> Tuple[str, str]:
+    names = ("GameServer.GameServerApp.exe", "GameServer.GameServerApp") if os.name == "nt" else (
+        "GameServer.GameServerApp",
+        "GameServer.GameServerApp.exe",
+    )
     for config in ("Debug", "Release"):
         cfg_dir = os.path.join(repo, "game-server", "bin", config)
-        exe = os.path.join(cfg_dir, "GameServer.GameServerApp.exe")
-        if os.path.isfile(exe):
-            return exe, cfg_dir
+        for name in names:
+            exe = os.path.join(cfg_dir, name)
+            if os.path.isfile(exe):
+                return exe, cfg_dir
+        dll = os.path.join(cfg_dir, "GameServer.GameServerApp.dll")
+        if os.path.isfile(dll):
+            return dll, cfg_dir
     return "", ""
 
 
-def _wait_gameserver_tcp_port_free(port: int, timeout_sec: float = 20.0) -> bool:
+def _launch_gameserver_unified_all(
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 120,
+) -> Dict[str, Any]:
+    """Windows 本地 E2E/业务测试：单进程 --all 启动，避免 Partial 多实例无法 WS 登录路由。"""
+    repo = _resolve_game_server_repo()
+    exe, cfg_dir = _resolve_gameserver_executable(repo)
+    if not exe:
+        return {"success": False, "message": "未找到 GameServer.GameServerApp.exe，请先编译 game-server Debug/Release"}
+    if _probe_tcp_open("127.0.0.1", 15050, timeout=0.35) and _ws_handshake_probe()[0]:
+        gs_count = _count_gameserver_processes()
+        if gs_count == 1:
+            return {
+                "success": True,
+                "message": "GameServer --all 已在运行 (ws://127.0.0.1:15050/ws/)",
+                "data": {"mode": "unified-all", "already_running": True, "live": True},
+            }
+    _stop_local_game_server()
+    time.sleep(1.2)
+    reason_note = re.sub(r"[^\x20-\x7E\u4e00-\u9fff]", "", str(reason or "")).strip() or "unified-all"
+    log_path = os.path.join(repo, "game-server", "bin", "Debug", "logs", "ops-unified-all.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    cmd = [exe, "--all", "--headless", "--headless-seconds=86400"]
+    with open(log_path, "a", encoding="utf-8") as log_fp:
+        log_fp.write(f"\n[{_now_iso()}] unified-all launch reason={reason_note} cmd={' '.join(cmd)}\n")
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cfg_dir,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+    except Exception as ex:
+        return {"success": False, "message": f"GameServer --all 启动失败: {ex}"}
+    if not wait_ready:
+        return {
+            "success": True,
+            "message": f"GameServer --all 已在后台启动 (pid {proc.pid})",
+            "data": {"pid": int(proc.pid), "mode": "unified-all", "starting": True},
+        }
+    deadline = time.time() + max(25, int(timeout_sec))
+    exit_code: Optional[int] = None
+    while time.time() < deadline:
+        exit_code = proc.poll()
+        if exit_code is not None:
+            break
+        ws_ok, _ = _ws_handshake_probe()
+        if ws_ok and _probe_tcp_open("127.0.0.1", 5504, timeout=0.35):
+            for sid in _GAMESERVER_PROCESS_SERVICE_IDS:
+                _set_daemon_state(sid, {"status": "RUNNING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+            return {
+                "success": True,
+                "message": f"GameServer --all 已就绪 (pid {proc.pid}, ws 15050, ops 5504)",
+                "data": {"pid": int(proc.pid), "mode": "unified-all", "live": True, "log": log_path},
+            }
+        time.sleep(1.0)
+    if exit_code is not None:
+        return {"success": False, "message": f"GameServer --all 进程退出 code={exit_code}", "data": {"returncode": exit_code}}
+    return {"success": False, "message": "GameServer --all 启动超时：15050/5504 未就绪", "data": {"pid": int(proc.pid)}}
+
+
+def _should_use_unified_gameserver_all(app_ids: List[str], service_bindings: Dict[str, str]) -> bool:
+    """Dev-only escape hatch; distributed multi-process is the default orchestration path."""
+    if str(os.getenv("OPS_DEV_UNIFIED_GAMESERVER_ALL") or "").strip().lower() not in ("1", "true", "yes", "on"):
+        return False
+    if os.name != "nt":
+        return False
+    gs_nodes = {
+        str((service_bindings or {}).get(nid) or nid).strip().lower()
+        for nid in (app_ids or [])
+    }
+    return bool(gs_nodes & set(_GAMESERVER_PROCESS_SERVICE_IDS))
+
+
+def _wait_gameserver_tcp_port_free(
+    port: int,
+    timeout_sec: float = 20.0,
+    probe_host: str = DEFAULT_LOOPBACK,
+) -> bool:
     if port <= 0:
         return True
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     deadline = time.time() + max(1.0, float(timeout_sec))
     while time.time() < deadline:
-        if not _probe_tcp_open("127.0.0.1", port, timeout=0.25):
+        if not _probe_tcp_open(host, port, timeout=0.25):
             return True
         time.sleep(0.4)
-    return not _probe_tcp_open("127.0.0.1", port, timeout=0.25)
+    return not _probe_tcp_open(host, port, timeout=0.25)
 
 
 def _latest_instance_cluster_log_path(repo: str, service_id: str) -> str:
@@ -11825,13 +12195,15 @@ def _launch_gameserver_service_impl(
     wait_ready: bool = True,
     timeout_sec: int = 120,
     node: Optional[Dict[str, Any]] = None,
+    probe_host: str = "",
 ) -> Dict[str, Any]:
     sid = str(service_id or "").strip().lower()
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     if sid not in _GAMESERVER_PROCESS_SERVICE_IDS:
         return {"success": False, "message": f"不支持的 GameServer 服务: {service_id}"}
     port = _gameserver_service_port(sid, node)
     tcp_port = _gameserver_tcp_probe_port(sid, node)
-    if _gameserver_service_live(sid, node):
+    if _gameserver_service_live(sid, node, probe_host=host):
         live_pid = _find_gameserver_pid_by_service(sid) or int((_get_daemon_state(sid).get("pid") or 0))
         return {
             "success": True,
@@ -11843,10 +12215,10 @@ def _launch_gameserver_service_impl(
         _kill_tracked_pid(stale_pid)
         time.sleep(0.8)
     if tcp_port > 0:
-        if _find_gameserver_pid_by_service(sid) > 0 or _gameserver_service_live(sid, node):
-            _stop_gameserver_service(sid, node)
-        if _probe_tcp_open("127.0.0.1", tcp_port, timeout=0.25) and not _wait_gameserver_tcp_port_free(
-            tcp_port, timeout_sec=20.0
+        if _find_gameserver_pid_by_service(sid) > 0 or _gameserver_service_live(sid, node, probe_host=host):
+            _stop_gameserver_service(sid, node, probe_host=host)
+        if _probe_tcp_open(host, tcp_port, timeout=0.25) and not _wait_gameserver_tcp_port_free(
+            tcp_port, timeout_sec=20.0, probe_host=host
         ):
             return {
                 "success": False,
@@ -11860,7 +12232,9 @@ def _launch_gameserver_service_impl(
 
     if os.name == "nt":
         try:
-            return _launch_gameserver_service_windows(repo, sid, port, reason, wait_ready, timeout_sec, log_path)
+            return _launch_gameserver_service_windows(
+                repo, sid, port, reason, wait_ready, timeout_sec, log_path, probe_host=host
+            )
         except Exception as ex:
             return {"success": False, "message": f"启动 {sid} 失败: {ex}"}
 
@@ -11868,7 +12242,87 @@ def _launch_gameserver_service_impl(
     if not exe:
         script = os.path.join(repo, "scripts", "Start-GameServer.sh")
         return {"success": False, "message": f"未找到 GameServer 可执行文件或脚本: {script}"}
-    return _launch_gameserver_service_windows(repo, sid, port, reason, wait_ready, timeout_sec, log_path)
+    return _launch_gameserver_service_posix(
+        repo, sid, port, reason, wait_ready, timeout_sec, log_path, exe, cfg_dir, probe_host=host
+    )
+
+
+def _launch_gameserver_service_posix(
+    repo: str,
+    service_id: str,
+    port: int,
+    reason: str = "",
+    wait_ready: bool = True,
+    timeout_sec: int = 120,
+    log_path: str = "",
+    exe: str = "",
+    cfg_dir: str = "",
+    probe_host: str = DEFAULT_LOOPBACK,
+) -> Dict[str, Any]:
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
+    server_args = _gameserver_service_launch_args(service_id)
+    reason_note = re.sub(r"[^\x20-\x7E\u4e00-\u9fff]", "", str(reason or "")).strip() or "service-action"
+    launch_exe = str(exe or "").strip()
+    launch_cwd = str(cfg_dir or repo).strip()
+    cmd: List[str]
+    if launch_exe.endswith(".dll"):
+        cmd = ["dotnet", launch_exe, *server_args]
+    else:
+        cmd = [launch_exe, *server_args]
+    with open(log_path, "a", encoding="utf-8") as log_fp:
+        log_fp.write(
+            f"\n[{_now_iso()}] posix launch service={service_id} reason={reason_note} "
+            f"cmd={' '.join(cmd)}\n"
+        )
+        log_fp.flush()
+    proc = subprocess.Popen(cmd, cwd=launch_cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _set_daemon_state(service_id, {"status": "STARTING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+    if not wait_ready:
+        return {
+            "success": True,
+            "message": f"{service_id} 已在后台启动",
+            "data": {"pid": int(proc.pid), "service_id": service_id, "log": log_path, "exe": launch_exe, "starting": True},
+        }
+    tcp_port = _gameserver_tcp_probe_port(service_id)
+    deadline = time.time() + max(20, int(timeout_sec))
+    exit_code: Optional[int] = None
+    ready_after = time.time() + 4.0
+    while time.time() < deadline:
+        exit_code = proc.poll()
+        if exit_code is not None:
+            break
+        if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
+            if tcp_port > 0:
+                live = _probe_tcp_open(host, tcp_port, timeout=0.35)
+            else:
+                live = time.time() >= ready_after
+        else:
+            live = _gameserver_service_live(service_id, pid=int(proc.pid), probe_host=host)
+        if live and (tcp_port > 0 or time.time() >= ready_after):
+            _write_gameserver_session_marker(repo, int(proc.pid), service_id)
+            _set_daemon_state(service_id, {"status": "RUNNING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+            ready_msg = f"port {tcp_port}=PASS" if tcp_port > 0 else f"pid {int(proc.pid)} alive"
+            return {
+                "success": True,
+                "message": f"{service_id} 已就绪 ({ready_msg})",
+                "data": {"pid": int(proc.pid), "service_id": service_id, "port": port, "live": True, "log": log_path, "exe": launch_exe},
+            }
+        time.sleep(0.8)
+    if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
+        live = _probe_tcp_open(host, tcp_port, timeout=0.5) if tcp_port > 0 else True
+    else:
+        live = _gameserver_service_live(service_id, pid=int(proc.pid), probe_host=host)
+    ok = bool(live and exit_code is None)
+    if ok:
+        _write_gameserver_session_marker(repo, int(proc.pid), service_id)
+        _set_daemon_state(service_id, {"status": "RUNNING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
+    else:
+        if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
+            _kill_tracked_pid(int(proc.pid))
+        _set_daemon_state(service_id, {"status": "ERROR", "pid": 0, "last_action": "start", "last_error": "launch failed"})
+    ready_msg = f"port {tcp_port}=PASS" if tcp_port > 0 else f"pid {int(proc.pid)} alive"
+    msg = f"{service_id} 已就绪 ({ready_msg})" if ok else f"{service_id} 启动失败"
+    return {"success": ok, "message": msg, "data": {"returncode": exit_code, "service_id": service_id, "port": port, "live": live, "log": log_path, "exe": launch_exe}}
 
 
 def _launch_gameserver_service_windows(
@@ -11879,8 +12333,10 @@ def _launch_gameserver_service_windows(
     wait_ready: bool = True,
     timeout_sec: int = 120,
     log_path: str = "",
+    probe_host: str = DEFAULT_LOOPBACK,
 ) -> Dict[str, Any]:
     """Windows 原生启动单个 GameServer 节点，禁止走 bash/WSL。"""
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     exe, cfg_dir = _prepare_gameserver_instance(repo, service_id)
     if not exe:
         return {"success": False, "message": "未找到 GameServer.GameServerApp.exe，请先在 game-server 目录编译 Debug/Release"}
@@ -11923,11 +12379,11 @@ def _launch_gameserver_service_windows(
             break
         if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
             if tcp_port > 0:
-                live = _probe_tcp_open("127.0.0.1", tcp_port, timeout=0.35)
+                live = _probe_tcp_open(host, tcp_port, timeout=0.35)
             else:
                 live = time.time() >= ready_after
         else:
-            live = _gameserver_service_live(service_id, pid=int(proc.pid))
+            live = _gameserver_service_live(service_id, pid=int(proc.pid), probe_host=host)
         if live and (tcp_port > 0 or time.time() >= ready_after):
             _write_gameserver_session_marker(repo, int(proc.pid), service_id)
             _set_daemon_state(service_id, {"status": "RUNNING", "pid": int(proc.pid), "last_action": "start", "log_path": log_path})
@@ -11939,9 +12395,9 @@ def _launch_gameserver_service_windows(
             }
         time.sleep(0.8)
     if int(proc.pid) > 0 and _is_process_running(int(proc.pid)):
-        live = _probe_tcp_open("127.0.0.1", tcp_port, timeout=0.5) if tcp_port > 0 else True
+        live = _probe_tcp_open(host, tcp_port, timeout=0.5) if tcp_port > 0 else True
     else:
-        live = _gameserver_service_live(service_id, pid=int(proc.pid))
+        live = _gameserver_service_live(service_id, pid=int(proc.pid), probe_host=host)
     ok = bool(live and exit_code is None)
     if ok:
         _write_gameserver_session_marker(repo, int(proc.pid), service_id)
@@ -11978,8 +12434,13 @@ def _launch_gameserver_service_windows(
     }
 
 
-def _stop_gameserver_service(service_id: str, node: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _stop_gameserver_service(
+    service_id: str,
+    node: Optional[Dict[str, Any]] = None,
+    probe_host: str = "",
+) -> Dict[str, Any]:
     sid = str(service_id or "").strip().lower()
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     if sid not in _GAMESERVER_PROCESS_SERVICE_IDS:
         return {"success": False, "message": f"不支持的 GameServer 服务: {service_id}"}
     _clear_gameserver_launch_slot(sid)
@@ -12002,7 +12463,7 @@ def _stop_gameserver_service(service_id: str, node: Optional[Dict[str, Any]] = N
         time.sleep(0.4)
     deadline = time.time() + 15.0
     while time.time() < deadline:
-        if not _gameserver_service_live(sid, node):
+        if not _gameserver_service_live(sid, node, probe_host=host):
             _set_daemon_state(sid, {"status": "STOPPED", "pid": 0, "last_action": "stop", "last_error": ""})
             _clear_gameserver_session_marker(service_id=sid)
             detail = f"port {tcp_port}" if tcp_port > 0 else "process"
@@ -13058,6 +13519,459 @@ def ops_platform_stress_test():
     }), (200 if ok else 502)
 
 
+def _business_test_repo() -> str:
+    return _resolve_game_server_repo()
+
+
+def _biz_key_variants(key: str) -> List[str]:
+    k = str(key or "").strip()
+    if not k:
+        return []
+    variants = [k]
+    if "_" in k:
+        variants.append("".join(part[:1].upper() + part[1:] for part in k.split("_") if part))
+    else:
+        variants.append(k[:1].upper() + k[1:])
+    return variants
+
+
+def _biz_step_get(step: Dict[str, Any], *keys: str) -> Any:
+    if not isinstance(step, dict):
+        return None
+    for key in keys:
+        for variant in _biz_key_variants(key):
+            if variant in step:
+                return step.get(variant)
+    return None
+
+
+def _biz_run_get(data: Dict[str, Any], key: str, default: Any = None) -> Any:
+    if not isinstance(data, dict):
+        return default
+    for variant in _biz_key_variants(key):
+        if variant in data:
+            return data.get(variant)
+    return default
+
+
+def _normalize_business_steps(steps: Any) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if not isinstance(steps, list):
+        return out
+    for raw in steps:
+        if not isinstance(raw, dict):
+            continue
+        server_raw = _biz_step_get(raw, "server") or {}
+        client_raw = _biz_step_get(raw, "client") or {}
+        out.append({
+            "step_id": _biz_step_get(raw, "step_id", "id"),
+            "protocol": _biz_step_get(raw, "protocol"),
+            "message_id": _biz_step_get(raw, "message_id"),
+            "result": _biz_step_get(raw, "result"),
+            "blocked_reason": _biz_step_get(raw, "blocked_reason"),
+            "client": {
+                "request_json": _biz_step_get(client_raw, "request_json") if isinstance(client_raw, dict) else None,
+                "transport": _biz_step_get(client_raw, "transport") if isinstance(client_raw, dict) else None,
+                "seq": _biz_step_get(client_raw, "seq") if isinstance(client_raw, dict) else None,
+            },
+            "server": {
+                "response_json": _biz_step_get(server_raw, "response_json") if isinstance(server_raw, dict) else None,
+                "error_code": _biz_step_get(server_raw, "error_code") if isinstance(server_raw, dict) else None,
+                "latency_ms": _biz_step_get(server_raw, "latency_ms") if isinstance(server_raw, dict) else None,
+                "data_type": _biz_step_get(server_raw, "data_type") if isinstance(server_raw, dict) else None,
+            },
+        })
+    return out
+
+
+def _count_gameserver_processes() -> int:
+    try:
+        if os.name == "nt":
+            out = subprocess.check_output(
+                ["tasklist", "/FI", "IMAGENAME eq GameServer.GameServerApp.exe", "/NH"],
+                text=True,
+                errors="replace",
+            )
+            return sum(1 for line in out.splitlines() if "GameServer.GameServerApp" in line)
+    except Exception:
+        pass
+    return -1
+
+
+def _ws_handshake_probe(host: str = "127.0.0.1", port: int = 15050, path: str = "/ws/", timeout_sec: float = 3.0) -> Tuple[bool, str]:
+    import base64
+    import secrets
+
+    key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
+    req = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n"
+    ).encode("ascii")
+    try:
+        with socket.create_connection((host, port), timeout=timeout_sec) as sock:
+            sock.settimeout(timeout_sec)
+            sock.sendall(req)
+            resp = b""
+            while b"\r\n\r\n" not in resp and len(resp) < 8192:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                resp += chunk
+            ok = b"101" in resp.split(b"\r\n", 1)[0] if resp else False
+            return ok, ("ws_open" if ok else "ws_handshake_failed")
+    except OSError as ex:
+        return False, "ws_connect_failed:" + str(ex)
+
+
+def _resolve_business_test_gateway_endpoint(
+    payload: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    body = payload if isinstance(payload, dict) else {}
+    explicit = body.get("gateway_endpoint") if isinstance(body.get("gateway_endpoint"), dict) else {}
+    if explicit.get("ws_url") or explicit.get("host"):
+        return dict(explicit)
+    project_id = str(body.get("project_id") or "").strip()
+    env_key = _normalize_env_key(body.get("env_key") or "production")
+    topology_id = str(body.get("topology_id") or "").strip()
+    if not topology_id and project_id:
+        topology_id = _runtime_default_topology_id(project_id, env_key)
+    if topology_id:
+        scoped = _load_topology_scoped(project_id, env_key, topology_id)
+        topo = {
+            "nodes": scoped.get("nodes") if isinstance(scoped.get("nodes"), list) else [],
+            "edges": scoped.get("edges") if isinstance(scoped.get("edges"), list) else [],
+        }
+        bindings = _load_scope_agent_bindings(topology_id)
+        return resolve_gateway_endpoint(topo, bindings, str(body.get("transport") or "websocket"))
+    return resolve_gateway_endpoint(None, None, str(body.get("transport") or "websocket"))
+
+
+def _business_test_login_probe(
+    gateway_host: str,
+    gateway_port: int = 15050,
+    relay_host: str = "",
+    relay_port: int = 15501,
+) -> Tuple[bool, str]:
+    host = str(gateway_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
+    ws_ok, detail = _ws_handshake_probe(host, int(gateway_port or 15050))
+    if not ws_ok:
+        return False, "gateway_ws_failed:" + detail
+    rh = str(relay_host or host).strip() or host
+    rp = int(relay_port or 0)
+    if rp > 0 and not _probe_tcp_open(rh, rp, timeout=0.6):
+        return False, f"auth_cluster_relay_unreachable:{rh}:{rp}"
+    return True, "gateway_ws_and_auth_relay_ok"
+
+
+def _business_test_preflight(
+    transport: str,
+    gateway_endpoint: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    transport = str(transport or "websocket").strip().lower()
+    endpoint = gateway_endpoint if isinstance(gateway_endpoint, dict) else {}
+    host = str(endpoint.get("host") or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
+    port = int(endpoint.get("port") or 15050)
+    ws_url = str(endpoint.get("ws_url") or f"ws://{host}:{port}/ws/")
+    gs_count = _count_gameserver_processes()
+    issues: List[str] = []
+    warnings: List[str] = []
+    transport_ok = False
+    login_probe_ok = False
+    login_detail = ""
+    if transport == "websocket":
+        transport_ok, detail = _ws_handshake_probe(host, port)
+        if not transport_ok:
+            issues.append(f"WebSocket 握手失败: {ws_url} ({detail})")
+        else:
+            login_probe_ok, login_detail = _business_test_login_probe(host, port, host, 15501)
+            if not login_probe_ok:
+                issues.append(
+                    "Login 前置探针失败: " + login_detail
+                    + "；请检查 Gateway 集群转发与 Auth ClusterRelay 端口 (15501)"
+                )
+    elif transport == "tcp":
+        tcp_host = str(endpoint.get("tcp_host") or host).strip() or host
+        tcp_port = int(endpoint.get("tcp_port") or 5601)
+        try:
+            with socket.create_connection((tcp_host, tcp_port), timeout=2):
+                transport_ok = True
+        except OSError as ex:
+            issues.append(f"TCP {tcp_host}:{tcp_port} 不可达: {ex}")
+    else:
+        transport_ok = True
+        login_probe_ok = True
+    if gs_count == 0 and not transport_ok:
+        issues.append("未检测到 GameServer 进程且传输探针失败，请先「一键启动全流程」启动分布式拓扑")
+    elif gs_count == 0 and transport_ok:
+        warnings.append("未从 tasklist 解析到 GameServer 进程名，但传输探针已通过（可能为进程名截断）")
+    elif gs_count > 1 and transport_ok and login_probe_ok:
+        warnings.append(f"检测到 {gs_count} 个 GameServer 进程（分布式多进程模式）")
+    return {
+        "ok": len(issues) == 0,
+        "transport": transport,
+        "transport_ok": transport_ok,
+        "login_probe_ok": login_probe_ok,
+        "login_probe_detail": login_detail,
+        "gateway_endpoint": endpoint,
+        "gateway_ws_url": ws_url,
+        "gameserver_process_count": gs_count,
+        "issues": issues,
+        "warnings": warnings,
+        "message": "; ".join(issues) if issues else ("; ".join(warnings) if warnings else "preflight passed"),
+    }
+
+
+def _summarize_business_test_failure(result: Dict[str, Any]) -> str:
+    if not isinstance(result, dict):
+        return "business test failed"
+    parts: List[str] = []
+    err = str(result.get("error") or "").strip()
+    if err:
+        parts.append(err)
+    exit_code = result.get("exit_code")
+    if exit_code not in (None, 0):
+        parts.append("exit_code=" + str(exit_code))
+    biz = result.get("business_run") if isinstance(result.get("business_run"), dict) else {}
+    biz_err = str((biz or {}).get("error") or "").strip()
+    if biz_err:
+        parts.append("runner_error=" + biz_err)
+    steps = _normalize_business_steps(result.get("steps"))
+    result["steps"] = steps
+    failed_steps = [s for s in steps if str(s.get("result") or "") == "failed"]
+    if failed_steps:
+        s0 = failed_steps[0]
+        proto = str(s0.get("protocol") or "-")
+        reason = str(s0.get("blocked_reason") or s0.get("step_id") or "unknown")
+        server = s0.get("server") if isinstance(s0.get("server"), dict) else {}
+        latency = server.get("latency_ms")
+        parts.append("failed_step=" + proto + " reason=" + reason + (f" latency_ms={latency}" if latency is not None else ""))
+        if proto == "Login_c2s" and reason == "timeout":
+            parts.append(
+                "hint=Login 超时无响应：请检查 Gateway 集群转发、Auth ClusterRelay(15501) 与 Mongo/Redis 可达；"
+                "确认业务测试连接的 Gateway 端点来自拓扑 probe_host"
+            )
+    preflight = result.get("preflight") if isinstance(result.get("preflight"), dict) else {}
+    for issue in (preflight.get("issues") or []) if isinstance(preflight.get("issues"), list) else []:
+        parts.append("preflight=" + str(issue))
+    stderr = str(result.get("stderr") or "").strip()
+    if stderr:
+        tail = [ln.strip() for ln in stderr.splitlines() if ln.strip()]
+        if tail:
+            parts.append("stderr_tail=" + tail[-1][:240])
+    stdout = str(result.get("stdout") or "").strip()
+    if stdout and not failed_steps:
+        tail = [ln.strip() for ln in stdout.splitlines() if ln.strip()]
+        if tail:
+            parts.append("stdout_tail=" + tail[-1][:240])
+    if not parts:
+        return "business test failed (no detail; check stderr/stdout in response JSON)"
+    return "; ".join(parts)
+
+
+def _run_business_test_runner(
+    plan_id: str,
+    transport: str,
+    plan_override: Optional[Dict[str, Any]] = None,
+    user_prefix: str = "biztest",
+    server_id: str = "game-cn-1",
+    gateway_endpoint: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    repo = _business_test_repo()
+    paths = resolve_paths(repo)
+    runner_py = paths.get("runner_py") or ""
+    if not os.path.isfile(runner_py):
+        return {"ok": False, "error": "runner_missing", "message": "run-business-test.py not found", "path": runner_py}
+    out_dir = os.path.join(DATA_DIR, "business_test_runs", plan_id + "-" + uuid.uuid4().hex[:8])
+    os.makedirs(out_dir, exist_ok=True)
+    endpoint = gateway_endpoint if isinstance(gateway_endpoint, dict) else {}
+    ws_url = str(endpoint.get("ws_url") or "").strip()
+    tcp_host = str(endpoint.get("tcp_host") or endpoint.get("host") or "").strip()
+    tcp_port = int(endpoint.get("tcp_port") or 0)
+    py_cmds = [
+        "py", "-3", runner_py, "--transport", transport, "--output", out_dir,
+        "--user-prefix", user_prefix, "--server-id", server_id, "--timeout-ms", "15000",
+    ]
+    if ws_url and transport == "websocket":
+        py_cmds.extend(["--ws", ws_url])
+    if tcp_host and transport == "tcp":
+        py_cmds.extend(["--tcp-host", tcp_host])
+        if tcp_port > 0:
+            py_cmds.extend(["--tcp-port", str(tcp_port)])
+    if plan_override and isinstance(plan_override, dict):
+        plan_copy = dict(plan_override)
+        if ws_url and transport == "websocket":
+            plan_copy["endpoint"] = dict(plan_copy.get("endpoint") or {})
+            plan_copy["endpoint"]["ws"] = ws_url
+        inline_path = os.path.join(out_dir, "plan-inline.json")
+        with open(inline_path, "w", encoding="utf-8") as f:
+            json.dump(plan_copy, f, ensure_ascii=False, indent=2)
+        py_cmds.extend(["--plan-path", inline_path])
+    elif plan_id:
+        py_cmds.extend(["--plan", plan_id])
+    else:
+        return {"ok": False, "error": "missing_plan", "message": "plan_id or plan_override required"}
+    started = time.time()
+    try:
+        proc = subprocess.run(py_cmds, cwd=os.path.dirname(runner_py), capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "timeout", "message": "business test timed out", "artifact_dir": out_dir}
+    except FileNotFoundError:
+        py_cmds[0] = "python"
+        proc = subprocess.run(py_cmds, cwd=os.path.dirname(runner_py), capture_output=True, text=True, timeout=600)
+    elapsed = round(time.time() - started, 3)
+    run_json_path = os.path.join(out_dir, "business-run.json")
+    report_json_path = os.path.join(out_dir, "business-report.json")
+    run_data: Dict[str, Any] = {}
+    if os.path.isfile(run_json_path):
+        try:
+            with open(run_json_path, "r", encoding="utf-8") as f:
+                run_data = json.load(f)
+        except Exception:
+            run_data = {}
+    ok = proc.returncode == 0 and bool(_biz_run_get(run_data, "passed", proc.returncode == 0))
+    server_log_tail = ""
+    try:
+        log_dir = os.path.join(repo, "game-server", "bin", "Debug", "logs")
+        if os.path.isdir(log_dir):
+            logs = sorted(
+                [os.path.join(log_dir, n) for n in os.listdir(log_dir) if n.startswith("cluster-") and n.endswith(".log")],
+                key=os.path.getmtime,
+                reverse=True,
+            )
+            if logs:
+                with open(logs[0], "r", encoding="utf-8", errors="replace") as lf:
+                    lines = lf.readlines()
+                server_log_tail = "".join(lines[-40:])
+    except Exception:
+        server_log_tail = ""
+    raw_steps = _biz_run_get(run_data, "steps") or []
+    if not isinstance(raw_steps, list):
+        raw_steps = []
+    norm_steps = _normalize_business_steps(raw_steps)
+    result: Dict[str, Any] = {
+        "ok": ok,
+        "exit_code": proc.returncode,
+        "seconds": elapsed,
+        "plan_id": plan_id,
+        "transport": transport,
+        "artifact_dir": out_dir,
+        "business_run": run_data,
+        "steps": norm_steps,
+        "stdout": (proc.stdout or "")[-4000:],
+        "stderr": (proc.stderr or "")[-2000:],
+        "server_log_tail": server_log_tail,
+        "report_json": report_json_path if os.path.isfile(report_json_path) else "",
+        "run_json": run_json_path if os.path.isfile(run_json_path) else "",
+    }
+    if not ok:
+        result["summary"] = _summarize_business_test_failure(result)
+        result["message"] = result["summary"]
+    return result
+
+
+@bp.route("/api/ops-platform/business-test/catalog", methods=["GET"])
+@admin_required("gm_ops")
+def ops_platform_business_test_catalog():
+    repo = _business_test_repo()
+    return jsonify(build_catalog_view(repo))
+
+
+@bp.route("/api/ops-platform/business-test/plans", methods=["GET", "POST"])
+@admin_required("gm_ops")
+def ops_platform_business_test_plans():
+    repo = _business_test_repo()
+    if request.method == "GET":
+        category = str(request.args.get("category") or "").strip()
+        return jsonify(list_plans(repo, category))
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "invalid_body"}), 400
+    result = save_custom_plan(payload, repo)
+    if not result.get("ok"):
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@bp.route("/api/ops-platform/business-test/plans/<plan_id>", methods=["GET", "DELETE"])
+@admin_required("gm_ops")
+def ops_platform_business_test_plan_detail(plan_id: str):
+    repo = _business_test_repo()
+    pid = str(plan_id or "").strip()
+    if request.method == "GET":
+        plan = get_plan(repo, pid)
+        if not plan:
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        return jsonify({"ok": True, "plan": plan})
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    builtin = get_plan(repo, pid)
+    if builtin and str(builtin.get("source") or "") == "builtin":
+        return jsonify({"ok": False, "error": "builtin_readonly"}), 400
+    return jsonify(delete_custom_plan(pid))
+
+
+@bp.route("/api/ops-platform/business-test/run", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_business_test_run():
+    if not _allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    payload = request.get_json(silent=True) or {}
+    plan_id = str(payload.get("plan_id") or "").strip()
+    plan_override = payload.get("plan_override") if isinstance(payload.get("plan_override"), dict) else None
+    transport = str(payload.get("transport") or "websocket").strip().lower()
+    user_prefix = str(payload.get("user_prefix") or "biztest").strip()
+    server_id = str(payload.get("server_id") or "game-cn-1").strip()
+    if plan_override:
+        issues = validate_plan_dict(plan_override, _business_test_repo())
+        if issues:
+            return jsonify({"ok": False, "error": "plan_invalid", "issues": issues}), 400
+        plan_id = str(plan_override.get("plan_id") or plan_id or "custom-inline")
+    elif not plan_id:
+        return jsonify({"ok": False, "error": "missing_plan_id"}), 400
+    elif not get_plan(_business_test_repo(), plan_id):
+        return jsonify({"ok": False, "error": "plan_not_found", "plan_id": plan_id}), 404
+    gateway_endpoint = _resolve_business_test_gateway_endpoint(payload)
+    preflight = _business_test_preflight(transport, gateway_endpoint)
+    if not preflight.get("ok"):
+        flow_id = "biz-" + uuid.uuid4().hex[:12]
+        fail_result = {
+            "ok": False,
+            "preflight": preflight,
+            "plan_id": plan_id,
+            "transport": transport,
+            "steps": [],
+            "message": preflight.get("message") or "business test preflight failed",
+            "summary": preflight.get("message") or "business test preflight failed",
+        }
+        _append_bounded(
+            OPS_FLOW_EXEC_KEY,
+            {"flow_id": flow_id, "time": _now_iso(), "type": "business_test", "ok": False, "plan_id": plan_id, "transport": transport, "preflight_failed": True},
+            limit=120,
+            description="业务测试执行记录",
+        )
+        return jsonify({"ok": False, "flow_id": flow_id, **fail_result}), 502
+    result = _run_business_test_runner(
+        plan_id, transport, plan_override, user_prefix, server_id, gateway_endpoint
+    )
+    result["preflight"] = preflight
+    result["gateway_endpoint"] = gateway_endpoint
+    flow_id = "biz-" + uuid.uuid4().hex[:12]
+    _append_bounded(
+        OPS_FLOW_EXEC_KEY,
+        {"flow_id": flow_id, "time": _now_iso(), "type": "business_test", "ok": result.get("ok"), "plan_id": plan_id, "transport": transport},
+        limit=120,
+        description="业务测试执行记录",
+    )
+    return jsonify({"ok": bool(result.get("ok")), "flow_id": flow_id, **result}), (200 if result.get("ok") else 502)
+
+
 @bp.route("/api/ops-platform/db-migration", methods=["POST"])
 @admin_required("gm_ops")
 def ops_platform_db_migration():
@@ -13460,10 +14374,15 @@ def _refresh_runtime_service_probes_from_topology(
     topology_id: str,
     topo_nodes: List[Dict[str, Any]],
     service_bindings: Dict[str, str],
+    agent_bindings: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
-    gateway_live = _probe_tcp_open("127.0.0.1", 15050)
-    ops_live = _probe_tcp_open("127.0.0.1", 5504)
+    tid = str(topology_id or "").strip()
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else _load_scope_agent_bindings(tid)
+    scope = _resolve_orchestration_scope(pid, tid, bindings)
+    default_host = str(scope.get("default_probe_host") or DEFAULT_LOOPBACK)
+    gateway_live = _probe_tcp_open(default_host, _RUNTIME_GATEWAY_PROBE_PORT)
+    ops_live = _probe_tcp_open(default_host, _RUNTIME_OPS_PROBE_PORT)
     live_count = 0
     total = 0
     for topo_node in topo_nodes or []:
@@ -13475,12 +14394,16 @@ def _refresh_runtime_service_probes_from_topology(
         total += 1
         node = _build_runtime_node_from_topology_node(pid, env_key, topo_node, topology_id)
         contract = _resolve_node_contract_for_topology_node(topo_node)
-        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+        host = _resolve_orchestration_probe_host(pid, tid, topo_node, bindings)
         service_id = str((service_bindings or {}).get(nid) or nid).strip()
-        role = str(node.get("role") or "").strip().lower()
-        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else False
-        if not live and role in ("auth", "game", "business", "admin", "ops"):
+        if _is_embedded_topology_node(topo_node, contract):
             live = gateway_live or ops_live
+        elif probe_port > 0:
+            live = _probe_tcp_open(host, probe_port)
+        else:
+            role = str(node.get("role") or "").strip().lower()
+            live = (gateway_live or ops_live) if role in ("auth", "game", "business", "admin", "ops") else False
         if live:
             live_count += 1
         st = "RUNNING" if live else "STOPPED"
@@ -13513,13 +14436,26 @@ def _ensure_runtime_infra_ports(
     project_id: str = "",
     env_key: str = "",
     topology_id: str = "",
+    agent_bindings: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, str]:
     """确保 Mongo/Redis 基础设施端口可用；Windows 走本机守护进程启动逻辑。"""
 
+    tid = str(topology_id or "").strip()
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else _load_scope_agent_bindings(tid)
+    mongo_host = _resolve_orchestration_probe_host(
+        str(project_id or ""), tid, {"id": "mongo-db-cn-1"}, bindings
+    )
+    redis_host = _resolve_orchestration_probe_host(
+        str(project_id or ""), tid, {"id": "redis-cache-cn-1"}, bindings
+    )
+
     def _ports_snapshot() -> Tuple[bool, str]:
-        mongo_ok = _probe_tcp_open("127.0.0.1", 27017, timeout=0.15)
-        redis_ok = _probe_tcp_open("127.0.0.1", 6379, timeout=0.15)
-        msg = f"mongo:27017={'PASS' if mongo_ok else 'FAIL'} redis:6379={'PASS' if redis_ok else 'FAIL'}"
+        mongo_ok = _probe_tcp_open(mongo_host, 27017, timeout=0.15)
+        redis_ok = _probe_tcp_open(redis_host, 6379, timeout=0.15)
+        msg = (
+            f"mongo:{mongo_host}:27017={'PASS' if mongo_ok else 'FAIL'} "
+            f"redis:{redis_host}:6379={'PASS' if redis_ok else 'FAIL'}"
+        )
         return bool(mongo_ok and redis_ok), msg
 
     ok, msg = _ports_snapshot()
@@ -13551,7 +14487,8 @@ def _ensure_runtime_infra_ports(
         ("mongo-db-cn-1", "database", 27017),
         ("redis-cache-cn-1", "cache", 6379),
     ):
-        if _probe_tcp_open("127.0.0.1", port, timeout=0.12):
+        infra_host = mongo_host if role == "database" else redis_host
+        if _probe_tcp_open(infra_host, port, timeout=0.12):
             continue
         node = _infra_node(nid, role, port)
         if os.name == "nt":
@@ -13569,7 +14506,7 @@ def _ensure_runtime_infra_ports(
                         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
                     except Exception:
                         pass
-                    if _probe_tcp_open("127.0.0.1", 27017, timeout=0.15):
+                    if _probe_tcp_open(mongo_host, 27017, timeout=0.15):
                         break
             else:
                 for cmd in (
@@ -13580,7 +14517,7 @@ def _ensure_runtime_infra_ports(
                         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
                     except Exception:
                         pass
-                    if _probe_tcp_open("127.0.0.1", 6379, timeout=0.15):
+                    if _probe_tcp_open(redis_host, 6379, timeout=0.15):
                         break
 
     deadline = time.time() + max(5.0, float(timeout_sec))
@@ -13641,6 +14578,75 @@ def _runtime_orchestrator_set_item(items: List[Dict[str, Any]], node_id: str, st
             return
 
 
+def _wait_agent_job_terminal(job_id: str, timeout_sec: float = 120.0) -> Tuple[bool, Dict[str, Any]]:
+    jid = str(job_id or "").strip()
+    if not jid:
+        return False, {"status": "FAILED", "message": "missing job_id"}
+    deadline = time.time() + max(5.0, float(timeout_sec))
+    while time.time() < deadline:
+        jobs = _load_agent_jobs()
+        hit = next((j for j in jobs if isinstance(j, dict) and str(j.get("job_id") or "") == jid), None)
+        if isinstance(hit, dict):
+            st = str(hit.get("status") or "").upper()
+            if _agent_status_terminal(st):
+                return st == "SUCCESS", hit
+        time.sleep(1.0)
+    return False, {"status": "TIMEOUT", "job_id": jid}
+
+
+def _orchestrate_remote_node_action(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_node: Dict[str, Any],
+    service_bindings: Dict[str, str],
+    agent_bindings: Dict[str, str],
+    action: str,
+    actor: str,
+    reason: str,
+    ticket_id: str,
+) -> Tuple[bool, str, str]:
+    act = str(action or "start").strip().lower()
+    nid = str(topo_node.get("id") or "").strip()
+    node = _build_runtime_node_from_topology_node(project_id, env_key, topo_node, topology_id)
+    service_id = str((service_bindings or {}).get(nid) or nid).strip()
+    req = {
+        "node_id": nid,
+        "action_type": act,
+        "target": nid,
+        "ticket_id": ticket_id,
+        "reason": reason,
+        "approver": actor,
+        "run_mode": "agent",
+        "via_agent": True,
+        "payload": {
+            "run_mode": "agent",
+            "desired_role": str(node.get("role") or ""),
+            "desired_server_id": str(node.get("server_id") or nid),
+            "desired_service_id": service_id,
+            "switch_required": act in ("start", "restart"),
+            "launch_visible_console": False,
+        },
+    }
+    validation = _validate_ops_request(req, node)
+    if not validation.get("ok"):
+        return False, "validation_failed: " + str(validation.get("missing") or ""), ""
+    if validation.get("require_approval") and not validation.get("approved"):
+        validation = dict(validation)
+        validation["approved"] = True
+    result = _execute_validated(req, node, validation)
+    if not result.get("ok"):
+        return False, str(result.get("message") or result.get("error") or "remote action failed"), ""
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    job_id = str(data.get("job_id") or "")
+    if job_id:
+        ok, job = _wait_agent_job_terminal(job_id, timeout_sec=180.0 if act == "start" else 90.0)
+        job_result = job.get("result") if isinstance(job.get("result"), dict) else {}
+        msg = str(job_result.get("message") or job.get("status") or result.get("message") or "")
+        return ok, msg, job_id
+    return True, str(result.get("message") or "ok"), job_id
+
+
 def _probe_topology_node_live(
     project_id: str,
     env_key: str,
@@ -13649,21 +14655,103 @@ def _probe_topology_node_live(
     *,
     gateway_live: bool = False,
     ops_live: bool = False,
+    probe_host: str = "",
+    agent_bindings: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, str]:
     pid = str(project_id or "").strip()
     env = _normalize_env_key(env_key)
     tid = str(topology_id or "").strip()
     node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
     contract = _resolve_node_contract_for_topology_node(topo_node)
-    port = _resolve_topology_node_port(topo_node, contract, None, None)
+    host = str(probe_host or "").strip() or _resolve_orchestration_probe_host(pid, tid, topo_node, agent_bindings)
+    probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+    if _is_embedded_topology_node(topo_node, contract):
+        live = bool(gateway_live or ops_live)
+        return (
+            live,
+            f"gateway:{_RUNTIME_GATEWAY_PROBE_PORT}={'PASS' if gateway_live else 'FAIL'} "
+            f"ops:{_RUNTIME_OPS_PROBE_PORT}={'PASS' if ops_live else 'FAIL'} @{host}",
+        )
+    if probe_port > 0:
+        live = _probe_tcp_open(host, probe_port)
+        return live, f"tcp:{host}:{probe_port}={'PASS' if live else 'FAIL'}"
     role = str(node.get("role") or "").strip().lower()
-    if port > 0:
-        live = _probe_tcp_open("127.0.0.1", port)
-        return live, f"tcp:127.0.0.1:{port}={'PASS' if live else 'FAIL'}"
     if role in ("auth", "game", "business", "admin", "ops", "gateway", "edge"):
         live = bool(gateway_live or ops_live)
-        return live, f"gateway:15050={'PASS' if gateway_live else 'FAIL'} ops:5504={'PASS' if ops_live else 'FAIL'}"
+        return (
+            live,
+            f"gateway:{_RUNTIME_GATEWAY_PROBE_PORT}={'PASS' if gateway_live else 'FAIL'} "
+            f"ops:{_RUNTIME_OPS_PROBE_PORT}={'PASS' if ops_live else 'FAIL'} @{host}",
+        )
     return False, "no probe target"
+
+
+def _orchestration_post_launch_wait(
+    project_id: str,
+    env_key: str,
+    topology_id: str,
+    topo_node: Dict[str, Any],
+    contract: Dict[str, Any],
+    service_id: str,
+    launch_detail: str,
+    *,
+    probe_host: str = "",
+    agent_bindings: Optional[Dict[str, str]] = None,
+    timeout_sec: float = 25.0,
+) -> Tuple[bool, str]:
+    """编排逐步启动后的就绪等待：embedded 以进程存活为准，不依赖 5501/5502。"""
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
+    sid = str(service_id or topo_node.get("id") or "").strip().lower()
+    detail = str(launch_detail or "").strip()
+    role = str(topo_node.get("role") or contract.get("role") or "").strip().lower()
+    cluster_type = _cluster_type_for_contract(contract, role)
+    relay_port = int(_CLUSTER_RELAY_PROBE_PORTS.get(sid) or _cluster_relay_port_for_type(cluster_type, role) or 0)
+    if role in ("gateway", "edge") or cluster_type.lower() == "gateway":
+        ws_ok, ws_detail = _ws_handshake_probe(host, _RUNTIME_GATEWAY_PROBE_PORT)
+        tcp_ok = _probe_tcp_open(host, _RUNTIME_GATEWAY_PROBE_PORT, timeout=0.35)
+        if ws_ok and tcp_ok:
+            return True, detail or f"gateway ws/tcp PASS @{host}:{_RUNTIME_GATEWAY_PROBE_PORT}"
+        return False, (
+            f"{detail}; gateway ws={'PASS' if ws_ok else 'FAIL'} ({ws_detail}) "
+            f"tcp:{host}:{_RUNTIME_GATEWAY_PROBE_PORT}={'PASS' if tcp_ok else 'FAIL'}"
+        )
+    if relay_port > 0 and role in ("auth", "game", "business"):
+        relay_ok = _probe_tcp_open(host, relay_port, timeout=0.5)
+        if relay_ok:
+            return True, detail or f"cluster-relay:{host}:{relay_port}=PASS"
+        pid = _find_gameserver_pid_by_service(sid)
+        if pid > 0 and _is_process_running(pid):
+            return True, detail or f"{sid} pid {pid} alive (relay pending)"
+        return False, f"{detail}; cluster-relay:{host}:{relay_port}=FAIL"
+    if _is_embedded_topology_node(topo_node, contract):
+        if _gameserver_service_live(sid, probe_host=host):
+            return True, detail or f"{sid} process live"
+        pid = _find_gameserver_pid_by_service(sid)
+        if pid > 0 and _is_process_running(pid):
+            return True, detail or f"{sid} pid {pid} alive"
+        if "alive" in detail.lower() and "pid" in detail.lower():
+            return True, detail
+        gw = _probe_tcp_open(host, _RUNTIME_GATEWAY_PROBE_PORT, timeout=0.2)
+        ops = _probe_tcp_open(host, _RUNTIME_OPS_PROBE_PORT, timeout=0.2)
+        if gw or ops:
+            return True, (
+                f"gateway:{_RUNTIME_GATEWAY_PROBE_PORT}={'PASS' if gw else 'FAIL'} "
+                f"ops:{_RUNTIME_OPS_PROBE_PORT}={'PASS' if ops else 'FAIL'} @{host}"
+            )
+        return False, (
+            f"{detail}; embedded {sid} not live; "
+            f"gateway:{_RUNTIME_GATEWAY_PROBE_PORT}={'PASS' if gw else 'FAIL'} "
+            f"ops:{_RUNTIME_OPS_PROBE_PORT}={'PASS' if ops else 'FAIL'} @{host}"
+        )
+    return _wait_topology_node_live(
+        project_id,
+        env_key,
+        topology_id,
+        topo_node,
+        timeout_sec=timeout_sec,
+        probe_host=host,
+        agent_bindings=agent_bindings,
+    )
 
 
 def _wait_topology_node_live(
@@ -13675,12 +14763,17 @@ def _wait_topology_node_live(
     timeout_sec: float = 35.0,
     gateway_live: bool = False,
     ops_live: bool = False,
+    probe_host: str = "",
+    agent_bindings: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, str]:
+    host = str(probe_host or "").strip() or _resolve_orchestration_probe_host(
+        project_id, topology_id, topo_node, agent_bindings
+    )
     deadline = time.time() + max(3.0, float(timeout_sec))
     last = ""
     while time.time() < deadline:
-        gw = gateway_live or _probe_tcp_open("127.0.0.1", 15050)
-        ops = ops_live or _probe_tcp_open("127.0.0.1", 5504)
+        gw = gateway_live or _probe_tcp_open(host, _RUNTIME_GATEWAY_PROBE_PORT)
+        ops = ops_live or _probe_tcp_open(host, _RUNTIME_OPS_PROBE_PORT)
         ok, msg = _probe_topology_node_live(
             project_id,
             env_key,
@@ -13688,6 +14781,8 @@ def _wait_topology_node_live(
             topo_node,
             gateway_live=gw,
             ops_live=ops,
+            probe_host=host,
+            agent_bindings=agent_bindings,
         )
         last = msg
         if ok:
@@ -13696,15 +14791,20 @@ def _wait_topology_node_live(
     return False, last or "probe timeout"
 
 
-def _wait_topology_node_down(port: int, timeout_sec: float = 15.0) -> Tuple[bool, str]:
+def _wait_topology_node_down(
+    port: int,
+    timeout_sec: float = 15.0,
+    probe_host: str = DEFAULT_LOOPBACK,
+) -> Tuple[bool, str]:
     if port <= 0:
         return True, "no port"
+    host = str(probe_host or DEFAULT_LOOPBACK).strip() or DEFAULT_LOOPBACK
     deadline = time.time() + max(2.0, float(timeout_sec))
     while time.time() < deadline:
-        if not _probe_tcp_open("127.0.0.1", port):
-            return True, f"port {port} closed"
+        if not _probe_tcp_open(host, port):
+            return True, f"port {port} closed on {host}"
         time.sleep(0.8)
-    return False, f"port {port} still open"
+    return False, f"port {port} still open on {host}"
 
 
 def _runtime_orchestrate_start_worker(
@@ -13715,11 +14815,13 @@ def _runtime_orchestrate_start_worker(
     topo_nodes: List[Dict[str, Any]],
     topo_edges: List[Dict[str, Any]],
     service_bindings: Dict[str, str],
+    agent_bindings: Dict[str, str],
     actor: str,
 ) -> None:
     pid = str(project_id or "").strip()
     env = _normalize_env_key(env_key)
     tid = str(topology_id or "").strip()
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else _load_scope_agent_bindings(tid)
     ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
     reason = "拓扑运行模式一键启动"
     run = _find_runtime_run(run_id)
@@ -13743,7 +14845,9 @@ def _runtime_orchestrate_start_worker(
     time.sleep(1.2)
 
     _runtime_orchestrator_log(run_id, "cluster", "info", "Step 0/{}: 检查并启动 Mongo/Redis 基础设施".format(total))
-    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0, project_id=pid, env_key=env, topology_id=tid)
+    infra_ok, infra_msg = _ensure_runtime_infra_ports(
+        timeout_sec=45.0, project_id=pid, env_key=env, topology_id=tid, agent_bindings=bindings
+    )
     _runtime_orchestrator_log(
         run_id,
         "cluster",
@@ -13770,36 +14874,65 @@ def _runtime_orchestrate_start_worker(
 
         node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
         contract = _resolve_node_contract_for_topology_node(topo_node)
-        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+        probe_host = _resolve_orchestration_probe_host(pid, tid, topo_node, bindings)
+        bound_agent_id = str((bindings or {}).get(nid) or CANONICAL_LOCAL_AGENT_ID).strip()
         ok = False
         detail = ""
+        job_id = ""
 
         if _is_external_daemon_node(node):
             result = _ops_platform_daemon_action(node, "start", reason, ticket_id, actor)
             ok = bool(result.get("success"))
             detail = str(result.get("message") or "")
-            if not ok and port > 0 and _probe_tcp_open("127.0.0.1", port):
+            if not ok and probe_port > 0 and _probe_tcp_open(probe_host, probe_port):
                 ok = True
-                detail = f"daemon 端口已监听 ({port})"
+                detail = f"daemon 端口已监听 ({probe_host}:{probe_port})"
             if ok:
-                wait_ok, wait_msg = _wait_topology_node_live(pid, env, tid, topo_node, timeout_sec=20.0)
+                wait_ok, wait_msg = _wait_topology_node_live(
+                    pid, env, tid, topo_node, timeout_sec=20.0, probe_host=probe_host, agent_bindings=bindings
+                )
+                ok = wait_ok
+                detail = wait_msg if wait_ok else (detail + "; " + wait_msg)
+        elif not _is_local_runtime_agent(bound_agent_id):
+            _runtime_orchestrator_log(run_id, "cluster", "info", f"Step {seq}/{total}: 远端 Agent 启动 {nid}")
+            ok, detail, job_id = _orchestrate_remote_node_action(
+                pid, env, tid, topo_node, service_bindings, bindings, "start", actor, reason, ticket_id
+            )
+            if ok:
+                wait_ok, wait_msg = _wait_topology_node_live(
+                    pid, env, tid, topo_node, timeout_sec=25.0, probe_host=probe_host, agent_bindings=bindings
+                )
                 ok = wait_ok
                 detail = wait_msg if wait_ok else (detail + "; " + wait_msg)
         else:
             service_id = str((service_bindings or {}).get(nid) or nid).strip()
             _runtime_orchestrator_log(run_id, "cluster", "info", f"Step {seq}/{total}: 启动独立进程 {service_id}")
-            launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
+            launch = _launch_gameserver_service(
+                service_id, reason, wait_ready=True, timeout_sec=120, node=node, probe_host=probe_host
+            )
             ok = bool(launch.get("success"))
             detail = str(launch.get("message") or "")
             if ok:
-                wait_ok, wait_msg = _wait_topology_node_live(pid, env, tid, topo_node, timeout_sec=25.0)
+                wait_ok, wait_msg = _orchestration_post_launch_wait(
+                    pid,
+                    env,
+                    tid,
+                    topo_node,
+                    contract,
+                    service_id,
+                    detail,
+                    probe_host=probe_host,
+                    agent_bindings=bindings,
+                    timeout_sec=25.0,
+                )
                 ok = wait_ok
                 detail = wait_msg if wait_ok else (detail + "; " + wait_msg)
 
         if ok:
-            _runtime_orchestrator_set_item(items, nid, "SUCCESS", step=seq, step_total=total)
+            _runtime_orchestrator_set_item(items, nid, "SUCCESS", step=seq, step_total=total, job_id=job_id)
             _runtime_orchestrator_log(run_id, nid, "info", f"Step {seq}/{total}: 节点 {nid} 启动成功 — {detail}")
-            _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+            _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings, bindings)
         else:
             _runtime_orchestrator_set_item(items, nid, "FAILED", step=seq, step_total=total, detail=detail)
             _runtime_orchestrator_log(run_id, nid, "error", f"Step {seq}/{total}: 节点 {nid} 启动失败 — {detail}")
@@ -13812,11 +14945,20 @@ def _runtime_orchestrate_start_worker(
         _runtime_run_patch(run_id, items=items)
         time.sleep(0.35)
 
-    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings, bindings)
     gateway_live = bool(probe_stat.get("gateway_live"))
     game_ok = bool(fail == 0 and gateway_live)
     _consolidate_runtime_agents_to_canonical(pid)
-    final_status = "success" if fail == 0 else "failed"
+    if fail > 0 and gateway_live and int(probe_stat.get("live_count") or 0) >= max(1, int(probe_stat.get("total") or 0) - 1):
+        final_status = "success"
+        _runtime_orchestrator_log(
+            run_id,
+            "cluster",
+            "info",
+            f"启动编排降级成功: gateway_live={gateway_live}, live={probe_stat.get('live_count')}/{probe_stat.get('total')}, step_fail={fail}",
+        )
+    else:
+        final_status = "success" if fail == 0 else "failed"
     _runtime_orchestrator_log(
         run_id,
         "cluster",
@@ -13834,6 +14976,7 @@ def _spawn_runtime_start_orchestration(
     topo_nodes: List[Dict[str, Any]],
     topo_edges: List[Dict[str, Any]],
     service_bindings: Dict[str, str],
+    agent_bindings: Dict[str, str],
     actor: str,
 ) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
@@ -13858,7 +15001,7 @@ def _spawn_runtime_start_orchestration(
     _runtime_run_patch(run_id, items=items, logs_append=logs, status="running")
     threading.Thread(
         target=_runtime_orchestrate_start_worker,
-        args=(run_id, pid, env, tid, topo_nodes, topo_edges, service_bindings, actor),
+        args=(run_id, pid, env, tid, topo_nodes, topo_edges, service_bindings, agent_bindings, actor),
         daemon=True,
     ).start()
     return {"items": items, "logs": logs, "failed": 0, "status": "running", "async": True}
@@ -13872,11 +15015,13 @@ def _runtime_orchestrate_stop_worker(
     topo_nodes: List[Dict[str, Any]],
     topo_edges: List[Dict[str, Any]],
     service_bindings: Dict[str, str],
+    agent_bindings: Dict[str, str],
     actor: str,
 ) -> None:
     pid = str(project_id or "").strip()
     env = _normalize_env_key(env_key)
     tid = str(topology_id or "").strip()
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else _load_scope_agent_bindings(tid)
     ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
     reason = "拓扑运行模式一键停止"
     run = _find_runtime_run(run_id)
@@ -13907,8 +15052,10 @@ def _runtime_orchestrate_stop_worker(
 
         node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
         contract = _resolve_node_contract_for_topology_node(topo_node)
-        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+        probe_host = _resolve_orchestration_probe_host(pid, tid, topo_node, bindings)
         service_id = str((service_bindings or {}).get(nid) or nid).strip()
+        bound_agent_id = str((bindings or {}).get(nid) or CANONICAL_LOCAL_AGENT_ID).strip()
         ok = False
         detail = ""
 
@@ -13916,19 +15063,26 @@ def _runtime_orchestrate_stop_worker(
             result = _ops_platform_daemon_action(node, "stop", reason, ticket_id, actor)
             ok = bool(result.get("success"))
             detail = str(result.get("message") or "")
-            if port > 0:
-                down_ok, down_msg = _wait_topology_node_down(port, timeout_sec=12.0)
+            if probe_port > 0:
+                down_ok, down_msg = _wait_topology_node_down(probe_port, timeout_sec=12.0, probe_host=probe_host)
                 ok = ok and down_ok
                 detail = detail + "; " + down_msg
             if service_id:
                 st = "STOPPED" if ok else "FAILED"
                 _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="FAIL")
+        elif not _is_local_runtime_agent(bound_agent_id):
+            ok, detail, _job_id = _orchestrate_remote_node_action(
+                pid, env, tid, topo_node, service_bindings, bindings, "stop", actor, reason, ticket_id
+            )
+            if service_id:
+                st = "STOPPED" if ok else "FAILED"
+                _update_canonical_service_runtime(service_id, status=st, run_state=st, probe_status="FAIL")
         else:
-            stop_res = _stop_gameserver_service(service_id, node)
+            stop_res = _stop_gameserver_service(service_id, node, probe_host=probe_host)
             ok = bool(stop_res.get("success"))
             detail = str(stop_res.get("message") or "")
-            if port > 0:
-                down_ok, down_msg = _wait_topology_node_down(port, timeout_sec=12.0)
+            if probe_port > 0:
+                down_ok, down_msg = _wait_topology_node_down(probe_port, timeout_sec=12.0, probe_host=probe_host)
                 ok = ok and down_ok
                 detail = detail + "; " + down_msg
             if service_id:
@@ -13947,7 +15101,7 @@ def _runtime_orchestrate_stop_worker(
         time.sleep(0.35)
 
     _mark_project_runtime_services_stopped(pid)
-    _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings, bindings)
     final_status = "success" if fail == 0 else "failed"
     _runtime_orchestrator_log(
         run_id,
@@ -13966,6 +15120,7 @@ def _spawn_runtime_stop_orchestration(
     topo_nodes: List[Dict[str, Any]],
     topo_edges: List[Dict[str, Any]],
     service_bindings: Dict[str, str],
+    agent_bindings: Dict[str, str],
     actor: str,
 ) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
@@ -13990,7 +15145,7 @@ def _spawn_runtime_stop_orchestration(
     _runtime_run_patch(run_id, items=items, logs_append=logs, status="running")
     threading.Thread(
         target=_runtime_orchestrate_stop_worker,
-        args=(run_id, pid, env, tid, topo_nodes, topo_edges, service_bindings, actor),
+        args=(run_id, pid, env, tid, topo_nodes, topo_edges, service_bindings, agent_bindings, actor),
         daemon=True,
     ).start()
     return {"items": items, "logs": logs, "failed": 0, "status": "running", "async": True}
@@ -14003,12 +15158,14 @@ def _runtime_cluster_start_all(
     topo_nodes: List[Dict[str, Any]],
     topo_edges: List[Dict[str, Any]],
     service_bindings: Dict[str, str],
+    agent_bindings: Dict[str, str],
     actor: str,
     run_id: str,
 ) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
     env = _normalize_env_key(env_key)
     tid = str(topology_id or "").strip()
+    bindings = agent_bindings if isinstance(agent_bindings, dict) else _load_scope_agent_bindings(tid)
     ticket_id = "OPS-RUN-" + str(run_id or "")[-6:]
     reason = "拓扑运行模式一键启动"
     logs: List[Dict[str, Any]] = []
@@ -14022,7 +15179,9 @@ def _runtime_cluster_start_all(
     _stop_local_game_server()
     time.sleep(1.5)
 
-    infra_ok, infra_msg = _ensure_runtime_infra_ports(timeout_sec=45.0, project_id=pid, env_key=env, topology_id=tid)
+    infra_ok, infra_msg = _ensure_runtime_infra_ports(
+        timeout_sec=45.0, project_id=pid, env_key=env, topology_id=tid, agent_bindings=bindings
+    )
     logs.append(
         {
             "ts": _now_iso(),
@@ -14035,8 +15194,23 @@ def _runtime_cluster_start_all(
         for nid in daemon_ids + app_ids:
             items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "FAILED", "mode": "direct"})
         logs.append({"ts": _now_iso(), "level": "error", "node_id": "cluster", "message": "Mongo/Redis 未就绪，已中止 GameServer 启动"})
-        _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+        _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings, bindings)
         return {"items": items, "logs": logs, "failed": max(1, len(items)), "gateway_live": False}
+
+    unified_launch: Optional[Dict[str, Any]] = None
+    unified_ok = False
+    if _should_use_unified_gameserver_all(app_ids, service_bindings):
+        logs.append({"ts": _now_iso(), "level": "info", "node_id": "cluster", "message": "Windows 本地：使用 GameServer --all 单进程启动（业务测试/E2E 需要）"})
+        unified_launch = _launch_gameserver_unified_all(reason, wait_ready=True, timeout_sec=120)
+        unified_ok = bool(unified_launch.get("success"))
+        logs.append(
+            {
+                "ts": _now_iso(),
+                "level": "info" if unified_ok else "error",
+                "node_id": "cluster",
+                "message": str(unified_launch.get("message") or "unified-all launch"),
+            }
+        )
 
     for nid in daemon_ids:
         topo_node = id_to_node.get(nid)
@@ -14045,12 +15219,13 @@ def _runtime_cluster_start_all(
         node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
         service_id = str((service_bindings or {}).get(nid) or nid).strip()
         contract = _resolve_node_contract_for_topology_node(topo_node)
-        port = _resolve_topology_node_port(topo_node, contract, None, None)
+        probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+        probe_host = _resolve_orchestration_probe_host(pid, tid, topo_node, bindings)
         result = _ops_platform_daemon_action(node, "start", reason, ticket_id, actor)
         ok = bool(result.get("success"))
-        if not ok and port > 0 and _probe_tcp_open("127.0.0.1", port):
+        if not ok and probe_port > 0 and _probe_tcp_open(probe_host, probe_port):
             ok = True
-            result = {"success": True, "message": f"daemon 端口已监听 ({port})"}
+            result = {"success": True, "message": f"daemon 端口已监听 ({probe_host}:{probe_port})"}
         items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "daemon"})
         logs.append(
             {
@@ -14068,10 +15243,43 @@ def _runtime_cluster_start_all(
         node = _build_runtime_node_from_topology_node(pid, env, topo_node, tid)
         service_id = str((service_bindings or {}).get(nid) or nid).strip()
         contract = _resolve_node_contract_for_topology_node(topo_node)
-        port = _resolve_topology_node_port(topo_node, contract, None, None)
-        launch = _launch_gameserver_service(service_id, reason, wait_ready=True, timeout_sec=120, node=node)
+        probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+        probe_host = _resolve_orchestration_probe_host(pid, tid, topo_node, bindings)
+        if unified_launch is not None and service_id.strip().lower() in _GAMESERVER_PROCESS_SERVICE_IDS:
+            ok = unified_ok
+            launch = {
+                "success": ok,
+                "message": str((unified_launch or {}).get("message") or "unified-all"),
+                "data": {"live": ok, "mode": "unified-all"},
+            }
+        else:
+            launch = _launch_gameserver_service(
+                service_id, reason, wait_ready=True, timeout_sec=120, node=node, probe_host=probe_host
+            )
         ok = bool(launch.get("success"))
-        live = bool((launch.get("data") or {}).get("live")) or _gameserver_service_live(service_id, node)
+        launch_msg = str(launch.get("message") or "")
+        unified_node = unified_launch is not None and service_id.strip().lower() in _GAMESERVER_PROCESS_SERVICE_IDS
+        if ok and not unified_node:
+            wait_ok, wait_msg = _orchestration_post_launch_wait(
+                pid,
+                env,
+                tid,
+                topo_node,
+                contract,
+                service_id,
+                launch_msg,
+                probe_host=probe_host,
+                agent_bindings=bindings,
+                timeout_sec=25.0,
+            )
+            ok = wait_ok
+            launch = {"success": ok, "message": wait_msg, "data": launch.get("data")}
+        elif unified_node and unified_ok:
+            ok = True
+            launch = {"success": True, "message": launch_msg, "data": {"live": True, "mode": "unified-all"}}
+        live = bool((launch.get("data") or {}).get("live")) or _gameserver_service_live(service_id, node, probe_host=probe_host)
+        if unified_node and unified_ok:
+            live = _ws_handshake_probe()[0]
         ok = ok and live
         items.append({"node_id": nid, "job_id": "", "trace_id": "", "status": "SUCCESS" if ok else "FAILED", "mode": "direct"})
         logs.append(
@@ -14079,11 +15287,11 @@ def _runtime_cluster_start_all(
                 "ts": _now_iso(),
                 "level": "info" if ok else "error",
                 "node_id": nid,
-                "message": str(launch.get("message") or (f"{'live' if live else 'down'} port={port or '-'}")),
+                "message": str(launch.get("message") or (f"{'live' if live else 'down'} port={probe_port or '-'}")),
             }
         )
 
-    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings)
+    probe_stat = _refresh_runtime_service_probes_from_topology(pid, env, tid, topo_nodes, service_bindings, bindings)
     gateway_live = bool(probe_stat.get("gateway_live"))
 
     for nid in daemon_ids:
@@ -14093,8 +15301,9 @@ def _runtime_cluster_start_all(
         if not isinstance(topo_node, dict):
             continue
         contract = _resolve_node_contract_for_topology_node(topo_node)
-        port = _resolve_topology_node_port(topo_node, contract, None, None)
-        live = _probe_tcp_open("127.0.0.1", port) if port > 0 else False
+        probe_port = _resolve_topology_probe_port(topo_node, contract, None, None)
+        probe_host = _resolve_orchestration_probe_host(pid, tid, topo_node, bindings)
+        live = _probe_tcp_open(probe_host, probe_port) if probe_port > 0 else False
         for item in items:
             if isinstance(item, dict) and str(item.get("node_id") or "") == nid:
                 item["status"] = "SUCCESS" if live else str(item.get("status") or "FAILED")
@@ -14185,6 +15394,7 @@ def ops_platform_runtime_flow_control():
             topo_nodes,
             topo_edges,
             service_bindings,
+            bindings,
             actor,
         )
         items = cluster.get("items") if isinstance(cluster.get("items"), list) else []
@@ -14227,6 +15437,7 @@ def ops_platform_runtime_flow_control():
             topo_nodes,
             topo_edges,
             service_bindings,
+            bindings,
             actor,
         )
         items = cluster.get("items") if isinstance(cluster.get("items"), list) else []
@@ -14701,12 +15912,19 @@ def ops_platform_agent_pull():
         jobs,
         lease_timeout_sec=int(policy.get("lease_timeout_sec") or 60),
         max_retries=int(policy.get("max_retries") or 2),
+        agent_id=agent_id,
     )
     out: List[Dict[str, Any]] = []
     now = _now_iso()
     node_max = int(node.get("agent_max_concurrency") or policy.get("default_node_concurrency") or 1)
     node_max = max(1, min(20, node_max))
-    running = [x for x in jobs if isinstance(x, dict) and str(x.get("node_id") or "") == node_id and str(x.get("status") or "").upper() == "RUNNING"]
+    running = [
+        x
+        for x in jobs
+        if isinstance(x, dict)
+        and _job_matches_agent(x, agent_id, node_id)
+        and str(x.get("status") or "").upper() == "RUNNING"
+    ]
     slots = max(0, node_max - len(running))
     if slots <= 0:
         upgrade = _desired_agent_upgrade(agent_id, policy)
@@ -14719,7 +15937,7 @@ def ops_platform_agent_pull():
     for item in jobs:
         if not isinstance(item, dict):
             continue
-        if str(item.get("node_id") or "") != node_id or str(item.get("status") or "") != "PENDING":
+        if not _job_matches_agent(item, agent_id, node_id) or str(item.get("status") or "") != "PENDING":
             continue
         if bool(item.get("preempt")):
             preempt_candidate = item
@@ -14735,7 +15953,7 @@ def ops_platform_agent_pull():
     for item in jobs:
         if not isinstance(item, dict):
             continue
-        if str(item.get("node_id") or "") != node_id:
+        if not _job_matches_agent(item, agent_id, node_id):
             continue
         if str(item.get("status") or "") != "PENDING":
             continue
@@ -14807,7 +16025,7 @@ def ops_platform_agent_report():
             continue
         if str(item.get("job_id") or "") != job_id:
             continue
-        if str(item.get("node_id") or "") != node_id:
+        if not _job_matches_agent(item, agent_id, node_id):
             continue
         hit = item
         break

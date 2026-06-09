@@ -45,6 +45,15 @@ APK 包展示、下载、二维码、构建管理、项目管理与任务协同�
 
 详见 [portals/common/docs/DEPLOY.md](portals/common/docs/DEPLOY.md)。
 
+## Ops 平台环境变量（GameServer / 远端探活）
+
+| 变量 | 说明 |
+|------|------|
+| `GAME_SERVER_REPO` | 本机 game-server 仓库绝对路径（Windows/macOS 均建议显式设置） |
+| `OPS_DEFAULT_PROBE_HOST` | 无 Agent 绑定信息时的探活兜底地址，默认 `127.0.0.1` |
+
+Mongo 数据目录统一为项目 `data/gomeku-mongo`（全平台）。
+
 ## Runtime Entrypoint Contract (2026-05-15)
 - The only supported runtime chain is: `app_new.py + *_wsgi.py`.
 - Admin startup: `waitress admin_wsgi:app`

@@ -369,6 +369,15 @@
     topologyManagerPageSize: 10,
     showGrid: true,
     sidebarCollapsed: false,
+    businessTest: {
+      catalog: null,
+      plans: [],
+      categories: [],
+      categoryFilter: "",
+      selectedProtocols: new Set(),
+      draftPlan: null,
+      panelOpen: false,
+    },
   };
   const MODE_STORAGE_KEY = "ops_topology_mode_v1";
   const MODE_LABELS = { edit: "编辑模式", run: "运行模式", test: "测试模式" };
@@ -1025,6 +1034,23 @@
     return healthy.size >= nodes.length;
   }
 
+  function runtimeFlowEdgesEnabled(healthy) {
+    const ids = healthy instanceof Set ? healthy : healthyRunningNodeIdSet();
+    if (!ids.size) return false;
+    const hasGateway = Array.from(ids).some((id) => String(id).startsWith("gateway"));
+    if (hasGateway && ids.size >= 3) return true;
+    return clusterServicesRunning();
+  }
+
+  function buildEdgeMetricsForHealthy(healthy) {
+    const metrics = {};
+    (state.topology.edges || []).forEach((e) => {
+      if (!healthy.has(e.from) || !healthy.has(e.to)) return;
+      metrics[e.id] = edgeMetrics(e.id, "RUNNING");
+    });
+    return metrics;
+  }
+
   function enforceLockedMode() {
     if (!state.lockedMode) return false;
     if (state.mode === state.lockedMode) return false;
@@ -1186,13 +1212,18 @@
     const statusByNode = {};
     Array.from(healthy).forEach((nid) => { statusByNode[nid] = "RUNNING"; });
     const allHealthy = healthy.size >= nodes.length;
-    syncFlowViz("run", Array.from(healthy), statusByNode, { edgesEnabled: allHealthy });
+    const edgesOn = runtimeFlowEdgesEnabled(healthy);
+    syncFlowViz("run", Array.from(healthy), statusByNode, { edgesEnabled: edgesOn });
+    if (edgesOn) state.flowViz.metricsByEdge = buildEdgeMetricsForHealthy(healthy);
     redrawGraph();
     if (allHealthy) {
       state.runtimePartialRecovery = false;
       logMode("Agent 侧节点已全部就绪，拓扑连线动画已同步开启", "ok");
       finalizeRuntimeStartSteady(state.runtimeRunId || "");
       return true;
+    }
+    if (edgesOn) {
+      logMode("核心链路已就绪（" + healthy.size + "/" + nodes.length + "），连线动画已开启", "ok");
     }
     return true;
   }
@@ -1231,18 +1262,15 @@
     const statusByNode = {};
     Array.from(healthy).forEach((nid) => { statusByNode[nid] = "RUNNING"; });
     const allHealthy = healthy.size >= nodes.length;
-    syncFlowViz("run", Array.from(healthy), statusByNode, { edgesEnabled: allHealthy });
+    const edgesOn = runtimeFlowEdgesEnabled(healthy);
+    syncFlowViz("run", Array.from(healthy), statusByNode, { edgesEnabled: edgesOn });
     state.runtimeSteady = allHealthy;
     if ($("runtimeStatusPill")) {
       $("runtimeStatusPill").textContent = allHealthy ? "运行中" : ("部分运行 " + healthy.size + "/" + nodes.length);
       $("runtimeStatusPill").className = "state-pill " + (allHealthy ? "state-ok" : "state-warn");
     }
-    if (allHealthy) {
-      const steadyMetrics = {};
-      (state.topology.edges || []).forEach((e) => {
-        if (healthy.has(e.from) && healthy.has(e.to)) steadyMetrics[e.id] = edgeMetrics(e.id, "RUNNING");
-      });
-      state.flowViz.metricsByEdge = steadyMetrics;
+    if (edgesOn) {
+      state.flowViz.metricsByEdge = buildEdgeMetricsForHealthy(healthy);
     } else {
       state.flowViz.metricsByEdge = {};
     }
@@ -1427,6 +1455,440 @@
       logMode("         error_detail=" + String(result.result_message || result.message), "error");
     }
     appendJsonDetail("STEP " + idx + " 原始响应", step || {});
+  }
+
+  function logBusinessTestFailure(d) {
+    const payload = d || {};
+    testLogHeader("业务测试失败明细");
+    testLogKV("http_status", payload._http_status || "-");
+    testLogKV("error_code", payload.error_code || payload.error || "-");
+    testLogKV("message", payload.message || payload.summary || "-");
+    const preflight = payload.preflight || {};
+    if (Array.isArray(preflight.issues) && preflight.issues.length) {
+      preflight.issues.forEach((issue) => logMode("  preflight: " + issue, "warn"));
+    }
+    if (preflight.gameserver_process_count != null) {
+      testLogKV("gameserver_process_count", preflight.gameserver_process_count);
+    }
+    testLogKV("exit_code", payload.exit_code);
+    testLogKV("seconds", payload.seconds);
+    testLogKV("plan_id", payload.plan_id);
+    testLogKV("transport", payload.transport);
+    testLogKV("artifact_dir", payload.artifact_dir);
+    if (payload.flow_id) testLogKV("flow_id", payload.flow_id);
+    const biz = payload.business_run || {};
+    if (biz.error) testLogKV("runner_error", biz.error);
+    if (biz.PlanId || biz.plan_id) testLogKV("runner_plan", biz.PlanId || biz.plan_id);
+    const steps = Array.isArray(payload.steps) ? payload.steps : [];
+    const failed = steps.filter((s) => s && s.result === "failed");
+    const blocked = steps.filter((s) => s && s.result === "blocked");
+    testLogKV("steps_total", steps.length);
+    testLogKV("steps_failed", failed.length);
+    testLogKV("steps_blocked", blocked.length);
+    failed.forEach((step, i) => {
+      logMode("[失败步骤 " + (i + 1) + "] " + (step.protocol || "-") + " id=" + (step.message_id || "-") + " reason=" + (step.blocked_reason || "-"), "error");
+      if (step.client && step.client.request_json) {
+        appendJsonDetail("失败步骤 " + (step.protocol || i) + " 客户端请求", step.client);
+      }
+      if (step.server && step.server.response_json) {
+        appendJsonDetail("失败步骤 " + (step.protocol || i) + " 服务端响应", step.server);
+      }
+    });
+    if (payload.stderr) {
+      logMode("runner stderr 末尾:", "error");
+      String(payload.stderr).trim().split(/\r?\n/).slice(-6).forEach((line) => logMode("  " + line, "error"));
+    }
+    if (payload.stdout) {
+      const stdoutTail = String(payload.stdout).trim().split(/\r?\n/).filter(Boolean).slice(-4);
+      if (stdoutTail.length) {
+        logMode("runner stdout 末尾:");
+        stdoutTail.forEach((line) => logMode("  " + line));
+      }
+    }
+    if (payload.server_log_tail) {
+      appendJsonDetail("GameServer 日志片段", { tail: payload.server_log_tail });
+    }
+    appendJsonDetail("业务测试失败完整响应", payload);
+  }
+
+  function testLogBusinessStep(i, step) {
+    const idx = i + 1;
+    const proto = String((step && step.protocol) || "-");
+    const result = String((step && step.result) || "-");
+    const latency = (step && step.server && step.server.latency_ms != null) ? step.server.latency_ms : "-";
+    const msgId = (step && step.message_id) != null ? step.message_id : "-";
+    const level = result === "failed" ? "error" : (result === "blocked" ? "warn" : "");
+    logMode("[业务 STEP " + idx + "] " + proto + " id=" + msgId + " result=" + result + " latency_ms=" + latency, level);
+    if (step && step.blocked_reason) logMode("         blocked_reason=" + step.blocked_reason, "warn");
+    if (step && step.client && step.client.request_json) {
+      appendJsonDetail("业务 STEP " + idx + " 客户端请求 " + proto, { request_json: step.client.request_json, transport: step.client.transport, seq: step.client.seq });
+    }
+    if (step && step.server && step.server.response_json) {
+      appendJsonDetail("业务 STEP " + idx + " 服务端响应 " + proto, {
+        response_json: step.server.response_json,
+        data_type: step.server.data_type,
+        error_code: step.server.error_code,
+        latency_ms: step.server.latency_ms,
+      });
+    }
+  }
+
+  function defaultBusinessDraft() {
+    return {
+      plan_id: "custom-" + Date.now(),
+      name: "自定义方案",
+      category: "Custom",
+      source: "custom",
+      version: 1,
+      transport: "websocket",
+      context: { server_id: "game-cn-1", user_prefix: "biztest", password: "123456" },
+      steps: [],
+      tags: ["custom"],
+    };
+  }
+
+  function ensureBusinessDraft() {
+    if (!state.businessTest.draftPlan) state.businessTest.draftPlan = defaultBusinessDraft();
+    return state.businessTest.draftPlan;
+  }
+
+  function openBusinessTestModal() {
+    const modal = $("businessTestModal");
+    if (!modal) return;
+    modal.classList.remove("hidden");
+    setModalOpen(true);
+    state.businessTest.panelOpen = true;
+    initBusinessTestPanel();
+  }
+
+  function closeBusinessTestModal() {
+    const modal = $("businessTestModal");
+    if (modal) modal.classList.add("hidden");
+    state.businessTest.panelOpen = false;
+    const anyOpen = ["topologyManagerModal", "structuredAddModal", "nodeLogModal", "businessTestModal"].some((id) => {
+      const el = $(id);
+      return el && !el.classList.contains("hidden");
+    });
+    setModalOpen(anyOpen);
+  }
+
+  async function loadBusinessCatalog() {
+    const d = await OpsApi.getJSON("/api/ops-platform/business-test/catalog");
+    if (d && d.ok !== false) {
+      state.businessTest.catalog = d;
+      return d;
+    }
+    const err = (d && (d.message || d.error)) || ("HTTP " + (d && d._http_status));
+    state.businessTest.catalog = null;
+    throw new Error("协议目录加载失败: " + err);
+  }
+
+  async function loadBusinessPlans(category) {
+    const q = category ? ("?category=" + encodeURIComponent(category)) : "";
+    const d = await OpsApi.getJSON("/api/ops-platform/business-test/plans" + q);
+    if (d && d.ok !== false) {
+      state.businessTest.plans = Array.isArray(d.plans) ? d.plans : [];
+      state.businessTest.categories = Array.isArray(d.categories) ? d.categories : [];
+      return state.businessTest.plans;
+    }
+    const err = (d && (d.message || d.error)) || ("HTTP " + (d && d._http_status));
+    state.businessTest.plans = [];
+    state.businessTest.categories = [];
+    throw new Error("方案库加载失败: " + err);
+  }
+
+  function renderBusinessCategoryChips() {
+    const box = $("businessPlanCategoryChips");
+    if (!box) return;
+    const cats = ["",].concat(state.businessTest.categories || []);
+    box.innerHTML = cats.map((c) => {
+      const label = c || "全部";
+      const active = (state.businessTest.categoryFilter || "") === c ? " active" : "";
+      return '<button type="button" class="topology-chip' + active + '" data-biz-cat="' + esc(c) + '">' + esc(label) + "</button>";
+    }).join("");
+    box.querySelectorAll("[data-biz-cat]").forEach((btn) => {
+      btn.onclick = async () => {
+        state.businessTest.categoryFilter = btn.getAttribute("data-biz-cat") || "";
+        await loadBusinessPlans(state.businessTest.categoryFilter);
+        renderBusinessCategoryChips();
+        renderBusinessPlanList();
+      };
+    });
+  }
+
+  function renderBusinessPlanList() {
+    const box = $("businessPlanList");
+    if (!box) return;
+    const plans = state.businessTest.plans || [];
+    if (!plans.length) {
+      box.innerHTML = '<div class="topology-muted">暂无方案</div>';
+      return;
+    }
+    const activeId = (ensureBusinessDraft().plan_id || "");
+    box.innerHTML = plans.map((p) => {
+      const cls = "business-plan-item" + (p.plan_id === activeId ? " active" : "");
+      return '<button type="button" class="' + cls + '" data-plan-id="' + esc(p.plan_id) + '">'
+        + esc(p.name || p.plan_id)
+        + '<span class="sub">' + esc(p.category || "") + " · " + esc(String(p.step_count || 0)) + " 步</span></button>";
+    }).join("");
+    box.querySelectorAll("[data-plan-id]").forEach((btn) => {
+      btn.onclick = () => loadBusinessPlanDetail(btn.getAttribute("data-plan-id"));
+    });
+  }
+
+  async function loadBusinessPlanDetail(planId) {
+    if (!planId) return;
+    const d = await OpsApi.getJSON("/api/ops-platform/business-test/plans/" + encodeURIComponent(planId));
+    if (!d || d.ok === false || !d.plan) {
+      toast((d && d.error) || "加载方案失败", "error");
+      return;
+    }
+    state.businessTest.draftPlan = JSON.parse(JSON.stringify(d.plan));
+    renderBusinessDraftUI();
+    renderBusinessPlanList();
+  }
+
+  function renderBusinessStepList() {
+    const box = $("businessStepList");
+    if (!box) return;
+    const plan = ensureBusinessDraft();
+    const steps = Array.isArray(plan.steps) ? plan.steps : [];
+    if (!steps.length) {
+      box.innerHTML = '<li class="topology-muted">从右侧协议树勾选后点击「添加选中协议」</li>';
+      return;
+    }
+    box.innerHTML = steps.map((s, i) => {
+      return '<li class="business-step-item" data-step-idx="' + i + '">'
+        + '<span>' + esc(String(i + 1) + ". " + (s.protocol || "")) + "</span>"
+        + '<span class="business-step-actions">'
+        + '<button type="button" data-step-up="' + i + '">↑</button>'
+        + '<button type="button" data-step-down="' + i + '">↓</button>'
+        + '<button type="button" data-step-del="' + i + '">✕</button>'
+        + "</span></li>";
+    }).join("");
+    box.querySelectorAll("[data-step-up]").forEach((btn) => {
+      btn.onclick = () => moveBusinessStep(parseInt(btn.getAttribute("data-step-up"), 10), -1);
+    });
+    box.querySelectorAll("[data-step-down]").forEach((btn) => {
+      btn.onclick = () => moveBusinessStep(parseInt(btn.getAttribute("data-step-down"), 10), 1);
+    });
+    box.querySelectorAll("[data-step-del]").forEach((btn) => {
+      btn.onclick = () => removeBusinessStep(parseInt(btn.getAttribute("data-step-del"), 10));
+    });
+  }
+
+  function moveBusinessStep(idx, delta) {
+    const plan = ensureBusinessDraft();
+    const steps = plan.steps || [];
+    const j = idx + delta;
+    if (idx < 0 || j < 0 || idx >= steps.length || j >= steps.length) return;
+    const tmp = steps[idx];
+    steps[idx] = steps[j];
+    steps[j] = tmp;
+    renderBusinessStepList();
+  }
+
+  function removeBusinessStep(idx) {
+    const plan = ensureBusinessDraft();
+    if (!Array.isArray(plan.steps)) return;
+    plan.steps.splice(idx, 1);
+    renderBusinessStepList();
+  }
+
+  function addSelectedProtocolsToSteps() {
+    const catalog = state.businessTest.catalog;
+    const selected = Array.from(state.businessTest.selectedProtocols || []);
+    if (!selected.length) {
+      toast("请先在协议树勾选协议", "warn");
+      return;
+    }
+    const plan = ensureBusinessDraft();
+    if (!Array.isArray(plan.steps)) plan.steps = [];
+    const protoMap = {};
+    (catalog && catalog.protocols || []).forEach((p) => { if (p.request_type) protoMap[p.request_type] = p; });
+    selected.forEach((proto) => {
+      const meta = protoMap[proto] || {};
+      plan.steps.push({
+        id: "s" + (plan.steps.length + 1),
+        protocol: proto,
+        expect_response: meta.response_type || "",
+        on_blocked: "skip",
+      });
+    });
+    state.businessTest.selectedProtocols = new Set();
+    renderBusinessProtocolTree();
+    renderBusinessStepList();
+  }
+
+  function renderBusinessCatalogMeta() {
+    const meta = $("businessCatalogMeta");
+    if (!meta) return;
+    const catalog = state.businessTest.catalog;
+    if (!catalog) {
+      meta.textContent = "";
+      return;
+    }
+    meta.textContent = "(" + (catalog.protocol_count || 0) + " 协议 · " + (catalog.module_count || 0) + " 模块)";
+  }
+
+  function renderBusinessProtocolTree() {
+    const box = $("businessProtocolTree");
+    if (!box) return;
+    const catalog = state.businessTest.catalog;
+    const modules = (catalog && catalog.modules) || [];
+    const q = String(($("businessProtocolSearch") || {}).value || "").trim().toLowerCase();
+    renderBusinessCatalogMeta();
+    if (!modules.length) {
+      box.innerHTML = '<div class="topology-muted">协议目录未加载，请关闭弹窗后重试或重启 admin 服务。</div>';
+      return;
+    }
+    box.innerHTML = modules.map((mod) => {
+      const protos = (mod.protocols || []).filter((p) => {
+        if (!q) return true;
+        const hay = String(p.request_type || p.name || "").toLowerCase();
+        return hay.indexOf(q) >= 0;
+      });
+      if (!protos.length) return "";
+      const rows = protos.map((p) => {
+        const rt = p.request_type || "";
+        const checked = state.businessTest.selectedProtocols.has(rt) ? " checked" : "";
+        return '<label class="business-protocol-row"><input type="checkbox" data-proto="' + esc(rt) + '"' + checked + "> "
+          + esc(rt) + " <span class=\"sub\">(" + esc(String(p.request_id || "")) + ")</span></label>";
+      }).join("");
+      return '<details class="business-protocol-module" open><summary>' + esc(mod.name) + " (" + protos.length + ")</summary>" + rows + "</details>";
+    }).join("");
+    box.querySelectorAll("input[data-proto]").forEach((inp) => {
+      inp.onchange = () => {
+        const proto = inp.getAttribute("data-proto");
+        if (!proto) return;
+        if (inp.checked) state.businessTest.selectedProtocols.add(proto);
+        else state.businessTest.selectedProtocols.delete(proto);
+      };
+    });
+  }
+
+  function renderBusinessDraftUI() {
+    const plan = ensureBusinessDraft();
+    if ($("businessPlanName")) $("businessPlanName").value = plan.name || "";
+    if ($("businessPlanId")) $("businessPlanId").value = plan.plan_id || "";
+    if ($("businessTransport")) $("businessTransport").value = plan.transport || "websocket";
+    if ($("businessUserPrefix")) $("businessUserPrefix").value = (plan.context && plan.context.user_prefix) || "biztest";
+    renderBusinessStepList();
+  }
+
+  function newBusinessPlanDraft() {
+    state.businessTest.draftPlan = defaultBusinessDraft();
+    state.businessTest.selectedProtocols = new Set();
+    renderBusinessDraftUI();
+    renderBusinessPlanList();
+    renderBusinessProtocolTree();
+  }
+
+  async function initBusinessTestPanel() {
+    ensureBusinessDraft();
+    const planList = $("businessPlanList");
+    const protoTree = $("businessProtocolTree");
+    if (planList) planList.innerHTML = '<div class="topology-muted">加载方案库…</div>';
+    if (protoTree) protoTree.innerHTML = '<div class="topology-muted">加载协议目录…</div>';
+    try {
+      await Promise.all([loadBusinessCatalog(), loadBusinessPlans(state.businessTest.categoryFilter)]);
+      renderBusinessCategoryChips();
+      renderBusinessPlanList();
+      renderBusinessProtocolTree();
+      renderBusinessDraftUI();
+    } catch (err) {
+      const msg = (err && err.message) ? err.message : String(err);
+      logMode(msg, "error");
+      toast(msg, "error");
+      if (planList) planList.innerHTML = '<div class="topology-muted">' + esc(msg) + "</div>";
+      if (protoTree) protoTree.innerHTML = '<div class="topology-muted">' + esc(msg) + "</div>";
+    }
+  }
+
+  async function saveBusinessPlanFromUI() {
+    const plan = ensureBusinessDraft();
+    plan.name = String(($("businessPlanName") || {}).value || plan.name || "自定义方案").trim();
+    plan.plan_id = String(($("businessPlanId") || {}).value || plan.plan_id || "").trim();
+    plan.transport = String(($("businessTransport") || {}).value || "websocket");
+    plan.context = plan.context || {};
+    plan.context.user_prefix = String(($("businessUserPrefix") || {}).value || "biztest");
+    if (!plan.plan_id) {
+      toast("请填写方案 ID", "warn");
+      return;
+    }
+    if (!Array.isArray(plan.steps) || !plan.steps.length) {
+      toast("请至少添加一个协议步骤", "warn");
+      return;
+    }
+    const d = await OpsApi.postJSON("/api/ops-platform/business-test/plans", plan);
+    if (!d || d.ok === false) {
+      toast((d && (d.error || d.message)) || "保存失败", "error");
+      return;
+    }
+    toast("自定义方案已保存", "ok");
+    await loadBusinessPlans(state.businessTest.categoryFilter);
+    renderBusinessPlanList();
+  }
+
+  async function runBusinessTest() {
+    if (!isTestMode()) {
+      toast("请切换到测试模式", "warn");
+      return;
+    }
+    const plan = ensureBusinessDraft();
+    plan.name = String(($("businessPlanName") || {}).value || plan.name || "").trim();
+    plan.plan_id = String(($("businessPlanId") || {}).value || plan.plan_id || "").trim();
+    plan.transport = String(($("businessTransport") || {}).value || "websocket");
+    plan.context = plan.context || {};
+    plan.context.user_prefix = String(($("businessUserPrefix") || {}).value || "biztest");
+    if (!Array.isArray(plan.steps) || !plan.steps.length) {
+      toast("方案无步骤，请先编排协议", "warn");
+      return;
+    }
+    const scope = getTestScope();
+    const pathNodes = resolvePathNodesForTest(scope, resolveTestEndpoints(scope).start, resolveTestEndpoints(scope).end);
+    computePathHighlight();
+    syncFlowViz("test", pathNodes.length ? pathNodes : [], {});
+    redrawGraph();
+
+    testLogHeader("业务测试开始", "plan=" + plan.plan_id + " transport=" + plan.transport);
+    testLogKV("steps", plan.steps.map((s) => s.protocol).join(" -> "));
+    logMode("提交业务测试请求…");
+
+    const endpoints = resolveTestEndpoints(scope);
+    const gatewayHost = (endpoints && endpoints.start && endpoints.start.host) || "127.0.0.1";
+    const gatewayPort = (endpoints && endpoints.start && endpoints.start.port) || 15050;
+    const gatewayEndpoint = {
+      host: gatewayHost,
+      port: gatewayPort,
+      ws_url: "ws://" + gatewayHost + ":" + gatewayPort + "/ws/",
+      tcp_host: gatewayHost,
+      tcp_port: 5601,
+    };
+    const body = Object.assign(currentScope(), {
+      plan_id: plan.plan_id,
+      plan_override: plan,
+      transport: plan.transport,
+      user_prefix: plan.context.user_prefix,
+      server_id: (plan.context && plan.context.server_id) || "game-cn-1",
+      gateway_endpoint: gatewayEndpoint,
+    });
+    const d = await OpsApi.postJSON("/api/ops-platform/business-test/run", body);
+    const steps = Array.isArray(d && d.steps) ? d.steps : [];
+    steps.forEach((step, i) => testLogBusinessStep(i, step));
+    if (d && d.ok !== false) {
+      logMode("业务测试完成: flow_id=" + (d.flow_id || "-") + " steps=" + steps.length + " seconds=" + (d.seconds || "-"));
+      if (d.server_log_tail) appendJsonDetail("服务端日志片段", { tail: d.server_log_tail });
+      appendJsonDetail("业务测试完整 trace", d);
+      toast("业务测试通过", "ok");
+      syncFlowViz("test", pathNodes, {}, { edgesEnabled: true });
+      redrawGraph();
+    } else {
+      const summary = (d && (d.message || d.summary)) || (d && d.error) || "未知错误";
+      logMode("业务测试失败: " + summary, "error");
+      logBusinessTestFailure(d || {});
+      toast(summary, "error");
+    }
   }
 
   function stopRuntimePolling() {
@@ -2020,11 +2482,24 @@
         const runningNodes = partial.vizNodes.filter((nid) => String(statusByNode[nid] || "").toUpperCase() === "RUNNING");
         if (runningNodes.length) {
           state.runtimePartialRecovery = true;
-          syncFlowViz("run", partial.vizNodes, partial.statusByNode, { edgesEnabled: false });
-          state.flowViz.metricsByEdge = {};
+          const agentHealthy = healthyRunningNodeIdSet();
+          const edgesOn = runtimeFlowEdgesEnabled(agentHealthy);
+          syncFlowViz("run", Array.from(agentHealthy.size ? agentHealthy : partial.vizNodes), partial.statusByNode, { edgesEnabled: edgesOn });
+          if (edgesOn) state.flowViz.metricsByEdge = buildEdgeMetricsForHealthy(agentHealthy);
+          else state.flowViz.metricsByEdge = {};
           redrawGraph();
-          toast("部分节点启动失败，已保留成功节点；可在 Agent 修复后自动同步", "warn");
-          logMode("运行结束: FAILED（" + runningNodes.length + " 个节点仍运行，等待 Agent 修复同步）", "warn");
+          syncPartialRecoveryFromAgent();
+          const failToastSig = String(state.runtimeRunId || "") + ":partial:" + runningNodes.join(",");
+          if (!edgesOn && state.runtimeFailedToastSig !== failToastSig) {
+            state.runtimeFailedToastSig = failToastSig;
+            toast("部分节点启动失败，已保留成功节点；可在 Agent 修复后自动同步", "warn");
+          }
+          logMode(
+            edgesOn
+              ? ("运行结束: 编排记录 FAILED，但核心链路已运行（" + agentHealthy.size + " 节点），连线动画已开启")
+              : ("运行结束: FAILED（" + runningNodes.length + " 个节点仍运行，等待 Agent 修复同步）"),
+            edgesOn ? "ok" : "warn"
+          );
           return;
         }
         const errLog = (d.logs || []).slice().reverse().find((row) => String((row && row.level) || "").toLowerCase() === "error");
@@ -4918,6 +5393,7 @@
     const testBar = $("testBar");
     if (runBar) runBar.style.display = cfg.run;
     if (testBar) testBar.style.display = cfg.test;
+    if (effectiveMode !== "test") closeBusinessTestModal();
     const modeSelect = $("modeSelect");
     const locked = isModeLocked();
     const modeLabel = MODE_LABELS[effectiveMode] || effectiveMode;
@@ -5631,6 +6107,20 @@
     if ($("btnRunStopAll")) $("btnRunStopAll").onclick = () => runFullLifecycle(false);
     if ($("btnTestSmoke")) $("btnTestSmoke").onclick = () => runSmokeOrStress(false);
     if ($("btnTestStress")) $("btnTestStress").onclick = () => runSmokeOrStress(true);
+    if ($("btnTestBusiness")) $("btnTestBusiness").onclick = () => openBusinessTestModal();
+    if ($("btnBusinessModalClose")) $("btnBusinessModalClose").onclick = () => closeBusinessTestModal();
+    if ($("btnBusinessModalCancel")) $("btnBusinessModalCancel").onclick = () => closeBusinessTestModal();
+    if ($("btnBusinessAddStep")) $("btnBusinessAddStep").onclick = () => addSelectedProtocolsToSteps();
+    if ($("btnBusinessNewPlan")) $("btnBusinessNewPlan").onclick = () => newBusinessPlanDraft();
+    if ($("btnBusinessSavePlan")) $("btnBusinessSavePlan").onclick = () => saveBusinessPlanFromUI();
+    if ($("btnBusinessRun")) $("btnBusinessRun").onclick = () => runBusinessTest();
+    if ($("businessProtocolSearch")) $("businessProtocolSearch").oninput = () => renderBusinessProtocolTree();
+    const bizModal = $("businessTestModal");
+    if (bizModal) {
+      bizModal.addEventListener("click", (ev) => {
+        if (ev.target === bizModal) closeBusinessTestModal();
+      });
+    }
     if ($("btnRuntimeDetails")) {
       $("btnRuntimeDetails").onclick = (ev) => {
         ev.preventDefault();

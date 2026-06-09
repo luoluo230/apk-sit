@@ -8,7 +8,7 @@
         "HealthCheckCommand": "memurai-cli -p {port} ping"
       },
       "mongo_db": {
-        "StartCommand": "powershell -NoProfile -Command \"$db='C:\\\\data\\\\gomeku-mongo'; New-Item -ItemType Directory -Force -Path $db|Out-Null; $up=$false; try{{$c=New-Object Net.Sockets.TcpClient;$c.Connect('127.0.0.1',{port});$up=$true;$c.Close()}}catch{{}}; if(-not $up){{$s=Get-Service MongoDB -EA SilentlyContinue; if($s -and $s.Status -eq 'Stopped'){{Start-Service MongoDB -EA SilentlyContinue}} else {{$md=(Get-ChildItem 'C:\\\\Program Files\\\\MongoDB\\\\Server\\\\*\\\\bin\\\\mongod.exe' -EA SilentlyContinue|Select-Object -First 1).FullName; if($md){{Start-Process $md -ArgumentList @('--dbpath',$db,'--port','{port}','--bind_ip','127.0.0.1') -WindowStyle Hidden}}}}}}\"",
+        "StartCommand": "powershell -NoProfile -Command \"$db='{data_dir}'; New-Item -ItemType Directory -Force -Path $db|Out-Null; $up=$false; try{{$c=New-Object Net.Sockets.TcpClient;$c.Connect('127.0.0.1',{port});$up=$true;$c.Close()}}catch{{}}; if(-not $up){{$s=Get-Service MongoDB -EA SilentlyContinue; if($s -and $s.Status -eq 'Stopped'){{Start-Service MongoDB -EA SilentlyContinue}} else {{$md=(Get-ChildItem 'C:\\\\Program Files\\\\MongoDB\\\\Server\\\\*\\\\bin\\\\mongod.exe' -EA SilentlyContinue|Select-Object -First 1).FullName; if($md){{Start-Process $md -ArgumentList @('--dbpath',$db,'--port','{port}','--bind_ip','127.0.0.1') -WindowStyle Hidden}}}}}}\"",
         "StopCommand": "powershell -NoProfile -Command \"$s = Get-Service -Name 'MongoDB' -ErrorAction SilentlyContinue; if ($s -and $s.Status -eq 'Running') { Stop-Service MongoDB -Force } else { Get-Process mongod -ErrorAction SilentlyContinue | Stop-Process -Force }\"",
         "HealthCheckCommand": "powershell -NoProfile -Command \"Test-NetConnection -ComputerName 127.0.0.1 -Port {port} -WarningAction SilentlyContinue | Select-Object -ExpandProperty TcpTestSucceeded\""
       }
@@ -20,7 +20,7 @@
         "HealthCheckCommand": "redis-cli -p {port} ping"
       },
       "mongo_db": {
-        "StartCommand": "mongod --dbpath /tmp/gomeku-mongo --port {port} --bind_ip 127.0.0.1",
+        "StartCommand": "mongod --dbpath {data_dir} --port {port} --bind_ip 127.0.0.1",
         "StopCommand": "mongosh --port {port} --eval 'db.adminCommand({shutdown:1})'",
         "HealthCheckCommand": "mongosh --port {port} --eval 'db.runCommand({ping:1})' --quiet"
       },

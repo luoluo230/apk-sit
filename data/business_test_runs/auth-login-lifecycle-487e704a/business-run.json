@@ -1,0 +1,32 @@
+{
+  "PlanId": null,
+  "PlanName": "登录选服创角",
+  "Transport": "websocket",
+  "Passed": false,
+  "StartedAtUtc": "2026-06-08T09:34:28.8192235Z",
+  "FinishedAtUtc": "2026-06-08T09:34:37.8064659Z",
+  "Steps": [
+    {
+      "StepId": "s1",
+      "Protocol": "Login_c2s",
+      "MessageId": 10001,
+      "Client": {
+        "RequestJson": "{\"Username\":\"biztest_20260608093428\",\"Password\":\"123456\",\"Device\":{\"Platform\":\"BusinessTest\",\"DeviceId\":\"35354330de0143f6b092bffd5ed8fa6e\",\"ClientVersion\":\"1.0\"}}",
+        "Transport": "websocket",
+        "Seq": 1,
+        "SentAtUtc": "2026-06-08T09:34:29.7710284Z"
+      },
+      "Server": {
+        "ResponseJson": null,
+        "ErrorCode": 1,
+        "LatencyMs": 8031,
+        "DataType": "Login_s2c"
+      },
+      "Result": "failed",
+      "BlockedReason": "timeout"
+    }
+  ],
+  "Error": "step_failed:s1",
+  "ArtifactJson": null,
+  "ArtifactMd": null
+}

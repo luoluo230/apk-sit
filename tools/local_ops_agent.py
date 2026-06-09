@@ -12,7 +12,14 @@ import time
 import uuid
 from typing import Any, Dict, List
 
+import sys
+from pathlib import Path
+
 import requests
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gameserver_agent_exec import execute_ops_job
+
 try:
     import psutil  # type: ignore
 except Exception:  # pragma: no cover
@@ -32,7 +39,7 @@ def post_json(url: str, payload: Dict[str, Any], token: str, timeout: int = 6) -
         return {"ok": False, "error": str(ex)}
 
 
-def run_job(base: str, node_id: str, token: str, agent_id: str, job: Dict[str, Any], sleep_sec: float = 0.15) -> None:
+def run_job(base: str, node_id: str, token: str, agent_id: str, job: Dict[str, Any]) -> None:
     job_id = str(job.get("job_id") or "")
     if not job_id:
         return
@@ -44,13 +51,19 @@ def run_job(base: str, node_id: str, token: str, agent_id: str, job: Dict[str, A
         "result": {"message": "job running"},
     }
     post_json(f"{base}/api/ops-platform/agent/report", running, token)
-    time.sleep(sleep_sec)
+    exec_result = execute_ops_job(job)
     result = {
         "node_id": node_id,
         "agent_id": agent_id,
         "job_id": job_id,
-        "status": "SUCCESS",
-        "result": {"message": "job success", "action_type": job.get("action_type"), "target": job.get("target")},
+        "status": "SUCCESS" if exec_result.get("ok") else "FAILED",
+        "result": {
+            "message": exec_result.get("message") or ("job success" if exec_result.get("ok") else "job failed"),
+            "action_type": job.get("action_type"),
+            "target": job.get("target"),
+            "desired_server_id": (job.get("payload") or {}).get("desired_server_id"),
+            "exec": exec_result,
+        },
     }
     post_json(f"{base}/api/ops-platform/agent/report", result, token)
 

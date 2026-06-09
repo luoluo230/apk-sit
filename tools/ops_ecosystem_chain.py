@@ -437,6 +437,11 @@ def main() -> int:
     parser.add_argument("--game-server-repo", default="")
     parser.add_argument("--skip-flow", action="store_true")
     parser.add_argument("--full-framework", action="store_true", help="Apply full_framework blueprint and verify cluster export")
+    parser.add_argument(
+        "--distributed",
+        action="store_true",
+        help="Run distributed acceptance (pytest live + business test) after flow-control",
+    )
     parser.add_argument("--username", default="", help="apk-site login (default: OPS_USERNAME or admin)")
     parser.add_argument("--password", default="", help="apk-site login (default: OPS_PASSWORD or 123456)")
     args = parser.parse_args()
@@ -546,6 +551,35 @@ def main() -> int:
             log(f"[{_ts()}] skip flow-control (--skip-flow)")
         else:
             log(f"[{_ts()}] skip flow-control (probe/bind preflight failed)")
+
+    if args.distributed:
+        log(f"\n[{_ts()}] ── 分布式验收 (RG-02) ──")
+        dist_script = ROOT / "tools" / "run_distributed_acceptance.py"
+        if not dist_script.is_file():
+            log(f"[{_ts()}] ❌ missing {dist_script}")
+            steps["distributed_acceptance"] = False
+        else:
+            import subprocess as _sp
+
+            proc = _sp.run(
+                [
+                    sys.executable,
+                    str(dist_script),
+                    "--game-server-repo",
+                    str(repo),
+                    "--base",
+                    base,
+                    "--skip-gameserver-ps1",
+                ],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            log(proc.stdout[-2000:] if proc.stdout else "")
+            if proc.stderr:
+                log(proc.stderr[-1000:])
+            steps["distributed_acceptance"] = proc.returncode == 0
 
     log(f"\n[{_ts()}] ═══ 结果 ═══")
     for name, ok in steps.items():

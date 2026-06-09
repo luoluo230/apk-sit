@@ -1,0 +1,99 @@
+{
+  "verdict": "pass",
+  "exit_code": 0,
+  "seconds": 1.26,
+  "transport": "websocket",
+  "plan": "auth-login-lifecycle",
+  "artifact_json": "E:\\web\\apk-site\\data\\business_test_runs\\auth-login-lifecycle-46817280\\business-run.json",
+  "artifact_md": "E:\\web\\apk-site\\data\\business_test_runs\\auth-login-lifecycle-46817280\\business-run.md",
+  "generated_utc": "2026-06-08T11:19:09.698966+00:00",
+  "run": {
+    "PlanId": null,
+    "PlanName": "登录选服创角",
+    "Transport": "websocket",
+    "Passed": true,
+    "StartedAtUtc": "2026-06-08T11:19:08.4614750Z",
+    "FinishedAtUtc": "2026-06-08T11:19:09.6877807Z",
+    "Steps": [
+      {
+        "StepId": "s1",
+        "Protocol": "Login_c2s",
+        "MessageId": 10001,
+        "Client": {
+          "RequestJson": "{\"Username\":\"biztest_20260608111908\",\"Password\":\"123456\",\"Device\":{\"Platform\":\"BusinessTest\",\"DeviceId\":\"28546161370840d092bf33827b04bf1f\",\"ClientVersion\":\"1.0\"}}",
+          "Transport": "websocket",
+          "Seq": 1,
+          "SentAtUtc": "2026-06-08T11:19:08.6438617Z"
+        },
+        "Server": {
+          "ResponseJson": "{\"Success\":true,\"Message\":\"Account created. Please select a server.\",\"Token\":{\"Token\":\"411fd9bb964c4a338678643ec33da50f\",\"ExpireAt\":1780919886},\"Profile\":null,\"AutoLogin\":false,\"LastServerId\":null,\"ServerList\":[{\"ServerId\":\"s1\",\"Name\":\"Dawn City\",\"Region\":\"CN-1\",\"Status\":\"Online\",\"IsRecommended\":true,\"OnlinePlayers\":5230},{\"ServerId\":\"s2\",\"Name\":\"Starfall Valley\",\"Region\":\"CN-2\",\"Status\":\"Busy\",\"IsRecommended\":false,\"OnlinePlayers\":8120},{\"ServerId\":\"s3\",\"Name\":\"Everwood\",\"Region\":\"CN-3\",\"Status\":\"Maintenance\",\"IsRecommended\":false,\"OnlinePlayers\":0}]}",
+          "ErrorCode": 0,
+          "LatencyMs": 7,
+          "DataType": "Login_s2c, HotUpdate"
+        },
+        "Result": "ok",
+        "BlockedReason": null
+      },
+      {
+        "StepId": "s2",
+        "Protocol": "SelectServer_c2s",
+        "MessageId": 10003,
+        "Client": {
+          "RequestJson": "{\"Token\":\"411fd9bb964c4a338678643ec33da50f\",\"ServerId\":\"game-cn-1\"}",
+          "Transport": "websocket",
+          "Seq": 2,
+          "SentAtUtc": "2026-06-08T11:19:08.6608626Z"
+        },
+        "Server": {
+          "ResponseJson": "{\"Success\":true,\"Message\":\"Server selected. Create a character next.\",\"ServerId\":\"game-cn-1\",\"Profile\":null}",
+          "ErrorCode": 0,
+          "LatencyMs": 1,
+          "DataType": "SelectServer_s2c, HotUpdate"
+        },
+        "Result": "ok",
+        "BlockedReason": null
+      },
+      {
+        "StepId": "s3",
+        "Protocol": "CreateRole_c2s",
+        "MessageId": 10005,
+        "Client": {
+          "RequestJson": "{\"Token\":\"411fd9bb964c4a338678643ec33da50f\",\"ServerId\":\"game-cn-1\",\"Nickname\":\"fx_6a420e30\",\"Avatar\":\"default\"}",
+          "Transport": "websocket",
+          "Seq": 3,
+          "SentAtUtc": "2026-06-08T11:19:08.6638617Z"
+        },
+        "Server": {
+          "ResponseJson": "{\"Success\":true,\"Message\":\"Character created successfully.\",\"Profile\":{\"PlayerId\":175198285226,\"Nickname\":\"fx_82187431\",\"Level\":1,\"Experience\":0,\"Gold\":1000,\"Diamonds\":100,\"ClearedStage\":0,\"VipLevel\":0,\"CombatPower\":500,\"GuildName\":\"Adventurers\",\"CurrentStage\":0,\"ArenaRank\":120,\"AvatarUrl\":\"https://cdn.ma-game.com/avatar/default.png\",\"Country\":\"Unknown\"}}",
+          "ErrorCode": 0,
+          "LatencyMs": 1,
+          "DataType": "CreateRole_s2c, HotUpdate"
+        },
+        "Result": "ok",
+        "BlockedReason": null
+      },
+      {
+        "StepId": "s4",
+        "Protocol": "GetPlayerProfile_c2s",
+        "MessageId": 10011,
+        "Client": {
+          "RequestJson": "{\"Token\":\"411fd9bb964c4a338678643ec33da50f\",\"ServerId\":\"game-cn-1\"}",
+          "Transport": "websocket",
+          "Seq": 4,
+          "SentAtUtc": "2026-06-08T11:19:08.6658620Z"
+        },
+        "Server": {
+          "ResponseJson": "{\"Profile\":{\"PlayerId\":175198285226,\"Nickname\":\"fx_82187431\",\"Level\":1,\"Experience\":0,\"Gold\":1000,\"Diamonds\":100,\"ClearedStage\":0,\"VipLevel\":0,\"CombatPower\":500,\"GuildName\":\"冒险者公会\",\"CurrentStage\":0,\"ArenaRank\":120,\"AvatarUrl\":\"https://cdn.ma-game.com/avatar/default.png\",\"Country\":\"Unknown\"}}",
+          "ErrorCode": 0,
+          "LatencyMs": 5,
+          "DataType": "GetPlayerProfile_s2c, HotUpdate"
+        },
+        "Result": "ok",
+        "BlockedReason": null
+      }
+    ],
+    "Error": null,
+    "ArtifactJson": null,
+    "ArtifactMd": null
+  }
+}

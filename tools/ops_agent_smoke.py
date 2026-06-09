@@ -75,20 +75,26 @@ def _get_json(url: str, session_cookie: str = "", timeout: int = 10) -> Dict[str
 
 def step_login(base: str) -> Tuple[bool, str, List[Dict[str, Any]]]:
     """登录获取 session cookie。"""
+    import re
+
     logs: List[Dict[str, Any]] = []
     t0 = time.time()
     import requests as req
     try:
         s = req.Session()
-        login_url = f"{base}/api/auth/login"
-        r = s.post(login_url, json={"username": "admin", "password": "admin"}, timeout=8)
-        if r.status_code >= 400:
-            # 尝试表单登录
-            r = s.post(f"{base}/login", data={"username": "admin", "password": "admin"}, timeout=8)
+        r = s.get(f"{base}/login", timeout=15)
+        m = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', r.text or "")
+        r = s.post(
+            f"{base}/login",
+            data={
+                "username": "admin",
+                "password": "admin123",
+                "csrf_token": m.group(1) if m else "",
+            },
+            timeout=15,
+        )
         cookie = "; ".join(f"{k}={v}" for k, v in s.cookies.items())
-        if not cookie:
-            cookie = f"session={s.cookies.get('session', '')}"
-        ok = r.status_code < 400
+        ok = r.status_code < 400 and bool(s.cookies)
         logs.append(_log("login", ok, f"status={r.status_code}; cookie_len={len(cookie)}", (time.time() - t0) * 1000))
         return ok, cookie, logs
     except Exception as ex:

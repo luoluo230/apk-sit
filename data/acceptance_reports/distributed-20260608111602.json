@@ -1,0 +1,35 @@
+{
+  "started_at": "2026-06-08T11:15:04.609857+00:00",
+  "preflight": {
+    "admin": true,
+    "gateway_ws": true,
+    "auth_relay": false,
+    "game_relay": false,
+    "mongo": true,
+    "redis": false,
+    "gameserver_exe": true,
+    "base": "http://127.0.0.1:5003"
+  },
+  "sections": {
+    "pytest_live": {
+      "exit_code": 1,
+      "stdout": "___________________\n\n    @pytest.mark.live\n    @pytest.mark.windows\n    def test_or05_four_gameserver_processes():\n        proc = subprocess.run(\n            [\"tasklist\", \"/FI\", \"IMAGENAME eq GameServer.GameServerApp.exe\", \"/NH\"],\n            capture_output=True,\n            text=True,\n            errors=\"replace\",\n        )\n        count = sum(1 for line in proc.stdout.splitlines() if \"GameServer.GameServerApp\" in line)\n>       assert count >= 4, f\"expected >=4 GameServer processes, got {count}\"\nE       AssertionError: expected >=4 GameServer processes, got 1\nE       assert 1 >= 4\n\ntests\\ops_distributed\\live\\test_distributed_live.py:104: AssertionError\n_______________________ test_cr05_auth_relay_port_open ________________________\n\n    @pytest.mark.live\n    def test_cr05_auth_relay_port_open():\n        import socket\n    \n        try:\n>           with socket.create_connection((\"127.0.0.1\", 15501), timeout=1.0):\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\ntests\\ops_distributed\\live\\test_distributed_live.py:112: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\nC:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\socket.py:874: in create_connection\n    raise exceptions[0]\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\n\naddress = ('127.0.0.1', 15501), timeout = 1.0, source_address = None\n\n    def create_connection(address, timeout=_GLOBAL_DEFAULT_TIMEOUT,\n                          source_address=None, *, all_errors=False):\n        \"\"\"Connect to *address* and return the socket object.\n    \n        Convenience function.  Connect to *address* (a 2-tuple ``(host,\n        port)``) and return the socket object.  Passing the optional\n        *timeout* parameter will set the timeout on the socket instance\n        before attempting to connect.  If no *timeout* is supplied, the\n        global default timeout setting returned by :func:`getdefaulttimeout`\n        is used.  If *source_address* is set it must be a tuple of (host, port)\n        for the socket to bind as a source address before making the connection.\n        A host of '' or port 0 tells the OS to use the default. When a connection\n        cannot be created, raises the last error if *all_errors* is False,\n        and an ExceptionGroup of all errors if *all_errors* is True.\n        \"\"\"\n    \n        host, port = address\n        exceptions = []\n        for res in getaddrinfo(host, port, 0, SOCK_STREAM):\n            af, socktype, proto, canonname, sa = res\n            sock = None\n            try:\n                sock = socket(af, socktype, proto)\n                if timeout is not _GLOBAL_DEFAULT_TIMEOUT:\n                    sock.settimeout(timeout)\n                if source_address:\n                    sock.bind(source_address)\n>               sock.connect(sa)\nE               TimeoutError: timed out\n\nC:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python314\\Lib\\socket.py:859: TimeoutError\n\nDuring handling of the above exception, another exception occurred:\n\n    @pytest.mark.live\n    def test_cr05_auth_relay_port_open():\n        import socket\n    \n        try:\n            with socket.create_connection((\"127.0.0.1\", 15501), timeout=1.0):\n                pass\n        except OSError as ex:\n>           pytest.fail(f\"auth cluster relay 15501 not open: {ex}\")\nE           Failed: auth cluster relay 15501 not open: timed out\n\ntests\\ops_distributed\\live\\test_distributed_live.py:115: Failed\n=========================== short test summary info ===========================\nFAILED tests/ops_distributed/live/test_distributed_live.py::test_bt09_cli_auth_login_lifecycle\nFAILED tests/ops_distributed/live/test_distributed_live.py::test_bt10_api_business_test_run\nFAILED tests/ops_distributed/live/test_distributed_live.py::test_or05_four_gameserver_processes\nFAILED tests/ops_distributed/live/test_distributed_live.py::test_cr05_auth_relay_port_open\n4 failed, 1 passed, 25 deselected in 23.22s\n",
+      "stderr": "",
+      "junit": "E:\\web\\apk-site\\reports\\distributed.xml"
+    },
+    "gameserver_ps1": {
+      "cluster_health": {
+        "exit_code": 1,
+        "stdout": "[FAIL] ops/health - 无法连接到远程服务器\n[FAIL] ops/ready - 无法连接到远程服务器\n[FAIL] ops/metrics - 无法连接到远程服务器\n[FAIL] relay-auth:15501 - 使用“2”个参数调用“Connect”时发生异常:“由于目标计算机积极拒绝，无法连接。 127.0.0.1:15501”\n[FAIL] relay-game:15502 - 使用“2”个参数调用“Connect”时发生异常:“由于目标计算机积极拒绝，无法连接。 127.0.0.1:15502”\n[OK] websocket:15050 - open\n\nSummary: 1/6 passed\n",
+        "stderr": ""
+      },
+      "distributed_acceptance": {
+        "exit_code": 1,
+        "stdout": "[OK] gateway:15050 - tcp open\n[FAIL] relay-auth:15501 - 使用“2”个参数调用“Connect”时发生异常:“由于目标计算机积极拒绝，无法连接。 127.0.0.1:15501”\n[FAIL] relay-game:15502 - 使用“2”个参数调用“Connect”时发生异常:“由于目标计算机积极拒绝，无法连接。 127.0.0.1:15502”\n[FAIL] ops:5504 - 使用“2”个参数调用“Connect”时发生异常:“由于目标计算机积极拒绝，无法连接。 127.0.0.1:5504”\n[FAIL] gameserver-process-count - count=1\n[BusinessTest] plan= passed=False\n[BusinessTest] steps=1 ok=0 blocked=0 failed=1\n[BusinessTest] artifacts:\n  - E:\\maclient\\game-server\\tools\\SmokeTest\\artifacts\\business-auth-login-lifecycle-latest\\business-run.json\n  - E:\\maclient\\game-server\\tools\\SmokeTest\\artifacts\\business-auth-login-lifecycle-latest\\business-run.md\n[business-test] cmd: E:\\maclient\\game-server\\tools\\SmokeTest\\bin\\Debug\\SmokeTest.exe --mode=business --transport=websocket --output=E:\\maclient\\game-server\\tools\\SmokeTest\\artifacts\\business-auth-login-lifecycle-latest --timeout-ms=15000 --user-prefix=biztest --server-id=game-cn-1 --plan=auth-login-lifecycle --ws=ws://127.0.0.1:15050/ws/ --protocol-catalog=E:\\maclient\\protocols\\generated\\protocol-catalog.json --builtin-plans-dir=E:\\maclient\\game-server\\tools\\SmokeTest\\business-test-plans\n[business-test] VERDICT=fail -> E:\\maclient\\game-server\\tools\\SmokeTest\\artifacts\\business-auth-login-lifecycle-latest\\business-report.json\n[FAIL] business-plan:auth-login-lifecycle - exit=1\n\nDistributedAcceptance: 1/6 passed\n",
+        "stderr": ""
+      }
+    }
+  },
+  "ok": false,
+  "finished_at": "2026-06-08T11:16:02.756164+00:00"
+}

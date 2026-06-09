@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260607-topology-edge-labels-v6">
+<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260608-business-test-modal-v2">
 
 <div class="ops-topology-app"
      data-page="topology-workbench"
@@ -158,6 +158,7 @@
               <div class="topology-inline-actions">
                 <button id="btnTestSmoke" class="btn primary" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg>单元测试</button>
                 <button id="btnTestStress" class="btn" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M4 18h16M6 14l3-4 3 3 4-6 2 3"/></svg>压力测试</button>
+                <button id="btnTestBusiness" class="btn" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M4 6h16v2H4V6zm0 5h10v2H4v-2zm0 5h16v2H4v-2z"/></svg>业务测试</button>
               </div>
             </div>
             <div class="topology-mode-footer-tip"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16h.01"/></svg>提示：测试将遵循节点依赖顺序逐级执行。</div>
@@ -478,5 +479,58 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260606-topology-rewrite36"></script>
-<script src="/static/ops_platform_workbench.js?v=20260608-runtime-start-v7"></script>
+<div id="businessTestModal" class="topology-modal hidden">
+  <div class="topology-modal-card topology-modal-xl business-test-modal-card">
+    <div class="topology-modal-header">
+      <div>
+        <div class="topology-modal-title">业务测试方案编排</div>
+        <div class="topology-modal-sub" id="businessTestModalSub">从方案库加载或自定义协议步骤；运行后可在模式日志查看逐步客户端/服务端明细。</div>
+      </div>
+      <button id="btnBusinessModalClose" class="topology-modal-close" type="button">×</button>
+    </div>
+    <div class="business-test-modal-body">
+      <div class="business-test-grid">
+        <section class="business-test-col">
+          <div class="topology-field-label">方案库</div>
+          <div id="businessPlanCategoryChips" class="topology-chip-row business-plan-chips"></div>
+          <div id="businessPlanList" class="business-plan-list"></div>
+        </section>
+        <section class="business-test-col business-test-col-main">
+          <div class="topology-field-label">步骤编排</div>
+          <div class="business-test-form-row">
+            <input id="businessPlanName" class="inp" placeholder="方案名称">
+            <input id="businessPlanId" class="inp" placeholder="方案 ID（保存自定义用）">
+          </div>
+          <ol id="businessStepList" class="business-step-list"></ol>
+          <div class="topology-inline-actions">
+            <button id="btnBusinessAddStep" class="btn btn-sm" type="button">添加选中协议</button>
+            <button id="btnBusinessNewPlan" class="btn btn-sm" type="button">新建空白方案</button>
+          </div>
+        </section>
+        <section class="business-test-col">
+          <div class="topology-field-label">协议树 <span id="businessCatalogMeta" class="business-catalog-meta"></span></div>
+          <input id="businessProtocolSearch" class="inp" placeholder="搜索协议名或 ID">
+          <div id="businessProtocolTree" class="business-protocol-tree"></div>
+          <div class="topology-field-label">运行配置</div>
+          <div class="business-test-form-row">
+            <select id="businessTransport" class="sel">
+              <option value="websocket">websocket</option>
+              <option value="tcp">tcp</option>
+              <option value="kcp">kcp</option>
+              <option value="http">http</option>
+            </select>
+            <input id="businessUserPrefix" class="inp" value="biztest" placeholder="用户前缀">
+          </div>
+        </section>
+      </div>
+    </div>
+    <div class="topology-modal-footer business-test-modal-footer">
+      <button id="btnBusinessModalCancel" class="btn" type="button">关闭</button>
+      <button id="btnBusinessSavePlan" class="btn" type="button">保存自定义方案</button>
+      <button id="btnBusinessRun" class="btn primary" type="button">开始业务测试</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/ops_platform_api.js?v=20260608-business-test-failure-detail-v3"></script>
+<script src="/static/ops_platform_workbench.js?v=20260608-business-test-failure-detail-v4"></script>

@@ -3818,3 +3818,157 @@ body.topology-modal-open .ops-topology-app .topology-pro-canvas .scene {
 .ops-topology-app select.sel.is-hidden {
   display: none !important;
 }
+
+/* ── 业务测试弹窗 ── */
+.ops-topology-app ~ .topology-modal .business-test-modal-card {
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-topology-app ~ .topology-modal .business-test-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 4px;
+}
+
+.ops-topology-app ~ .topology-modal .business-test-grid {
+  display: grid;
+  grid-template-columns: 240px minmax(280px, 1.2fr) 280px;
+  gap: 14px;
+  height: min(58vh, 520px);
+  min-height: 360px;
+}
+
+.ops-topology-app ~ .topology-modal .business-test-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  border: 1px solid var(--tw-border-soft);
+  border-radius: var(--tw-radius);
+  background: var(--tw-surface-soft);
+  padding: 10px;
+}
+
+.ops-topology-app ~ .topology-modal .business-test-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ops-topology-app ~ .topology-modal .business-test-col-main .business-test-form-row {
+  grid-template-columns: 1fr;
+}
+
+.ops-topology-app ~ .topology-modal .business-plan-list,
+.ops-topology-app ~ .topology-modal .business-protocol-tree,
+.ops-topology-app ~ .topology-modal .business-step-list {
+  overflow: auto;
+  border: 1px solid var(--tw-border-soft);
+  border-radius: var(--tw-radius);
+  background: var(--tw-surface);
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.ops-topology-app ~ .topology-modal .business-test-modal-footer {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ops-topology-app ~ .topology-modal .business-catalog-meta {
+  font-weight: 400;
+  color: var(--tw-muted);
+  font-size: 12px;
+}
+
+.ops-topology-app ~ .topology-modal .business-plan-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: var(--tw-radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.ops-topology-app ~ .topology-modal .business-plan-item:hover,
+.ops-topology-app ~ .topology-modal .business-plan-item.active {
+  background: rgba(47, 107, 255, 0.1);
+  color: var(--tw-primary);
+}
+
+.ops-topology-app ~ .topology-modal .business-plan-item .sub {
+  display: block;
+  color: var(--tw-muted);
+  font-size: 12px;
+}
+
+.ops-topology-app ~ .topology-modal .business-step-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--tw-border-soft);
+  font-size: 13px;
+}
+
+.ops-topology-app ~ .topology-modal .business-step-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.ops-topology-app ~ .topology-modal .business-step-actions button {
+  border: 1px solid var(--tw-border);
+  background: var(--tw-surface);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ops-topology-app ~ .topology-modal .business-protocol-module {
+  margin-bottom: 8px;
+}
+
+.ops-topology-app ~ .topology-modal .business-protocol-module summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.ops-topology-app ~ .topology-modal .business-protocol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 2px 8px;
+  font-size: 12px;
+}
+
+.ops-topology-app ~ .topology-modal .business-plan-chips {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .ops-topology-app ~ .topology-modal .business-test-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-height: none;
+  }
+
+  .ops-topology-app ~ .topology-modal .business-plan-list,
+  .ops-topology-app ~ .topology-modal .business-protocol-tree,
+  .ops-topology-app ~ .topology-modal .business-step-list {
+    max-height: 220px;
+  }
+}

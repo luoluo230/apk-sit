@@ -26,7 +26,9 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
 
+from gameserver_agent_exec import execute_ops_job  # noqa: E402
 from tools.ops_ecosystem_chain import (  # noqa: E402
     AGENT_TOKEN,
     _cluster_agents,
@@ -116,6 +118,44 @@ def heartbeat_once(base: str, project_id: str, ops_port: int) -> bool:
     jobs = pull.get("jobs") if isinstance(pull.get("jobs"), list) else []
     if jobs:
         print(f"[pull] jobs={len(jobs)}", flush=True)
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        job_id = str(job.get("job_id") or "").strip()
+        if not job_id:
+            continue
+        _post(
+            base,
+            "/api/ops-platform/agent/report",
+            {
+                "node_id": "ops-cn-1",
+                "agent_id": CANONICAL_ID,
+                "job_id": job_id,
+                "status": "RUNNING",
+                "result": {"message": "job running"},
+            },
+        )
+        exec_result = execute_ops_job(job)
+        _post(
+            base,
+            "/api/ops-platform/agent/report",
+            {
+                "node_id": "ops-cn-1",
+                "agent_id": CANONICAL_ID,
+                "job_id": job_id,
+                "status": "SUCCESS" if exec_result.get("ok") else "FAILED",
+                "result": {
+                    "message": exec_result.get("message") or "job done",
+                    "action_type": job.get("action_type"),
+                    "target": job.get("target"),
+                    "exec": exec_result,
+                },
+            },
+        )
+        print(
+            f"[job] {job_id} action={job.get('action_type')} target={job.get('target')} ok={exec_result.get('ok')}",
+            flush=True,
+        )
     return True
 
 
