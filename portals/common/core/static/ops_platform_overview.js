@@ -6,27 +6,19 @@
     if(el) el.textContent = value;
   }
 
-  function getProjectId(){
+  function getScope(){
     const shell = document.querySelector('.ops-shell');
-    return (shell && shell.dataset && shell.dataset.projectId) ? String(shell.dataset.projectId) : '';
-  }
-
-  function bindProjectJump(){
-    const input = $('opsProjectFilter');
-    if(!input) return;
-    input.addEventListener('keydown', (ev)=>{
-      if(ev.key !== 'Enter') return;
-      const pid = String(input.value || '').trim();
-      window.location.href = '/admin/ops-platform?project_id=' + encodeURIComponent(pid);
-    });
+    const app = document.querySelector('.ops-shell-app');
+    const projectId = (shell && shell.dataset && shell.dataset.projectId) ? String(shell.dataset.projectId) : ((app && app.dataset && app.dataset.projectId) ? String(app.dataset.projectId) : '');
+    const envKey = (shell && shell.dataset && shell.dataset.envKey) ? String(shell.dataset.envKey) : ((app && app.dataset && app.dataset.envKey) ? String(app.dataset.envKey) : 'production');
+    return { projectId, envKey };
   }
 
   async function boot(){
-    const projectId = getProjectId();
-    bindProjectJump();
+    const { projectId, envKey } = getScope();
 
     const [overview, events] = await Promise.all([
-      OpsApi.loadOverview(projectId),
+      OpsApi.loadOverview(projectId, envKey),
       OpsApi.loadEvents(20),
     ]);
 
@@ -47,7 +39,9 @@
     }
   }
 
-  boot().catch((err)=>{
+  boot().then(function(){
+    setInterval(function(){ boot().catch(function(){}); }, 30000);
+  }).catch((err)=>{
     console.error(err);
     safeText('eventSummary', '加载失败，请刷新重试');
   });

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
-from flask import current_app, jsonify, redirect, render_template_string, request, session
+from flask import current_app, jsonify, redirect, render_template, render_template_string, request, session
 
 from config import DATA_DIR
 from models.data import (
@@ -376,12 +376,13 @@ def _action_target_or_400(payload: Dict[str, Any]):
     return node, None
 
 
-def _list_action_targets(project_id: str) -> List[Dict[str, Any]]:
+def _list_action_targets(project_id: str, env_key: str = "production") -> List[Dict[str, Any]]:
     pid = str(project_id or "").strip()
+    env = _resolve_ops_env_key(env_key)
     out: List[Dict[str, Any]] = []
     seen = set()
 
-    for svc in _services_for_project(pid):
+    for svc in _services_for_project(pid, env):
         if not isinstance(svc, dict):
             continue
         sid = str(svc.get("service_id") or "").strip()
@@ -404,14 +405,14 @@ def _list_action_targets(project_id: str) -> List[Dict[str, Any]]:
             "probe_status": str(svc.get("probe_status") or ""),
         })
 
-    ctx = _resolve_topology_context(pid, "production", "")
+    ctx = _resolve_topology_context(pid, env, "")
     topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
     row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
     tid = str(row.get("topology_id") or "")
     bindings = _load_scope_agent_bindings(tid)
     agents_map = {
         str(a.get("agent_id") or ""): a
-        for a in _agents_v2_for_project(pid)
+        for a in _agents_v2_for_project(pid, env)
         if isinstance(a, dict) and str(a.get("agent_id") or "")
     }
     for node in topo.get("nodes") if isinstance(topo.get("nodes"), list) else []:
@@ -438,7 +439,7 @@ def _list_action_targets(project_id: str) -> List[Dict[str, Any]]:
             "probe_status": str(agent.get("probe_status") or ""),
         })
 
-    for ag in _logical_agents_for_project(pid):
+    for ag in _logical_agents_for_project(pid, env):
         if not isinstance(ag, dict) or ag.get("stale"):
             continue
         aid = str(ag.get("agent_id") or "").strip()
@@ -511,11 +512,12 @@ def _diagnostics_fix_actions(row: Dict[str, Any]) -> List[Dict[str, Any]]:
     return actions
 
 
-def _build_diagnostics_summary(project_id: str = "") -> Dict[str, Any]:
+def _build_diagnostics_summary(project_id: str = "", env_key: str = "production") -> Dict[str, Any]:
     pid = str(project_id or "").strip()
+    env = _resolve_ops_env_key(env_key)
     onboarding = _build_node_onboarding(project_id=pid)
     checks = onboarding.get("checks") if isinstance(onboarding.get("checks"), list) else []
-    targets = {str(t.get("node_id") or ""): t for t in _list_action_targets(pid)}
+    targets = {str(t.get("node_id") or ""): t for t in _list_action_targets(pid, env)}
     rows: List[Dict[str, Any]] = []
     for chk in checks:
         if not isinstance(chk, dict):
@@ -535,7 +537,7 @@ def _build_diagnostics_summary(project_id: str = "") -> Dict[str, Any]:
         row["fix_actions"] = _diagnostics_fix_actions(row)
         rows.append(row)
 
-    for tgt in _list_action_targets(pid):
+    for tgt in _list_action_targets(pid, env):
         nid = str(tgt.get("node_id") or "")
         if not nid or any(str(r.get("node_id") or r.get("id") or "") == nid for r in rows):
             continue
@@ -554,6 +556,7 @@ def _build_diagnostics_summary(project_id: str = "") -> Dict[str, Any]:
             "target_key": tgt.get("target_key"),
             "target_type": tgt.get("target_type"),
             "project_id": pid,
+            "env_key": env,
             "fix_actions": _diagnostics_fix_actions({**tgt, "project_id": pid}),
         })
 
@@ -601,25 +604,46 @@ def _allow_gm_execute() -> bool:
     )
 
 
-def _render_page(content: str, title: str):
-    try:
-        from routes.admin_routes import _admin_layout
+def _render_ops_page(
+    content: str,
+    title: str,
+    active_page: str = "",
+    project_id: str = "",
+    env_key: str = "",
+    topology_id: str = "",
+    extra_css: str = "",
+    extra_js: str = "",
+):
+    """Unified page wrapper — all ops pages use the shared sidebar shell."""
+    if not project_id:
+        project_id = _resolve_ops_project_id(request.args.get("project_id") or "")
+    if project_id:
+        session["ops_last_project"] = project_id
+    if not env_key:
+        env_key = _resolve_ops_env_key(request.args.get("env_key") or "")
+    if env_key:
+        session["ops_last_env"] = env_key
+    if not topology_id:
+        topology_id = str(request.args.get("topology_id", ""))
+    return render_template(
+        "ops_shell.html",
+        content=content,
+        title=title,
+        active_page=active_page,
+        project_id=project_id,
+        env_key=env_key,
+        topology_id=topology_id,
+        extra_css=extra_css,
+        extra_js=extra_js,
+    )
 
-        return _admin_layout(content, title, back_href="/admin")
-    except Exception:
-        return render_template_string(
-            """
-<!doctype html>
-<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{{ title }}</title><link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head>
-<body class=\"bg-slate-50 min-h-screen\"><div class=\"max-w-7xl mx-auto p-6\">{{ content|safe }}</div></body></html>
-""",
-            title=title,
-            content=content,
-        )
+
+def _render_page(content: str, title: str):
+    """Legacy compat — delegates to _render_ops_page."""
+    return _render_ops_page(content, title)
 
 
 def _render_local_template(template_name: str, **kwargs):
-    # Templates live in portals/common/core/templates/, two levels up from services/ops/
     core_dir = os.path.join(os.path.dirname(__file__), "..", "..")
     path = os.path.join(core_dir, "templates", template_name)
     with open(path, "r", encoding="utf-8") as f:
@@ -627,25 +651,8 @@ def _render_local_template(template_name: str, **kwargs):
 
 
 def _render_standalone_page(content: str, title: str):
-    return render_template_string(
-        """
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title }}</title>
-  <link rel="stylesheet" href="/static/tailwind.css">
-  <style>
-    html,body{margin:0;padding:0;background:#f7f9fc}
-  </style>
-</head>
-<body>{{ content|safe }}</body>
-</html>
-""",
-        title=title,
-        content=content,
-    )
+    """Legacy compat — delegates to _render_ops_page."""
+    return _render_ops_page(content, title)
 
 
 def _normalize_env_key(value: Any) -> str:
@@ -725,6 +732,8 @@ def _ensure_design_demo_registry(project_id: str) -> None:
     pid = str(project_id or "").strip()
     if not pid:
         return
+    if _project_has_cluster_json(pid):
+        return
     rows = _load_topology_registry()
     if not isinstance(rows, list):
         rows = []
@@ -777,14 +786,7 @@ def _ensure_design_demo_registry(project_id: str) -> None:
             }
         )
         rows.append(row)
-        if env == "development":
-            dev_topo = _design_reference_topology_content(pid, env)
-            dev_topo["nodes"] = [n for n in (dev_topo.get("nodes") or []) if str(n.get("id") or "") != "db-01" and not ((n.get("ui") or {}).get("list_only"))]
-            dev_topo["nodes"] = (dev_topo.get("nodes") or [])[:4]
-            dev_topo["edges"] = [e for e in (dev_topo.get("edges") or []) if str(e.get("to") or "") != "tcp-01" and str(e.get("from") or "") != "tcp-01"]
-            contents[row["topology_id"]] = dev_topo
-        else:
-            contents[row["topology_id"]] = _design_reference_topology_content(pid, env)
+        contents[row["topology_id"]] = _core_minimal_topology_content(pid, env, runtime_ids=False)
         changed = True
     if changed:
         _save_topology_registry(rows)
@@ -943,14 +945,386 @@ _DEMO_TO_RUNTIME_NODE = {
     "tcp-01": "tcp-cn-1",
     "db-01": "mongo-db-cn-1",
 }
+_RUNTIME_MINIMAL_NODE_IDS = frozenset({"gateway-cn-1", "auth-cn-1", "ops-cn-1", "game-cn-1"})
+_RUNTIME_INFRA_NODE_IDS = frozenset({"mongo-db-cn-1", "redis-cache-cn-1"})
+_CORE_PRESET_IDS = frozenset({
+    "gateway_http",
+    "auth_service",
+    "business_main",
+    "ops_service",
+    "tcp_transport",
+    "pressure_worker",
+    "redis_cache",
+    "mongo_db",
+    "mq_kafka",
+    "scheduler_job",
+})
+
+
+def _project_has_cluster_json(project_id: str = "") -> bool:
+    pid = str(project_id or "").strip()
+    if pid and pid != "GomeKu":
+        return False
+    return bool(_load_cluster_json())
+
+
+def _topology_has_design_demo_nodes(topo: Any) -> bool:
+    if not isinstance(topo, dict):
+        return False
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    ids = {str(n.get("id") or "") for n in nodes if isinstance(n, dict)}
+    return bool(ids & _DESIGN_DEMO_NODE_IDS)
+
+
+def _ensure_runtime_topology_bindings(topology_id: str, node_ids: List[str]) -> None:
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return
+    agent_store = _load_node_agent_bindings()
+    service_store = _load_node_service_bindings()
+    agent_changed = False
+    service_changed = False
+    for raw_nid in node_ids or []:
+        node_id = str(raw_nid or "").strip()
+        if not node_id:
+            continue
+        agent_key = _scope_binding_key(tid, node_id)
+        if str(agent_store.get(agent_key) or "").strip() != CANONICAL_LOCAL_AGENT_ID:
+            agent_store[agent_key] = CANONICAL_LOCAL_AGENT_ID
+            agent_changed = True
+        service_key = _scope_binding_key(tid, node_id)
+        if str(service_store.get(service_key) or "").strip() != node_id:
+            service_store[service_key] = node_id
+            service_changed = True
+    if agent_changed:
+        _save_node_agent_bindings(agent_store)
+    if service_changed:
+        _save_node_service_bindings(service_store)
+
+
+def _topology_missing_runtime_infra(topo: Any) -> bool:
+    if not isinstance(topo, dict):
+        return False
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    ids = {str(n.get("id") or "") for n in nodes if isinstance(n, dict) and str(n.get("id") or "")}
+    if "game-cn-1" in ids:
+        return not _RUNTIME_INFRA_NODE_IDS.issubset(ids)
+    if "game-01" in ids:
+        return not {"redis-01", "db-01"}.issubset(ids)
+    return False
+
+
+def _build_runtime_infra_topology_node(
+    node_id: str,
+    preset_id: str,
+    name: str,
+    role: str,
+    desc: str,
+    project_id: str,
+    env_key: str,
+    x: int,
+    y: int,
+    color: str,
+    port: int,
+) -> Dict[str, Any]:
+    kind = _infer_node_kind(role, "")
+    contract = _load_node_contract(preset_id) or {}
+    daemon_defaults = _contract_daemon_defaults(preset_id, port)
+    ui_ports = _normalize_ports(kind, None)
+    return {
+        "id": node_id,
+        "name": name,
+        "server_id": node_id,
+        "preset_id": preset_id,
+        "node_type": str(contract.get("node_type") or preset_id),
+        "project_id": str(project_id or ""),
+        "env": _normalize_env_key(env_key) or "production",
+        "role": role,
+        "kind": kind,
+        "desc": desc,
+        "bizStatus": "normal",
+        "owner": "ops-admin",
+        "group": str(contract.get("category") or "infrastructure"),
+        "daemon_profile": "external_daemon",
+        "daemon_start_cmd": str(daemon_defaults.get("StartCommand") or ""),
+        "daemon_stop_cmd": str(daemon_defaults.get("StopCommand") or ""),
+        "daemon_port": int(port or 0),
+        "x": float(x),
+        "y": float(y),
+        "tags": [role, preset_id],
+        "ui": {
+            "x": float(x),
+            "y": float(y),
+            "w": 220,
+            "h": 90,
+            "color": color,
+            "locked": False,
+            "ports": ui_ports,
+            "remote": {"port": int(port or 0)} if port > 0 else {},
+            "network": {"endpoints": [f"127.0.0.1:{port}"]} if port > 0 else {},
+        },
+    }
+
+
+def _append_runtime_infra_stack(topo: Dict[str, Any], project_id: str = "", env_key: str = "production") -> Dict[str, Any]:
+    """补齐最小完整栈的数据层：Game → Redis + Mongo。"""
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key) or "production"
+    nodes = list(topo.get("nodes") or []) if isinstance(topo.get("nodes"), list) else []
+    edges = list(topo.get("edges") or []) if isinstance(topo.get("edges"), list) else []
+    node_by_id = {str(n.get("id") or ""): n for n in nodes if isinstance(n, dict) and str(n.get("id") or "")}
+    if "game-cn-1" in node_by_id:
+        infra_specs = [
+            ("redis-cache-cn-1", "redis_cache", "Redis", "cache", "Redis 缓存与会话存储", 820, 48, "#eb2f96", 6379),
+            ("mongo-db-cn-1", "mongo_db", "MongoDB", "database", "Mongo 业务主存储", 820, 248, "#13c2c2", 27017),
+        ]
+        edge_specs = list(_RUNTIME_INFRA_EDGE_SPECS)
+    elif "game-01" in node_by_id:
+        infra_specs = [
+            ("redis-01", "redis_cache", "Redis", "cache", "Redis 缓存与会话存储", 820, 48, "#eb2f96", 6379),
+            ("db-01", "mongo_db", "MongoDB", "database", "Mongo 业务主存储", 820, 248, "#13c2c2", 27017),
+        ]
+        edge_specs = list(_CORE_MINIMAL_DEMO_INFRA_EDGE_SPECS)
+    else:
+        return topo
+
+    for node_id, preset_id, name, role, desc, x, y, color, port in infra_specs:
+        if node_id in node_by_id:
+            continue
+        node = _build_runtime_infra_topology_node(
+            node_id, preset_id, name, role, desc, pid, env, x, y, color, port
+        )
+        nodes.append(node)
+        node_by_id[node_id] = node
+
+    valid_ids = set(node_by_id.keys())
+    existing = {(str(e.get("from") or ""), str(e.get("to") or "")) for e in edges if isinstance(e, dict)}
+    for frm, to, note in edge_specs:
+        if frm not in valid_ids or to not in valid_ids or (frm, to) in existing:
+            continue
+        edges.append(
+            {
+                "id": f"edge-{frm}-{to}",
+                "from": str(frm),
+                "to": str(to),
+                "from_port": "out-1",
+                "to_port": "in-1",
+                "type": "depends_on",
+                "note": str(note),
+            }
+        )
+        existing.add((frm, to))
+
+    topo["nodes"] = nodes
+    topo["edges"] = edges
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    meta["blueprint_id"] = str(meta.get("blueprint_id") or "minimal_framework")
+    meta["framework_profile"] = str(meta.get("framework_profile") or "commercial_game_server")
+    topo["meta"] = meta
+    return topo
+
+
+def _apply_runtime_minimal_topology(topology_id: str, project_id: str, env_key: str = "production") -> Dict[str, Any]:
+    """将指定拓扑重写为 cluster.json 最小完整栈（应用层 + Redis/Mongo 数据层）。"""
+    tid = str(topology_id or "").strip()
+    pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key) or "production"
+    if not tid or not pid:
+        return {"updated": False, "reason": "missing_scope"}
+    cluster_rows = _load_cluster_json() if _project_has_cluster_json(pid) else []
+    if cluster_rows:
+        topo = _build_cluster_topology_content(cluster_rows, pid)
+    else:
+        topo = _core_minimal_topology_content(pid, env, runtime_ids=False)
+    topo = _append_runtime_infra_stack(topo, pid, env)
+    meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+    meta["runtime_topology"] = True
+    meta["cluster_source"] = bool(cluster_rows)
+    meta["updated_at"] = _now_iso()
+    meta.pop("design_reference", None)
+    topo["meta"] = meta
+    for node in topo.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        node["env"] = env
+        node["project_id"] = pid
+    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
+    topo["edges"] = _repair_runtime_topology_edges(nodes, edges, meta)
+    contents = _load_topology_contents()
+    contents[tid] = topo
+    _save_topology_contents(contents)
+    runtime_node_ids = [
+        str(n.get("id") or "")
+        for n in nodes
+        if isinstance(n, dict) and str(n.get("id") or "").endswith("-cn-1")
+    ]
+    if runtime_node_ids:
+        _ensure_runtime_topology_bindings(tid, runtime_node_ids)
+    return {"updated": True, "topology_id": tid, "node_count": len(nodes), "edge_count": len(topo.get("edges") or [])}
+
+
+def _migrate_gomeku_design_topology_contents(project_id: str = "GomeKu") -> None:
+    """一次性升级 GomeKu 各环境仍残留的设计稿 demo 拓扑内容。"""
+    pid = str(project_id or "").strip()
+    if not _project_has_cluster_json(pid):
+        return
+    env_by_tid: Dict[str, str] = {}
+    for row in _load_topology_registry():
+        if not isinstance(row, dict) or str(row.get("project_id") or "") != pid:
+            continue
+        tid = str(row.get("topology_id") or "").strip()
+        if tid:
+            env_by_tid[tid] = _normalize_env_key(row.get("env_key"))
+    for tid, topo in list(_load_topology_contents().items()):
+        if "gomeku" not in str(tid).lower() or not isinstance(topo, dict):
+            continue
+        meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+        node_ids = {
+            str(n.get("id") or "")
+            for n in (topo.get("nodes") or [])
+            if isinstance(n, dict) and str(n.get("id") or "")
+        }
+        needs_upgrade = (
+            _topology_has_design_demo_nodes(topo)
+            or str(meta.get("design_reference") or "").startswith("v")
+            or bool({"tcp-01"} & node_ids)
+            or _topology_missing_runtime_infra(topo)
+        )
+        if not needs_upgrade:
+            continue
+        env = env_by_tid.get(tid) or "production"
+        _apply_runtime_minimal_topology(tid, pid, env)
+
+
+def _core_minimal_topology_content(
+    project_id: str = "",
+    env_key: str = "production",
+    *,
+    runtime_ids: bool = False,
+) -> Dict[str, Any]:
+    """最小完整栈：Gateway / Auth / Ops / Game + Redis / Mongo。"""
+    env = _normalize_env_key(env_key) or "production"
+    pid = str(project_id or "").strip()
+    gateway_ports = {
+        "in": [],
+        "out": [
+            {"id": "out-1", "label": "http:80", "kind": "out", "max_links": 1},
+            {"id": "out-2", "label": "http:443", "kind": "out", "max_links": 1},
+        ],
+    }
+
+    def _node(
+        node_id: str,
+        name: str,
+        role: str,
+        desc: str,
+        x: int,
+        y: int,
+        color: str,
+        kind: str = "",
+        ports: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        k = kind or _infer_node_kind(role, "")
+        ui_ports = ports if isinstance(ports, dict) else _normalize_ports(k, None)
+        return {
+            "id": node_id,
+            "name": name,
+            "server_id": node_id,
+            "project_id": pid,
+            "env": env,
+            "role": role,
+            "kind": k,
+            "desc": desc,
+            "bizStatus": "normal",
+            "owner": "",
+            "group": "",
+            "x": float(x),
+            "y": float(y),
+            "tags": [],
+            "ui": {
+                "x": float(x),
+                "y": float(y),
+                "w": 220,
+                "h": 108,
+                "color": color,
+                "locked": False,
+                "ports": ui_ports,
+            },
+        }
+
+    if runtime_ids:
+        node_specs: List[Tuple[Any, ...]] = [
+            ("gateway-cn-1", "Gateway", "gateway", "网关服务", 72, 48, "#1890ff", "entry", gateway_ports),
+            ("auth-cn-1", "Auth", "auth", "认证服务", 72, 248, "#52c41a"),
+            ("ops-cn-1", "Ops", "ops", "运维服务", 320, 248, "#faad14", "admin"),
+            ("game-cn-1", "Game", "business", "游戏服务", 560, 128, "#722ed1", "game"),
+        ]
+        edge_specs = [
+            ("gateway-cn-1", "auth-cn-1", "http:80"),
+            ("gateway-cn-1", "ops-cn-1", "http:443"),
+            ("auth-cn-1", "game-cn-1", "tcp:5512"),
+            ("ops-cn-1", "game-cn-1", "tcp:5512"),
+        ]
+        meta_extra = {"runtime_topology": True, "cluster_source": True}
+    else:
+        node_specs = [
+            ("gateway-01", "Gateway", "gateway", "网关服务", 72, 48, "#1890ff", "entry", gateway_ports),
+            ("auth-01", "Auth", "auth", "认证服务", 72, 248, "#52c41a"),
+            ("ops-01", "Ops", "admin", "运维服务", 320, 248, "#faad14"),
+            ("game-01", "Game", "business", "游戏服务", 560, 128, "#722ed1", "game"),
+        ]
+        edge_specs = [
+            ("gateway-01", "auth-01", "http:80"),
+            ("gateway-01", "ops-01", "http:443"),
+            ("auth-01", "game-01", "tcp:5501"),
+            ("ops-01", "game-01", "tcp:5512"),
+        ]
+        meta_extra = {"design_reference": "minimal-v1"}
+
+    nodes: List[Dict[str, Any]] = []
+    for spec in node_specs:
+        nid, name, role, desc, x, y, color = spec[:7]
+        kind = str(spec[7] or "") if len(spec) > 7 else ""
+        ports = spec[8] if len(spec) > 8 else None
+        nodes.append(_node(str(nid), str(name), str(role), str(desc), int(x), int(y), str(color), kind, ports))
+
+    edges: List[Dict[str, Any]] = []
+    for frm, to, note in edge_specs:
+        edges.append(
+            {
+                "id": f"edge-{frm}-{to}",
+                "from": str(frm),
+                "to": str(to),
+                "from_port": "out-1",
+                "to_port": "in-1",
+                "type": "http" if str(note).startswith("http") else "tcp",
+                "note": str(note),
+            }
+        )
+
+    meta: Dict[str, Any] = {
+        "viewport": {"x": 0, "y": 0, "zoom": 1},
+        "layout_mode": "structured",
+        "layout_locked": False,
+        "layout_spacing": {"rank_gap": 268, "row_gap": 128},
+        "updated_at": _now_iso(),
+    }
+    meta.update(meta_extra)
+    topo = {"nodes": nodes, "edges": edges, "meta": meta}
+    return _append_runtime_infra_stack(topo, pid, env)
 
 
 def _project_uses_runtime_topology(project_id: str) -> bool:
     pid = str(project_id or "").strip()
     if not pid:
         return False
-    ctx = _resolve_topology_context(pid, "production", "")
-    topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
+    if _project_has_cluster_json(pid):
+        return True
+    _migrate_topology_storage_if_needed()
+    tid = _runtime_default_topology_id(pid, "production")
+    contents = _load_topology_contents()
+    topo = contents.get(tid) if isinstance(contents.get(tid), dict) else {}
     meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
     nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
     has_runtime_nodes = any(isinstance(n, dict) and str(n.get("id") or "").endswith("-cn-1") for n in nodes)
@@ -1292,7 +1666,10 @@ def _default_topology_content_from_nodes(rows: List[Dict[str, Any]]) -> Dict[str
 def _topology_seed_content(project_id: str, env_key: str) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
     env = _normalize_env_key(env_key) or "production"
-    return _design_reference_topology_content(pid, env)
+    cluster_rows = _load_cluster_json() if _project_has_cluster_json(pid) else []
+    if cluster_rows:
+        return _build_cluster_topology_content(cluster_rows, pid)
+    return _core_minimal_topology_content(pid, env, runtime_ids=False)
 
 
 def _migrate_topology_storage_if_needed() -> None:
@@ -1399,6 +1776,8 @@ def _migrate_topology_storage_if_needed() -> None:
 def _list_topologies(project_id: str = "", env_key: Optional[str] = None) -> List[Dict[str, Any]]:
     _migrate_topology_storage_if_needed()
     pid = str(project_id or "").strip()
+    if pid == "GomeKu" and _project_has_cluster_json(pid):
+        _migrate_gomeku_design_topology_contents(pid)
     env_filter = _normalize_env_key(env_key) if (env_key is not None and str(env_key).strip()) else None
     if pid:
         _ensure_design_demo_registry(pid)
@@ -1452,7 +1831,30 @@ def _ensure_topology_for_scope(project_id: str, env_key: str) -> Dict[str, Any]:
 
 def _resolve_ops_project_id(raw: str = "") -> str:
     pid = str(raw or "").strip()
-    return pid or "GomeKu"
+    if pid:
+        return pid
+    pid = str(session.get("ops_last_project") or "").strip()
+    if pid:
+        return pid
+    return "GomeKu"
+
+
+def _resolve_ops_env_key(raw: str = "") -> str:
+    env = str(raw or "").strip()
+    if env:
+        return _normalize_env_key(env)
+    env = str(session.get("ops_last_env") or "").strip()
+    if env:
+        return _normalize_env_key(env)
+    return "production"
+
+
+def _agent_matches_env(item: Dict[str, Any], env_key: str = "") -> bool:
+    if not env_key:
+        return True
+    env = _normalize_env_key(env_key)
+    agent_env = _normalize_env_key(str((item or {}).get("env_key") or (item or {}).get("env") or "production"))
+    return agent_env == env
 
 
 def _resolve_ops_topology_id(project_id: str, env_key: str, raw: str = "") -> str:
@@ -1465,16 +1867,22 @@ def _resolve_ops_topology_id(project_id: str, env_key: str, raw: str = "") -> st
 
 
 def _ops_platform_redirect_to_runtime_project():
-    """Ops 平台运行时默认 GomeKu 最小联通拓扑，避免落到 RecycleTycoon 设计演示。"""
-    raw = str(request.args.get("project_id") or "").strip()
-    if raw == "GomeKu":
+    """Redirect to default project/env if scope params are missing."""
+    raw_pid = str(request.args.get("project_id") or "").strip()
+    raw_env = str(request.args.get("env_key") or "").strip()
+    if raw_pid and raw_env:
         return None
     args = request.args.to_dict(flat=True)
-    args["project_id"] = "GomeKu"
+    if not raw_pid:
+        args["project_id"] = _resolve_ops_project_id("")
+    if not raw_env:
+        args["env_key"] = _resolve_ops_env_key("")
     if request.path.rstrip("/").endswith("/topology"):
-        args.setdefault("env_key", "production")
         if not str(args.get("topology_id") or "").strip():
-            args["topology_id"] = "topology-gomeku-production-default"
+            args["topology_id"] = _runtime_default_topology_id(
+                args.get("project_id", ""),
+                args.get("env_key", "production"),
+            )
     return redirect(request.path + "?" + urlencode(args))
 
 
@@ -1491,6 +1899,12 @@ def _resolve_topology_context(project_id: str = "", env_key: str = "", topology_
                 target = item
                 break
     if target is None:
+        preferred_tid = _runtime_default_topology_id(pid, env or "production")
+        for item in rows:
+            if str(item.get("topology_id") or "") == preferred_tid:
+                target = item
+                break
+    if target is None:
         for item in rows:
             if item.get("is_default"):
                 target = item
@@ -1500,22 +1914,51 @@ def _resolve_topology_context(project_id: str = "", env_key: str = "", topology_
     if target is None:
         target = _ensure_topology_for_scope(pid, env or "production")
         rows = _list_topologies(pid, env or "production")
+    tid_str = str(target.get("topology_id") or "")
+    project_for_topo = str(target.get("project_id") or pid or "")
+    env_for_topo = str(target.get("env_key") or env or "production")
     contents = _load_topology_contents()
-    topo = contents.get(str(target.get("topology_id") or "")) if isinstance(contents.get(str(target.get("topology_id") or "")), dict) else {}
+    topo = contents.get(tid_str) if isinstance(contents.get(tid_str), dict) else {}
     if not topo:
-        topo = _topology_seed_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
-        contents[str(target.get("topology_id") or "")] = topo
+        topo = _topology_seed_content(project_for_topo, env_for_topo)
+        contents[tid_str] = topo
         _save_topology_contents(contents)
+    elif _project_has_cluster_json(project_for_topo):
+        topo_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
+        node_ids = {
+            str(n.get("id") or "")
+            for n in (topo.get("nodes") or [])
+            if isinstance(n, dict) and str(n.get("id") or "")
+        }
+        needs_cluster_sync = (
+            _topology_has_design_demo_nodes(topo)
+            or not (topo_meta.get("runtime_topology") or topo_meta.get("cluster_source"))
+            or _topology_missing_runtime_infra(topo)
+            or bool({"tcp-01"} & node_ids)
+        )
+        if needs_cluster_sync:
+            _sync_cluster_to_agents(project_for_topo)
+            _apply_runtime_minimal_topology(tid_str, project_for_topo, env_for_topo)
+            _purge_design_demo_project_state(project_for_topo, tid_str)
+            contents = _load_topology_contents()
+            topo = contents.get(tid_str) if isinstance(contents.get(tid_str), dict) else topo
     elif _needs_design_reference_upgrade(topo):
         meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
         if not meta.get("cluster_source") and not meta.get("runtime_topology"):
-            topo = _design_reference_topology_content(str(target.get("project_id") or ""), str(target.get("env_key") or "production"))
-            contents[str(target.get("topology_id") or "")] = topo
+            topo = _core_minimal_topology_content(project_for_topo, env_for_topo, runtime_ids=False)
+            contents[tid_str] = topo
             _save_topology_contents(contents)
     topo_meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else {}
-    if not topo_meta.get("cluster_source") and not topo_meta.get("runtime_topology"):
-        _ensure_design_reference_bindings(str(target.get("topology_id") or ""))
-        _ensure_design_reference_agents(str(target.get("project_id") or pid or ""))
+    runtime_node_ids = [
+        str(n.get("id") or "")
+        for n in (topo.get("nodes") or [])
+        if isinstance(n, dict) and str(n.get("id") or "").endswith("-cn-1")
+    ]
+    if runtime_node_ids and (topo_meta.get("runtime_topology") or topo_meta.get("cluster_source")):
+        _ensure_runtime_topology_bindings(tid_str, runtime_node_ids)
+    elif not topo_meta.get("cluster_source") and not topo_meta.get("runtime_topology"):
+        _ensure_design_reference_bindings(tid_str)
+        _ensure_design_reference_agents(project_for_topo or pid or "")
     return {
         "topology": topo,
         "row": target,
@@ -2225,6 +2668,7 @@ def _service_dict_from_topology_node(project_id: str, node: Dict[str, Any], now:
         "agent_id": CANONICAL_LOCAL_AGENT_ID,
         "device_id": CANONICAL_LOCAL_DEVICE_ID,
         "project_id": str(project_id or ""),
+        "env_key": _normalize_env_key(node.get("env_key") or node.get("env") or "production"),
         "display_name": str(node.get("name") or node_id),
         "service_type": role,
         "service_port": int(port or 0),
@@ -2426,6 +2870,7 @@ def _upsert_agents_from_topology(project_id: str, nodes: List[Dict[str, Any]]) -
                 "probe_host": "127.0.0.1",
                 "node_id": svc["node_id"],
                 "project_id": pid,
+                "env_key": _normalize_env_key(svc.get("env_key") or svc.get("env") or "production"),
                 "status": "UNKNOWN",
                 "display_name": svc["display_name"],
                 "port": svc["service_port"],
@@ -3107,6 +3552,10 @@ _CLUSTER_TOPOLOGY_LAYOUT = {
     "auth": (72, 248),
     "ops": (320, 248),
     "game": (560, 128),
+    "cache": (820, 48),
+    "redis": (820, 48),
+    "database": (820, 248),
+    "mongo": (820, 248),
     "tcp": (820, 328),
     "transport": (820, 328),
 }
@@ -3135,6 +3584,14 @@ _RUNTIME_TOPOLOGY_EDGE_SPECS = [
     ("auth-cn-1", "game-cn-1", "tcp:5512"),
     ("ops-cn-1", "game-cn-1", "tcp:5512"),
 ]
+_RUNTIME_INFRA_EDGE_SPECS = [
+    ("game-cn-1", "redis-cache-cn-1", "structured-auto"),
+    ("game-cn-1", "mongo-db-cn-1", "structured-auto"),
+]
+_CORE_MINIMAL_DEMO_INFRA_EDGE_SPECS = [
+    ("game-01", "redis-01", "structured-auto"),
+    ("game-01", "db-01", "structured-auto"),
+]
 
 
 def _strip_default_node_ui_color(ui: Dict[str, Any]) -> Dict[str, Any]:
@@ -3158,6 +3615,19 @@ def _repair_runtime_topology_edges(
     existing = {(str(e.get("from") or ""), str(e.get("to") or "")) for e in edges if isinstance(e, dict)}
     out = list(edges)
     for frm, to, note in _RUNTIME_TOPOLOGY_EDGE_SPECS:
+        if frm not in valid_ids or to not in valid_ids or (frm, to) in existing:
+            continue
+        out.append({
+            "id": f"edge-{frm}-{to}",
+            "from": frm,
+            "to": to,
+            "from_port": "out-1",
+            "to_port": "in-1",
+            "type": "depends_on",
+            "note": note,
+        })
+        existing.add((frm, to))
+    for frm, to, note in _RUNTIME_INFRA_EDGE_SPECS:
         if frm not in valid_ids or to not in valid_ids or (frm, to) in existing:
             continue
         out.append({
@@ -3320,80 +3790,120 @@ def _sync_cluster_to_topology(project_id: str, servers: Optional[List[Dict[str, 
     cluster_nodes = cluster_topo.get("nodes") if isinstance(cluster_topo.get("nodes"), list) else []
     cluster_edges = cluster_topo.get("edges") if isinstance(cluster_topo.get("edges"), list) else []
     cluster_ids = {str(n.get("id") or "").strip() for n in cluster_nodes if isinstance(n, dict) and str(n.get("id") or "").strip()}
+    minimal_default = (
+        pid == "GomeKu"
+        and bool(target.get("is_default"))
+        and _normalize_env_key(str(target.get("env_key") or "")) == "production"
+    )
 
     merged_nodes: List[Dict[str, Any]] = []
     merged_by_id: Dict[str, Dict[str, Any]] = {}
 
-    for item in existing_nodes:
-        if not isinstance(item, dict):
-            continue
-        nid = str(item.get("id") or "").strip()
-        if not nid:
-            continue
-        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
-        is_cluster = bool(meta.get("cluster_source")) or nid in cluster_ids
-        if is_cluster and nid in cluster_ids:
-            continue
-        if not is_cluster:
-            merged_nodes.append(item)
-            merged_by_id[nid] = item
+    if minimal_default:
+        pos_by_id = {}
+        for item in existing_nodes:
+            if not isinstance(item, dict):
+                continue
+            nid = str(item.get("id") or "").strip()
+            if not nid:
+                continue
+            ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+            pos_by_id[nid] = (
+                float(item.get("x") if item.get("x") is not None else ui.get("x") or 0),
+                float(item.get("y") if item.get("y") is not None else ui.get("y") or 0),
+            )
+        for node in cluster_nodes:
+            if not isinstance(node, dict):
+                continue
+            nid = str(node.get("id") or "").strip()
+            if not nid:
+                continue
+            if nid in pos_by_id:
+                x, y = pos_by_id[nid]
+                node["x"] = x
+                node["y"] = y
+                ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
+                ui["x"] = x
+                ui["y"] = y
+                node["ui"] = ui
+            node_meta = node.get("meta") if isinstance(node.get("meta"), dict) else {}
+            node_meta["cluster_source"] = True
+            node["meta"] = node_meta
+            merged_nodes.append(node)
+            merged_by_id[nid] = node
+        merged_edges = list(cluster_edges)
+        merged_edge_ids = {str(e.get("id") or "") for e in merged_edges if isinstance(e, dict)}
+    else:
+        for item in existing_nodes:
+            if not isinstance(item, dict):
+                continue
+            nid = str(item.get("id") or "").strip()
+            if not nid:
+                continue
+            meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+            is_cluster = bool(meta.get("cluster_source")) or nid in cluster_ids
+            if is_cluster and nid in cluster_ids:
+                continue
+            if not is_cluster:
+                merged_nodes.append(item)
+                merged_by_id[nid] = item
 
-    pos_by_id = {}
-    for item in existing_nodes:
-        if not isinstance(item, dict):
-            continue
-        nid = str(item.get("id") or "").strip()
-        if not nid:
-            continue
-        ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
-        pos_by_id[nid] = (
-            float(item.get("x") if item.get("x") is not None else ui.get("x") or 0),
-            float(item.get("y") if item.get("y") is not None else ui.get("y") or 0),
-        )
+        pos_by_id = {}
+        for item in existing_nodes:
+            if not isinstance(item, dict):
+                continue
+            nid = str(item.get("id") or "").strip()
+            if not nid:
+                continue
+            ui = item.get("ui") if isinstance(item.get("ui"), dict) else {}
+            pos_by_id[nid] = (
+                float(item.get("x") if item.get("x") is not None else ui.get("x") or 0),
+                float(item.get("y") if item.get("y") is not None else ui.get("y") or 0),
+            )
 
-    for node in cluster_nodes:
-        if not isinstance(node, dict):
-            continue
-        nid = str(node.get("id") or "").strip()
-        if not nid:
-            continue
-        if nid in pos_by_id:
-            x, y = pos_by_id[nid]
-            node["x"] = x
-            node["y"] = y
-            ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
-            ui["x"] = x
-            ui["y"] = y
-            node["ui"] = ui
-        node_meta = node.get("meta") if isinstance(node.get("meta"), dict) else {}
-        node_meta["cluster_source"] = True
-        node["meta"] = node_meta
-        merged_nodes.append(node)
-        merged_by_id[nid] = node
+        for node in cluster_nodes:
+            if not isinstance(node, dict):
+                continue
+            nid = str(node.get("id") or "").strip()
+            if not nid:
+                continue
+            if nid in pos_by_id:
+                x, y = pos_by_id[nid]
+                node["x"] = x
+                node["y"] = y
+                ui = node.get("ui") if isinstance(node.get("ui"), dict) else {}
+                ui["x"] = x
+                ui["y"] = y
+                node["ui"] = ui
+            node_meta = node.get("meta") if isinstance(node.get("meta"), dict) else {}
+            node_meta["cluster_source"] = True
+            node["meta"] = node_meta
+            merged_nodes.append(node)
+            merged_by_id[nid] = node
 
-    merged_edge_ids: set = set()
-    merged_edges: List[Dict[str, Any]] = []
-    valid_ids = set(merged_by_id.keys())
+        merged_edge_ids = set()
+        merged_edges = []
+        valid_ids = set(merged_by_id.keys())
 
-    for edge in existing_edges:
-        if not isinstance(edge, dict):
-            continue
-        frm = str(edge.get("from") or "").strip()
-        to = str(edge.get("to") or "").strip()
-        eid = str(edge.get("id") or f"edge-{frm}-{to}")
-        if frm in cluster_ids and to in cluster_ids:
-            continue
-        if frm in valid_ids and to in valid_ids and eid not in merged_edge_ids:
-            merged_edges.append(edge)
-            merged_edge_ids.add(eid)
+        for edge in existing_edges:
+            if not isinstance(edge, dict):
+                continue
+            frm = str(edge.get("from") or "").strip()
+            to = str(edge.get("to") or "").strip()
+            eid = str(edge.get("id") or f"edge-{frm}-{to}")
+            if frm in cluster_ids and to in cluster_ids:
+                continue
+            if frm in valid_ids and to in valid_ids and eid not in merged_edge_ids:
+                merged_edges.append(edge)
+                merged_edge_ids.add(eid)
 
-    for edge in cluster_edges:
-        if not isinstance(edge, dict):
-            continue
-        eid = str(edge.get("id") or "")
-        if eid and eid not in merged_edge_ids:
-            merged_edges.append(edge)
-            merged_edge_ids.add(eid)
+        for edge in cluster_edges:
+            if not isinstance(edge, dict):
+                continue
+            eid = str(edge.get("id") or "")
+            if eid and eid not in merged_edge_ids:
+                merged_edges.append(edge)
+                merged_edge_ids.add(eid)
 
     meta = cluster_topo.get("meta") if isinstance(cluster_topo.get("meta"), dict) else {}
     if existing_meta.get("viewport"):
@@ -3404,13 +3914,20 @@ def _sync_cluster_to_topology(project_id: str, servers: Optional[List[Dict[str, 
         meta["layout_spacing_customized"] = existing_meta.get("layout_spacing_customized")
     meta["cluster_sync_at"] = _now_iso()
     meta["updated_at"] = _now_iso()
-    if existing_meta.get("runtime_topology"):
-        meta["runtime_topology"] = True
+    meta["runtime_topology"] = True
+    meta["cluster_source"] = True
     if existing_meta.get("description"):
         meta["description"] = str(existing_meta.get("description") or "")
 
     merged_edges = _repair_runtime_topology_edges(merged_nodes, merged_edges, meta)
     topo = {"nodes": merged_nodes, "edges": merged_edges, "meta": meta}
+    if pid == "GomeKu":
+        env_for_topo = _normalize_env_key(str(target.get("env_key") or "production"))
+        topo = _append_runtime_infra_stack(topo, pid, env_for_topo)
+        merged_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else merged_nodes
+        merged_edges = _repair_runtime_topology_edges(merged_nodes, topo.get("edges") or merged_edges, meta)
+        meta = topo.get("meta") if isinstance(topo.get("meta"), dict) else meta
+        topo = {"nodes": merged_nodes, "edges": merged_edges, "meta": meta}
     contents[tid] = topo
     _save_topology_contents(contents)
     target["updated_at"] = _now_iso()
@@ -6274,6 +6791,7 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
         "rack": str(item.get("rack") or ""),
         "node_id": str(item.get("node_id") or ""),
         "project_id": str(item.get("project_id") or ""),
+        "env_key": _normalize_env_key(item.get("env_key") or item.get("env") or "production"),
         "status": str(item.get("status") or "UNKNOWN").upper(),
         "version": str(item.get("version") or ""),
         "last_seen": str(item.get("last_seen") or ""),
@@ -6340,15 +6858,18 @@ def _normalize_agent_descriptor_v2(item: Dict[str, Any]) -> Dict[str, Any]:
         "probe_proto": str(item.get("probe_proto") or "tcp").strip().lower(),
     }
 
-def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
+def _agents_v2_for_project(project_id: str = "", env_key: str = "") -> List[Dict[str, Any]]:
     rows = _load_agent_registry_v2()
     out: List[Dict[str, Any]] = []
     pid = str(project_id or "").strip()
+    env = _normalize_env_key(env_key) if str(env_key or "").strip() else ""
     for v in rows.values():
         if not isinstance(v, dict):
             continue
         item = _normalize_agent_descriptor_v2(v)
         if pid and item.get("project_id") and item.get("project_id") != pid:
+            continue
+        if env and not _agent_matches_env(item, env):
             continue
         if pid and _project_uses_runtime_topology(pid) and _is_design_demo_agent_row(item):
             continue
@@ -6364,8 +6885,8 @@ def _agents_v2_for_project(project_id: str = "") -> List[Dict[str, Any]]:
         out.append(item)
     return out
 
-def _services_for_project(project_id: str = "") -> List[Dict[str, Any]]:
-    rows = _logical_agents_for_project(project_id)
+def _services_for_project(project_id: str = "", env_key: str = "") -> List[Dict[str, Any]]:
+    rows = _logical_agents_for_project(project_id, env_key)
     out: List[Dict[str, Any]] = []
     for a in rows:
         if not isinstance(a, dict):
@@ -6662,8 +7183,8 @@ def _pick_primary_agent(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         return (has_services, no_node, has_host, updated)
     return dict(sorted(rows, key=score, reverse=True)[0])
 
-def _logical_agents_for_project(project_id: str = "") -> List[Dict[str, Any]]:
-    rows = _agents_v2_for_project(project_id)
+def _logical_agents_for_project(project_id: str = "", env_key: str = "") -> List[Dict[str, Any]]:
+    rows = _agents_v2_for_project(project_id, env_key)
     groups: Dict[str, List[Dict[str, Any]]] = {}
     for item in rows:
         if not isinstance(item, dict):
@@ -6998,20 +7519,32 @@ def _default_node_presets() -> List[Dict[str, Any]]:
     return [_enrich_preset_from_contract(x) for x in raw]
 
 def _load_node_presets() -> List[Dict[str, Any]]:
+    defaults = _default_node_presets()
+    default_by_id = {str(p.get("preset_id") or "").strip(): p for p in defaults if str(p.get("preset_id") or "").strip()}
     raw = get_system_config(OPS_NODE_PRESETS_KEY, [])
     if isinstance(raw, list) and raw:
         out: List[Dict[str, Any]] = []
+        seen: set = set()
         for item in raw:
             if isinstance(item, dict) and str(item.get("preset_id") or "").strip():
                 pid = str(item.get("preset_id") or "").strip()
                 if pid == "mysql_db":
                     continue
+                seen.add(pid)
                 out.append(_enrich_preset_from_contract(item))
         if out:
             if any(_text_has_mojibake(str(x.get("name") or "") + str(x.get("default_desc") or "")) for x in out):
-                presets = _default_node_presets()
-                _save_json_config(OPS_NODE_PRESETS_KEY, presets, description="Ops node preset catalog")
-                return presets
+                _save_json_config(OPS_NODE_PRESETS_KEY, defaults, description="Ops node preset catalog")
+                return defaults
+            missing_core = [pid for pid in _CORE_PRESET_IDS if pid not in seen]
+            if missing_core:
+                merged = list(out)
+                for pid in missing_core:
+                    preset = default_by_id.get(pid)
+                    if preset:
+                        merged.append(preset)
+                _save_json_config(OPS_NODE_PRESETS_KEY, merged, description="Ops node preset catalog")
+                return merged
             return out
     presets = _default_node_presets()
     _save_json_config(OPS_NODE_PRESETS_KEY, presets, description="Ops node preset catalog")
@@ -7714,22 +8247,27 @@ def _build_alerts_from_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]
             })
     return alerts
 
-def _build_overview(project_id: str = "") -> Dict[str, Any]:
-    rows = _load_nodes()
-    topo = _load_topology(rows)
+def _build_overview(project_id: str = "", env_key: str = "production") -> Dict[str, Any]:
+    operator = str(session.get("user") or "intranet-ops")
+    project = str(project_id or "").strip()
+    env = _resolve_ops_env_key(env_key)
+    ctx = _resolve_topology_context(project, env, "")
+    topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
     topo_map = {}
     for item in topo.get("nodes") or []:
         if isinstance(item, dict):
             nid = str(item.get("id") or "").strip()
             if nid:
                 topo_map[nid] = item
-    operator = str(session.get("user") or "intranet-ops")
-    project = str(project_id or "").strip()
+    rows = _load_nodes()
     out_nodes: List[Dict[str, Any]] = []
     for item in rows:
         if not item.get("enabled"):
             continue
         if project and str(item.get("project_id") or "") != project:
+            continue
+        item_env = _normalize_env_key(item.get("env") or "production")
+        if item_env != env:
             continue
         try:
             overview = ops_gateway.build_node_overview(item, actor=operator)
@@ -7769,6 +8307,8 @@ def _build_overview(project_id: str = "") -> Dict[str, Any]:
 
     return {
         "ok": True,
+        "project_id": project,
+        "env_key": env,
         "summary": {
             "total_nodes": total,
             "healthy_nodes": healthy,

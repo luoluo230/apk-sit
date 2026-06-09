@@ -74,6 +74,92 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_request_events_created_at ON request_events(created_at);
         CREATE INDEX IF NOT EXISTS idx_request_events_path ON request_events(path);
+
+        -- Ops platform tables
+        CREATE TABLE IF NOT EXISTS ops_agents (
+            agent_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL DEFAULT '',
+            device_id TEXT DEFAULT '',
+            display_name TEXT DEFAULT '',
+            host_ip TEXT DEFAULT '',
+            port INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'OFFLINE',
+            capabilities TEXT DEFAULT '[]',
+            desc TEXT DEFAULT '',
+            region TEXT DEFAULT '',
+            last_heartbeat TEXT DEFAULT '',
+            probe_status TEXT DEFAULT '',
+            probe_ts TEXT DEFAULT '',
+            meta TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ops_agents_project ON ops_agents(project_id);
+        CREATE INDEX IF NOT EXISTS idx_ops_agents_status ON ops_agents(status);
+
+        CREATE TABLE IF NOT EXISTS ops_agent_jobs (
+            job_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL DEFAULT '',
+            project_id TEXT DEFAULT '',
+            action TEXT DEFAULT '',
+            target TEXT DEFAULT '',
+            status TEXT DEFAULT 'PENDING',
+            params TEXT DEFAULT '{}',
+            result TEXT DEFAULT '{}',
+            error TEXT DEFAULT '',
+            retries INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_ops_jobs_agent ON ops_agent_jobs(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_ops_jobs_status ON ops_agent_jobs(status);
+        CREATE INDEX IF NOT EXISTS idx_ops_jobs_created ON ops_agent_jobs(created_at);
+
+        CREATE TABLE IF NOT EXISTS ops_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL DEFAULT '',
+            project_id TEXT DEFAULT '',
+            scope TEXT DEFAULT '',
+            message TEXT DEFAULT '',
+            severity TEXT DEFAULT 'info',
+            details TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ops_events_project ON ops_events(project_id);
+        CREATE INDEX IF NOT EXISTS idx_ops_events_created ON ops_events(created_at);
+        CREATE INDEX IF NOT EXISTS idx_ops_events_type ON ops_events(event_type);
+
+        CREATE TABLE IF NOT EXISTS ops_runtime_runs (
+            run_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL DEFAULT '',
+            env_key TEXT DEFAULT '',
+            topology_id TEXT DEFAULT '',
+            op TEXT NOT NULL DEFAULT '',
+            status TEXT DEFAULT 'PENDING',
+            nodes TEXT DEFAULT '[]',
+            result TEXT DEFAULT '{}',
+            error TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ops_runs_project ON ops_runtime_runs(project_id);
+        CREATE INDEX IF NOT EXISTS idx_ops_runs_status ON ops_runtime_runs(status);
+
+        CREATE TABLE IF NOT EXISTS ops_topologies (
+            topology_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL DEFAULT '',
+            env_key TEXT DEFAULT 'production',
+            name TEXT DEFAULT '',
+            status TEXT DEFAULT 'active',
+            is_default INTEGER DEFAULT 0,
+            nodes TEXT DEFAULT '[]',
+            edges TEXT DEFAULT '[]',
+            meta TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ops_topo_project ON ops_topologies(project_id, env_key);
         '''
         )
         conn.commit()

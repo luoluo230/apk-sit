@@ -3,13 +3,17 @@
   if (!root || !window.OpsApi) return;
 
   let queryProject = "";
+  let queryEnv = "";
   try {
-    queryProject = String(new URLSearchParams(location.search).get("project_id") || "");
+    const q = new URLSearchParams(location.search);
+    queryProject = String(q.get("project_id") || "");
+    queryEnv = String(q.get("env_key") || "");
   } catch (_) {}
 
   const POLL_MS = 2000;
   const state = {
-    projectId: String(root.dataset.projectId || queryProject || "GomeKu"),
+    projectId: String(root.dataset.projectId || queryProject || ""),
+    envKey: String(root.dataset.envKey || queryEnv || document.querySelector(".ops-shell-app")?.dataset?.envKey || "production"),
     agents: [],
     rows: [],
     filteredRows: [],
@@ -29,15 +33,6 @@
       fresh: "all",
     },
   };
-
-  if (state.projectId !== "GomeKu") {
-    state.projectId = "GomeKu";
-    try {
-      const q = new URLSearchParams(location.search);
-      q.set("project_id", "GomeKu");
-      window.history.replaceState({}, "", location.pathname + "?" + q.toString());
-    } catch (_) {}
-  }
 
   const nodes = {
     summary: document.getElementById("agentSummaryCards"),
@@ -288,6 +283,7 @@
 
   function cardHref(row, extra) {
     let href = "/admin/ops-platform/agent-detail?project_id=" + encodeURIComponent(state.projectId) +
+      "&env_key=" + encodeURIComponent(state.envKey) +
       "&agent_id=" + encodeURIComponent(row.agentId || row.rowId);
     if (row.deviceId) href += "&preview=" + encodeURIComponent(row.deviceId);
     if (extra) href += "&tab=" + encodeURIComponent(extra);
@@ -300,7 +296,8 @@
   }
 
   function queueHref(status) {
-    let href = "/admin/ops-platform/actions?project_id=" + encodeURIComponent(state.projectId);
+    let href = "/admin/ops-platform/actions?project_id=" + encodeURIComponent(state.projectId) +
+      "&env_key=" + encodeURIComponent(state.envKey);
     if (status) href += "&job_status=" + encodeURIComponent(status);
     href += "#queue";
     return href;
@@ -600,6 +597,7 @@
     const payload = {
       agent_id: String(nodes.editAgentId.value || "").trim(),
       project_id: state.projectId,
+      env_key: state.envKey,
       device_id: String(nodes.editDeviceId.value || "").trim(),
       host_name: String(nodes.editHostIp.value || "").trim(),
       host_ip: String(nodes.editHostIp.value || "").trim(),
@@ -631,6 +629,7 @@
     }
     const response = await window.OpsApi.probeAgent({
       project_id: state.projectId,
+      env_key: state.envKey,
       agent_id: row.agentId,
       host_name: host,
       ip: host,
@@ -655,6 +654,7 @@
     }
     const response = await window.OpsApi.restartAgent({
       project_id: state.projectId,
+      env_key: state.envKey,
       agent_id: row.agentId,
       launch_visible_console: true,
     });
@@ -697,7 +697,7 @@
   }
 
   async function loadAgents() {
-    const response = await window.OpsApi.agents(state.projectId);
+    const response = await window.OpsApi.agents(state.projectId, { env_key: state.envKey });
     if (!ensureOk(response, "加载 Agent 失败")) return false;
     state.agents = Array.isArray(response.agents) ? response.agents : [];
     state.rows = buildRows(state.agents);
@@ -739,7 +739,7 @@
   }
 
   async function cleanupExpired() {
-    const response = await window.OpsApi.cleanupExpiredAgents({ project_id: state.projectId });
+    const response = await window.OpsApi.cleanupExpiredAgents({ project_id: state.projectId, env_key: state.envKey });
     if (!ensureOk(response, "清理过期 Agent 失败")) return;
     toast("过期 Agent 已清理", "success");
     await loadAll();
@@ -833,13 +833,13 @@
     };
 
     document.getElementById("btnProbeAllAgent").onclick = async function () {
-      const response = await window.OpsApi.probeAllAgents({ project_id: state.projectId });
+      const response = await window.OpsApi.probeAllAgents({ project_id: state.projectId, env_key: state.envKey });
       if (!ensureOk(response, "批量探测失败")) return;
       toast("全量探测请求已提交", "success");
       await loadAll();
     };
     document.getElementById("btnProbeRepairAllAgent").onclick = async function () {
-      const response = await window.OpsApi.probeRepairAgents({ project_id: state.projectId });
+      const response = await window.OpsApi.probeRepairAgents({ project_id: state.projectId, env_key: state.envKey });
       if (!ensureOk(response, "批量修复并探测失败")) return;
       toast("修复与探测请求已提交", "success");
       await loadAll();
@@ -875,8 +875,23 @@
     }, POLL_MS);
   }
 
+  function startSSE() {
+    if (typeof EventSource === "undefined") { startPolling(); return; }
+    var url = "/api/ops-platform/agents/stream?project_id=" + encodeURIComponent(state.projectId) + "&env_key=" + encodeURIComponent(state.envKey);
+    var es = new EventSource(url);
+    es.onmessage = function () {
+      loadAll().catch(function () {});
+    };
+    es.onerror = function () {
+      es.close();
+      console.warn("[agent-control] SSE disconnected, falling back to polling");
+      startPolling();
+    };
+    state._sse = es;
+  }
+
   bindStatic();
-  loadAll().then(startPolling).catch(function (error) {
+  loadAll().then(startSSE).catch(function (error) {
     console.error("[agent-control] init failed", error);
     toast("Agent 管理页初始化失败", "error");
   });

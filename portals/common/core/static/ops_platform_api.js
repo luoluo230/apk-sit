@@ -141,7 +141,12 @@
     if (s.topology_id || s.topologyId) q.push('topology_id=' + encodeURIComponent(s.topology_id || s.topologyId));
     return base + (q.length ? ('?' + q.join('&')) : '');
   }
-  api.loadOverview = (projectId) => api.getJSON('/api/ops-platform/overview' + (projectId ? ('?project_id='+encodeURIComponent(projectId)) : ''));
+  api.loadOverview = (projectId, envKey) => {
+    const q = [];
+    if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
+    if (envKey) q.push('env_key=' + encodeURIComponent(envKey));
+    return api.getJSON('/api/ops-platform/overview' + (q.length ? ('?' + q.join('&')) : ''));
+  };
   api.loadProjects = (status) => api.getJSON('/api/projects' + (status ? ('?status=' + encodeURIComponent(status)) : ''));
   api.loadTopologies = (scope) => api.getJSON(withScope('/api/ops-platform/topologies', scope));
   api.loadTopologyDetail = (scope) => api.getJSON(withScope('/api/ops-platform/topologies/detail', scope));
@@ -155,8 +160,18 @@
   api.applyTopologyBlueprint = (payload) => api.postJSON('/api/ops-platform/topology/apply-blueprint', payload);
   api.loadEvents = (limit) => api.getJSON('/api/ops-platform/events?limit=' + (limit || 80));
   api.loadOnboarding = (projectId) => api.getJSON('/api/ops-platform/node-onboarding' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
-  api.loadDiagnosticsSummary = (projectId) => api.getJSON('/api/ops-platform/diagnostics/summary' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
-  api.loadActionTargets = (projectId) => api.getJSON('/api/ops-platform/action-targets' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.loadDiagnosticsSummary = (projectId, envKey) => {
+    const q = [];
+    if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
+    if (envKey) q.push('env_key=' + encodeURIComponent(envKey));
+    return api.getJSON('/api/ops-platform/diagnostics/summary' + (q.length ? ('?' + q.join('&')) : ''));
+  };
+  api.loadActionTargets = (projectId, envKey) => {
+    const q = [];
+    if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
+    if (envKey) q.push('env_key=' + encodeURIComponent(envKey));
+    return api.getJSON('/api/ops-platform/action-targets' + (q.length ? ('?' + q.join('&')) : ''));
+  };
   api.loadActionCatalog = () => api.getJSON('/api/ops-platform/action-catalog');
   api.validateAction = (payload) => api.postJSON('/api/ops-platform/actions/validate', payload);
   api.executeAction = (payload) => api.postJSON('/api/ops-platform/actions/execute', payload);

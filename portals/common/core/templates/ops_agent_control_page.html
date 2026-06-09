@@ -1,72 +1,5 @@
-<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260605-agent-ui-fixes-v4">
-<div class="agent-screen agent-screen--control" data-project-id="{{ project_id }}" data-page="agent-control">
-  <aside class="agent-shell-sidebar">
-    <div class="agent-shell-brand">
-      <div class="agent-shell-brand-mark">G</div>
-      <div class="agent-shell-brand-copy">
-        <div class="agent-shell-brand-title">GameOps Console</div>
-        <div class="agent-shell-brand-sub">运维平台</div>
-      </div>
-    </div>
-
-    <nav class="agent-shell-nav">
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">⌂</span>
-          <span>工作台</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/ops-platform?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">◫</span>
-          <span>总览看板</span>
-        </a>
-      </div>
-
-      <div class="agent-shell-divider"></div>
-      <div class="agent-shell-nav-title">架构编排</div>
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/topology?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">◎</span>
-          <span>拓扑编排</span>
-        </a>
-        <a class="agent-shell-nav-item is-active" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">▣</span>
-          <span>Agent 与服务器</span>
-        </a>
-      </div>
-
-      <div class="agent-shell-divider"></div>
-      <div class="agent-shell-nav-title">执行与诊断</div>
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/actions?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">▷</span>
-          <span>动作执行</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">≈</span>
-          <span>节点诊断</span>
-        </a>
-      </div>
-
-      <div class="agent-shell-divider"></div>
-      <div class="agent-shell-nav-title">治理与合规</div>
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">↻</span>
-          <span>变更治理</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/approval">
-          <span class="agent-shell-nav-icon">◌</span>
-          <span>审批中心</span>
-        </a>
-      </div>
-    </nav>
-
-    <button class="agent-shell-sidebar-toggle" type="button">
-      <span class="agent-shell-nav-icon">←</span>
-      <span>折叠菜单</span>
-    </button>
-  </aside>
-
+<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260609-unified-v1">
+<div class="agent-screen agent-screen--control agent-screen--embedded" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-page="agent-control">
   <section class="agent-shell-main">
     <header class="agent-shell-topbar">
       <div class="agent-shell-breadcrumb">
@@ -91,7 +24,7 @@
             <h1>Agent 管控中心</h1>
           </div>
           <p>按设备分组管理 Agent，支持批量操作、状态监控与策略配置</p>
-          <div class="agent-page-scope-badge">当前项目：<strong>{{ project_id }}</strong> · 单 Agent 管理本机全部服务节点</div>
+          <div class="agent-page-scope-badge">当前项目：<strong>{{ project_id }}</strong> · 环境：<strong>{{ env_key }}</strong> · 单 Agent 管理本环境服务节点</div>
         </div>
         <div class="agent-page-hero-actions">
           <button id="btnCreateAgent" class="agent-btn agent-btn--primary" type="button">新建设备 Agent</button>
@@ -210,5 +143,5 @@
     </div>
   </div>
 </div>
-<script src="/static/ops_platform_api.js?v=20260605-agent-ui-fixes-v4"></script>
-<script src="/static/ops_platform_agent_control.js?v=20260606-runtime-agent-fix4"></script>
+<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260609-unified-v1"></script>

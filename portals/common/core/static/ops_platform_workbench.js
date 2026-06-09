@@ -5041,8 +5041,6 @@
     state.history.future = [];
     updateHistoryButtons();
     renderScopeSelectors();
-    await loadProjectOptions();
-    renderScopeSelectors();
     renderPresets();
     renderRuntimeNodeList();
     fillTestNodeOptions();
@@ -5326,15 +5324,6 @@
       };
     });
 
-    if ($("projectSelector")) $("projectSelector").onchange = async () => {
-      const nextProject = String($("projectSelector").value || state.projectId);
-      await switchScope({ project_id: nextProject, env_key: state.envKey, topology_id: state.topologyId });
-    };
-    if ($("envSelector")) $("envSelector").onchange = async () => {
-      const nextEnv = String($("envSelector").value || state.envKey);
-      const fallback = (state.topologies || []).find((item) => String(item.env_key || "") === nextEnv && item.is_default) || (state.topologies || []).find((item) => String(item.env_key || "") === nextEnv) || {};
-      await switchScope({ project_id: state.projectId, env_key: nextEnv, topology_id: String(fallback.topology_id || "") });
-    };
     if ($("topologySelector")) $("topologySelector").onchange = async () => {
       const nextTopology = String($("topologySelector").value || state.topologyId);
       const hit = (state.topologies || []).find((item) => String(item.topology_id || "") === nextTopology) || {};

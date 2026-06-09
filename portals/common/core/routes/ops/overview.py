@@ -14,8 +14,9 @@ from routes.ops import bp
 def ops_platform_overview():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
-    project_id = str(request.args.get("project_id") or "").strip()
-    return jsonify(ops_helpers._build_overview(project_id=project_id))
+    project_id = ops_helpers._resolve_ops_project_id(request.args.get("project_id") or "")
+    env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
+    return jsonify(ops_helpers._build_overview(project_id=project_id, env_key=env_key))
 
 
 
@@ -67,14 +68,15 @@ def ops_platform_client_log():
 def ops_platform_module_map():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+    pid = ops_helpers._resolve_ops_project_id(request.args.get("project_id", ""))
     modules = [
-        {"id": "overview", "name": "全局总览", "href": "/admin/ops-platform?project_id=GomeKu", "children": ["kpi", "risk", "todo"]},
-        {"id": "topology", "name": "拓扑与配置编排", "href": "/admin/ops-platform/topology?project_id=GomeKu&env_key=production&topology_id=topology-gomeku-production-default", "children": ["node_library", "canvas", "inspector"]},
-        {"id": "action_center", "name": "动作执行中心", "href": "/admin/ops-platform/actions?project_id=GomeKu", "children": ["catalog", "approval", "execute", "history"]},
-        {"id": "diagnostics", "name": "诊断与体检", "href": "/admin/ops-platform/diagnostics?project_id=GomeKu", "children": ["rules", "filter", "export"]},
-        {"id": "events_trace", "name": "事件与追踪", "href": "/admin/ops-platform?project_id=GomeKu", "children": ["timeline", "trace", "audit"]},
-        {"id": "agent_control", "name": "Agent 管控", "href": "/admin/ops-platform/agent-control?project_id=GomeKu", "children": ["registry", "policy", "queue", "upgrade"]},
-        {"id": "change_governance", "name": "发布与变更治理", "href": "/admin/ops-platform/change-governance?project_id=GomeKu", "children": ["change_window", "rollback", "postcheck"]},
+        {"id": "overview", "name": "全局总览", "href": f"/admin/ops-platform?project_id={pid}", "children": ["kpi", "risk", "todo"]},
+        {"id": "topology", "name": "拓扑与配置编排", "href": f"/admin/ops-platform/topology?project_id={pid}", "children": ["node_library", "canvas", "inspector"]},
+        {"id": "action_center", "name": "动作执行中心", "href": f"/admin/ops-platform/actions?project_id={pid}", "children": ["catalog", "approval", "execute", "history"]},
+        {"id": "diagnostics", "name": "诊断与体检", "href": f"/admin/ops-platform/diagnostics?project_id={pid}", "children": ["rules", "filter", "export"]},
+        {"id": "events_trace", "name": "事件与追踪", "href": f"/admin/ops-platform?project_id={pid}", "children": ["timeline", "trace", "audit"]},
+        {"id": "agent_control", "name": "Agent 管控", "href": f"/admin/ops-platform/agent-control?project_id={pid}", "children": ["registry", "policy", "queue"]},
+        {"id": "change_governance", "name": "发布与变更治理", "href": f"/admin/ops-platform/change-governance?project_id={pid}", "children": ["change_window", "freeze"]},
         {"id": "governance", "name": "权限与合规", "href": "/admin/approval", "children": ["rbac", "approval", "audit"]},
     ]
     return jsonify({"ok": True, "modules": modules})
@@ -239,9 +241,10 @@ def ops_platform_change_governance_freeze():
 def ops_platform_action_targets():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
-    project_id = str(request.args.get("project_id") or "").strip()
-    targets = ops_helpers._list_action_targets(project_id)
-    return jsonify({"ok": True, "project_id": project_id, "count": len(targets), "targets": targets})
+    project_id = ops_helpers._resolve_ops_project_id(request.args.get("project_id") or "")
+    env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
+    targets = ops_helpers._list_action_targets(project_id, env_key)
+    return jsonify({"ok": True, "project_id": project_id, "env_key": env_key, "count": len(targets), "targets": targets})
 
 
 
@@ -250,8 +253,9 @@ def ops_platform_action_targets():
 def ops_platform_diagnostics_summary():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
-    project_id = str(request.args.get("project_id") or "").strip()
-    return jsonify(ops_helpers._build_diagnostics_summary(project_id=project_id))
+    project_id = ops_helpers._resolve_ops_project_id(request.args.get("project_id") or "")
+    env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
+    return jsonify(ops_helpers._build_diagnostics_summary(project_id=project_id, env_key=env_key))
 
 
 
@@ -653,4 +657,16 @@ def ops_platform_action():
         "result": result,
     }), (200 if executed.get("ok") else 502)
 
+
+@bp.route("/api/ops-platform/permissions")
+@admin_required("gm_ops")
+def ops_platform_permissions():
+    """Return current user's ops scope for client-side permission gating."""
+    can_view = ops_helpers._allow_ops_view()
+    can_execute = ops_helpers._allow_ops_execute()
+    return jsonify({
+        "ok": True,
+        "view": can_view,
+        "execute": can_execute,
+    })
 

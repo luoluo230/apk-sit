@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="/static/tailwind.css">
+  <link rel="stylesheet" href="/static/ops_shell.css?v=20260609-scope-v1">
+  {% if extra_css %}{{ extra_css|safe }}{% endif %}
+</head>
+<body>
+<div class="ops-shell-app" data-page="{{ active_page }}" data-project-id="{{ project_id }}" data-env-key="{{ env_key or 'production' }}" {% if topology_id %}data-topology-id="{{ topology_id }}"{% endif %}>
+  {% include '_ops_sidebar.html' %}
+  <main class="ops-shell-main">
+    {{ content|safe }}
+  </main>
+</div>
+<script src="/static/ops_shell.js?v=20260609-scope-v1"></script>
+{% if extra_js %}{{ extra_js|safe }}{% endif %}
+</body>
+</html>

@@ -1,0 +1,289 @@
+/* ── Ops Shell: unified sidebar + layout for all ops pages ── */
+
+.ops-shell-app {
+  --tw-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tw-primary: #2f6bff;
+  --tw-primary-hover: #1f5dff;
+  --tw-bg: #f5f7fb;
+  --tw-surface: #ffffff;
+  --tw-border: #e7edf7;
+  --tw-text: #101828;
+  --tw-sub: #667085;
+  --tw-muted: #98a2b3;
+  --tw-label: #344054;
+  --tw-success: #16c47f;
+  --tw-danger: #ff4d6d;
+  --tw-warning: #ff9f1a;
+  --tw-radius-lg: 12px;
+  --tw-radius: 8px;
+  --tw-radius-sm: 6px;
+  --tw-shadow: 0 10px 30px rgba(31, 41, 55, 0.05);
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--tw-bg);
+  color: var(--tw-text);
+  font-family: var(--tw-font);
+  font-size: 14px;
+  line-height: 1.5715;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Sidebar ── */
+.ops-shell-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 8px;
+  background: var(--tw-surface);
+  border-right: 1px solid var(--tw-border);
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.ops-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 12px;
+}
+
+.ops-shell-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--tw-radius);
+  background: var(--tw-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.ops-shell-brand-title {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--tw-text);
+}
+
+.ops-shell-brand-sub {
+  margin-top: 2px;
+  color: var(--tw-muted);
+  font-size: 12px;
+}
+
+/* ── Scope selectors ── */
+.ops-shell-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 12px;
+  border-bottom: 1px solid var(--tw-border);
+  margin-bottom: 4px;
+}
+
+.ops-shell-scope-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ops-shell-scope-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tw-muted);
+  letter-spacing: 0.04em;
+}
+
+.ops-shell-scope-select {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--tw-border);
+  border-radius: var(--tw-radius-sm);
+  background: var(--tw-surface);
+  color: var(--tw-text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.ops-shell-scope-select:focus {
+  outline: none;
+  border-color: var(--tw-primary);
+  box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.15);
+}
+
+.ops-shell-scope-project {
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--tw-border);
+  border-radius: var(--tw-radius-sm);
+  background: #f8fafc;
+  color: var(--tw-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ops-shell-env-warn {
+  padding: 3px 8px;
+  background: linear-gradient(135deg, #ff6b35, #ff4d6d);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border-radius: var(--tw-radius-sm);
+  text-align: center;
+}
+
+/* ── Nav tree ── */
+.ops-shell-nav-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+.ops-shell-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ops-shell-nav-group > span {
+  padding: 0 12px;
+  color: var(--tw-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.ops-shell-nav-group > a {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--tw-radius);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tw-sub);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+}
+
+.ops-shell-nav-group > a:hover {
+  background: #eaf1ff;
+  color: var(--tw-primary);
+}
+
+.ops-shell-nav-group > a.active {
+  background: #eaf1ff;
+  color: var(--tw-primary);
+  font-weight: 700;
+}
+
+.ops-shell-app .nav-ico {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: currentColor;
+}
+
+/* ── Footer ── */
+.ops-shell-nav-footer {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.ops-shell-collapse-btn {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--tw-border);
+  border-radius: var(--tw-radius);
+  background: transparent;
+  color: var(--tw-muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ops-shell-collapse-btn:hover {
+  border-color: var(--tw-primary);
+  color: var(--tw-primary);
+}
+
+/* ── Main content ── */
+.ops-shell-main {
+  overflow-y: auto;
+  min-height: 100vh;
+}
+
+/* ── Collapsed sidebar ── */
+.ops-shell-app.sidebar-collapsed {
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
+.ops-shell-app.sidebar-collapsed .ops-shell-brand-title,
+.ops-shell-app.sidebar-collapsed .ops-shell-brand-sub,
+.ops-shell-app.sidebar-collapsed .ops-shell-scope,
+.ops-shell-app.sidebar-collapsed .ops-shell-nav-group > span,
+.ops-shell-app.sidebar-collapsed .ops-shell-nav-group > a span,
+.ops-shell-app.sidebar-collapsed .ops-shell-collapse-btn > span {
+  display: none;
+}
+
+.ops-shell-app.sidebar-collapsed .ops-shell-nav-group > a {
+  justify-content: center;
+  padding: 0;
+}
+
+.ops-shell-app.sidebar-collapsed .ops-shell-collapse-btn .nav-ico {
+  margin-right: 0;
+  transform: rotate(180deg);
+}
+
+.ops-shell-app.sidebar-collapsed .ops-shell-nav {
+  padding: 16px 4px;
+}
+
+/* ── Embedded pages — disable their own sidebar/grid when inside shell ── */
+.ops-topology-app.ops-topology-app--embedded {
+  display: block !important;
+  grid-template-columns: none !important;
+  min-height: auto;
+}
+
+.agent-screen.agent-screen--embedded {
+  display: block !important;
+  min-height: auto;
+}
+
+.agent-screen--embedded .agent-shell-sidebar {
+  display: none !important;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .ops-shell-app {
+    grid-template-columns: 1fr;
+  }
+  .ops-shell-nav {
+    display: none;
+  }
+}

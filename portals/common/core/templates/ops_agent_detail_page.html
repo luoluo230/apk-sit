@@ -1,82 +1,11 @@
-<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260607-service-focus-v1">
-<div class="agent-screen agent-screen--detail" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
-  <aside class="agent-shell-sidebar agent-shell-sidebar--detail">
-    <div class="agent-shell-brand agent-shell-brand--detail">
-      <div class="agent-shell-brand-mark">G</div>
-      <div class="agent-shell-brand-copy">
-        <div class="agent-shell-brand-title">运维平台</div>
-        <div class="agent-shell-brand-sub">GameOps Console</div>
-      </div>
-    </div>
-
-    <nav class="agent-shell-nav">
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">⌂</span>
-          <span>工作台</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/ops-platform?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">◫</span>
-          <span>总览看板</span>
-        </a>
-      </div>
-
-      <div class="agent-shell-divider"></div>
-      <div class="agent-shell-nav-title">架构编排</div>
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/topology?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">◎</span>
-          <span>拓扑编排</span>
-        </a>
-        <a class="agent-shell-nav-item is-active" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">▣</span>
-          <span>Agent 管理</span>
-        </a>
-      </div>
-
-      <div class="agent-shell-divider"></div>
-      <div class="agent-shell-nav-title">执行与诊断</div>
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/actions?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">▷</span>
-          <span>动作执行</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">≈</span>
-          <span>任务诊断</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/diagnostics?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">⌁</span>
-          <span>节点诊断</span>
-        </a>
-      </div>
-
-      <div class="agent-shell-divider"></div>
-      <div class="agent-shell-nav-title">治理与合规</div>
-      <div class="agent-shell-nav-group">
-        <a class="agent-shell-nav-item" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">
-          <span class="agent-shell-nav-icon">↻</span>
-          <span>变更治理</span>
-        </a>
-        <a class="agent-shell-nav-item" href="/admin/approval">
-          <span class="agent-shell-nav-icon">◌</span>
-          <span>审批中心</span>
-        </a>
-      </div>
-    </nav>
-
-    <button class="agent-shell-sidebar-toggle" type="button">
-      <span class="agent-shell-nav-icon">←</span>
-      <span>收起菜单</span>
-    </button>
-  </aside>
-
+<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260609-unified-v1">
+<div class="agent-screen agent-screen--detail agent-screen--embedded" data-project-id="{{ project_id }}" data-agent-id="{{ agent_id }}">
   <section class="agent-shell-main agent-shell-main--detail">
     <header class="agent-detail-topbar">
       <div class="agent-detail-topbar-fill"></div>
       <div class="agent-detail-topbar-right">
         <span class="agent-detail-toplink">帮助中心</span>
-        <span class="agent-detail-notice">◔<i>12</i></span>
+        <span class="agent-detail-notice">◔</span>
         <span class="agent-shell-avatar">运</span>
         <span class="agent-shell-user">运维管理员</span>
         <span class="agent-shell-user-arrow">▾</span>
@@ -247,5 +176,5 @@
     </main>
   </section>
 </div>
-<script src="/static/ops_platform_api.js?v=20260607-log-filters-v1"></script>
-<script src="/static/ops_platform_agent_detail.js?v=20260608-auth-game-flap-fix"></script>
+<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>
+<script src="/static/ops_platform_agent_detail.js?v=20260609-unified-v1"></script>

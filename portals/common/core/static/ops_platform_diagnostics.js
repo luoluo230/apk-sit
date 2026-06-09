@@ -1,13 +1,14 @@
 (function(){
   const $=(id)=>document.getElementById(id);
   const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
-  const state={projectId:'',rows:[],filtered:[]};
+  const state={projectId:'',envKey:'production',rows:[],filtered:[]};
   const statusCls=(s)=>s==='ONLINE'||s==='PASS'?'ok':(s==='DEGRADED'?'warn':'err');
 
   function actionHref(act){
     if(act.href) return act.href;
     const q=new URLSearchParams();
     q.set('project_id', state.projectId||'');
+    q.set('env_key', state.envKey||'production');
     if(act.target_key) q.set('target_key', act.target_key);
     if(act.action_type) q.set('action_type', act.action_type);
     return '/admin/ops-platform/actions?'+q.toString();
@@ -69,7 +70,7 @@
   }
 
   async function loadData(){
-    const d=await OpsApi.loadDiagnosticsSummary(state.projectId);
+    const d=await OpsApi.loadDiagnosticsSummary(state.projectId, state.envKey);
     state.rows=(d.checks||[]).map(x=>Object.assign({},x,{id:x.node_id||x.id||x.name}));
     const roleSet=new Set(state.rows.map(r=>String(r.role||'')).filter(Boolean));
     $('fRole').innerHTML='<option value="">全部角色</option>'+Array.from(roleSet).map(r=>'<option value="'+esc(r)+'">'+esc(r)+'</option>').join('');
@@ -79,7 +80,9 @@
   }
 
   async function boot(){
-    state.projectId=(document.querySelector('.diag-page')||{}).dataset?.projectId||'';
+    const page=document.querySelector('.diag-page')||{};
+    state.projectId=page.dataset?.projectId||'';
+    state.envKey=page.dataset?.envKey||document.querySelector('.ops-shell-app')?.dataset?.envKey||'production';
     $('btnRefreshDiag').onclick=loadData;
     $('btnApplyFilter').onclick=applyFilters;
     $('btnExportDiag').onclick=exportCsv;

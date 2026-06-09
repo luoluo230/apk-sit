@@ -1,49 +1,8 @@
-<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260608-business-test-modal-v2">
-
-<div class="ops-topology-app"
+<div class="ops-topology-app ops-topology-app--embedded"
      data-page="topology-workbench"
      data-project-id="{{ project_id }}"
      data-env-key="{{ env_key }}"
      data-topology-id="{{ topology_id }}">
-  <aside class="topology-shell-nav">
-    <div class="topology-brand-card">
-      <div class="topology-brand-mark">G</div>
-      <div>
-        <div class="topology-brand-title">运维平台</div>
-        <div class="topology-brand-sub">GameOps Console</div>
-      </div>
-    </div>
-
-    <nav class="topology-nav-tree">
-      <div class="topology-nav-group">
-        <span>工作台</span>
-        <a href="/admin/ops-platform?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9.5z"/></svg>工作台</a>
-        <a href="/admin/ops-platform?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h16v2H4v-2z"/></svg>总览看板</a>
-      </div>
-      <div class="topology-nav-group">
-        <span>架构与编排</span>
-        <a class="active" href="/admin/ops-platform/topology?project_id={{ project_id }}&env_key={{ env_key }}&topology_id={{ topology_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M6 6h5v5H6V6zm7 0h5v5h-5V6zM6 13h5v5H6v-5zm7 3h5v2h-5v-2z"/></svg>拓扑编排</a>
-        <a href="/admin/ops-platform/agent-control?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a3 3 0 100 6 3 3 0 000-6zM5 20v-2a4 4 0 014-4h6a4 4 0 014 4v2H5z"/></svg>Agent 与服务器编排</a>
-      </div>
-      <div class="topology-nav-group">
-        <span>执行与诊断</span>
-        <a href="/admin/ops-platform/actions?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg>动作执行</a>
-        <a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v5l4 2-.9 1.5L11 13V7h2z"/></svg>节点运维</a>
-        <a href="/admin/ops-platform/diagnostics?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 6h16v2H4V6zm2 4h12v2H6v-2zm2 4h8v2H8v-2z"/></svg>拓扑诊断</a>
-      </div>
-      <div class="topology-nav-group">
-        <span>治理与合规</span>
-        <a href="/admin/ops-platform/change-governance?project_id={{ project_id }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg>变更治理</a>
-        <a href="/admin/approval"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 11l2 2 4-4 2 2-6 6-4-4 2-2zM5 3h14a2 2 0 012 2v14l-7-3-7 3V5a2 2 0 012-2z"/></svg>审批中心</a>
-      </div>
-    </nav>
-
-    <div class="topology-nav-footer">
-      <button class="topology-collapse-btn" type="button"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>收起菜单</button>
-    </div>
-  </aside>
-
-  <main class="topology-shell-main">
     <section class="topology-page-header">
       <div class="topology-header-row">
           <div class="topology-page-title">
@@ -52,15 +11,13 @@
           <span id="topologyModeBadge" class="topology-mode-badge" data-mode="edit">编辑模式</span>
         </div>
         <div class="topology-header-controls">
-          <label class="topology-header-select-inline"><span>项目</span><select id="projectSelector" class="sel topology-header-sel"></select></label>
-          <label class="topology-header-select-inline"><span class="topology-header-env-label">环境</span><select id="envSelector" class="sel topology-header-sel"></select></label>
           <label class="topology-header-select-inline topology-header-select-wide"><span>当前拓扑</span><select id="topologySelector" class="sel topology-header-sel"></select></label>
           <button id="btnCreateTopologyHeader" class="btn primary" type="button">创建拓扑图</button>
           <button id="btnManageTopologyHeader" class="btn" type="button">管理拓扑图</button>
           <div class="topology-header-search"><input id="globalTopologySearch" class="inp" placeholder="搜索 Agent、节点、拓扑"></div>
           <div class="topology-header-utilities">
             <button id="btnTopologyHelp" class="topology-util-btn" type="button" title="帮助"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 014.5 1.5c0 2-2.5 2-2.5 4M12 17h.01"/></svg></button>
-            <button id="btnTopologyNotify" class="topology-util-btn" type="button" title="通知"><svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 00-5 5v3l-2 2v1h14v-1l-2-2V8a5 5 0 00-5-5zM10 19a2 2 0 004 0"/></svg><span class="topology-notify-badge">12</span></button>
+            <button id="btnTopologyNotify" class="topology-util-btn" type="button" title="通知"><svg viewBox="0 0 24 24"><path d="M12 3a5 5 0 00-5 5v3l-2 2v1h14v-1l-2-2V8a5 5 0 00-5-5zM10 19a2 2 0 004 0"/></svg></button>
             <span class="topology-user-avatar">运</span>
             <span class="topology-user-name">运维管理员</span>
             <span class="topology-user-arrow">▾</span>
@@ -398,7 +355,6 @@
         </aside>
       </section>
     </section>
-  </main>
 </div>
 
 <div id="structuredAddModal" class="topology-modal hidden">
@@ -532,5 +488,3 @@
   </div>
 </div>
 
-<script src="/static/ops_platform_api.js?v=20260609-fix-v2"></script>
-<script src="/static/ops_platform_workbench.js?v=20260609-fix-v2"></script>

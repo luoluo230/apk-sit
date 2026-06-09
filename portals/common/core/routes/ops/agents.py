@@ -150,7 +150,7 @@ def ops_platform_agents_list():
     bound = str(request.args.get("bound") or "").strip().lower()
     resolved_bindings = ops_helpers._resolve_scope_agent_bindings_for_scope(topology_id, project_id, env_key)
     resolved_service_bindings = ops_helpers._resolve_scope_service_bindings_for_scope(topology_id, project_id, env_key)
-    rows = ops_helpers._logical_agents_for_project(project_id)
+    rows = ops_helpers._logical_agents_for_project(project_id, env_key)
     rows = [r for r in rows if not r.get("stale")]
     cluster_status_map: Dict[str, str] = {}
     if project_id and ops_helpers._project_uses_runtime_topology(project_id):

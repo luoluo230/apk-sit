@@ -1,7 +1,7 @@
 (function(){
   const $=(id)=>document.getElementById(id);
   const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
-  const state={projectId:'', jobStatus:'', targets:[], catalog:[]};
+  const state={projectId:'', envKey:'production', jobStatus:'', targets:[], catalog:[]};
   const GROUP_ZH={
     observe:'观测巡检',
     lifecycle:'生命周期',
@@ -84,6 +84,7 @@
     const t=selectedTarget();
     const req={
       project_id:state.projectId,
+      env_key:state.envKey,
       target_key:String(($('actTargetKey')||{}).value||''),
       target_type:t?String(t.target_type||''):String(($('actTargetType')||{}).value||''),
       node_id:t?String(t.node_id||''):'',
@@ -102,7 +103,7 @@
 
   async function loadBasics(){
     const [targetsResp,catalog,events]=await Promise.all([
-      OpsApi.loadActionTargets(state.projectId),
+      OpsApi.loadActionTargets(state.projectId, state.envKey),
       OpsApi.loadActionCatalog(),
       OpsApi.loadEvents(30)
     ]);
@@ -135,7 +136,16 @@
     const req=buildRequest();
     const d=mode==='validate'?await OpsApi.validateAction(req):(mode==='approval'?await OpsApi.createActionApproval(req):await OpsApi.executeAction(req));
     $('execOutput').textContent=JSON.stringify(d,null,2);
-    $('execMeta').textContent=(d.ok?'成功: ':'失败: ')+(d.message||d.error||mode)+(d.trace_id?(' | trace='+d.trace_id):'')+(d.approval_id?(' | approval='+d.approval_id):'');
+    var statusLabel = d.ok ? '成功: ' : '失败: ';
+    if (d.degraded) statusLabel = '降级执行: ';
+    var metaText = statusLabel+(d.message||d.error||mode)+(d.trace_id?(' | trace='+d.trace_id):'')+(d.approval_id?(' | approval='+d.approval_id):'');
+    $('execMeta').textContent = metaText;
+    if (d.degraded) {
+      $('execMeta').style.cssText='background:#ff9f1a;color:#fff;padding:6px 10px;border-radius:6px';
+      if(typeof toast==='function') toast('动作未实际执行（下游服务不可达），仅记录参数','warn');
+    } else {
+      $('execMeta').style.cssText='';
+    }
     if(mode==='execute' && d.ok) await loadAgentRegistryAndQueue();
   }
 
@@ -210,7 +220,9 @@
   }
 
   async function boot(){
-    state.projectId=(document.querySelector('.ops-page')||{}).dataset?.projectId||'';
+    const page=document.querySelector('.ops-page')||{};
+    state.projectId=page.dataset?.projectId||'';
+    state.envKey=page.dataset?.envKey||document.querySelector('.ops-shell-app')?.dataset?.envKey||'production';
     state.jobStatus=(new URLSearchParams(window.location.search).get('job_status')||'').trim().toUpperCase();
     $('btnValidate').onclick=()=>run('validate');
     $('btnExecute').onclick=()=>run('execute');
