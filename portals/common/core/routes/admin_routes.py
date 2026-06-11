@@ -432,26 +432,179 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             'notes': str(row.get('notes') or '').strip(),
             'updated_at': str(row.get('updated_at') or row.get('created_at') or '')[:19],
         })
-    version_overview_html = ''.join(
-        '<div class="pv-version-card pv-version-row" data-version-id="{id}" data-version-name="{version_name}" data-stage="{stage}" data-status="{status}" data-platform="{platform}">'
-        '<div class="pv-version-main"><div class="pv-version-title">{version_name}</div><div class="pv-version-meta">{channel_label} / {stage_label} / {platform_label}</div></div>'
-        '<div class="pv-version-code">{version_code}</div><div class="pv-version-state">{status_label}</div><div class="pv-version-updated">{updated_at}</div>'
-        '<div class="pv-version-actions"><button type="button" class="pv-inline-btn" data-edit-version="{id}">编辑 VersionCode</button>{delete_btn}</div></div>'.format(
-            id=html.escape(item['id']),
-            version_name=html.escape(item['version_name']),
-            stage=html.escape(item['stage']),
-            status=html.escape(item['version_status']),
-            platform=html.escape(item['platform']),
-            channel_label=html.escape(item['channel_label']),
-            stage_label=html.escape(item['stage_label']),
-            platform_label=html.escape(item['platform_label']),
-            version_code=html.escape(item['version_code'] or '-'),
-            status_label=html.escape(item['version_status_label']),
-            updated_at=html.escape(item['updated_at'] or '-'),
-            delete_btn=('<button type="button" class="pv-inline-btn danger" data-delete-version="%s">删除</button>' % html.escape(item['id'])) if can_edit else '',
+    version_group_map = {}
+    for row in versions:
+        if not isinstance(row, dict):
+            continue
+        version_name = str(row.get('version_name') or '').strip() or '未命名版本'
+        version_group_map.setdefault(version_name, []).append(row)
+
+    def _status_badge_meta(status_key):
+        status_key = _normalize_version_status(status_key or 'active')
+        return {
+            'active': ('有效', 'pv-badge-green'),
+            'testing': ('测试中', 'pv-badge-amber'),
+            'draft': ('草稿', 'pv-badge-slate'),
+            'disabled': ('失效', 'pv-badge-rose'),
+            'archived': ('归档', 'pv-badge-slate'),
+        }.get(status_key, ('有效', 'pv-badge-green'))
+
+    version_groups = []
+    for version_name, rows in version_group_map.items():
+        normalized_rows = []
+        for row in rows:
+            cid = str(row.get('channel') or '').strip()
+            sid = str(row.get('stage') or 'dev').strip() or 'dev'
+            platform = str(row.get('platform') or 'android').strip().lower() or 'android'
+            status_key = _normalize_version_status(row.get('version_status') or 'active')
+            normalized_rows.append({
+                'id': str(row.get('id') or '').strip(),
+                'version_name': version_name,
+                'version_code': str(row.get('version_code') or '').strip() or '-',
+                'channel': cid,
+                'channel_label': next((name for channel_id, name in project_channels if channel_id == cid), cid or '-'),
+                'stage': sid,
+                'stage_label': STAGE_MAP.get(sid, sid),
+                'platform': platform,
+                'platform_label': 'iOS' if platform == 'ios' else 'Android',
+                'version_status': status_key,
+                'version_status_label': VERSION_STATUS_MAP.get(status_key, '有效'),
+                'apk_status': str(row.get('apk_status') or '').strip().lower(),
+                'download_count': int(row.get('download_count') or 0),
+                'jenkins_job_id': str(row.get('jenkins_job_id') or '').strip(),
+                'updated_at': str(row.get('updated_at') or row.get('created_at') or '')[:19],
+                'version_mode': str(row.get('version_mode') or 'general').strip().lower(),
+                'recommended': bool(row.get('recommended')),
+            })
+        normalized_rows.sort(key=lambda item: str(item.get('version_code') or ''), reverse=True)
+        active_count_group = len([item for item in normalized_rows if item['version_status'] == 'active'])
+        download_total_group = sum(item['download_count'] for item in normalized_rows)
+        latest_row = sorted(normalized_rows, key=lambda item: item['updated_at'] or '', reverse=True)[0] if normalized_rows else {}
+        version_groups.append({
+            'version_name': version_name,
+            'rows': normalized_rows,
+            'version_mode': 'commercial' if any(item['version_mode'] == 'commercial' for item in normalized_rows) else 'general',
+            'recommended': any(item['recommended'] for item in normalized_rows),
+            'active_count': active_count_group,
+            'version_code_count': len(normalized_rows),
+            'download_total': download_total_group,
+            'latest_updated_at': latest_row.get('updated_at') or '',
+        })
+    version_groups.sort(key=lambda item: (item['latest_updated_at'], item['version_name']), reverse=True)
+
+    version_group_cards = []
+    for index, group in enumerate(version_groups):
+        group_status_label = '全部有效' if group['active_count'] == group['version_code_count'] and group['version_code_count'] else ('部分有效' if group['active_count'] else '全部失效')
+        group_status_class = 'pv-badge-green' if group['active_count'] == group['version_code_count'] and group['version_code_count'] else ('pv-badge-amber' if group['active_count'] else 'pv-badge-rose')
+        mode_label = '商业版' if group['version_mode'] == 'commercial' else '通用版'
+        mode_class = 'pv-mode-commercial' if group['version_mode'] == 'commercial' else 'pv-mode-general'
+        recommend_badge = '<span class="pv-mini-tag pv-mini-tag-rose">推荐</span>' if group['recommended'] else ''
+        row_html = []
+        for row in group['rows']:
+            row_status_label, row_status_class = _status_badge_meta(row['version_status'])
+            if row['apk_status'] == 'found':
+                apk_label = '已落盘'
+                apk_class = 'pv-badge-green'
+            elif row['apk_status'] == 'not_found':
+                apk_label = '未找到'
+                apk_class = 'pv-badge-rose'
+            else:
+                apk_label = '待确认'
+                apk_class = 'pv-badge-slate'
+            action_delete = (
+                '<button type="button" class="pv-icon-btn danger" title="删除" data-delete-version="{id}"><i class="fas fa-trash"></i></button>'.format(
+                    id=html.escape(row['id'])
+                )
+                if can_edit else ''
+            )
+            row_html.append(
+                '<tr class="pv-code-row" data-version-id="{id}" data-version-name="{version_name}" data-stage="{stage}" data-status="{status}" data-platform="{platform}">'
+                '<td class="pv-radio-cell"><span class="pv-radio-dot"></span>{version_code}</td>'
+                '<td>{platform_label}</td>'
+                '<td><span class="pv-mini-tag pv-mini-tag-stage">{stage_label}</span></td>'
+                '<td><span class="pv-status-pill {status_class}">{status_label}</span></td>'
+                '<td><span class="pv-status-pill {apk_class}">{apk_label}</span></td>'
+                '<td>{updated_at}</td>'
+                '<td>{jenkins_job_id}</td>'
+                '<td>{download_count}</td>'
+                '<td>'
+                '<div class="pv-row-actions">'
+                '<a href="/admin/projects/{project_id}/versions/{id}/workflow" class="pv-icon-btn" title="查看构建流程"><i class="fas fa-eye"></i></a>'
+                '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-download"></i></a>'
+                '<button type="button" class="pv-icon-btn" title="编辑 VersionCode" data-edit-version="{id}"><i class="fas fa-pen"></i></button>'
+                '{delete_button}'
+                '</div>'
+                '</td>'
+                '</tr>'.format(
+                    project_id=html.escape(project_id),
+                    id=html.escape(row['id']),
+                    version_name=html.escape(row['version_name']),
+                    stage=html.escape(row['stage']),
+                    status=html.escape(row['version_status']),
+                    platform=html.escape(row['platform']),
+                    version_code=html.escape(row['version_code']),
+                    platform_label=html.escape(row['platform_label']),
+                    stage_label=html.escape(row['stage_label']),
+                    status_class=row_status_class,
+                    status_label=html.escape(row_status_label),
+                    apk_class=apk_class,
+                    apk_label=html.escape(apk_label),
+                    updated_at=html.escape(row['updated_at'] or '-'),
+                    jenkins_job_id=html.escape(row['jenkins_job_id'] or '-'),
+                    download_count=html.escape(str(row['download_count'])),
+                    delete_button=action_delete,
+                )
+            )
+        version_group_cards.append(
+            '<details class="pv-group-card pv-version-group" {open_attr}>'
+            '<summary class="pv-group-summary">'
+            '<div class="pv-group-col pv-group-name"><span class="pv-expand-caret"><i class="fas fa-chevron-down"></i></span><strong>{version_name}</strong>{recommend_badge}<span class="pv-mini-tag {mode_class}">{mode_label}</span></div>'
+            '<div class="pv-group-col">{mode_label_plain}</div>'
+            '<div class="pv-group-col"><span class="pv-status-pill {group_status_class}">{group_status_label}</span></div>'
+            '<div class="pv-group-col">{version_code_count}</div>'
+            '<div class="pv-group-col">{active_count}</div>'
+            '<div class="pv-group-col">{download_total}</div>'
+            '<div class="pv-group-col">'
+            '<div class="pv-row-actions">'
+            '<a href="/admin/projects/{project_id}/build-history" class="pv-icon-btn" title="查看构建历史"><i class="fas fa-eye"></i></a>'
+            '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-up-right-from-square"></i></a>'
+            '<button type="button" class="pv-icon-btn" title="编辑版本组" data-edit-version="{edit_id}"><i class="fas fa-pen"></i></button>'
+            '{delete_button}'
+            '<button type="button" class="pv-icon-btn" title="打开发版工作台" data-pv-modal-open="gm-wizard"><i class="fas fa-ellipsis"></i></button>'
+            '</div>'
+            '</div>'
+            '</summary>'
+            '<div class="pv-group-body">'
+            '<div class="pv-group-subtitle">VersionCode 列表</div>'
+            '<table class="pv-code-table">'
+            '<thead><tr><th>VersionCode</th><th>平台</th><th>阶段</th><th>状态</th><th>APK 状态</th><th>构建时间</th><th>构建任务</th><th>下载次数</th><th>操作</th></tr></thead>'
+            '<tbody>{rows}</tbody>'
+            '</table>'
+            '</div>'
+            '</details>'.format(
+                open_attr='open' if index == 0 else '',
+                version_name=html.escape(group['version_name']),
+                recommend_badge=recommend_badge,
+                mode_class=mode_class,
+                mode_label=mode_label,
+                mode_label_plain=html.escape(mode_label),
+                project_id=html.escape(project_id),
+                group_status_class=group_status_class,
+                group_status_label=html.escape(group_status_label),
+                version_code_count=html.escape(str(group['version_code_count'])),
+                active_count=html.escape(str(group['active_count'])),
+                download_total=html.escape(str(group['download_total'])),
+                edit_id=html.escape(group['rows'][0]['id'] if group['rows'] else ''),
+                delete_button=(
+                    '<button type="button" class="pv-icon-btn danger" title="删除" data-delete-version="{id}"><i class="fas fa-trash"></i></button>'.format(
+                        id=html.escape(group['rows'][0]['id'])
+                    )
+                    if can_edit and group['rows'] else ''
+                ),
+                rows=''.join(row_html),
+            )
         )
-        for item in version_rows
-    ) or '<div class="pv-empty-state">暂无版本数据，先创建一个版本组开始。</div>'
+    version_overview_html = ''.join(version_group_cards) or '<div class="pv-empty-state">暂无版本数据，先创建一个版本组开始。</div>'
     available_channels = [
         {'id': cid, 'name': cname}
         for cid, cname in all_channels_list
@@ -477,7 +630,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     return '''
 <div class="project-version-design-app" data-project-id="%s" data-default-stage="%s">
   <style>
-    .project-version-design-app { min-height: 100vh; background: linear-gradient(180deg, #f5f7fb 0%%, #eef3ff 100%%); color: #0f172a; }
+    .project-version-design-app { min-height: 100vh; background: linear-gradient(180deg, #f5f7fb 0%%, #eef3ff 100%%); color: #0f172a; overflow-x: hidden; }
     .project-version-design-app .pv-shell { display: grid; grid-template-columns: 176px minmax(0, 1fr); min-height: 100vh; }
     .project-version-design-app .pv-app-nav { background: linear-gradient(180deg, #0f274f 0%%, #11264a 38%%, #0d1d38 100%%); color: #e6efff; padding: 14px 12px; display: flex; flex-direction: column; }
     .project-version-design-app .pv-brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 18px; }
@@ -498,7 +651,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-select-chip, .project-version-design-app .pv-search, .project-version-design-app .pv-white-btn { background: rgba(255,255,255,.9); border: 1px solid #dbe5ff; color: #334155; }
     .project-version-design-app .pv-blue-btn { background: linear-gradient(180deg, #3c78ff, #1c61ff); color: white; box-shadow: 0 10px 24px rgba(55, 116, 255, .2); }
     .project-version-design-app .pv-search input { border: 0; outline: 0; background: transparent; width: 230px; font-size: 13px; }
-    .project-version-design-app .pv-body { padding: 14px; display: grid; grid-template-columns: 220px minmax(0, 1fr) 248px; gap: 14px; min-width: 0; }
+    .project-version-design-app .pv-body { padding: 14px; display: grid; grid-template-columns: 236px minmax(0, 1fr) 286px; gap: 14px; min-width: 0; align-items: start; }
     .project-version-design-app .pv-panel { background: rgba(255,255,255,.88); border: 1px solid #dfe7ff; border-radius: 18px; box-shadow: 0 10px 30px rgba(58, 76, 122, .08); }
     .project-version-design-app .pv-project-tree { padding: 14px; display: flex; flex-direction: column; }
     .project-version-design-app .pv-section-title { font-size: 14px; font-weight: 700; color: #173057; }
@@ -538,17 +691,43 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-segment.is-active { background: linear-gradient(180deg, #3f7bff, #2b68ff); color: white; border-color: #3b72ff; }
     .project-version-design-app .pv-filter { height: 36px; border-radius: 10px; border: 1px solid #dbe5ff; background: white; padding: 0 12px; color: #64748b; font-size: 13px; }
     .project-version-design-app .pv-filter.search { width: 220px; }
-    .project-version-design-app .pv-workbench-body { padding: 0 18px 14px; }
+    .project-version-design-app .pv-workbench-body { padding: 0 18px 16px; min-width: 0; }
     .project-version-design-app .pv-content-panel { display: none; position: relative; z-index: 0; pointer-events: none; visibility: hidden; height: 0; overflow: hidden; }
     .project-version-design-app .pv-content-panel.is-active { display: block; position: relative; z-index: 2; pointer-events: auto; visibility: visible; height: auto; overflow: visible; }
-    .project-version-design-app .pv-version-list { display: flex; flex-direction: column; gap: 12px; }
-    .project-version-design-app .pv-version-card { display: grid; grid-template-columns: minmax(0, 1.8fr) 0.9fr 0.8fr 1fr auto; align-items: center; gap: 14px; border: 1px solid #e4eafe; border-radius: 16px; background: #fff; padding: 14px 16px; box-shadow: 0 8px 20px rgba(78, 101, 152, .05); }
-    .project-version-design-app .pv-version-title { font-size: 14px; font-weight: 800; color: #173057; }
-    .project-version-design-app .pv-version-meta { margin-top: 4px; font-size: 12px; color: #7b8aa8; }
-    .project-version-design-app .pv-version-code, .project-version-design-app .pv-version-state, .project-version-design-app .pv-version-updated { font-size: 12px; color: #334155; }
-    .project-version-design-app .pv-version-actions { display: flex; gap: 8px; justify-content: flex-end; }
-    .project-version-design-app .pv-inline-btn { height: 30px; border-radius: 9px; border: 1px solid #dce6ff; background: #fff; color: #35558a; padding: 0 10px; font-size: 12px; }
-    .project-version-design-app .pv-inline-btn.danger { color: #b42318; border-color: #f7d0d0; }
+    .project-version-design-app .pv-version-board { border: 1px solid #dfe7ff; border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(247,250,255,.96)); overflow-x: auto; overflow-y: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
+    .project-version-design-app .pv-version-board-head { display: grid; grid-template-columns: minmax(0, 2.2fr) .95fr 1fr .85fr .85fr 1fr 1.1fr; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #ecf1ff; font-size: 12px; font-weight: 600; color: #7387a8; background: rgba(249, 251, 255, .92); }
+    .project-version-design-app .pv-version-board-title { padding: 14px 2px 10px; font-size: 14px; font-weight: 800; color: #173057; }
+    .project-version-design-app .pv-version-list { display: flex; flex-direction: column; gap: 10px; }
+    .project-version-design-app .pv-group-card { border: 1px solid #e4eafe; border-radius: 16px; background: #fff; box-shadow: 0 8px 20px rgba(78, 101, 152, .04); overflow: hidden; }
+    .project-version-design-app .pv-group-card summary { list-style: none; cursor: pointer; }
+    .project-version-design-app .pv-group-card summary::-webkit-details-marker { display: none; }
+    .project-version-design-app .pv-group-summary { display: grid; grid-template-columns: minmax(0, 2.2fr) .95fr 1fr .85fr .85fr 1fr 1.1fr; align-items: center; gap: 10px; padding: 12px 16px; font-size: 13px; color: #173057; }
+    .project-version-design-app .pv-group-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .project-version-design-app .pv-group-name strong { font-size: 15px; font-weight: 800; color: #173057; }
+    .project-version-design-app .pv-expand-caret { width: 14px; color: #7b8aa8; font-size: 11px; transition: transform .18s ease; }
+    .project-version-design-app .pv-group-card[open] .pv-expand-caret { transform: rotate(180deg); }
+    .project-version-design-app .pv-group-col { font-size: 12px; color: #3f557c; }
+    .project-version-design-app .pv-group-body { border-top: 1px solid #eef3ff; background: #fcfdff; }
+    .project-version-design-app .pv-group-subtitle { padding: 10px 20px 4px; font-size: 12px; color: #7387a8; font-weight: 600; }
+    .project-version-design-app .pv-code-table { width: 100%%; border-collapse: collapse; }
+    .project-version-design-app .pv-code-table thead th { text-align: left; padding: 10px 16px; font-size: 12px; font-weight: 600; color: #7b8aa8; }
+    .project-version-design-app .pv-code-table tbody td { padding: 12px 16px; border-top: 1px solid #eef3ff; font-size: 13px; color: #334155; vertical-align: middle; }
+    .project-version-design-app .pv-code-row:hover { background: #f8fbff; }
+    .project-version-design-app .pv-radio-cell { display: flex; align-items: center; gap: 10px; font-weight: 700; color: #173057; }
+    .project-version-design-app .pv-radio-dot { width: 12px; height: 12px; border-radius: 999px; border: 1.5px solid #9db6ea; display: inline-block; box-shadow: inset 0 0 0 2px #fff; background: #2f6cff; }
+    .project-version-design-app .pv-status-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .project-version-design-app .pv-badge-green { background: #e7fff2; color: #19a767; }
+    .project-version-design-app .pv-badge-amber { background: #fff4df; color: #db8b16; }
+    .project-version-design-app .pv-badge-rose { background: #ffe8e8; color: #ef4444; }
+    .project-version-design-app .pv-badge-slate { background: #eef3ff; color: #64748b; }
+    .project-version-design-app .pv-mini-tag { display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .project-version-design-app .pv-mini-tag-stage { background: #eef7ff; color: #347dff; }
+    .project-version-design-app .pv-mini-tag-rose { background: #ffe8ea; color: #f04a62; }
+    .project-version-design-app .pv-mode-commercial { background: #ece8ff; color: #6d4cff; }
+    .project-version-design-app .pv-mode-general { background: #eef4ff; color: #347dff; }
+    .project-version-design-app .pv-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+    .project-version-design-app .pv-icon-btn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid #dce6ff; background: #fff; color: #347dff; display: inline-flex; align-items: center; justify-content: center; }
+    .project-version-design-app .pv-icon-btn.danger { color: #ef4444; border-color: #ffd2d2; }
     .project-version-design-app .pv-empty-state { border: 1px dashed #dbe5ff; border-radius: 16px; padding: 38px 24px; text-align: center; color: #8da0c0; background: rgba(255,255,255,.82); }
     .project-version-design-app .pv-side { display: flex; flex-direction: column; gap: 12px; }
     .project-version-design-app .pv-side-card { padding: 16px; }
@@ -597,7 +776,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       linear-gradient(90deg, transparent 12px, #111827 12px, #111827 14px, transparent 14px) 0 0 / 22px 22px,
       linear-gradient(transparent 12px, #111827 12px, #111827 14px, transparent 14px) 0 0 / 22px 22px,
       #fff; border-radius: 12px; border: 8px solid #fff; box-shadow: 0 8px 20px rgba(15, 23, 42, .08); }
-    .project-version-design-app .pv-hidden-support { display: none !important; }
     @media (max-width: 1680px) {
       .project-version-design-app .pv-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     }
@@ -698,7 +876,19 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             </div>
             <div class="pv-workbench-body">
               <div id="pvPanelVersions" class="pv-content-panel is-active">
-                <div id="pvVersionOverview" class="pv-version-list">%s</div>
+                <div class="pv-version-board-title">版本组 (Version Group)</div>
+                <div class="pv-version-board">
+                  <div class="pv-version-board-head">
+                    <div>版本组</div>
+                    <div>版本模式</div>
+                    <div>有效状态</div>
+                    <div>VersionCode 数量</div>
+                    <div>有效数量</div>
+                    <div>下载次数</div>
+                    <div>操作</div>
+                  </div>
+                  <div id="pvVersionOverview" class="pv-version-list">%s</div>
+                </div>
               </div>
               <div id="pvPanelChannels" class="pv-content-panel">
                 <div class="pv-panel pv-side-card">
@@ -782,7 +972,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           </div>
         </aside>
       </div>
-      <div class="pv-hidden-support"><div id="projectTrend7d">—</div></div>
     </div>
   </div>
   <div class="pv-modal-overlay" data-pv-modal="topology" onclick="if(event.target===this){ pvCloseModal('topology'); }">
@@ -918,13 +1107,18 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       var stageId = document.getElementById('pvStageFilter').value || 'all';
       var statusId = document.getElementById('pvStatusFilter').value || 'all';
       var platform = (document.getElementById('pvPlatformFilterHidden') ? document.getElementById('pvPlatformFilterHidden').value : 'all') || 'all';
-      document.querySelectorAll('.pv-version-row').forEach(function(row){
-        var txt = String(row.textContent || '').toLowerCase();
-        var ok = (!q || txt.indexOf(q) >= 0)
-          && (stageId === 'all' || (row.getAttribute('data-stage') || '') === stageId)
-          && (statusId === 'all' || (row.getAttribute('data-status') || '') === statusId)
-          && (platform === 'all' || (row.getAttribute('data-platform') || '') === platform);
-        row.style.display = ok ? '' : 'none';
+      document.querySelectorAll('.pv-version-group').forEach(function(group){
+        var visibleCount = 0;
+        group.querySelectorAll('.pv-code-row').forEach(function(row){
+          var txt = String(row.textContent || '').toLowerCase() + ' ' + String(row.getAttribute('data-version-name') || '').toLowerCase();
+          var ok = (!q || txt.indexOf(q) >= 0)
+            && (stageId === 'all' || (row.getAttribute('data-stage') || '') === stageId)
+            && (statusId === 'all' || (row.getAttribute('data-status') || '') === statusId)
+            && (platform === 'all' || (row.getAttribute('data-platform') || '') === platform);
+          row.style.display = ok ? '' : 'none';
+          if(ok){ visibleCount += 1; }
+        });
+        group.style.display = visibleCount ? '' : 'none';
       });
     }
     function pvRefreshSummaries(){
