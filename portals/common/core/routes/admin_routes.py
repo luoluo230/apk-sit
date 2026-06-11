@@ -402,18 +402,75 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         for row in recent_versions
     ) or '<div class="pv-empty-mini">暂无动态</div>'
 
+    version_rows = []
+    for row in sorted(
+        versions,
+        key=lambda item: (
+            str(item.get('version_name') or ''),
+            str(item.get('channel') or ''),
+            str(item.get('stage') or ''),
+            str(item.get('platform') or ''),
+            str(item.get('version_code') or ''),
+        ),
+        reverse=True,
+    ):
+        cid = str(row.get('channel') or '').strip()
+        sid = str(row.get('stage') or 'dev').strip() or 'dev'
+        platform = str(row.get('platform') or 'android').strip().lower() or 'android'
+        version_rows.append({
+            'id': str(row.get('id') or '').strip(),
+            'version_name': str(row.get('version_name') or '').strip() or '-',
+            'version_code': str(row.get('version_code') or '').strip() or '',
+            'channel': cid,
+            'channel_label': next((name for channel_id, name in project_channels if channel_id == cid), cid or '-'),
+            'stage': sid,
+            'stage_label': STAGE_MAP.get(sid, sid),
+            'platform': platform,
+            'platform_label': 'iOS' if platform == 'ios' else 'Android',
+            'version_status': _normalize_version_status(row.get('version_status') or 'active'),
+            'version_status_label': VERSION_STATUS_MAP.get(_normalize_version_status(row.get('version_status') or 'active'), '有效'),
+            'notes': str(row.get('notes') or '').strip(),
+            'updated_at': str(row.get('updated_at') or row.get('created_at') or '')[:19],
+        })
+    version_overview_html = ''.join(
+        '<div class="pv-version-card pv-version-row" data-version-id="{id}" data-version-name="{version_name}" data-stage="{stage}" data-status="{status}" data-platform="{platform}">'
+        '<div class="pv-version-main"><div class="pv-version-title">{version_name}</div><div class="pv-version-meta">{channel_label} / {stage_label} / {platform_label}</div></div>'
+        '<div class="pv-version-code">{version_code}</div><div class="pv-version-state">{status_label}</div><div class="pv-version-updated">{updated_at}</div>'
+        '<div class="pv-version-actions"><button type="button" class="pv-inline-btn" data-edit-version="{id}">编辑 VersionCode</button>{delete_btn}</div></div>'.format(
+            id=html.escape(item['id']),
+            version_name=html.escape(item['version_name']),
+            stage=html.escape(item['stage']),
+            status=html.escape(item['version_status']),
+            platform=html.escape(item['platform']),
+            channel_label=html.escape(item['channel_label']),
+            stage_label=html.escape(item['stage_label']),
+            platform_label=html.escape(item['platform_label']),
+            version_code=html.escape(item['version_code'] or '-'),
+            status_label=html.escape(item['version_status_label']),
+            updated_at=html.escape(item['updated_at'] or '-'),
+            delete_btn=('<button type="button" class="pv-inline-btn danger" data-delete-version="%s">删除</button>' % html.escape(item['id'])) if can_edit else '',
+        )
+        for item in version_rows
+    ) or '<div class="pv-empty-state">暂无版本数据，先创建一个版本组开始。</div>'
+    available_channels = [
+        {'id': cid, 'name': cname}
+        for cid, cname in all_channels_list
+        if cid not in {row[0] for row in project_channels}
+    ]
+    channel_options_html = ''.join(
+        '<option value="%s">%s</option>' % (html.escape(cid), html.escape(cname))
+        for cid, cname in project_channels
+    )
+    project_id_url = quote(project_id)
+    project_id_js = json.dumps(project_id, ensure_ascii=False)
+    available_channels_js = json.dumps(available_channels, ensure_ascii=False)
+    version_rows_js = json.dumps(version_rows, ensure_ascii=False)
+
     qr_filename = project_apk_files[0]['name'] if project_apk_files else ''
     qr_size = ('%.2f MB' % float(project_apk_files[0].get('size_mb', 0))) if project_apk_files else '--'
     selected_stage = (request.args.get('stage') or 'production').strip().lower()
     if selected_stage not in ('dev', 'test', 'production'):
         selected_stage = 'production'
-
-    legacy_content = _project_detail_html(project_id, proj, can_edit, task_stats, recent_tasks, apk_count, project_apk_files, is_admin_logged_in)
-    compat_marker = '<!-- 版本编辑弹窗 -->'
-    compat_html = ''
-    marker_index = legacy_content.find(compat_marker)
-    if marker_index >= 0:
-        compat_html = legacy_content[marker_index:]
 
     download_center_html = _project_download_tab_html(project_apk_files, project_id)
 
@@ -484,13 +541,15 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-workbench-body { padding: 0 18px 14px; }
     .project-version-design-app .pv-content-panel { display: none; position: relative; z-index: 0; pointer-events: none; visibility: hidden; height: 0; overflow: hidden; }
     .project-version-design-app .pv-content-panel.is-active { display: block; position: relative; z-index: 2; pointer-events: auto; visibility: visible; height: auto; overflow: visible; }
-    .project-version-design-app #channelsVersionsWrap .channel-card { border: 1px solid #e4eafe; border-radius: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,.7); }
-    .project-version-design-app #channelsVersionsWrap .version-group { border-radius: 16px !important; overflow: hidden; background: #fff !important; border: 1px solid #edf2ff !important; }
-    .project-version-design-app #channelsVersionsWrap .version-group-header { background: linear-gradient(180deg, #fbfcff, #f4f8ff) !important; padding-top: 12px !important; padding-bottom: 12px !important; }
-    .project-version-design-app #channelsVersionsWrap .channel-main-tab { border-radius: 10px !important; }
-    .project-version-design-app #channelsVersionsWrap .channel-stage-tab { border-radius: 10px !important; }
-    .project-version-design-app #channelsVersionsWrap table { font-size: 13px !important; }
-    .project-version-design-app #channelsVersionsWrap td, .project-version-design-app #channelsVersionsWrap th { white-space: nowrap; }
+    .project-version-design-app .pv-version-list { display: flex; flex-direction: column; gap: 12px; }
+    .project-version-design-app .pv-version-card { display: grid; grid-template-columns: minmax(0, 1.8fr) 0.9fr 0.8fr 1fr auto; align-items: center; gap: 14px; border: 1px solid #e4eafe; border-radius: 16px; background: #fff; padding: 14px 16px; box-shadow: 0 8px 20px rgba(78, 101, 152, .05); }
+    .project-version-design-app .pv-version-title { font-size: 14px; font-weight: 800; color: #173057; }
+    .project-version-design-app .pv-version-meta { margin-top: 4px; font-size: 12px; color: #7b8aa8; }
+    .project-version-design-app .pv-version-code, .project-version-design-app .pv-version-state, .project-version-design-app .pv-version-updated { font-size: 12px; color: #334155; }
+    .project-version-design-app .pv-version-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .project-version-design-app .pv-inline-btn { height: 30px; border-radius: 9px; border: 1px solid #dce6ff; background: #fff; color: #35558a; padding: 0 10px; font-size: 12px; }
+    .project-version-design-app .pv-inline-btn.danger { color: #b42318; border-color: #f7d0d0; }
+    .project-version-design-app .pv-empty-state { border: 1px dashed #dbe5ff; border-radius: 16px; padding: 38px 24px; text-align: center; color: #8da0c0; background: rgba(255,255,255,.82); }
     .project-version-design-app .pv-side { display: flex; flex-direction: column; gap: 12px; }
     .project-version-design-app .pv-side-card { padding: 16px; }
     .project-version-design-app .pv-side-card h3 { font-size: 14px; font-weight: 800; color: #173057; margin-bottom: 12px; }
@@ -639,8 +698,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             </div>
             <div class="pv-workbench-body">
               <div id="pvPanelVersions" class="pv-content-panel is-active">
-                <div id="channelsVersionsWrap"></div>
-                <p id="channelsEmpty" class="hidden py-16 text-center text-slate-400">暂无版本</p>
+                <div id="pvVersionOverview" class="pv-version-list">%s</div>
               </div>
               <div id="pvPanelChannels" class="pv-content-panel">
                 <div class="pv-panel pv-side-card">
@@ -771,7 +829,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           </div>
           <div class="pv-field"><label>说明</label><input id="pvQuickVersionNotes" class="pv-input" placeholder="1.2.4 新版本"></div>
           <div class="pv-dock-actions">
-            <button type="button" class="pv-secondary" onclick="pvCloseModal('version-group');openVersionModal()">完整表单</button>
+            <button type="button" class="pv-secondary" onclick="pvCloseModal('version-group')">取消</button>
             <button type="button" class="pv-primary" id="pvQuickCreateVersion">创建版本组</button>
           </div>
     </div>
@@ -787,7 +845,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           </div>
           <div class="pv-field"><label>变更摘要</label><input id="pvQuickVersionCodeChangelog" class="pv-input" placeholder="热修复 / 灰度版本"></div>
           <div class="pv-dock-actions">
-            <button type="button" class="pv-secondary" id="pvOpenVersionCodeModal">完整编辑</button>
+            <button type="button" class="pv-secondary" onclick="pvCloseModal('version-code')">取消</button>
             <button type="button" class="pv-primary" id="pvSaveQuickVersionCode">保存</button>
           </div>
     </div>
@@ -838,7 +896,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           </div>
     </div>
   </div>
-  %s
   <script>
     function pvOpenModal(name){
       var el = document.querySelector('.project-version-design-app [data-pv-modal="' + name + '"]');
@@ -856,38 +913,25 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         panel.classList.toggle('is-active', panel.id === 'pvPanel' + target.charAt(0).toUpperCase() + target.slice(1));
       });
     }
-    function pvCurrentStageButton(){
-      return document.querySelector('#channelsVersionsWrap .channel-stage-tab.bg-white');
-    }
-    function pvCurrentStage(){
-      var btn = pvCurrentStageButton();
-      return btn ? String(btn.getAttribute('data-stage') || 'production') : 'production';
-    }
-    function pvCurrentChannel(){
-      return String(window._activeChannelId || ((window.PROJECT_CHANNELS && window.PROJECT_CHANNELS[0]) ? window.PROJECT_CHANNELS[0].id : ''));
-    }
     function pvApplyFilters(){
-      if(typeof _getVersionFilter !== 'function' || typeof renderChannelsView !== 'function'){ return; }
-      var channelId = pvCurrentChannel();
-      var stageId = document.getElementById('pvStageFilter').value;
-      var targetStage = stageId === 'all' ? pvCurrentStage() : stageId;
-      var f = _getVersionFilter(channelId, targetStage);
-      f.q = (document.getElementById('pvVersionSearch').value || '').trim();
-      f.platform = (document.getElementById('pvPlatformFilterHidden') ? document.getElementById('pvPlatformFilterHidden').value : 'all') || 'all';
-      f.status = document.getElementById('pvStatusFilter').value || 'all';
-      renderChannelsView();
-      if(stageId !== 'all'){
-        setTimeout(function(){
-          var stageBtn = document.querySelector('#channelsVersionsWrap .channel-stage-tab[data-stage=\"' + stageId + '\"]');
-          if(stageBtn){ stageBtn.click(); }
-        }, 10);
-      }
+      var q = String((document.getElementById('pvVersionSearch') || {}).value || '').trim().toLowerCase();
+      var stageId = document.getElementById('pvStageFilter').value || 'all';
+      var statusId = document.getElementById('pvStatusFilter').value || 'all';
+      var platform = (document.getElementById('pvPlatformFilterHidden') ? document.getElementById('pvPlatformFilterHidden').value : 'all') || 'all';
+      document.querySelectorAll('.pv-version-row').forEach(function(row){
+        var txt = String(row.textContent || '').toLowerCase();
+        var ok = (!q || txt.indexOf(q) >= 0)
+          && (stageId === 'all' || (row.getAttribute('data-stage') || '') === stageId)
+          && (statusId === 'all' || (row.getAttribute('data-status') || '') === statusId)
+          && (platform === 'all' || (row.getAttribute('data-platform') || '') === platform);
+        row.style.display = ok ? '' : 'none';
+      });
     }
     function pvRefreshSummaries(){
-      if(!window.allVersions){ return; }
+      if(!window.__PV_VERSION_ROWS){ return; }
       var versionGroups = [];
       var seenGroups = {};
-      window.allVersions.forEach(function(row){
+      window.__PV_VERSION_ROWS.forEach(function(row){
         var versionName = String(row.version_name || '').trim();
         if(versionName && !seenGroups[versionName]){
           seenGroups[versionName] = true;
@@ -897,7 +941,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       var targetSel = document.getElementById('pvQuickVersionCodeTarget');
       var gmVerSel = document.getElementById('pvGmVersionName');
       if(targetSel){
-        targetSel.innerHTML = window.allVersions.map(function(row){
+        targetSel.innerHTML = window.__PV_VERSION_ROWS.map(function(row){
           var label = (row.version_name || '-') + ' / ' + (row.version_code || '-') + ' / ' + (row.platform_label || row.platform || '-');
           return '<option value=\"' + String(row.id || '') + '\">' + label + '</option>';
         }).join('') || '<option value=\"\">暂无 VersionCode</option>';
@@ -910,7 +954,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       var summaryEl = document.getElementById('pvGmSummary');
       if(summaryEl){
         summaryEl.textContent = versionGroups.length
-          ? ('版本组 ' + versionGroups.length + ' 个，VersionCode ' + window.allVersions.length + ' 个，可直接进入发版向导。')
+          ? ('版本组 ' + versionGroups.length + ' 个，VersionCode ' + window.__PV_VERSION_ROWS.length + ' 个，可直接进入发版向导。')
           : '暂无可发布版本，请先创建版本组与 VersionCode。';
       }
       var mirror = document.getElementById('projectChannelsListMirror');
@@ -920,36 +964,82 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     function pvQuickCreateVersionGroup(){
       var versionName = (document.getElementById('pvQuickVersionName').value || '').trim();
       if(!versionName){ alert('请先填写版本号'); return; }
-      document.getElementById('versionEditId').value = '';
-      document.getElementById('versionName').value = versionName;
-      document.getElementById('versionChannel').value = document.getElementById('pvQuickVersionChannel').value;
-      document.getElementById('versionStage').value = document.getElementById('pvQuickVersionStage').value;
-      document.getElementById('versionPlatform').value = 'android';
-      document.getElementById('versionStatus').value = document.getElementById('pvQuickVersionStatus').value;
-      document.getElementById('versionNotes').value = document.getElementById('pvQuickVersionNotes').value || '';
-      document.getElementById('chkCommercialMode').checked = document.getElementById('pvQuickVersionMode').value === 'commercial';
-      if(typeof toggleCommercialMode === 'function'){ toggleCommercialMode(); }
-      if(typeof syncVersionPlatformFields === 'function'){ syncVersionPlatformFields(); }
-      if(typeof suggestVersionApkPath === 'function'){ suggestVersionApkPath(); }
-      if(typeof syncDerivedVersionPaths === 'function'){ syncDerivedVersionPaths(); }
-      saveVersion();
-      pvCloseModal('version-group');
+      var payload = {
+        version_name: versionName,
+        channel: document.getElementById('pvQuickVersionChannel').value || '',
+        stage: document.getElementById('pvQuickVersionStage').value || 'production',
+        platform: 'android',
+        version_status: document.getElementById('pvQuickVersionStatus').value || 'active',
+        version_mode: document.getElementById('pvQuickVersionMode').value || 'general',
+        notes: document.getElementById('pvQuickVersionNotes').value || ''
+      };
+      fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/create', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+        credentials:'same-origin'
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if(d.error){ alert(d.error); return; }
+        location.reload();
+      });
     }
     function pvQuickSaveVersionCode(){
       var target = document.getElementById('pvQuickVersionCodeTarget').value || '';
       if(!target){ alert('请先选择 VersionCode 记录'); return; }
-      pvCloseModal('version-code');
-      openVersionCodeModal(target);
-      document.getElementById('versionCodeEditValue').value = (document.getElementById('pvQuickVersionCodeValue').value || '').trim() || document.getElementById('versionCodeEditValue').value;
-      document.getElementById('versionCodeEditStatus').value = document.getElementById('pvQuickVersionCodeStatus').value || 'active';
-      document.getElementById('versionCodeEditChangelog').value = document.getElementById('pvQuickVersionCodeChangelog').value || '';
-      saveVersionCodeModal();
+      var row = (window.__PV_VERSION_ROWS || []).find(function(item){ return String(item.id || '') === target; });
+      if(!row){ alert('未找到目标版本'); return; }
+      var payload = {
+        id: row.id,
+        channel: row.channel,
+        stage: row.stage,
+        platform: row.platform,
+        version_name: row.version_name,
+        version_code: (document.getElementById('pvQuickVersionCodeValue').value || '').trim(),
+        version_status: document.getElementById('pvQuickVersionCodeStatus').value || 'active',
+        notes: document.getElementById('pvQuickVersionCodeChangelog').value || ''
+      };
+      fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/update', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+        credentials:'same-origin'
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if(d.error){ alert(d.error); return; }
+        location.reload();
+      });
     }
     function pvOpenQrPreview(){
-      pvCloseModal('qr-download');
-      if(typeof window._showQR === 'function'){
-        window._showQR(%s);
+      location.href = '/download-center?project=' + encodeURIComponent(%s);
+    }
+    function toggleAddChannelDropdown(kind){
+      var targetId = kind === 'mirror' ? 'addChannelDropdownMirror' : 'addChannelDropdown';
+      var dd = document.getElementById(targetId);
+      if(!dd) return;
+      if(dd.classList.contains('hidden')){
+        dd.classList.remove('hidden');
+        dd.innerHTML = '';
+        var list = %s || [];
+        if(!list.length){
+          dd.innerHTML = '<p>无更多渠道可添加</p>';
+          return;
+        }
+        list.forEach(function(item){
+          dd.innerHTML += '<button type=\"button\" class=\"add-channel-btn\" data-channel-id=\"' + item.id + '\">' + item.name + '</button>';
+        });
+      } else {
+        dd.classList.add('hidden');
       }
+    }
+    function addProjectChannel(cid){
+      fetch('/admin/projects/' + encodeURIComponent(%s) + '/channels/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({channel_id:cid}), credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); });
+    }
+    function removeProjectChannel(cid){
+      if(!confirm('确定从项目中移除此渠道？')) return;
+      fetch('/admin/projects/' + encodeURIComponent(%s) + '/channels/remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({channel_id:cid}), credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); });
+    }
+    function pvDeleteVersion(id){
+      if(!confirm('确定删除该 VersionCode 吗？')) return;
+      fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/delete/' + encodeURIComponent(id), { method:'DELETE', credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); });
     }
     function pvGotoGmWizard(){
       var params = new URLSearchParams({
@@ -970,15 +1060,9 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           pvOpenModal(btn.getAttribute('data-pv-modal-open'));
         });
       });
+      window.__PV_VERSION_ROWS = %s;
       document.getElementById('pvCreateVersionBtn').addEventListener('click', function(){ pvOpenModal('version-group'); });
       document.getElementById('pvQuickCreateVersion').addEventListener('click', pvQuickCreateVersionGroup);
-      document.getElementById('pvOpenVersionCodeModal').addEventListener('click', function(){
-        var target = document.getElementById('pvQuickVersionCodeTarget').value || '';
-        if(target){
-          pvCloseModal('version-code');
-          openVersionCodeModal(target);
-        }
-      });
       document.getElementById('pvSaveQuickVersionCode').addEventListener('click', pvQuickSaveVersionCode);
       document.getElementById('pvGotoGmWizard').addEventListener('click', pvGotoGmWizard);
       document.getElementById('pvVersionSearch').addEventListener('input', pvApplyFilters);
@@ -1004,6 +1088,27 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       hiddenInput.id = 'pvPlatformFilterHidden';
       hiddenInput.value = 'all';
       document.body.appendChild(hiddenInput);
+      document.addEventListener('click', function(e){
+        var addBtn = e.target.closest('.add-channel-btn');
+        if(addBtn){ addProjectChannel(addBtn.getAttribute('data-channel-id') || ''); return; }
+        var removeBtn = e.target.closest('.remove-channel-btn');
+        if(removeBtn){ removeProjectChannel(removeBtn.getAttribute('data-channel-id') || ''); return; }
+        var editBtn = e.target.closest('[data-edit-version]');
+        if(editBtn){
+          var target = editBtn.getAttribute('data-edit-version') || '';
+          document.getElementById('pvQuickVersionCodeTarget').value = target;
+          var row = (window.__PV_VERSION_ROWS || []).find(function(item){ return String(item.id || '') === target; });
+          if(row){
+            document.getElementById('pvQuickVersionCodeValue').value = row.version_code || '';
+            document.getElementById('pvQuickVersionCodeStatus').value = row.version_status || 'active';
+            document.getElementById('pvQuickVersionCodeChangelog').value = row.notes || '';
+          }
+          pvOpenModal('version-code');
+          return;
+        }
+        var delBtn = e.target.closest('[data-delete-version]');
+        if(delBtn){ pvDeleteVersion(delBtn.getAttribute('data-delete-version') || ''); return; }
+      });
       var projectSearch = document.getElementById('pvProjectTreeSearch');
       if(projectSearch){
         projectSearch.addEventListener('input', function(){
@@ -1019,34 +1124,31 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           switchPvPanel('versions');
           if(typeof pvRefreshSummaries === 'function'){ pvRefreshSummaries(); }
           var desiredStage = document.querySelector('.project-version-design-app').getAttribute('data-default-stage') || 'production';
-          var stageBtn = document.querySelector('#channelsVersionsWrap .channel-stage-tab[data-stage=\"' + desiredStage + '\"]');
-          if(stageBtn){ stageBtn.click(); }
           document.getElementById('pvQuickVersionStage').value = desiredStage;
           document.getElementById('pvGmEnv').value = desiredStage === 'production' ? 'prod' : desiredStage;
+          document.getElementById('pvStageFilter').value = 'all';
         }catch(e){ console.warn(e); }
       }, 30);
-      setInterval(function(){
-        try{ pvRefreshSummaries(); }catch(e){}
-      }, 2000);
     })();
   </script>
 </div>
 ''' % (
         html.escape(project_id),
         html.escape(selected_stage),
-        quote(project_id), quote(project_id), quote(project_id), quote(project_id), quote(project_id), quote(project_id), quote(project_id), quote(project_id),
+        project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url,
         html.escape(project_name),
         html.escape(username or '运维管理员'),
         project_tree_html,
         html.escape(project_name),
         metrics_html,
+        version_overview_html,
         project_channels_html or '<span class="text-slate-400">暂无渠道</span>',
         (
             '<div class="mt-4"><button type="button" id="pvPanelAddChannelBtn" onclick="event.preventDefault();event.stopPropagation();pvOpenModal(\'channels\');return false;" class="pv-blue-btn"><i class="fas fa-plus"></i><span>添加渠道</span></button></div>'
             if can_edit else ''
         ),
-        quote(project_id),
-        quote(project_id),
+        project_id_url,
+        project_id_url,
         download_center_html,
         html.escape(project_name),
         html.escape(phase_label),
@@ -1054,25 +1156,31 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(phase_label),
         html.escape(created_at or '-'),
         html.escape(owner or '-'),
-        quote(project_id),
+        project_id_url,
         recent_activity_html,
         html.escape(project_id),
         html.escape(project_id),
-        quote(project_id), quote(project_id),
+        project_id_url, project_id_url,
         project_channels_html or '<span class="text-slate-400">暂无渠道</span>',
         (
             ''
             if can_edit else '<span class="text-xs text-slate-400">仅可由有权限成员维护</span>'
         ),
-        ''.join('<option value="%s">%s</option>' % (html.escape(cid), html.escape(cname)) for cid, cname in project_channels),
-        ''.join('<option value="%s">%s</option>' % (html.escape(cid), html.escape(cname)) for cid, cname in project_channels),
-        quote(project_id),
+        channel_options_html,
+        channel_options_html,
+        project_id_url,
         html.escape(qr_filename or (project_name + '.apk')),
         html.escape(qr_size),
         ('onclick="pvOpenQrPreview()"' if qr_filename else 'disabled'),
-        compat_html,
-        json.dumps(project_id),
-        json.dumps(qr_filename, ensure_ascii=False),
+        project_id_js,
+        project_id_js,
+        project_id_js,
+        available_channels_js,
+        project_id_js,
+        project_id_js,
+        project_id_js,
+        project_id_js,
+        version_rows_js,
     )
 
 
