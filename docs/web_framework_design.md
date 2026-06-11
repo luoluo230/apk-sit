@@ -5,157 +5,335 @@
 
 ## 1. 目标
 
-这份文档只回答 Web 自身怎么组织、怎么启动、怎么扩展、怎么避免改乱。
+这份文档只回答两件事：
 
-- 运行入口统一
-- 路由边界清晰
-- 服务层和数据层职责固定
-- 发版、运维、项目管理共用同一套装配方式
+1. Web 管理端当前真实功能是怎么组织的。
+2. 项目管理里的“版本管理 + 发版工作台”应该如何给设计师重做 UI，且不漏功能、不漏弹窗、不漏跳转。
 
-## 2. 运行入口
+适用范围：
 
-唯一应用装配入口：
+- 项目管理
+- 项目工作台
+- 项目版本管理
+- GM 发版工作台
+- 相关构建、下载、测试设备、发布、回滚、对账入口
 
-- `portals/common/core/app_new.py`
+---
 
-运行视图：
+## 2. 真实页面入口
 
-- Admin: `admin_wsgi:app`
-- Player: `player_wsgi:app`
-- Forum: `forum_wsgi:app`
+当前和“项目版本管理 / 发版”直接相关的真实页面入口如下：
 
-约束：
-
-- 所有 Blueprint 只在 `app_new.py` 注册
-- `routes/*` 负责 HTTP 入参、鉴权、返回
-- `services/*` 负责业务编排
-- `models/*` 负责 JSON 数据读写与领域对象
-- `scripts/*` 负责诊断、模拟、验收、部署辅助
-- 禁止把业务规则写回 WSGI 入口或模板
-
-## 3. 目录分层
-
-核心目录：
-
-- `portals/common/core/routes`
-- `portals/common/core/services`
-- `portals/common/core/models`
-- `portals/common/core/scripts`
-- `portals/common/core/templates`
-- `portals/common/core/static`
-- `data`
-
-分层职责：
-
-| 层 | 位置 | 职责 |
+| 页面 | 路由 | 说明 |
 |---|---|---|
-| App | `app_new.py` | Flask 初始化、Blueprint 注册、模式切换、基础中间件 |
-| Route | `routes/*` | 页面路由、API 路由、参数归一、权限校验、响应拼装 |
-| Service | `services/*` | 发版、运维、Jenkins、项目业务规则 |
-| Model | `models/*` | JSON 持久化、记录更新、审计辅助 |
-| Script | `scripts/*` | E2E 模拟、CI gate、数据修复、诊断 |
-| Data | `data/*` | manifest、scope、bundle、版本、审批、拓扑、agent 等真源 |
+| 项目管理总览 | `/admin/projects` | 项目列表、基础管理入口 |
+| 项目工作台 | `/admin/projects/{project_id}` | 项目概览、快捷跳转、版本/GM/运维入口 |
+| 项目版本管理 | `/admin/projects/{project_id}/versions` | 项目内版本管理独立页，设计师重点页面 |
+| 单版本工作流 | `/admin/projects/{project_id}/versions/{version_id}/workflow` | 单个 VersionCode 的构建/流程页 |
+| 项目构建历史 | `/admin/projects/{project_id}/build-history` | 构建记录与详情 |
+| GM 发版工作台 | `/admin/gm-ops?project_id={project_id}` | 发布、预检、审批、回滚、对账 |
+| 运维中心 | `/admin/ops-platform?project_id={project_id}` | topology、agent、runtime、服务 |
+| 下载中心 | `/download-center?project={project_id}` | 安装包下载与扫码下载 |
 
-## 4. Blueprint 地图
+代码真实入口：
 
-已装配的主模块：
+- 项目工作台/版本管理主页面：`portals/common/core/routes/admin_routes.py`
+- GM 发版工作台：`portals/common/core/routes/gm_ops.py`
 
-- `auth_bp`：登录、登出、用户资料
-- `home_bp`：下载中心、基础站点入口
-- `download_bp`：下载、上传、OSS 代理下载
-- `api_bp`：健康检查、开放 API、`/api/runtime/version-resolve`
-- `workspace_bp`：工作区文件、书签、凭证、便签
-- `docs_bp`：站内文档
-- `admin_routes_bp`：后台首页、项目中心、审批、审计、设置
-- `admin_products_bp`：产品管理
-- `build_routes_bp`：构建历史、构建触发、APK 收尾
-- `dashboard_routes_bp`：分析看板
-- `versions_routes_bp`：版本页
-- `jenkins_manage_bp`：Jenkins 实例与环境管理
-- `gm_ops_bp`：GM 发版、回滚、公共发版接口
-- `gm_legacy_bp`：旧运维/GM 兼容入口
-- `commercial_release_bp`：商业发版流水线页面与触发
-- `release_bp`：release scope / bundle / manifest 查询与维护
+---
 
-## 5. Web 关键模块边界
+## 3. 功能结构总览
 
-### 5.1 项目与版本
+当前产品不是“单一版本列表页”，而是两段式闭环：
 
-- 项目入口：`admin_routes.py`
-- 版本管理：`versions_routes.py`
-- 构建与 APK 收尾：`build_routes.py`
-- Jenkins 管理：`jenkins_manage_routes.py`
+1. 项目版本管理
+   负责渠道、阶段、版本组、VersionCode、构建、下载、测试设备、基础产物路径维护。
+2. GM 发版工作台
+   负责上下文固定、预检、审批、发布、回滚、对账、质量门禁、参数闭环。
 
-### 5.2 发版域
+因此设计上必须拆成两大主页面：
 
-- 运营发版入口：`gm_ops.py`
-- 发布域查询入口：`routes/release/scopes.py`
-- 领域服务：`services/release/bundle_service.py`
+1. 项目版本管理页
+2. GM 发版工作台
 
-发版域内部真源：
+如果只设计“版本表格页”，会漏掉：
 
-- `data/project_release_manifests.json`
-- `data/release_scopes.json`
-- `data/release_bundles.json`
-- `project_versions` 对应的数据文件
+- VersionCode 分层
+- 测试设备管理
+- 构建详情
+- 发布向导
+- 回滚/对账
+- Scope/Bundle 状态
+- 参数闭环与质量门禁
 
-### 5.3 运维域
+---
 
-- 页面入口：`routes/ops/pages.py`
-- 拓扑：`routes/ops/topology.py`
-- Agent：`routes/ops/agents.py`
-- Runtime：`routes/ops/runtime.py`
-- Cluster：`routes/ops/cluster.py`
-- 服务动作：`routes/ops/services.py`
+## 4. 统一字段基线
 
-### 5.4 公共接口域
+设计稿中凡是“详情卡片 / 状态条 / 结果页 / 成功页 / 回滚页”需要展示关键标识时，统一使用下面这组字段：
 
-发版闭环必须经过这些公共接口：
+| 字段 | 含义 | 是否建议在 UI 可见 |
+|---|---|---|
+| `project_id` | 项目标识 | 是 |
+| `env_key` | 环境键 | 是 |
+| `channel_id` | 渠道主键 | 是 |
+| `scope_id` | 发布作用域 | 是 |
+| `version_name` | 展示版本号 | 是 |
+| `version_code` | 构建号 | 是 |
+| `platform` | 平台 | 是 |
+| `bundle_id` | 本次发布快照 ID | 是 |
+| `active_bundle_id` | 当前生效快照 ID | 是 |
+| `topology_id` | 服务端拓扑 ID | 是 |
+| `runtime_run_id` | 当前运行态快照 ID | 是 |
+| `gateway_ws` | 客户端连接地址 | 是 |
+| `login_http` | 登录服务地址 | 建议在详情页可见 |
+| `game_ws` | 游戏服务地址 | 建议在详情页可见 |
 
-- `GET /api/runtime/version-resolve`
-- `GET /api/public/release-config`
-- `GET /api/public/runtime-bootstrap`
+---
 
-## 6. 当前采用的数据策略
+## 5. 给设计师的 PRD / UI 线框清单
 
-当前项目仍以 JSON 文件为持久化底座，优点是快，缺点是并发保护弱。
+下面这部分可直接转给设计师。  
+要求：按“页面-模块-弹窗-状态-跳转-字段”六列设计，所有列都必须覆盖。
 
-现阶段约束：
+### 5.1 项目管理总览
 
-- 正式发版逻辑必须走统一 service，不能各模块自己改 JSON
-- 版本状态、bundle 状态、scope 上下文必须一次性同步
-- 所有 public release API 只能读取 bundle 对齐后的有效状态
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目管理总览 `/admin/projects` | 项目列表、搜索筛选、项目卡片/表格、创建项目入口、项目状态标签、成员摘要 | 新建项目弹窗、编辑项目弹窗、删除确认弹窗 | 空状态、加载中、无权限、创建成功、保存失败 | 进入项目工作台、进入项目设置、进入版本管理 | `project_id`、项目名称、项目阶段、成员、默认环境、默认渠道 |
 
-## 7. 当前框架成熟度结论
+### 5.2 项目工作台
 
-已经成熟的部分：
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目工作台 `/admin/projects/{project_id}` | 顶部项目头部、任务统计卡、最近任务、项目信息、团队成员、快捷操作区 | 模块配置弹窗或侧栏 | 加载中、项目不存在、无权限、无任务、无成员 | 去任务、去版本、去 GM、去运维、去统计、去文档 | `project_id`、项目名、项目阶段、创建时间、成员、任务统计 |
 
-- Flask 装配结构清楚
-- 路由按领域拆分基本成型
-- 发版、运维、Jenkins、项目中心已能共存于同一应用
-- 关键公共发版接口已统一到 `gm_ops.py + bundle_service.py`
+### 5.3 项目版本管理主页面
 
-仍需长期治理的部分：
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理 `/admin/projects/{project_id}/versions` | 顶部项目头部、渠道管理区、阶段切换区、版本筛选区、版本组列表、VersionCode 子表、行展开详情、项目下载区、测试设备入口 | 新建/编辑版本弹窗、VersionCode 弹窗、渠道管理弹窗、测试设备弹窗、下载弹窗、二维码弹窗、删除确认弹窗、构建详情弹窗 | 无渠道、无版本、无 VersionCode、筛选无结果、构建中、构建失败、APK 未找到、删除失败、保存成功 | 去单版本工作流、去构建历史、去下载中心、去项目工作台、去 GM 发版工作台 | `project_id`、`channel_id`、`version_name`、`version_code`、`platform`、`version_status`、`apk_path`、`resource_path`、`config_path`、`jenkins_job_id`、下载次数、推荐标记 |
 
-- JSON 持久化后续应迁移到结构化存储或增加更强锁
-- `routes` 目录仍存在少量 legacy/bak 文件，需要继续清理
-- 运维域与 GM 域仍有一部分历史兼容入口，需要继续收口
+### 5.4 版本组视图
 
-## 8. 开发规则
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理中的版本组卡片 | 版本组头部、推荐标记、通用/商业版标记、有效状态汇总、下载汇总、组级操作按钮 | 编辑版本组弹窗、删除版本组确认弹窗、增加 VersionCode 弹窗 | 全部有效、部分有效、全部非有效、推荐、商业版、通用版 | 展开组内 VersionCode、编辑版本组、删除版本组 | `version_name`、组内 VersionCode 数量、有效数量、下载次数、版本模式 |
 
-- 新功能先决定属于哪个领域，再决定落在哪个 Blueprint
-- 页面改动先定位真实 route，再改模板或前端脚本
-- 发布链路相关规则统一放 service，不允许页面层拼业务状态
-- 所有对外状态字段优先使用统一主键：
-  - `project_id`
-  - `env_key`
-  - `channel_id`
-  - `scope_id`
-  - `bundle_id`
-  - `topology_id`
-  - `runtime_run_id`
+### 5.5 VersionCode 子表
 
-## 9. 与发版链路文档的关系
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理中的 VersionCode 行 | VersionCode 行、状态徽标、安装包状态、下载按钮、编辑按钮、删除按钮、展开详情按钮 | 编辑 VersionCode 弹窗、删除确认弹窗、下载弹窗 | `draft`、`testing`、`active`、`disabled`、`archived`、构建中、APK 已落盘、APK 未找到 | 去工作流页、打开下载弹窗、展开详情 | `version_code`、`stage`、`platform`、`version_status`、`apk_status`、`apk_path`、`resource_path`、`config_path` |
 
-这份文档只管 Web 框架本身。  
-Jenkins、Ops、拓扑、Agent、客户端热更、全链路参数和接口统一，全部以 `docs/full_release_chain_architecture.md` 为准。
+### 5.6 新建 / 编辑版本弹窗
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理 | Tab 化大表单：基础身份、安装包与热更、发布信息、商业流水线 | `versionModal` | 字段校验失败、重复版本、保存成功、保存失败、平台切换联动、商业版开关联动 | 保存后回列表；可切换到 VersionCode 流程 | `channel_id`、`stage`、`platform`、`version_name`、`version_status`、`distribution_method`、`package_name`、`min_sdk`、`bundle_id`、`min_ios_version`、`apk_path`、`resource_path`、`config_path`、`jenkins_job_id`、`changelog`、`notes` |
+
+### 5.7 增加 / 编辑 VersionCode 弹窗
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理 | VersionCode 基础信息、运行时兼容字段、路径自动推导、保存按钮 | `versionCodeModal` | VersionCode 为空、VersionCode 重复、保存成功、保存失败 | 保存后回到对应版本组 | `version_name`、`version_code`、`platform`、`stage`、`apk_path`、`resource_path`、`config_path` |
+
+### 5.8 渠道管理
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理 | 当前项目渠道列表、添加渠道、移除渠道 | `channelManageModal` 或下拉面板 | 暂无渠道、添加成功、移除失败、渠道重复 | 回到版本列表当前渠道 | `channel_id`、渠道名、渠道说明、默认渠道标记 |
+
+### 5.9 测试设备管理
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目版本管理 | 设备表单、设备列表、编辑、删除 | `deviceManageModal` | 暂无设备、保存成功、保存失败、删除成功 | 关闭后回版本页；不单独跳页 | `device_id`、`platform`、`stage`、备注名、说明 |
+
+### 5.10 项目构建历史
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 项目构建历史 `/admin/projects/{project_id}/build-history` | 构建列表、筛选、构建详情、日志摘要、产物链接 | 构建详情弹窗 | 排队中、构建中、成功、失败、取消、无记录 | 回版本页、去工作流页 | 构建号、Jenkins 实例、Job 名、触发人、开始时间、结束时间、产物链接 |
+
+### 5.11 单个 VersionCode 工作流页
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| `/admin/projects/{project_id}/versions/{version_id}/workflow` | 版本信息卡、构建流程、操作记录、日志、产物区 | 构建详情弹窗、确认执行弹窗 | 未开始、执行中、成功、失败、已取消 | 回版本管理、去构建历史 | `project_id`、`version_id`、`version_name`、`version_code`、`platform`、构建状态、产物路径 |
+
+### 5.12 下载中心 / 下载弹窗 / 二维码弹窗
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| 下载中心及版本内下载能力 | 项目下载列表、平台区分、推荐包、下载按钮、二维码展示 | `versionDownloadsModal`、`projectQRModal` | 暂无安装包、下载成功、二维码生成失败 | 去项目版本管理、扫码下载 | 文件名、平台、版本号、文件大小、下载次数、下载链接 |
+
+### 5.13 GM 发版工作台
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| `/admin/gm-ops?project_id={project_id}` | 项目上下文区、六分区 Tab、发布五步向导、Scope/Bundle 摘要、参数字典、执行结果、质量门禁、运行态摘要 | 审批确认弹窗、执行发布确认弹窗、回滚确认弹窗、结果详情弹窗 | 上下文未选择、预检中、审批中、发布中、回滚中、对账中、成功、失败、门禁阻断 | 去运维中心、回项目版本管理、查看对账结果 | `project_id`、`env_key`、`channel_id`、`platform`、`scope_id`、`bundle_id`、`active_bundle_id`、`topology_id`、`runtime_run_id`、`gateway_ws` |
+
+### 5.14 GM 发版工作台中的五步发布向导
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| GM 发版工作台 | 步骤 1 版本与资源基础；步骤 2 分发与客户端；步骤 3 策略与执行编排；步骤 4 路由与审批；步骤 5 预检与执行 | 审批、执行、回滚确认弹窗 | 必填未完成、预检失败、审批成功、发布成功、发布失败、回滚成功、对账异常 | 每步可前后切换；发布成功后可回版本管理查看状态 | `version_name`、`apk_version`、`resource_version`、`config_version`、`apk_url`、`resource_url`、`config_url`、`distribution_method`、`package_name`、`bundle_id`、`client_version`、`upload_provider`、`bucket`、`region`、`cdn_prefix`、`path_template`、`release_mode`、`targets`、`code_units`、`config_units`、`asset_units`、`reason` |
+
+### 5.15 运维中心联动要求
+
+| 页面 | 模块 | 弹窗 | 状态 | 跳转 | 字段 |
+|---|---|---|---|---|---|
+| `/admin/ops-platform?project_id={project_id}` | topology 视图、agent 绑定、服务列表、runtime 状态、探活结果、启停动作 | 启动确认、停止确认、风险提示弹窗 | 未绑定、未启动、部分就绪、全部就绪、探活失败 | 从 GM 发版页跳转过来；处理后返回发布页继续执行 | `project_id`、`env_key`、`topology_id`、`runtime_run_id`、节点状态、服务状态、探活结果 |
+
+---
+
+## 6. 设计师必须覆盖的状态集合
+
+设计稿不能只画“正常态”，至少要补全以下状态：
+
+### 6.1 列表类状态
+
+- 无项目
+- 无渠道
+- 无版本
+- 无 VersionCode
+- 无构建记录
+- 无测试设备
+- 无下载包
+- 筛选无结果
+
+### 6.2 表单类状态
+
+- 初始空白态
+- 必填未填
+- 字段格式错误
+- 重复 VersionCode
+- 保存中
+- 保存成功
+- 保存失败
+
+### 6.3 发布类状态
+
+- 预检通过
+- 预检失败
+- 审批待提交
+- 审批中
+- 已审批待执行
+- 发布执行中
+- 发布成功
+- 发布失败
+- 回滚执行中
+- 回滚成功
+- 回滚失败
+- 对账通过
+- 对账异常
+
+### 6.4 风险视觉分级
+
+必须区分：
+
+- 普通信息
+- 可继续操作提醒
+- 阻断型错误
+- 危险操作
+
+不能把“保存”“发布”“回滚”“删除”都设计成一种按钮层级。
+
+---
+
+## 7. 当前设计是否合理
+
+结论：功能闭环基本是对的，但当前页面设计不够合理，已经明显不适合继续堆字段，必须重做信息架构和交互层级。
+
+### 7.1 合理的地方
+
+1. 功能链路完整
+   版本、构建、下载、测试设备、发布、回滚、对账、运维入口都已存在，业务闭环方向是对的。
+2. 项目上下文优先
+   大部分页面都围绕 `project_id` 展开，能减少跨项目误操作。
+3. 版本组 + VersionCode 两层模型是合理的
+   这符合真实发版场景，便于一个版本名下维护多构建号。
+4. 发版单独拆到 GM 工作台是合理的
+   发布不应和普通版本编辑混在一个列表里。
+
+### 7.2 不合理的地方
+
+1. 信息密度过高
+   版本管理页同时塞了项目头部、任务、成员、快捷入口、渠道、版本、下载、设备、弹窗入口，视觉焦点太散。
+2. “版本管理”和“发版”边界对用户不够清晰
+   用户很容易以为在版本页改完就等于完成发布，但真实发布动作在 GM 工作台。
+3. 版本弹窗过重
+   当前新建/编辑版本弹窗字段很多，虽然已有 Tab，但依然偏重，尤其商业版字段会让普通用户迷失。
+4. 组级操作和行级操作混杂
+   “编辑版本组”和“编辑 VersionCode”对非熟悉用户非常容易混淆。
+5. 页面层级太多但导航提示不够
+   工作台、版本页、工作流页、构建历史页、GM 页、运维页都在，但缺少清晰的面包屑和流程提示。
+6. 发布关键结果不够突出
+   `scope_id / bundle_id / topology_id / runtime_run_id` 这类核心字段应该成为发布结果卡片主信息，而不是埋在结果 JSON 或次级区域。
+7. 危险动作层级不够强
+   删除、发布、回滚都需要更强的确认与风险提示，不适合继续沿用轻量按钮风格。
+
+### 7.3 建议的重设计方向
+
+1. 项目版本管理页只做“版本资产管理”
+   聚焦渠道、阶段、版本组、VersionCode、构建、下载、设备。
+2. GM 发版工作台只做“发版闭环”
+   聚焦上下文、预检、审批、发布、回滚、对账、门禁。
+3. VersionCode 和版本组操作明确分层
+   视觉上区分“组级配置”和“构建号级配置”。
+4. 关键结果卡片化
+   发布成功/失败页必须把 `scope_id / bundle_id / topology_id / runtime_run_id / gateway_ws` 做成可复制卡片。
+5. 危险操作全部标准化
+   删除、发布、回滚统一使用带风险说明的确认弹窗。
+
+---
+
+## 8. 给设计师的交付要求
+
+设计师交付时至少要包含：
+
+1. 页面级线框
+   - 项目工作台
+   - 项目版本管理
+   - 单版本工作流页
+   - 构建历史页
+   - GM 发版工作台
+2. 所有弹窗线框
+   - 新建/编辑版本
+   - VersionCode
+   - 渠道管理
+   - 测试设备
+   - 下载
+   - 二维码
+   - 构建详情
+   - 发布确认
+   - 回滚确认
+   - 删除确认
+3. 所有关键状态
+   - 空态
+   - 加载态
+   - 成功态
+   - 失败态
+   - 风险态
+4. 页面跳转图
+   - 项目列表 → 工作台 → 版本管理 → 工作流/构建历史
+   - 版本管理 → GM 发版工作台 → 运维中心 → 回发版页
+5. 字段清单
+   - 普通用户可见字段
+   - 高级字段
+   - 只读系统字段
+   - 发布结果字段
+
+---
+
+## 9. 结论
+
+如果目标是“我自己发版时，配好版本信息、资源、配置、APK、服务器后可以直接发，不被打断”，那么 UI 上最关键的不是继续堆功能，而是把以下三层分清：
+
+1. 版本资产管理
+2. 发版执行闭环
+3. 运维运行态确认
+
+当前功能链路已经够用，但当前页面设计不够适合正式团队协作。  
+下一轮 UI 重做，应该优先解决“信息分层、动作分层、风险分层、结果可对账”这四件事。
