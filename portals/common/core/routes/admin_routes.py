@@ -728,8 +728,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-brand-copy span { display: block; font-size: 11px; color: rgba(230, 239, 255, .72); margin-top: 4px; }
     .project-version-design-app .pv-nav-group { margin-top: 10px; }
     .project-version-design-app .pv-nav-title { padding: 12px 10px 8px; font-size: 12px; color: rgba(214, 225, 255, .48); letter-spacing: .02em; }
-    .project-version-design-app .pv-nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 12px; margin-bottom: 4px; color: #d7e5ff; border-radius: 12px; font-size: 13px; font-weight: 500; }
-    .project-version-design-app .pv-nav-item span { white-space: nowrap; }
+    .project-version-design-app .pv-nav-item { display: flex; align-items: center; gap: 9px; padding: 10px 10px; margin-bottom: 4px; color: #d7e5ff; border-radius: 12px; font-size: 12px; font-weight: 500; }
+    .project-version-design-app .pv-nav-item span { white-space: nowrap; line-height: 1.2; }
     .project-version-design-app .pv-nav-item:hover { background: rgba(255,255,255,.08); }
     .project-version-design-app .pv-nav-item.is-active { background: linear-gradient(90deg, rgba(55, 116, 255, .48), rgba(67, 115, 255, .22)); box-shadow: inset 0 0 0 1px rgba(141, 180, 255, .18); }
     .project-version-design-app .pv-main { display: flex; flex-direction: column; min-width: 0; }
@@ -769,6 +769,13 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
     .project-version-design-app .pv-kpi-card { min-height: 78px; background: rgba(255,255,255,.96); border: 1px solid #e4eafe; border-radius: 18px; padding: 12px 13px; display: flex; align-items: center; gap: 10px; box-shadow: 0 8px 24px rgba(78, 101, 152, .06); min-width: 0; }
     .project-version-design-app .pv-kpi-icon { width: 38px; height: 38px; border-radius: 12px; background: #f8fbff; display: flex; align-items: center; justify-content: center; }
+    .project-version-design-app .pv-kpi-card:nth-child(1) .pv-kpi-icon { background: #eef4ff; color: #2f6cff; }
+    .project-version-design-app .pv-kpi-card:nth-child(2) .pv-kpi-icon { background: #ebfff4; color: #15a05f; }
+    .project-version-design-app .pv-kpi-card:nth-child(3) .pv-kpi-icon { background: #eef5ff; color: #243b5e; }
+    .project-version-design-app .pv-kpi-card:nth-child(4) .pv-kpi-icon { background: #fff5e8; color: #ff8a1c; }
+    .project-version-design-app .pv-kpi-card:nth-child(5) .pv-kpi-icon { background: #fff0ef; color: #ef4444; }
+    .project-version-design-app .pv-kpi-card:nth-child(6) .pv-kpi-icon { background: #eef5ff; color: #347dff; }
+    .project-version-design-app .pv-kpi-card:nth-child(7) .pv-kpi-icon { background: #ecfbf4; color: #1aa768; }
     .project-version-design-app .pv-kpi-label { font-size: 12px; color: #7b8aa8; }
     .project-version-design-app .pv-kpi-value { font-size: 25px; font-weight: 800; color: #16345d; line-height: 1.1; word-break: break-all; }
     .project-version-design-app .pv-kpi-card:last-child .pv-kpi-value { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
@@ -840,6 +847,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
     .project-version-design-app .pv-quick-link { min-height: 58px; border-radius: 14px; border: 1px solid #e1e9ff; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #456184; font-weight: 500; text-align: center; padding: 8px 4px; }
     .project-version-design-app .pv-quick-link i { color: #2f6cff; font-size: 14px; }
+    .project-version-design-app .pv-quick-link:nth-child(1) i { color: #347dff; }
+    .project-version-design-app .pv-quick-link:nth-child(2) i { color: #22c55e; }
+    .project-version-design-app .pv-quick-link:nth-child(3) i { color: #fb923c; }
+    .project-version-design-app .pv-quick-link:nth-child(4) i { color: #6366f1; }
+    .project-version-design-app .pv-quick-link:nth-child(5) i { color: #2563eb; }
+    .project-version-design-app .pv-quick-link:nth-child(6) i { color: #0ea5e9; }
+    .project-version-design-app .pv-quick-link:nth-child(7) i { color: #8b5cf6; }
+    .project-version-design-app .pv-quick-link:nth-child(8) i { color: #4f46e5; }
     .project-version-design-app .pv-activity-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 12px; color: #64748b; border-bottom: 1px solid #f1f5ff; }
     .project-version-design-app .pv-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .44); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 90; padding: 24px; }
     .project-version-design-app .pv-modal-overlay.is-open { display: flex; }
@@ -876,6 +891,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-channel-main span { font-size: 12px; color: #7d8fad; }
     .project-version-design-app .pv-channel-meta { min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #7d8fad; }
     .project-version-design-app .pv-channel-remove { width: 30px; height: 30px; border-radius: 10px; border: 1px solid #ffd9d9; background: #fff; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; }
+    .project-version-design-app .pv-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .project-version-design-app .pv-panel-toolbar p { font-size: 12px; color: #7b8aa8; }
     .project-version-design-app .pv-modal-footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; }
     .project-version-design-app .pv-mode-pills { display: flex; align-items: center; gap: 10px; }
     .project-version-design-app .pv-mode-pill { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; border-radius: 10px; border: 1px solid #dce6ff; background: #fff; color: #4b648d; font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -1009,9 +1026,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
               </div>
               <div id="pvPanelChannels" class="pv-content-panel">
                 <div class="pv-panel pv-side-card">
-                  <h3>渠道管理</h3>
-                   <div class="pv-chip-list" id="projectChannelsList">%s</div>
-                   %s
+                  <div class="pv-panel-toolbar">
+                    <div>
+                      <h3>渠道管理</h3>
+                      <p>维护当前项目真实可发版渠道与映射参数。</p>
+                    </div>
+                    %s
+                  </div>
+                  <div class="pv-channel-table" id="projectChannelsList">%s</div>
                 </div>
               </div>
               <div id="pvPanelBuilds" class="pv-content-panel">
@@ -1743,11 +1765,11 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(selected_stage_label),
         metrics_html,
         version_overview_html,
-        project_channels_html or '<span class="text-slate-400">暂无渠道</span>',
         (
             '<div class="mt-4"><button type="button" id="pvPanelAddChannelBtn" onclick="event.preventDefault();event.stopPropagation();pvOpenModal(\'channels\');return false;" class="pv-blue-btn"><i class="fas fa-plus"></i><span>添加渠道</span></button></div>'
             if can_edit else ''
         ),
+        project_channels_modal_rows_html,
         recent_builds_html,
         project_id_url,
         project_id_url,
