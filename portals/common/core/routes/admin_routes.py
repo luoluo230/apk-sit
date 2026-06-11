@@ -329,6 +329,17 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         for c in (channels_db if isinstance(channels_db, list) else [])
         if (c.get('id') or '').strip()
     ]
+    channel_details_map = {
+        (c.get('id') or '').strip(): {
+            'id': (c.get('id') or '').strip(),
+            'name': (c.get('name') or c.get('id') or '').strip(),
+            'description': (c.get('description') or '').strip(),
+            'apk_subdir': (c.get('apk_subdir') or '').strip(),
+            'build_param': (c.get('build_param') or '').strip(),
+        }
+        for c in (channels_db if isinstance(channels_db, list) else [])
+        if (c.get('id') or '').strip()
+    }
     project_channels = [row for row in all_channels_list if row[0] in project_channel_ids] if project_channel_ids else all_channels_list
     if not project_channels:
         project_channels = [('default', '默认渠道')]
@@ -344,6 +355,29 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         )
         for cid, cname in project_channels
     )
+    project_channels_modal_rows_html = ''.join(
+        '<div class="pv-channel-row">'
+        '<div class="pv-channel-main">'
+        '<strong>%s</strong>'
+        '<span>%s</span>'
+        '</div>'
+        '<div class="pv-channel-meta">'
+        '<span>%s</span>'
+        '<span>%s</span>'
+        '</div>'
+        '%s'
+        '</div>' % (
+            html.escape((channel_details_map.get(cid) or {}).get('name') or cname),
+            html.escape(cid),
+            html.escape((channel_details_map.get(cid) or {}).get('apk_subdir') or '未配置 APK 子目录'),
+            html.escape((channel_details_map.get(cid) or {}).get('build_param') or '未配置构建参数'),
+            (
+                '<button type="button" class="pv-channel-remove remove-channel-btn" data-channel-id="%s"><i class="fas fa-trash"></i></button>' % html.escape(cid)
+                if can_edit else ''
+            ),
+        )
+        for cid, cname in project_channels
+    ) or '<div class="pv-empty-state">当前项目还没有可用渠道。</div>'
 
     def _stage_count(pid, stage_key):
         rows = project_versions_db.get(pid) or []
@@ -472,6 +506,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             'version_status': _normalize_version_status(row.get('version_status') or 'active'),
             'version_status_label': VERSION_STATUS_MAP.get(_normalize_version_status(row.get('version_status') or 'active'), '有效'),
             'notes': str(row.get('notes') or '').strip(),
+            'version_mode': str(row.get('version_mode') or 'general').strip().lower() or 'general',
             'updated_at': str(row.get('updated_at') or row.get('created_at') or '')[:19],
         })
     version_group_map = {}
@@ -563,7 +598,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             row_html.append(
                 '<tr class="pv-code-row" data-version-id="{id}" data-version-name="{version_name}" data-stage="{stage}" data-status="{status}" data-platform="{platform}">'
                 '<td class="pv-radio-cell"><span class="pv-radio-dot"></span>{version_code}</td>'
-                '<td>{platform_label}</td>'
+                '<td><span class="pv-platform-cell"><i class="fab {platform_icon} {platform_class}"></i><span>{platform_label}</span></span></td>'
                 '<td><span class="pv-mini-tag pv-mini-tag-stage">{stage_short_label}</span></td>'
                 '<td><span class="pv-status-pill {status_class}">{status_label}</span></td>'
                 '<td><span class="pv-status-pill {apk_class}">{apk_label}</span></td>'
@@ -586,6 +621,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                     status=html.escape(row['version_status']),
                     platform=html.escape(row['platform']),
                     version_code=html.escape(row['version_code']),
+                    platform_icon='fa-apple' if row['platform'] == 'ios' else 'fa-android',
+                    platform_class='ios' if row['platform'] == 'ios' else 'android',
                     platform_label=html.escape(row['platform_label']),
                     stage_short_label=html.escape(row['stage_short_label']),
                     status_class=row_status_class,
@@ -610,8 +647,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             '<div class="pv-group-col">'
             '<div class="pv-row-actions">'
             '<a href="/admin/projects/{project_id}/build-history" class="pv-icon-btn" title="查看构建历史"><i class="fas fa-eye"></i></a>'
-            '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-up-right-from-square"></i></a>'
-            '<button type="button" class="pv-icon-btn" title="编辑版本组" data-edit-version="{edit_id}"><i class="fas fa-pen"></i></button>'
+                '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-up-right-from-square"></i></a>'
+            '<button type="button" class="pv-icon-btn" title="编辑版本组" data-edit-version-group="{edit_id}"><i class="fas fa-pen"></i></button>'
             '{delete_button}'
             '<button type="button" class="pv-icon-btn" title="打开发版工作台" data-pv-modal-open="gm-wizard"><i class="fas fa-ellipsis"></i></button>'
             '</div>'
@@ -691,7 +728,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-brand-copy span { display: block; font-size: 11px; color: rgba(230, 239, 255, .72); margin-top: 4px; }
     .project-version-design-app .pv-nav-group { margin-top: 10px; }
     .project-version-design-app .pv-nav-title { padding: 12px 10px 8px; font-size: 12px; color: rgba(214, 225, 255, .48); letter-spacing: .02em; }
-    .project-version-design-app .pv-nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 12px; margin-bottom: 4px; color: #d7e5ff; border-radius: 12px; font-size: 14px; font-weight: 500; }
+    .project-version-design-app .pv-nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 12px; margin-bottom: 4px; color: #d7e5ff; border-radius: 12px; font-size: 13px; font-weight: 500; }
+    .project-version-design-app .pv-nav-item span { white-space: nowrap; }
     .project-version-design-app .pv-nav-item:hover { background: rgba(255,255,255,.08); }
     .project-version-design-app .pv-nav-item.is-active { background: linear-gradient(90deg, rgba(55, 116, 255, .48), rgba(67, 115, 255, .22)); box-shadow: inset 0 0 0 1px rgba(141, 180, 255, .18); }
     .project-version-design-app .pv-main { display: flex; flex-direction: column; min-width: 0; }
@@ -704,8 +742,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-blue-btn { background: linear-gradient(180deg, #3c78ff, #1c61ff); color: white; box-shadow: 0 10px 24px rgba(55, 116, 255, .2); }
     .project-version-design-app .pv-search input { border: 0; outline: 0; background: transparent; width: 238px; font-size: 13px; }
     .project-version-design-app .pv-body { padding: 14px 16px 18px; display: grid; grid-template-columns: 236px minmax(0, 1fr) 248px; gap: 14px; min-width: 0; align-items: start; }
+    .project-version-design-app .pv-body.is-tree-collapsed { grid-template-columns: minmax(0, 1fr) 248px; }
     .project-version-design-app .pv-panel { background: rgba(255,255,255,.92); border: 1px solid #dfe7ff; border-radius: 18px; box-shadow: 0 10px 30px rgba(58, 76, 122, .08); }
     .project-version-design-app .pv-project-tree { padding: 16px 14px; display: flex; flex-direction: column; }
+    .project-version-design-app .pv-project-tree.is-hidden { display: none; }
     .project-version-design-app .pv-section-title { font-size: 15px; font-weight: 700; color: #173057; }
     .project-version-design-app .pv-tree-search { margin-top: 12px; border-radius: 12px; border: 1px solid #dbe5ff; height: 38px; display: flex; align-items: center; padding: 0 12px; gap: 8px; color: #94a3b8; }
     .project-version-design-app .pv-tree-search input { flex: 1; border: 0; outline: 0; background: transparent; font-size: 13px; color: #334155; }
@@ -767,6 +807,9 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-code-row:hover { background: #f8fbff; }
     .project-version-design-app .pv-radio-cell { display: flex; align-items: center; gap: 10px; font-weight: 700; color: #173057; }
     .project-version-design-app .pv-radio-dot { width: 12px; height: 12px; border-radius: 999px; border: 1.5px solid #9db6ea; display: inline-block; box-shadow: inset 0 0 0 2px #fff; background: #2f6cff; }
+    .project-version-design-app .pv-platform-cell { display: inline-flex; align-items: center; gap: 8px; }
+    .project-version-design-app .pv-platform-cell .android { color: #25b35a; }
+    .project-version-design-app .pv-platform-cell .ios { color: #3f7bff; }
     .project-version-design-app .pv-status-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
     .project-version-design-app .pv-badge-green { background: #e7fff2; color: #19a767; }
     .project-version-design-app .pv-badge-amber { background: #fff4df; color: #db8b16; }
@@ -794,15 +837,16 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-topology-preview { min-height: 112px; border: 1px dashed #cedbff; border-radius: 14px; background: linear-gradient(180deg, #fcfdff, #f7faff); padding: 12px; position: relative; overflow: hidden; }
     .project-version-design-app .pv-topology-preview .mini-box { position: absolute; border: 1px solid #cfe0ff; border-radius: 10px; background: white; font-size: 10px; color: #456184; padding: 4px 6px; box-shadow: 0 4px 10px rgba(64,92,160,.08); }
     .project-version-design-app .pv-mini-svg { position: absolute; inset: 0; width: 100%%; height: 100%%; }
-    .project-version-design-app .pv-quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
-    .project-version-design-app .pv-quick-link { min-height: 60px; border-radius: 14px; border: 1px solid #e1e9ff; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #456184; font-weight: 500; }
-    .project-version-design-app .pv-quick-link i { color: #2f6cff; }
+    .project-version-design-app .pv-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+    .project-version-design-app .pv-quick-link { min-height: 58px; border-radius: 14px; border: 1px solid #e1e9ff; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #456184; font-weight: 500; text-align: center; padding: 8px 4px; }
+    .project-version-design-app .pv-quick-link i { color: #2f6cff; font-size: 14px; }
     .project-version-design-app .pv-activity-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 12px; color: #64748b; border-bottom: 1px solid #f1f5ff; }
     .project-version-design-app .pv-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .44); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 90; padding: 24px; }
     .project-version-design-app .pv-modal-overlay.is-open { display: flex; }
-    .project-version-design-app .pv-modal-card { width: min(100%%, 1320px); max-height: calc(100vh - 48px); overflow: auto; padding: 14px; min-height: 260px; display: flex; flex-direction: column; position: relative; }
+    .project-version-design-app .pv-modal-card { width: min(100%%, 1320px); max-height: calc(100vh - 48px); overflow: auto; padding: 14px; min-height: 260px; display: flex; flex-direction: column; position: relative; border-radius: 22px; box-shadow: 0 24px 60px rgba(16, 34, 72, .18); }
     .project-version-design-app .pv-modal-card.pv-modal-narrow { width: min(100%%, 420px); }
-    .project-version-design-app .pv-modal-card h4 { font-size: 14px; font-weight: 800; color: #173057; margin-bottom: 12px; }
+    .project-version-design-app .pv-modal-card.pv-modal-medium { width: min(100%%, 470px); }
+    .project-version-design-app .pv-modal-card h4 { font-size: 14px; font-weight: 800; color: #173057; margin-bottom: 14px; }
     .project-version-design-app .pv-modal-close { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 999px; border: 1px solid #dbe5ff; background: #fff; color: #64748b; display: inline-flex; align-items: center; justify-content: center; }
     .project-version-design-app .pv-field { margin-bottom: 10px; }
     .project-version-design-app .pv-field label { display: block; margin-bottom: 6px; font-size: 11px; color: #8090ac; font-weight: 600; }
@@ -821,6 +865,21 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-chip-list { display: flex; flex-direction: column; gap: 8px; }
     .project-version-design-app .pv-chip-item { height: 34px; border-radius: 10px; border: 1px solid #e1e9ff; background: #fff; display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px; color: #334155; }
     .project-version-design-app .pv-chip-item button { margin-left: auto; color: #8da0c0; }
+    .project-version-design-app .pv-modal-section { border: 1px solid #e5edff; border-radius: 16px; background: linear-gradient(180deg, #ffffff, #fafcff); padding: 14px; margin-bottom: 12px; }
+    .project-version-design-app .pv-modal-section-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .project-version-design-app .pv-modal-section-title strong { font-size: 13px; color: #173057; }
+    .project-version-design-app .pv-modal-section-title span { font-size: 11px; color: #8a9abb; }
+    .project-version-design-app .pv-channel-table { display: flex; flex-direction: column; gap: 10px; }
+    .project-version-design-app .pv-channel-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .95fr) auto; gap: 10px; align-items: center; border: 1px solid #e4eafe; border-radius: 12px; background: #fff; padding: 10px 12px; }
+    .project-version-design-app .pv-channel-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .project-version-design-app .pv-channel-main strong { font-size: 13px; color: #173057; }
+    .project-version-design-app .pv-channel-main span { font-size: 12px; color: #7d8fad; }
+    .project-version-design-app .pv-channel-meta { min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #7d8fad; }
+    .project-version-design-app .pv-channel-remove { width: 30px; height: 30px; border-radius: 10px; border: 1px solid #ffd9d9; background: #fff; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; }
+    .project-version-design-app .pv-modal-footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; }
+    .project-version-design-app .pv-mode-pills { display: flex; align-items: center; gap: 10px; }
+    .project-version-design-app .pv-mode-pill { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; border-radius: 10px; border: 1px solid #dce6ff; background: #fff; color: #4b648d; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .project-version-design-app .pv-mode-pill input { margin: 0; }
     .project-version-design-app .pv-step-line { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 8px; margin-bottom: 14px; }
     .project-version-design-app .pv-step { text-align: center; }
     .project-version-design-app .pv-step-no { width: 30px; height: 30px; border-radius: 999px; margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; background: #eef3ff; color: #5f77a4; font-size: 12px; font-weight: 800; }
@@ -838,7 +897,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     }
     @media (max-width: 1360px) {
       .project-version-design-app .pv-body { grid-template-columns: 220px minmax(0, 1fr); }
-      .project-version-design-app .pv-side { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .project-version-design-app .pv-side { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .project-version-design-app .pv-quick-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
     }
     @media (max-width: 1120px) {
       .project-version-design-app .pv-shell { grid-template-columns: 1fr; }
@@ -886,7 +946,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           <strong>项目版本管理</strong>
         </div>
         <div class="pv-top-actions">
-          <button type="button" class="pv-select-chip"><i class="fas fa-circle-info text-blue-500"></i><span>项目：%s_%s</span><i class="fas fa-chevron-down text-[10px] text-slate-400"></i></button>
+          <a href="/admin/projects" class="pv-select-chip"><i class="fas fa-circle-info text-blue-500"></i><span>项目：%s_%s</span><i class="fas fa-chevron-down text-[10px] text-slate-400"></i></a>
           <a href="/admin/projects" class="pv-blue-btn"><i class="fas fa-plus"></i><span>创建项目</span></a>
           <button type="button" class="pv-white-btn" onclick="pvOpenModal('topology')"><i class="fas fa-plus"></i><span>新建拓扑图</span></button>
           <label class="pv-search"><i class="fas fa-search text-slate-400"></i><input type="text" id="pvGlobalSearch" placeholder="搜索项目、环境、版本、渠道"></label>
@@ -898,7 +958,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         <aside class="pv-panel pv-project-tree">
           <div class="flex items-center justify-between">
             <h3 class="pv-section-title">项目与环境</h3>
-            <button type="button" class="text-slate-400 hover:text-slate-600"><i class="fas fa-xmark"></i></button>
+            <button type="button" class="text-slate-400 hover:text-slate-600" id="pvTreeCollapseBtn"><i class="fas fa-xmark"></i></button>
           </div>
           <label class="pv-tree-search"><i class="fas fa-search text-slate-400"></i><input type="text" id="pvProjectTreeSearch" placeholder="搜索项目"></label>
           <div class="pv-tree-scroll" id="pvProjectTree">%s</div>
@@ -1062,12 +1122,17 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     </div>
   </div>
   <div class="pv-modal-overlay" data-pv-modal="channels" onclick="if(event.target===this){ pvCloseModal('channels'); }">
-    <div class="pv-panel pv-modal-card pv-modal-narrow" onclick="event.stopPropagation()">
+    <div class="pv-panel pv-modal-card pv-modal-medium" onclick="event.stopPropagation()">
       <button type="button" class="pv-modal-close" onclick="pvCloseModal('channels')"><i class="fas fa-times"></i></button>
           <h4>渠道管理</h4>
-          <div class="pv-chip-list" id="projectChannelsListMirror">%s</div>
-          <div class="mt-3">%s</div>
-          <div class="pv-dock-actions">
+          <div class="pv-modal-section">
+            <div class="pv-modal-section-title">
+              <strong>当前渠道</strong>
+              <span>维护项目实际可发版渠道</span>
+            </div>
+            <div class="pv-channel-table" id="projectChannelsListMirror">%s</div>
+          </div>
+          <div class="pv-modal-footer">
             <button type="button" class="pv-secondary" onclick="pvCloseModal('channels');switchPvPanel('channels')">查看列表</button>
             <div class="pv-dropdown-shell">
               <button type="button" class="pv-primary" onclick="toggleAddChannelDropdown('mirror')">添加渠道</button>
@@ -1090,19 +1155,39 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     </div>
   </div>
   <div class="pv-modal-overlay" data-pv-modal="version-group" onclick="if(event.target===this){ pvCloseModal('version-group'); }">
-    <div class="pv-panel pv-modal-card pv-modal-narrow" onclick="event.stopPropagation()">
+    <div class="pv-panel pv-modal-card pv-modal-medium" onclick="event.stopPropagation()">
       <button type="button" class="pv-modal-close" onclick="pvCloseModal('version-group')"><i class="fas fa-times"></i></button>
           <h4>新建版本组</h4>
-          <div class="pv-field"><label>版本号（Version Name）</label><input id="pvQuickVersionName" class="pv-input" placeholder="v1.2.4"></div>
-          <div class="pv-inline-two">
-            <div class="pv-field"><label>渠道</label><select id="pvQuickVersionChannel" class="pv-select">%s</select></div>
-            <div class="pv-field"><label>阶段</label><select id="pvQuickVersionStage" class="pv-select"><option value="production">prod</option><option value="test">test</option><option value="dev">dev</option></select></div>
+          <input type="hidden" id="pvQuickVersionGroupTarget" value="">
+          <div class="pv-modal-section">
+            <div class="pv-modal-section-title">
+              <strong>版本标识</strong>
+              <span>版本号、渠道、阶段</span>
+            </div>
+            <div class="pv-field"><label>版本号（Version Name）</label><input id="pvQuickVersionName" class="pv-input" placeholder="v1.2.4"></div>
+            <div class="pv-inline-two">
+              <div class="pv-field"><label>渠道</label><select id="pvQuickVersionChannel" class="pv-select">%s</select></div>
+              <div class="pv-field"><label>阶段</label><select id="pvQuickVersionStage" class="pv-select"><option value="production">prod</option><option value="test">test</option><option value="dev">dev</option></select></div>
+            </div>
           </div>
-          <div class="pv-inline-two">
-            <div class="pv-field"><label>版本模式</label><select id="pvQuickVersionMode" class="pv-select"><option value="general">通用版</option><option value="commercial">商业版</option></select></div>
-            <div class="pv-field"><label>发布阶段</label><select id="pvQuickVersionStatus" class="pv-select"><option value="draft">draft</option><option value="testing">testing</option><option value="active">active</option><option value="disabled">disabled</option></select></div>
+          <div class="pv-modal-section">
+            <div class="pv-modal-section-title">
+              <strong>版本配置</strong>
+              <span>模式与发布状态</span>
+            </div>
+            <div class="pv-inline-two">
+              <div class="pv-field">
+                <label>版本模式</label>
+                <div class="pv-mode-pills">
+                  <label class="pv-mode-pill"><input type="radio" name="pvQuickVersionModeRadio" value="general" checked>通用版</label>
+                  <label class="pv-mode-pill"><input type="radio" name="pvQuickVersionModeRadio" value="commercial">商业版</label>
+                </div>
+                <select id="pvQuickVersionMode" class="pv-select hidden"><option value="general">通用版</option><option value="commercial">商业版</option></select>
+              </div>
+              <div class="pv-field"><label>发布阶段</label><select id="pvQuickVersionStatus" class="pv-select"><option value="draft">draft</option><option value="testing">testing</option><option value="active">active</option><option value="disabled">disabled</option></select></div>
+            </div>
+            <div class="pv-field"><label>说明</label><input id="pvQuickVersionNotes" class="pv-input" placeholder="1.2.4 新版本"></div>
           </div>
-          <div class="pv-field"><label>说明</label><input id="pvQuickVersionNotes" class="pv-input" placeholder="1.2.4 新版本"></div>
           <div class="pv-dock-actions">
             <button type="button" class="pv-secondary" onclick="pvCloseModal('version-group')">取消</button>
             <button type="button" class="pv-primary" id="pvQuickCreateVersion">创建版本组</button>
@@ -1110,15 +1195,27 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     </div>
   </div>
   <div class="pv-modal-overlay" data-pv-modal="version-code" onclick="if(event.target===this){ pvCloseModal('version-code'); }">
-    <div class="pv-panel pv-modal-card pv-modal-narrow" onclick="event.stopPropagation()">
+    <div class="pv-panel pv-modal-card pv-modal-medium" onclick="event.stopPropagation()">
       <button type="button" class="pv-modal-close" onclick="pvCloseModal('version-code')"><i class="fas fa-times"></i></button>
           <h4>编辑 VersionCode</h4>
-          <div class="pv-field"><label>版本组</label><select id="pvQuickVersionCodeTarget" class="pv-select"></select></div>
-          <div class="pv-inline-two">
-            <div class="pv-field"><label>VersionCode</label><input id="pvQuickVersionCodeValue" class="pv-input" placeholder="20260611"></div>
-            <div class="pv-field"><label>状态</label><select id="pvQuickVersionCodeStatus" class="pv-select"><option value="active">active</option><option value="testing">testing</option><option value="draft">draft</option><option value="disabled">disabled</option></select></div>
+          <div class="pv-modal-section">
+            <div class="pv-modal-section-title">
+              <strong>版本目标</strong>
+              <span>选择需要调整的 VersionCode</span>
+            </div>
+            <div class="pv-field"><label>版本组</label><select id="pvQuickVersionCodeTarget" class="pv-select"></select></div>
           </div>
-          <div class="pv-field"><label>变更摘要</label><input id="pvQuickVersionCodeChangelog" class="pv-input" placeholder="热修复 / 灰度版本"></div>
+          <div class="pv-modal-section">
+            <div class="pv-modal-section-title">
+              <strong>变更内容</strong>
+              <span>VersionCode 与状态</span>
+            </div>
+            <div class="pv-inline-two">
+              <div class="pv-field"><label>VersionCode</label><input id="pvQuickVersionCodeValue" class="pv-input" placeholder="20260611"></div>
+              <div class="pv-field"><label>状态</label><select id="pvQuickVersionCodeStatus" class="pv-select"><option value="active">active</option><option value="testing">testing</option><option value="draft">draft</option><option value="disabled">disabled</option></select></div>
+            </div>
+            <div class="pv-field"><label>变更摘要</label><input id="pvQuickVersionCodeChangelog" class="pv-input" placeholder="热修复 / 灰度版本"></div>
+          </div>
           <div class="pv-dock-actions">
             <button type="button" class="pv-secondary" onclick="pvCloseModal('version-code')">取消</button>
             <button type="button" class="pv-primary" id="pvSaveQuickVersionCode">保存</button>
@@ -1252,9 +1349,47 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           ? ('版本组 ' + versionGroups.length + ' 个，VersionCode ' + window.__PV_VERSION_ROWS.length + ' 个，可直接进入发版向导。')
           : '暂无可发布版本，请先创建版本组与 VersionCode。';
       }
-      var mirror = document.getElementById('projectChannelsListMirror');
-      var source = document.getElementById('projectChannelsList');
-      if(mirror && source){ mirror.innerHTML = source.innerHTML; }
+    }
+    function pvSyncVersionModeRadio(value){
+      var normalized = value || 'general';
+      document.querySelectorAll('input[name=\"pvQuickVersionModeRadio\"]').forEach(function(radio){
+        radio.checked = radio.value === normalized;
+      });
+      var select = document.getElementById('pvQuickVersionMode');
+      if(select){ select.value = normalized; }
+    }
+    function pvOpenVersionGroupModal(targetId){
+      var modalTitle = document.querySelector('[data-pv-modal=\"version-group\"] h4');
+      var hiddenTarget = document.getElementById('pvQuickVersionGroupTarget');
+      var nameEl = document.getElementById('pvQuickVersionName');
+      var channelEl = document.getElementById('pvQuickVersionChannel');
+      var stageEl = document.getElementById('pvQuickVersionStage');
+      var modeEl = document.getElementById('pvQuickVersionMode');
+      var statusEl = document.getElementById('pvQuickVersionStatus');
+      var notesEl = document.getElementById('pvQuickVersionNotes');
+      if(hiddenTarget){ hiddenTarget.value = targetId || ''; }
+      if(!targetId){
+        if(modalTitle){ modalTitle.textContent = '新建版本组'; }
+        if(nameEl){ nameEl.value = ''; }
+        if(channelEl && channelEl.options.length){ channelEl.selectedIndex = 0; }
+        if(stageEl){ stageEl.value = document.querySelector('.project-version-design-app').getAttribute('data-default-stage') || 'production'; }
+        pvSyncVersionModeRadio('general');
+        if(statusEl){ statusEl.value = 'draft'; }
+        if(notesEl){ notesEl.value = ''; }
+        pvOpenModal('version-group');
+        return;
+      }
+      var row = (window.__PV_VERSION_ROWS || []).find(function(item){ return String(item.id || '') === String(targetId || ''); });
+      if(modalTitle){ modalTitle.textContent = '编辑版本组'; }
+      if(row){
+        if(nameEl){ nameEl.value = row.version_name || ''; }
+        if(channelEl){ channelEl.value = row.channel || ''; }
+        if(stageEl){ stageEl.value = row.stage || 'production'; }
+        pvSyncVersionModeRadio(row.version_mode || 'general');
+        if(statusEl){ statusEl.value = row.version_status || 'active'; }
+        if(notesEl){ notesEl.value = row.notes || ''; }
+      }
+      pvOpenModal('version-group');
     }
     function pvRenderCompare(){
       var left = (document.getElementById('pvCompareLeft') || {}).value || '';
@@ -1374,6 +1509,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     function pvQuickCreateVersionGroup(){
       var versionName = (document.getElementById('pvQuickVersionName').value || '').trim();
       if(!versionName){ alert('请先填写版本号'); return; }
+      var targetId = (document.getElementById('pvQuickVersionGroupTarget') || {}).value || '';
       var payload = {
         version_name: versionName,
         channel: document.getElementById('pvQuickVersionChannel').value || '',
@@ -1383,7 +1519,18 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         version_mode: document.getElementById('pvQuickVersionMode').value || 'general',
         notes: document.getElementById('pvQuickVersionNotes').value || ''
       };
-      fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/create', {
+      var url = '/admin/projects/' + encodeURIComponent(%s) + '/versions/create';
+      if(targetId){
+        payload.id = targetId;
+        payload.edit_scope = 'version_group';
+        var row = (window.__PV_VERSION_ROWS || []).find(function(item){ return String(item.id || '') === String(targetId || ''); });
+        if(row){
+          payload.platform = row.platform || 'android';
+          payload.version_code = row.version_code || '';
+        }
+        url = '/admin/projects/' + encodeURIComponent(%s) + '/versions/update';
+      }
+      fetch(url, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload),
@@ -1400,13 +1547,15 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       if(!row){ alert('未找到目标版本'); return; }
       var payload = {
         id: row.id,
+        edit_scope: 'version_code',
         channel: row.channel,
         stage: row.stage,
         platform: row.platform,
         version_name: row.version_name,
         version_code: (document.getElementById('pvQuickVersionCodeValue').value || '').trim(),
         version_status: document.getElementById('pvQuickVersionCodeStatus').value || 'active',
-        notes: document.getElementById('pvQuickVersionCodeChangelog').value || ''
+        notes: row.notes || '',
+        changelog: document.getElementById('pvQuickVersionCodeChangelog').value || ''
       };
       fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/update', {
         method:'POST',
@@ -1472,8 +1621,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       });
       window.__PV_VERSION_ROWS = %s;
       window.__PV_VERSION_GROUPS = %s;
-      document.getElementById('pvCreateVersionBtn').addEventListener('click', function(){ pvOpenModal('version-group'); });
-      document.getElementById('pvQuickOpenVersionGroup').addEventListener('click', function(){ pvOpenModal('version-group'); });
+      document.getElementById('pvCreateVersionBtn').addEventListener('click', function(){ pvOpenVersionGroupModal(''); });
+      document.getElementById('pvQuickOpenVersionGroup').addEventListener('click', function(){ pvOpenVersionGroupModal(''); });
       document.getElementById('pvQuickOpenDevices').addEventListener('click', pvOpenDevicesPanel);
       document.getElementById('pvQuickCreateVersion').addEventListener('click', pvQuickCreateVersionGroup);
       document.getElementById('pvSaveQuickVersionCode').addEventListener('click', pvQuickSaveVersionCode);
@@ -1481,6 +1630,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       document.getElementById('pvCompareRunBtn').addEventListener('click', pvRenderCompare);
       document.getElementById('pvDeviceResetBtn').addEventListener('click', pvResetDeviceForm);
       document.getElementById('pvDeviceSaveBtn').addEventListener('click', pvSaveTestDevice);
+      document.querySelectorAll('input[name=\"pvQuickVersionModeRadio\"]').forEach(function(radio){
+        radio.addEventListener('change', function(){
+          if(radio.checked){
+            var select = document.getElementById('pvQuickVersionMode');
+            if(select){ select.value = radio.value; }
+          }
+        });
+      });
       document.getElementById('pvVersionSearch').addEventListener('input', pvApplyFilters);
       document.getElementById('pvStageFilter').addEventListener('change', pvApplyFilters);
       document.getElementById('pvStatusFilter').addEventListener('change', pvApplyFilters);
@@ -1534,6 +1691,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         }
         var delBtn = e.target.closest('[data-delete-version]');
         if(delBtn){ pvDeleteVersion(delBtn.getAttribute('data-delete-version') || ''); return; }
+        var editGroupBtn = e.target.closest('[data-edit-version-group]');
+        if(editGroupBtn){ pvOpenVersionGroupModal(editGroupBtn.getAttribute('data-edit-version-group') || ''); return; }
         var deviceEditBtn = e.target.closest('[data-device-edit-idx]');
         if(deviceEditBtn){ pvEditTestDeviceByIdx(parseInt(deviceEditBtn.getAttribute('data-device-edit-idx') || '0', 10)); return; }
         var deviceDeleteBtn = e.target.closest('[data-device-delete-id]');
@@ -1547,6 +1706,15 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             var txt = String(group.textContent || '').toLowerCase();
             group.style.display = !q || txt.indexOf(q) >= 0 ? '' : 'none';
           });
+        });
+      }
+      var treeCollapseBtn = document.getElementById('pvTreeCollapseBtn');
+      if(treeCollapseBtn){
+        treeCollapseBtn.addEventListener('click', function(){
+          var tree = document.querySelector('.pv-project-tree');
+          var body = document.querySelector('.pv-body');
+          if(tree){ tree.classList.toggle('is-hidden'); }
+          if(body){ body.classList.toggle('is-tree-collapsed'); }
         });
       }
       setTimeout(function(){
@@ -1600,17 +1768,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(project_id),
         html.escape(project_id),
         project_id_url, project_id_url,
-        project_channels_html or '<span class="text-slate-400">暂无渠道</span>',
-        (
-            ''
-            if can_edit else '<span class="text-xs text-slate-400">仅可由有权限成员维护</span>'
-        ),
+        project_channels_modal_rows_html,
         channel_options_html,
         channel_options_html,
         project_id_url,
         html.escape(qr_filename or (project_name + '.apk')),
         html.escape(qr_size),
         ('onclick="pvOpenQrPreview()"' if qr_filename else 'disabled'),
+        project_id_js,
         project_id_js,
         project_id_js,
         project_id_js,
@@ -3751,1887 +3916,6 @@ def _escape_script_json_for_html(s):
     if not isinstance(s, str):
         return s
     return re.sub(r'(?i)</script>', r'<\\u002fscript>', s)
-
-
-def _project_detail_html(project_id, proj, can_edit, task_stats, recent_tasks, apk_count, project_apk_files=None, is_admin_logged_in=False):
-    """项目详情页：仪表盘、版本管理、构建、下载"""
-    project_apk_files = project_apk_files or []
-    project_name = _clean_display_text(proj.get('name'), project_id)
-    versions = (project_versions_db.get(project_id) or [])
-    if not isinstance(versions, list):
-        versions = []
-    channel_map = dict(_get_version_channels(project_id))
-    proj_channel_ids = proj.get('channels') or []
-    all_channels_list = [(c.get('id', '').strip(), (c.get('name') or c.get('id', '')).strip()) for c in (channels_db if isinstance(channels_db, list) else []) if (c.get('id') or '').strip()]
-    proj_channels_display = [(c.get('id', '').strip(), (c.get('name') or c.get('id', '')).strip()) for c in (channels_db if isinstance(channels_db, list) else []) if (c.get('id') or '').strip() and (c.get('id') or '').strip() in proj_channel_ids] if proj_channel_ids else all_channels_list
-    def _version_changelog(ver):
-        key = 'version:' + project_id + ':' + (ver.get('id') or '')
-        raw = changelog_db.get(key)
-        if isinstance(raw, dict):
-            return raw.get('text', ''), bool(raw.get('recommended'))
-        return '', False
-    versions_data = [{
-        **v,
-        'platform': get_version_platform(v),
-        'platform_label': get_platform_label(get_version_platform(v)),
-        'distribution_method': _normalize_distribution_method(get_version_platform(v), v.get('distribution_method')),
-        'package_name': (v.get('package_name') or '').strip(),
-        'min_sdk': (v.get('min_sdk') or '').strip(),
-        'bundle_id': (v.get('bundle_id') or '').strip(),
-        'min_ios_version': (v.get('min_ios_version') or '').strip(),
-        'stage': (v.get('stage') or 'dev').strip() or 'dev',
-        'stage_label': STAGE_MAP.get((v.get('stage') or 'dev').strip(), '开发'),
-        'version_status': _normalize_version_status(v.get('version_status') or 'active'),
-        'version_status_label': VERSION_STATUS_MAP.get(_normalize_version_status(v.get('version_status') or 'active'), '有效'),
-        'channel_label': channel_map.get(v.get('channel', ''), v.get('channel', '')),
-        'apk_status': 'found' if version_has_apk(project_id, v) else 'not_found',
-        'download_count': get_version_download_count(project_id, v),
-        'recommended': version_is_recommended(project_id, v),
-        'changelog_text': _version_changelog(v)[0],
-        'changelog_recommended': _version_changelog(v)[1],
-    } for v in versions]
-    phase_label = PHASE_MAP.get(proj.get('phase', ''), proj.get('phase') or '-')
-    editors = proj.get('editors') or []
-    viewers = proj.get('viewers') or []
-    team = list(set(editors + viewers))
-    intro = (proj.get('intro') or proj.get('detail') or '')[:200]
-    created_at = (proj.get('created_at') or '')[:10]
-    git_url = proj.get('git_url') or ''
-    version_count = len(versions)
-    # 最近任务行
-    recent_rows = ''
-    for t in recent_tasks[:8]:
-        st = t.get('status', '')
-        st_label = STATUS_MAP.get(st, st)
-        title = _clean_display_text(t.get('title'), '未命名任务')[:50]
-        assignee = _clean_display_text(t.get('current_assignee') or t.get('current_role'), '-') or '-'
-        tid = t.get('id', '')
-        recent_rows += '<tr class="border-b border-gray-100 hover:bg-indigo-50/50"><td class="py-2.5 text-sm"><a href="/admin/projects/%s/tasks" class="text-indigo-600 hover:underline font-medium">%s</a></td><td class="py-2.5 text-xs text-gray-500">%s</td><td class="py-2.5"><span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">%s</span></td></tr>' % (project_id, html.escape(title), html.escape(assignee), st_label)
-    if not recent_rows:
-        recent_rows = '<tr><td colspan="3" class="py-8 text-center text-gray-500 text-sm">暂无任务</td></tr>'
-    dl_count = get_project_download_count(project_id)
-    # 统计卡片
-    stats_html = '''<div class="grid grid-cols-2 md:grid-cols-7 gap-4 mb-6">
-        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
-            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">任务总数</p>
-            <p class="text-2xl font-bold text-slate-900 mt-1">%d</p>
-            <a href="/admin/projects/%s/tasks" class="text-xs text-indigo-600 hover:text-indigo-700 hover:underline mt-1 inline-flex items-center gap-1">查看全部<i class="fas fa-arrow-right text-[10px]"></i></a>
-        </div>
-        <div class="stat-card rounded-2xl border border-indigo-100 shadow-sm p-4 bg-indigo-50/70">
-            <p class="text-[11px] font-semibold text-indigo-600 uppercase tracking-[0.14em]">进行中</p>
-            <p class="text-2xl font-bold text-indigo-700 mt-1">%d</p>
-        </div>
-        <div class="stat-card rounded-2xl border border-amber-100 shadow-sm p-4 bg-amber-50/70">
-            <p class="text-[11px] font-semibold text-amber-600 uppercase tracking-[0.14em]">待验收</p>
-            <p class="text-2xl font-bold text-amber-700 mt-1">%d</p>
-        </div>
-        <div class="stat-card rounded-2xl border border-emerald-100 shadow-sm p-4 bg-emerald-50/70">
-            <p class="text-[11px] font-semibold text-emerald-600 uppercase tracking-[0.14em]">已完成</p>
-            <p class="text-2xl font-bold text-emerald-700 mt-1">%d</p>
-        </div>
-        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
-            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">版本数</p>
-            <p class="text-2xl font-bold text-slate-900 mt-1">%d</p>
-        </div>
-        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
-            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">安装包数</p>
-            <p class="text-2xl font-bold text-slate-900 mt-1">%d</p>
-        </div>
-        <div class="stat-card rounded-2xl border border-slate-200/80 shadow-sm p-4 bg-white/95">
-            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.14em]">下载量</p>
-            <p class="text-2xl font-bold text-slate-900 mt-1">%d</p>
-            <p id="projectTrend7d" class="text-xs text-slate-500 mt-0.5">—</p>
-        </div>
-    </div>''' % (
-        task_stats.get('total', 0), project_id,
-        task_stats.get('in_progress', 0),
-        task_stats.get('pending_review', 0),
-        task_stats.get('done', 0),
-        version_count,
-        apk_count,
-        dl_count,
-    )
-    return '''<div class="space-y-6">
-    <style>
-        .wb-action-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.375rem;
-            padding: 0.625rem 1rem;
-            border-radius: 0.85rem;
-            border: 1px solid rgba(255, 255, 255, 0.26);
-            color: #ffffff;
-            font-size: 0.875rem;
-            font-weight: 600;
-            line-height: 1;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 7px 20px rgba(15, 23, 42, 0.28);
-            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
-        }
-        .wb-action-btn:hover {
-            transform: translateY(-1px);
-            filter: brightness(1.05);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 10px 24px rgba(15, 23, 42, 0.32);
-        }
-        .wb-action-btn:active {
-            transform: translateY(0);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 4px 12px rgba(15, 23, 42, 0.22);
-        }
-        .wb-indigo { background: linear-gradient(160deg, #4f46e5, #4338ca); }
-        .wb-orange { background: linear-gradient(160deg, #f97316, #ea580c); }
-        .wb-emerald { background: linear-gradient(160deg, #10b981, #059669); }
-        .wb-cyan { background: linear-gradient(160deg, #06b6d4, #0891b2); }
-        .wb-violet { background: linear-gradient(160deg, #8b5cf6, #7c3aed); }
-        .wb-slate { background: linear-gradient(160deg, #64748b, #475569); }
-
-        .wb-quick-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.62rem 0.8rem;
-            border-radius: 0.85rem;
-            border: 1px solid transparent;
-            color: #0f172a;
-            font-size: 0.875rem;
-            font-weight: 500;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 4px 14px rgba(15, 23, 42, 0.08);
-            transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
-        }
-        .wb-quick-btn:hover {
-            transform: translateY(-1px);
-            filter: brightness(1.01);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 7px 18px rgba(15, 23, 42, 0.13);
-        }
-        .wb-quick-indigo { background: linear-gradient(160deg, #eef2ff, #e0e7ff); border-color: #c7d2fe; }
-        .wb-quick-amber { background: linear-gradient(160deg, #fffbeb, #fef3c7); border-color: #fde68a; }
-        .wb-quick-orange { background: linear-gradient(160deg, #fff7ed, #ffedd5); border-color: #fdba74; }
-        .wb-quick-cyan { background: linear-gradient(160deg, #ecfeff, #cffafe); border-color: #67e8f9; }
-        .wb-quick-violet { background: linear-gradient(160deg, #f5f3ff, #ede9fe); border-color: #c4b5fd; }
-        .module-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 11px; cursor: pointer; transition: all 0.12s; border: 1px solid #e2e8f0; background: #f8fafc; }
-        .module-toggle.active { background: #ede9fe; border-color: #c4b5fd; color: #6d28d9; }
-        .module-remove { cursor: pointer; color: #ef4444; font-size: 14px; line-height: 1; padding: 0 2px; }
-
-        .wb-mini-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.45rem 0.78rem;
-            border-radius: 0.72rem;
-            border: 1px solid rgba(255, 255, 255, 0.26);
-            color: #fff;
-            font-size: 0.75rem;
-            font-weight: 600;
-            line-height: 1;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 6px 14px rgba(15, 23, 42, 0.2);
-            transition: transform .15s ease, filter .15s ease;
-        }
-        .wb-mini-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
-        .wb-mini-indigo { background: linear-gradient(160deg, #6366f1, #4f46e5); }
-        .wb-mini-amber { background: linear-gradient(160deg, #f59e0b, #d97706); }
-
-        .version-op-wrap {
-            display: flex;
-            flex-wrap: nowrap;
-            gap: 0.45rem;
-            align-items: center;
-            justify-content: flex-start;
-            margin-top: 0;
-        }
-        .version-op-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.28rem;
-            padding: 0.42rem 0.55rem;
-            border-radius: 0.62rem;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            color: #fff;
-            font-size: 0.73rem;
-            font-weight: 600;
-            line-height: 1;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 4px 10px rgba(15, 23, 42, 0.2);
-            transition: transform .15s ease, filter .15s ease;
-        }
-        .version-op-btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
-        .version-op-build { background: linear-gradient(160deg, #6366f1, #4f46e5); }
-        .version-op-download { background: linear-gradient(160deg, #10b981, #059669); }
-        .version-op-edit { background: linear-gradient(160deg, #0ea5e9, #0284c7); }
-        .version-op-delete { background: linear-gradient(160deg, #f43f5e, #e11d48); }
-    </style>
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-        <div class="border-b border-slate-200/80 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-700 px-6 py-6">
-            <div class="flex items-start justify-between flex-wrap gap-4">
-                <div class="flex items-start gap-4">
-                    <a href="/admin/projects" class="mt-1 inline-flex items-center justify-center w-9 h-9 rounded-xl bg-white/10 text-slate-100 hover:bg-white/20 transition">
-                        <i class="fas fa-arrow-left"></i>
-                    </a>
-                    <div>
-                        <p class="text-[11px] font-semibold text-slate-300/80 tracking-[0.18em] uppercase">项目中心</p>
-                        <h2 class="text-2xl font-semibold text-white mt-1">项目工作台</h2>
-                        <div class="flex flex-wrap items-center gap-2 mt-2 text-xs text-slate-200/90">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-900/40 font-mono tracking-wide">''' + html.escape(project_id) + '''</span>
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-400/15 text-amber-100 border border-amber-300/30"><i class="fas fa-flag-checkered mr-1 text-amber-200"></i>''' + html.escape(phase_label) + '''</span>
-                            ''' + ('<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-900/40 text-[11px] text-slate-200/90"><i class="fas fa-clock mr-1 text-slate-300/80"></i>创建于 ' + html.escape(created_at) + '</span>' if created_at else '') + '''
-                        </div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 flex-shrink-0">
-                    <a href="/admin/projects/''' + project_id + '''/tasks" class="wb-action-btn wb-indigo"><i class="fas fa-tasks"></i>任务</a>
-                    <a href="/admin/projects/''' + project_id + '''/versions" class="wb-action-btn wb-emerald"><i class="fas fa-layer-group"></i>版本</a>
-                    <a href="/admin/gm-classic?project_id=''' + project_id + '''" class="wb-action-btn wb-cyan"><i class="fas fa-gamepad"></i>GM</a>
-                    <a href="/admin/ops-platform?project_id=''' + project_id + '''" class="wb-action-btn wb-indigo"><i class="fas fa-server"></i>运维</a>
-                    <a href="/admin/projects/''' + project_id + '''/tasks/stats" class="wb-action-btn wb-violet"><i class="fas fa-chart-bar"></i>统计</a>
-                    <a href="/docs?module=projects" class="wb-action-btn wb-slate" title="查看项目中心相关文档"><i class="fas fa-question-circle"></i>文档</a>
-                </div>
-            </div>
-        </div>
-        <div class="p-6">
-            ''' + stats_html + '''
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div class="lg:col-span-2 space-y-4">
-                    <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
-                        <h3 class="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2"><i class="fas fa-list text-indigo-500"></i> 最近任务</h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead><tr class="text-left text-slate-500 border-b"><th class="pb-2 text-xs font-semibold">标题</th><th class="pb-2 text-xs font-semibold">负责人</th><th class="pb-2 text-xs font-semibold">状态</th></tr></thead>
-                                <tbody>''' + recent_rows + '''</tbody>
-                            </table>
-                        </div>
-                        <a href="/admin/projects/''' + project_id + '''/tasks" class="block text-center py-2 mt-2 text-indigo-600 hover:text-indigo-700 hover:underline text-sm">查看全部任务 →</a>
-                    </div>
-                    <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
-                        <h3 class="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2"><i class="fas fa-info-circle text-slate-500"></i> 项目信息</h3>
-                        <p class="text-sm text-slate-600 leading-relaxed">''' + (html.escape(intro) if intro else '<span class="text-slate-400">暂无简介</span>') + '''</p>
-                        ''' + ('<p class="mt-2 text-xs"><a href="' + html.escape(git_url) + '" target="_blank" class="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 hover:underline"><i class="fas fa-external-link-alt"></i><span>' + html.escape(git_url[:60]) + ('…' if len(git_url) > 60 else '') + '</span></a></p>' if git_url else '') + '''
-                    </div>
-                </div>
-                <div class="space-y-4">
-                    <div class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm">
-                        <h3 class="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2"><i class="fas fa-users text-amber-500"></i> 团队成员</h3>
-                        <ul class="space-y-1.5 text-sm">''' + ''.join('<li class="flex items-center gap-2"><span class="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-semibold">' + (u[0].upper() if u else '?') + '</span><span class="text-slate-800">' + html.escape(u) + '</span>' + ('<span class="text-[11px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">编辑</span>' if u in editors else '<span class="text-[11px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded-full">查看</span>') + '</li>' for u in team[:12]) + '''</ul>
-                        ''' + ('<p class="text-xs text-slate-500 mt-2">共 ' + str(len(team)) + ' 人</p>' if len(team) > 0 else '<p class="text-slate-400 text-sm">暂无成员</p>') + '''
-                    </div>
-                    <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-100 p-4">
-                        <h3 class="text-sm font-semibold text-amber-900 mb-2 flex items-center justify-between">
-                            <span>快捷操作</span>
-                            ''' + ('<button type="button" id="btnConfigModules" class="text-[10px] text-amber-600 hover:text-amber-800 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full" onclick="toggleModuleConfig()"><i class="fas fa-cog mr-0.5"></i>配置</button>' if is_admin_logged_in else '') + '''
-                        </h3>
-                        <div class="space-y-2" id="quickActionsContainer">
-                            <a href="/admin/projects/''' + project_id + '''/tasks" class="wb-quick-btn wb-quick-indigo"><i class="fas fa-plus text-indigo-500"></i>新建任务</a>
-                            <a href="/admin/projects/''' + project_id + '''/versions" class="wb-quick-btn wb-quick-amber"><i class="fas fa-layer-group text-amber-500"></i>渠道与版本</a>
-                            <a href="/admin/gm-classic?project_id=''' + project_id + '''" class="wb-quick-btn wb-quick-cyan"><i class="fas fa-gamepad text-cyan-500"></i>GM工作台</a>
-                            <a href="/admin/ops-platform?project_id=''' + project_id + '''" class="wb-quick-btn wb-quick-violet"><i class="fas fa-server text-violet-500"></i>运维中心</a>
-                        </div>
-                        <!-- 模块配置面板（仅管理员可见） -->
-                        ''' + ('<div id="moduleConfigPanel" class="hidden mt-3 p-3 rounded-xl bg-white border border-amber-200 text-xs"><p class="text-slate-500 mb-2">管理快捷操作模块：</p><div class="space-y-1.5" id="moduleConfigList"></div></div>' if is_admin_logged_in else '') + '''
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-    <div class="p-6">
-        <div id="projectTabSection" class="hidden flex border-b border-slate-200 mb-6 gap-2 items-center">
-            <button type="button" onclick="switchTab('overview')" id="tabOverview" class="tab-btn px-4 py-1.5 text-sm font-medium text-amber-700 border-b-2 border-amber-600 -mb-px">仪表盘</button>
-            <button type="button" onclick="switchTab('channels')" id="tabChannels" class="tab-btn px-4 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-800">渠道</button>
-            <a href="/docs?module=versions" class="ml-auto text-slate-400 hover:text-indigo-600 text-sm" title="渠道与版本相关文档"><i class="fas fa-question-circle"></i></a>
-        </div>
-        <!-- switchTab 在下方统一脚本定义，避免重复定义导致行为不一致 -->
-        <div id="panelOverview" class="tab-panel">
-            <p class="text-slate-500 text-sm">上方为项目仪表盘，包含任务统计、最近动态、团队成员与快捷操作。切换至「渠道」可管理项目要发布的渠道及不同阶段（开发、测试、线上）的版本配置。</p>
-        </div>
-        <div id="panelChannels" class="tab-panel hidden">
-            <div class="mb-6 p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-slate-100">
-                <h3 class="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-2"><i class="fas fa-layer-group text-indigo-500"></i> 项目要发布的渠道 <a href="/docs?module=versions" class="text-slate-400 hover:text-indigo-600" title="帮助"><i class="fas fa-question-circle text-xs"></i></a></h3>
-                <p class="text-xs text-slate-500 mb-3">选择本项目的发布渠道，每个渠道下有开发、测试、线上三阶段，可分别配置版本。</p>
-                <div class="flex flex-wrap gap-2 items-center">
-                    <div class="flex flex-wrap gap-2" id="projectChannelsList">''' + (''.join('<span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 border border-slate-200/80 text-slate-700 text-sm shadow-sm" data-channel="%s">%s' % (html.escape(cid), html.escape(cname)) + ('' if not can_edit else '<button type="button" data-channel-id="' + html.escape(cid) + '" class="remove-channel-btn text-slate-400 hover:text-red-500 -mr-0.5 transition"><i class="fas fa-times text-xs"></i></button>') + '</span>' for cid, cname in proj_channels_display) or '<span class="text-slate-400 text-sm">暂未添加渠道</span>') + '''</div>
-                    ''' + ('<div class="relative"><button type="button" onclick="toggleAddChannelDropdown()" class="wb-mini-btn wb-mini-indigo"><i class="fas fa-plus"></i>添加渠道</button><div id="addChannelDropdown" class="hidden absolute left-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-2 z-20 min-w-[160px]"></div></div>' if can_edit else '') + '''
-                </div>
-            </div>
-            <div class="space-y-5" id="channelsVersionsWrap"></div>
-            <p id="channelsEmpty" class="py-12 text-center text-slate-500 hidden"><i class="fas fa-inbox text-4xl text-slate-200 mb-3 block"></i>请先添加项目渠道，再为各渠道创建版本</p>
-        </div>
-        <div id="panelBuild" class="tab-panel hidden" style="display:none">
-            <div class="flex flex-col md:flex-row gap-6">
-                <div class="bg-amber-50 border border-amber-100 rounded-xl p-6 max-w-lg flex-shrink-0">
-                    <h3 class="text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2"><i class="fas fa-cogs text-orange-500"></i> 触发构建 <a href="/docs?module=build" class="text-amber-600 hover:text-amber-800 ml-1" title="构建相关文档"><i class="fas fa-question-circle text-xs"></i></a></h3>
-                    <p class="text-sm text-amber-800 mb-4">选择 Jenkins 实例并填写构建参数，触发本项目的 APK 构建。构建完成后产物将出现在版本列表与下载区域。</p>
-                    <a href="/admin/projects/''' + project_id + '''/build" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 text-white text-sm font-medium hover:bg-orange-700 shadow-sm transition"><i class="fas fa-play"></i> 前往构建</a>
-                </div>
-                <div class="flex-1 bg-white rounded-xl border border-slate-200 p-4">
-                    <h3 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2"><i class="fas fa-history text-slate-500"></i> 最近构建</h3>
-                    <ul id="projectRecentBuilds" class="space-y-2 text-sm text-slate-600">加载中…</ul>
-                    <a href="/admin/projects/''' + project_id + '''/build" class="text-xs text-indigo-600 hover:underline mt-2 inline-block">查看全部 →</a>
-                </div>
-            </div>
-        </div>
-        <div id="panelDownload" class="tab-panel hidden">
-            <div class="mb-4 flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-900 flex items-center gap-2">本项目安装包 <a href="/docs?module=download" class="text-slate-400 hover:text-indigo-600" title="下载相关文档"><i class="fas fa-question-circle text-xs"></i></a></h3>
-                <a href="/download-center?project=''' + html.escape(project_id) + '''" class="text-indigo-600 hover:text-indigo-700 text-sm">在下载中心查看 →</a>
-            </div>
-            ''' + _project_download_tab_html(project_apk_files, project_id) + '''
-        </div>
-    </div>
-</div>
-<!-- 版本编辑弹窗 -->
-<div id="versionModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-start justify-center z-50 p-3 pt-6" onclick="if(event.target===this) closeVersionModal()">
-<div class="bg-white rounded-2xl shadow-2xl w-full max-w-[920px] max-h-[94vh] overflow-hidden flex flex-col border border-slate-100" onclick="event.stopPropagation()">
-<div class="px-5 py-2 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 to-indigo-50/60 shadow-sm flex items-center justify-between shrink-0"><h3 class="font-semibold text-slate-800 text-base" id="versionModalTitle">新建版本</h3><button onclick="closeVersionModal()" class="w-7 h-7 rounded-lg hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"><i class="fas fa-times text-xs"></i></button></div>
-<div class="px-5 py-3 overflow-y-auto flex-1">
-<input type="hidden" id="versionEditId" value="">
-<label class="flex items-center gap-2.5 px-3 py-2 mb-3 rounded-lg border-2 border-slate-200 cursor-pointer hover:border-violet-300 transition-all" id="labelCommercialMode"><input type="checkbox" id="chkCommercialMode" class="w-4 h-4 rounded text-violet-600" onchange="toggleCommercialMode()"><div><span class="text-[14px] font-semibold text-slate-700">高级商业版本</span><span class="text-[11px] text-slate-400 ml-1.5">启用可插拔构建流水线</span></div></label>
-<div class="mb-3">
-<div id="versionMainTabs" class="flex gap-1 bg-slate-100 rounded-lg p-1">
-<button type="button" class="flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition bg-white text-indigo-700 shadow-sm" data-vtab="identity" onclick="switchVersionModalTab('identity')">版本标识</button>
-<button type="button" class="flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition text-slate-600 hover:bg-white/70" data-vtab="package" onclick="switchVersionModalTab('package')">包体配置</button>
-<button type="button" class="flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition text-slate-600 hover:bg-white/70" data-vtab="release" onclick="switchVersionModalTab('release')">发布配置</button>
-<button type="button" id="versionPipelineTabBtn" class="hidden flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition text-slate-600 hover:bg-white/70" data-vtab="pipeline" onclick="switchVersionModalTab('pipeline')">构建流水线</button>
-</div>
-</div>
-<div id="vmTabIdentity" class="version-main-panel">
-<div class="rounded-lg border border-slate-200 mb-2.5 overflow-hidden hover:shadow-sm transition-shadow">
-<div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200/80 flex items-center gap-1.5"><span class="w-5 h-5 rounded bg-indigo-500 text-white flex items-center justify-center text-[10px]"><i class="fas fa-tag"></i></span><span class="text-[13px] font-semibold text-slate-600">版本标识</span><span class="text-[11px] text-slate-400">唯一确定一个版本组的渠道、阶段与平台</span></div>
-<div class="px-3 py-2 flex gap-2">
-<div style="width:100px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>渠道</span><select id="versionChannel" onchange="suggestVersionApkPath();syncDerivedVersionPaths()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="1001">微信</option><option value="1002">抖音</option></select></div>
-<div style="width:80px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>阶段</span><select id="versionStage" onchange="suggestVersionApkPath();syncDerivedVersionPaths()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="dev">开发</option><option value="test">测试</option><option value="production">线上</option></select></div>
-<div style="width:90px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>平台</span><select id="versionPlatform" onchange="suggestVersionApkPath();syncVersionPlatformFields();syncDerivedVersionPaths()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="android">Android</option><option value="ios">iOS</option></select></div>
-<div style="width:120px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>版本名</span><input id="versionName" onchange="syncDerivedVersionPaths()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" placeholder="1.0.0" value="1.0.0"></div>
-<div style="width:96px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">状态</span><select id="versionStatus" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="draft">草稿</option><option value="testing">测试中</option><option value="active">有效</option><option value="disabled">失效</option><option value="archived">归档</option></select></div>
-</div>
-<div id="versionCodeHintRow" class="px-3 pb-2 hidden"><div class="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1"><span>当前 <strong>Version Code</strong>：<span id="versionCodeDisplay" class="font-semibold text-indigo-700">-</span></span><span class="text-slate-400">构建号，用于 OSS 路径与客户端 version-resolve；在版本列表中点击 VersionCode 可新增/编辑</span></div></div>
-</div></div>
-</div>
-<div id="vmTabPackage" class="version-main-panel hidden">
-<div class="rounded-lg border border-slate-200 mb-2.5 overflow-hidden hover:shadow-sm transition-shadow">
-<div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200/80 flex items-center gap-1.5"><span class="w-5 h-5 rounded bg-amber-500 text-white flex items-center justify-center text-[10px]"><i class="fas fa-box"></i></span><span class="text-[13px] font-semibold text-slate-600">包体配置</span><span class="text-[11px] text-slate-400">分发方式、包名与文件路径</span></div>
-<div class="px-3 py-2 space-y-1.5">
-<div class="flex gap-2"><div style="width:110px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">发布方式</span><select id="versionDistributionMethod" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="direct">直接下载</option><option value="enterprise">企业分发</option><option value="store">应用商店</option><option value="testflight">TestFlight</option><option value="internal">内部包体</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">包名</span><input id="versionPackageName" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" placeholder="com.example.app"></div><div style="width:70px;flex-shrink:0;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">最低SDK</span><input id="versionMinSdk" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" value="24"></div></div>
-<div class="flex gap-2"><div style="flex:2;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">安装包路径</span><input id="versionApkPath" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" placeholder="输出或下载路径"></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">资源路径（自动）</span><input id="versionResourcePath" readonly class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50 text-slate-700" placeholder="自动拼接"></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">配置路径（自动）</span><input id="versionConfigPath" readonly class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50 text-slate-700" placeholder="自动拼接"></div></div>
-<div id="androidVersionFields" style="display:none"></div><div id="iosVersionFields" class="hidden" style="display:none"></div>
-</div></div>
-</div>
-<div id="vmTabRelease" class="version-main-panel hidden">
-<div class="rounded-lg border border-slate-200 mb-2.5 overflow-hidden hover:shadow-sm transition-shadow">
-<div class="px-3 py-1.5 bg-slate-50 border-b border-slate-200/80 flex items-center gap-1.5"><span class="w-5 h-5 rounded bg-emerald-500 text-white flex items-center justify-center text-[10px]"><i class="fas fa-paper-plane"></i></span><span class="text-[13px] font-semibold text-slate-600">发布配置</span><span class="text-[11px] text-slate-400">更新说明、构建参数与 Jenkins</span></div>
-<div class="px-3 py-2 flex gap-3">
-<div style="flex:1;" class="space-y-1.5">
-<div><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">更新说明</span><textarea id="versionChangelog" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" rows="2" placeholder="版本更新内容"></textarea></div>
-<div class="flex items-center gap-3"><label class="flex items-center gap-1 text-sm whitespace-nowrap"><input type="checkbox" id="versionChangelogRecommended" class="rounded"> 推荐版本</label><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">Jenkins Job ID</span><input id="versionJenkinsJob" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" placeholder="可选"></div></div>
-<div><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">备注</span><textarea id="versionNotes" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm" rows="1"></textarea></div>
-<div style="width:340px;flex-shrink:0;">
-<div class="grid grid-cols-3 gap-x-2 gap-y-1.5">
-<div><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">Unity版本</span><div class="flex gap-1 items-center"><select id="ppApkUnity" class="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="">检测中...</option></select><button type="button" id="btnRefreshUnityVersions" class="px-2 py-1.5 border border-slate-200 rounded text-xs text-slate-600 hover:bg-slate-50 whitespace-nowrap" title="重新检测本机 Unity">刷新</button></div><p id="ppApkUnityHint" class="text-[10px] text-slate-400 mt-0.5">仅显示 Jenkins 管理中标记为<strong>有效</strong>的 Unity 版本；维护请前往 <a href="/admin/jenkins#unity-catalog" class="text-indigo-600 underline" target="_blank">Unity 版本库</a>。</p></div>
-<div><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">Git分支</span><input id="ppApkBranch" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" value="main"></div>
-<div><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">APP_NAME</span><input id="ppApkAppName" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"></div>
-<div class="col-span-3"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">输出目录</span><input id="ppApkOutput" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"></div>
-</div></div>
-</div></div>
-</div>
-</div>
-<div id="vmTabPipeline" class="version-main-panel hidden">
-<div id="versionPipeline" class="hidden rounded-lg border border-violet-200 mb-2 overflow-hidden hover:shadow-sm transition-shadow">
-<div class="px-3 py-1.5 bg-violet-50/80 border-b border-violet-100 flex items-center gap-1.5"><span class="w-5 h-5 rounded bg-violet-500 text-white flex items-center justify-center text-[10px]"><i class="fas fa-diagram-project"></i></span><span class="text-[13px] font-semibold text-violet-700">构建流水线</span><span class="text-[11px] text-violet-400">可插拔构建步骤，每步独立启用</span></div>
-<div class="p-3">
-<div class="flex gap-0.5 bg-slate-100 rounded-lg p-0.5 mb-2.5" id="pipelineTabs"><button class="flex-1 py-1.5 px-2 rounded text-xs font-medium bg-indigo-600 text-white shadow-sm" data-ptab="config_export" onclick="switchPipelineTab('config_export')">1.配置导出</button><button class="flex-1 py-1.5 px-2 rounded text-xs font-medium text-slate-500 hover:bg-white/60" data-ptab="resource_build" onclick="switchPipelineTab('resource_build')">2.资源打包</button><button class="flex-1 py-1.5 px-2 rounded text-xs font-medium text-slate-500 hover:bg-white/60" data-ptab="hot_release" onclick="switchPipelineTab('hot_release')">3.热更发布</button><button class="flex-1 py-1.5 px-2 rounded text-xs font-medium text-slate-500 hover:bg-white/60" data-ptab="apk_build" onclick="switchPipelineTab('apk_build')">4.APK打包</button></div>
-<div id="ptabConfigExport" class="pipeline-panel"><label class="flex items-center gap-1.5 mb-1.5"><input type="checkbox" id="ppConfigExport" checked class="rounded" onchange="togglePipelineStepUI('config_export')"><span class="text-[13px] font-medium text-slate-700">配置导出发布</span><span class="text-[11px] text-slate-400">— Excel导表→manifest→上传OSS</span></label>
-<div id="ppConfigExportBody" class="flex gap-2 bg-slate-50 rounded-lg p-2.5"><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>远端路径前缀</span><input id="ppCfgPrefix" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" value="MyGame1"></div><div style="width:100px;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">客户端版本</span><input id="ppCfgClientVer" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" value="1.0.0"></div><div class="flex items-end pb-0.5"><label class="flex items-center gap-1 text-sm whitespace-nowrap"><input type="checkbox" id="ppCfgIncludeCode" class="rounded"> 含代码</label></div></div></div>
-<div id="ptabResourceBuild" class="pipeline-panel hidden"><label class="flex items-center gap-1.5 mb-1.5"><input type="checkbox" id="ppResourceBuild" checked class="rounded" onchange="togglePipelineStepUI('resource_build')"><span class="text-[13px] font-medium text-slate-700">资源打包</span><span class="text-[11px] text-slate-400">— 扫描→依赖→规则→构建→标准化产物</span></label>
-<div id="ppResourceBuildBody" class="flex gap-2 bg-slate-50 rounded-lg p-2.5"><div style="width:220px;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>构建引擎</span><select id="ppResProvider" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="addressables-v2">Addressables v2（推荐）</option><option value="legacy-bundle-builder">Legacy</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">场景方案</span><input id="ppResScenario" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" value="default"></div></div></div>
-<div id="ptabHotRelease" class="pipeline-panel hidden"><label class="flex items-center gap-1.5 mb-1.5"><input type="checkbox" id="ppHotRelease" checked class="rounded" onchange="togglePipelineStepUI('hot_release')"><span class="text-[13px] font-medium text-slate-700">代码+资源热更发布</span><span class="text-[11px] text-slate-400">— 压缩→加密→签名→上传→激活/回滚</span></label>
-<div id="ppHotReleaseBody" class="bg-slate-50 rounded-lg p-3 space-y-2.5">
-<div class="flex items-center gap-2"><span class="text-sm text-slate-600">发布对象<span style="color:#f43f5e;">*</span>:</span><span id="ppChipCode" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border-2 border-blue-300 cursor-pointer select-none" onclick="togglePpChip('code')"><i class="fas fa-code text-[10px]"></i>代码包</span><span id="ppChipResource" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border-2 border-emerald-300 cursor-pointer select-none" onclick="togglePpChip('resource')"><i class="fas fa-cube text-[10px]"></i>资源包</span></div>
-<div class="flex gap-2">
-
-<div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">热更标签</span><input id="ppHrLabels" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" value="hotupdate,aotmeta"></div>
-<div style="width:120px;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;"><span style="color:#f43f5e;">*</span>发布模式</span><select id="ppHrMode" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" onchange="onPpHrModeChange()"><option value="build-upload">构建并上传</option><option value="build">仅构建</option><option value="upload">仅上传</option><option value="activate">激活</option><option value="rollback">回滚</option></select></div>
-<div style="width:80px;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">上传模式</span><select id="ppHrUpload" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition"><option value="incremental">增量</option><option value="full">全量</option></select></div>
-<div style="width:120px;" id="ppHrRollbackWrap"><span style="display:block;font-size:11px;color:#64748b;line-height:1.3;margin-bottom:2px;">回滚目标</span><select id="ppHrRollback" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition" disabled><option value="">请先选回滚模式</option><option value="previous">上一个版本</option><option value="v0.0.1">v0.0.1</option><option value="v0.0.2">v0.0.2</option><option value="custom">自定义...</option></select></div>
-</div>
-<div id="ppStratCode" class="rounded-lg p-2.5 bg-blue-50/60 border border-blue-200">
-<p class="text-sm font-semibold text-blue-700 mb-1.5"><i class="fas fa-code mr-1"></i>代码包策略</p>
-<div class="flex gap-2"><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">压缩</span><select id="ppHrCodeComp" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option>Zip</option><option>None</option><option>Lz4</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">加密</span><select id="ppHrCodeEnc" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option>Aes</option><option>None</option><option>Xor</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">签名</span><select id="ppHrCodeSig" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option value="builtin-signature">启用</option><option value="">关闭</option></select></div></div>
-<div class="mt-1.5"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">包单元</span><input id="ppHrCodeUnits" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white" value="aotmeta, hotupdate, scriptpatch, symbols"></div>
-<input type="checkbox" id="ppHrCodeEnabled" class="hidden" checked>
-</div>
-<div id="ppStratResource" class="rounded-lg p-2.5 bg-emerald-50/60 border border-emerald-200 mt-2">
-<p class="text-sm font-semibold text-emerald-700 mb-1.5"><i class="fas fa-cube mr-1"></i>资源包策略</p>
-<div class="flex gap-2"><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">压缩</span><select id="ppHrResComp" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option>None</option><option>Zip</option><option>Lz4</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">加密</span><select id="ppHrResEnc" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option>None</option><option>Aes</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">签名</span><select id="ppHrResSig" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option value="builtin-signature">启用</option><option value="">关闭</option></select></div></div>
-<div class="mt-1.5"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">包单元</span><input id="ppHrResUnits" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white" value="addressable, hotupdate, optional, platform, hd, streaming"></div>
-<input type="checkbox" id="ppHrResEnabled" class="hidden" checked>
-</div>
-<div class="mt-2.5 rounded-lg p-2.5 bg-slate-100/80 border border-slate-200">
-<p class="text-sm font-semibold text-slate-600 mb-1.5"><i class="fas fa-sliders-h mr-1"></i>高级覆盖</p>
-<div class="flex gap-2"><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">压缩覆盖</span><select id="ppHrCompOvr" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option value="">默认</option><option>Zip</option><option>Lz4</option><option>None</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">加密覆盖</span><select id="ppHrEncOvr" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option value="">默认</option><option>Aes</option><option>Xor</option><option>None</option></select></div><div style="flex:1;"><span style="display:block;font-size:11px;color:#64748b;line-height:1.2;margin-bottom:1px;">签名覆盖</span><select id="ppHrSigOvr" class="w-full px-1.5 py-1 border border-slate-200 rounded text-xs bg-white"><option value="">默认</option><option value="builtin-signature">启用</option></select></div></div>
-</div>
-</div></div>
-<div id="ptabApkBuild" class="pipeline-panel hidden"><label class="flex items-center gap-1.5 mb-1.5"><input type="checkbox" id="ppApkBuild" class="rounded" onchange="togglePipelineStepUI('apk_build')"><span class="text-[13px] font-medium text-slate-700">APK 打包上传</span><span class="text-[11px] text-slate-400">— Unity BuildPipeline，参数已在上方配置</span></label><div id="ppApkBuildBody" class="hidden bg-slate-50 rounded-lg p-2.5"><p class="text-sm text-slate-400">此处仅控制是否执行APK打包步骤，构建参数已在「发布配置」卡片中设置。</p></div></div>
-</div></div>
-</div>
-</div>
-<div class="px-5 py-2.5 border-t border-slate-100 bg-slate-50/80 flex justify-end gap-2 shrink-0"><button type="button" onclick="closeVersionModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">取消</button><button type="button" onclick="saveVersion()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-md hover:shadow-lg transition-all">保存版本</button></div>
-</div></div>
-<!-- VersionCode 编辑弹窗：构建号 + 发布控制 + 说明 -->
-<div id="versionCodeModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this) closeVersionCodeModal()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-100 max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
-        <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
-            <h3 id="versionCodeModalTitle" class="font-semibold text-slate-800">编辑 VersionCode</h3>
-            <button type="button" onclick="closeVersionCodeModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="p-5 space-y-3 overflow-y-auto">
-            <input type="hidden" id="versionCodeEditId" value="">
-            <input type="hidden" id="versionCodeEditMode" value="edit">
-            <input type="hidden" id="versionCodeCloneFromId" value="">
-            <div class="text-xs text-slate-500" id="versionCodeEditVersionName">Version: -</div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Version Code（构建号）</label>
-                <input id="versionCodeEditValue" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="例如 8、9、10">
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">状态</label>
-                <select id="versionCodeEditStatus" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
-                    <option value="draft">草稿</option>
-                    <option value="testing">测试中</option>
-                    <option value="active">有效</option>
-                    <option value="disabled">失效</option>
-                    <option value="archived">归档</option>
-                </select>
-            </div>
-            <div class="rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2.5 space-y-2">
-                <div class="text-[12px] font-semibold text-amber-900">发布控制（按构建号）</div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-xs text-slate-500 mb-1">灰度比例 %</label>
-                        <input id="versionCodeRolloutPercentage" type="number" min="0" max="100" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white" value="100">
-                    </div>
-                    <div class="flex items-end pb-1">
-                        <label class="flex items-center gap-1.5 text-sm text-slate-700"><input type="checkbox" id="versionCodeIsRevoked" class="rounded"> 撤销此构建号热更</label>
-                    </div>
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">版本说明</label>
-                <textarea id="versionCodeEditChangelog" rows="3" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="请输入本次版本说明"></textarea>
-            </div>
-            <details class="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-600">
-                <summary class="cursor-pointer font-medium text-slate-700 select-none">高级：最低 APK 版本（一般留空）</summary>
-                <p class="mt-2 mb-2 leading-relaxed text-slate-500">仅当需要阻止更老的 APK 拉取本构建号时填写；留空则与版本名一致。</p>
-                <input id="versionCodeMinClientVersion" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white" placeholder="留空 = 版本名">
-            </details>
-        </div>
-        <div class="px-5 py-3 border-t shrink-0 border-slate-100 bg-slate-50 flex justify-end gap-2">
-            <button type="button" onclick="closeVersionCodeModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-100">取消</button>
-            <button type="button" onclick="saveVersionCodeModal()" class="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">保存</button>
-        </div>
-    </div>
-</div>
-
-<!-- 测试设备管理 -->
-<div id="deviceManageModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this) closeDeviceManageModal()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-slate-100" onclick="event.stopPropagation()">
-        <div class="px-5 py-3 border-b flex items-center justify-between shrink-0">
-            <div>
-                <h3 class="font-semibold text-slate-800">测试设备管理</h3>
-                <p class="text-xs text-slate-500 mt-0.5">绑定 device_id 与阶段；客户端 version-resolve 携带 device_id 时按对应阶段取最大 VersionCode</p>
-            </div>
-            <button type="button" onclick="closeDeviceManageModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="p-5 overflow-y-auto space-y-4 flex-1">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3" id="deviceFormGrid">
-                <input type="hidden" id="deviceEditId" value="">
-                <div><label class="block text-xs text-slate-500 mb-1">设备 ID *</label><input id="deviceEditDeviceId" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Android ID / IDFV 等"></div>
-                <div><label class="block text-xs text-slate-500 mb-1">平台</label><select id="deviceEditPlatform" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"><option value="android">Android</option><option value="ios">iOS</option></select></div>
-                <div><label class="block text-xs text-slate-500 mb-1">阶段 *</label><select id="deviceEditStage" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"><option value="dev">开发</option><option value="test">测试</option><option value="production">线上</option></select></div>
-                <div><label class="block text-xs text-slate-500 mb-1">备注名</label><input id="deviceEditLabel" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="如：张三测试机"></div>
-                <div class="md:col-span-2"><label class="block text-xs text-slate-500 mb-1">说明</label><textarea id="deviceEditNotes" rows="2" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="用途、负责人等"></textarea></div>
-            </div>
-            <div class="flex gap-2">
-                <button type="button" onclick="saveTestDevice()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">保存设备</button>
-                <button type="button" onclick="resetDeviceForm()" class="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50">清空表单</button>
-            </div>
-            <div class="border border-slate-200 rounded-xl overflow-hidden">
-                <div class="px-3 py-2 bg-slate-50 border-b text-xs font-semibold text-slate-600">已注册设备</div>
-                <div id="deviceListWrap" class="p-3 text-sm text-slate-500">加载中…</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div id="projectQRModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this) document.getElementById(\'projectQRModal\').classList.add(\'hidden\')">
-    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-slate-100" onclick="event.stopPropagation()">
-        <h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><i class="fas fa-qrcode text-indigo-500"></i> 扫码下载</h3>
-        <div id="projectQRCode" class="flex justify-center mb-4 min-h-[200px] items-center bg-slate-50 rounded-xl"></div>
-        <button type="button" onclick="document.getElementById(\'projectQRModal\').classList.add(\'hidden\')" class="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition">关闭</button>
-    </div>
-</div>
-<div id="versionDownloadsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onclick="if(event.target===this) document.getElementById(\'versionDownloadsModal\').classList.add(\'hidden\')">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0"><h3 class="font-semibold text-slate-800"><i class="fas fa-download text-emerald-500 mr-2"></i>安装包下载</h3><button type="button" onclick="document.getElementById(\'versionDownloadsModal\').classList.add(\'hidden\')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button></div>
-        <div id="versionDownloadsList" class="p-6 overflow-y-auto flex-1 text-sm">加载中…</div>
-    </div>
-</div>
-
-<div id="buildDetailModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4" onclick="if(event.target===this) document.getElementById('buildDetailModal').classList.add('hidden')">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-            <h3 class="font-semibold text-slate-800"><i class="fas fa-info-circle text-indigo-500 mr-2"></i>构建详情</h3>
-            <button type="button" onclick="document.getElementById('buildDetailModal').classList.add('hidden')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
-        </div>
-        <div id="buildDetailBody" class="p-6 overflow-y-auto flex-1 text-sm text-slate-700">加载中…</div>
-    </div>
-</div>
-<script type="application/json" id="project-detail-data">''' + _escape_script_json_for_html(json.dumps({
-    'project_id': project_id,
-    'can_edit': bool(can_edit),
-    'channels_full': {c['id']: {'apk_subdir': c.get('apk_subdir', '') or '', 'build_param': c.get('build_param', '') or ''} for c in (channels_db if isinstance(channels_db, list) else [])},
-    'project_channels': [{'id': cid, 'name': cname} for cid, cname in proj_channels_display],
-    'all_channels': [{'id': cid, 'name': cname} for cid, cname in all_channels_list],
-    'version_stages': [{'id': sid, 'name': sname} for sid, sname in VERSION_STAGES],
-    'project_name_en': (proj.get('name_en') or project_id).strip(),
-    'versions': versions_data,
-})) + '''</script>
-<script>
-var _pd=(function(){var el=document.getElementById("project-detail-data");return el?JSON.parse(el.textContent):{};})();
-function _normalizeProjectId(raw){
-    var v = (raw == null ? '' : String(raw)).trim();
-    if(!v) return '';
-    if((v[0] === '"' && v[v.length-1] === '"') || (v[0] === "'" && v[v.length-1] === "'")){
-        v = v.slice(1, -1).trim();
-    }
-    if(v === '""' || v === "''") v = '';
-    return v;
-}
-function _projectIdFromPath(){
-    try{
-        var p = String(location.pathname || '');
-        var marker = '/admin/projects/';
-        var idx = p.indexOf(marker);
-        if(idx < 0) return '';
-        var rest = p.slice(idx + marker.length);
-        var seg = rest.split('/')[0] || '';
-        return seg ? decodeURIComponent(seg) : '';
-    }catch(_e){
-        return '';
-    }
-}
-var PROJECT_ID=_normalizeProjectId(_pd.project_id)||_projectIdFromPath()||"";
-var CAN_EDIT=_pd.can_edit||false;
-// 快捷操作模块管理
-var _projectModules={build_general:true,build_commercial:true};
-function toggleModuleConfig(){var p=document.getElementById("moduleConfigPanel");if(!p)return;p.classList.toggle("hidden");if(!p.classList.contains("hidden"))renderModuleConfig();}
-function renderModuleConfig(){var el=document.getElementById("moduleConfigList");if(!el)return;
-var mods=[];
-el.innerHTML=mods.map(function(m){var a=_projectModules[m.id];
-return '<div class="flex items-center justify-between py-1 px-2 rounded-lg '+(a?"bg-amber-50":"bg-slate-50")+'">'+
-'<span class="flex items-center gap-1.5"><i class="fas '+m.icon+' text-'+m.color+'-500"></i>'+m.label+'</span>'+
-'<span>'+(a?'<span class="text-amber-600">✓ 已添加</span> <span class="module-remove" onclick="removeModule(&#39;'+m.id+'&#39;)">×</span>':'<button onclick="addModule(&#39;'+m.id+'&#39;)" class="text-[10px] text-indigo-500 hover:text-indigo-700">+ 添加</button>')+'</span></div>';
-}).join("");}
-function addModule(id){_projectModules[id]=true;renderModuleConfig();updateQuickActions();}
-function removeModule(id){_projectModules[id]=false;renderModuleConfig();updateQuickActions();}
-function updateQuickActions(){}
-var _versionMode = 'general';
-var _ppTargets = { code: true, resource: true };
-function toggleCommercialMode() {
-    var cb = document.getElementById('chkCommercialMode');
-    _versionMode = cb.checked ? 'commercial' : 'general';
-    var pp = document.getElementById('versionPipeline');
-    if(pp) pp.classList.toggle('hidden', !cb.checked);
-    var pipelineTabBtn = document.getElementById('versionPipelineTabBtn');
-    if (pipelineTabBtn) {
-        pipelineTabBtn.style.display = cb.checked ? '' : 'none';
-    }
-    if (!cb.checked) {
-        switchVersionModalTab('identity');
-    }
-    var label = document.getElementById('labelCommercialMode');
-    if(label) label.className = 'flex items-center gap-2.5 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ' + (cb.checked ? 'border-violet-500 bg-violet-50 shadow-sm shadow-violet-100' : 'border-slate-200 hover:border-violet-300');
-}
-function switchVersionModalTab(tab) {
-    var panelMap = {identity:'vmTabIdentity', package:'vmTabPackage', release:'vmTabRelease', pipeline:'vmTabPipeline'};
-    if (tab === 'pipeline' && _versionMode !== 'commercial') tab = 'identity';
-    document.querySelectorAll('#versionMainTabs [data-vtab]').forEach(function(btn) {
-        var key = btn.getAttribute('data-vtab');
-        var active = btn.getAttribute('data-vtab') === tab;
-        btn.className = 'flex-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition ' + (active ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-white/70');
-        if (key === 'pipeline') {
-            btn.style.display = (_versionMode === 'commercial') ? '' : 'none';
-        }
-    });
-    Object.keys(panelMap).forEach(function(k) {
-        var panel = document.getElementById(panelMap[k]);
-        if (panel) panel.classList.toggle('hidden', k !== tab);
-    });
-    if (tab === 'pipeline') {
-        var pp = document.getElementById('versionPipeline');
-        if (pp && _versionMode === 'commercial') pp.classList.remove('hidden');
-        switchPipelineTab('config_export');
-    }
-}
-function stageToReleaseEnvironment(stage) {
-    var s = String(stage || 'dev').toLowerCase();
-    if (s === 'production' || s === 'prod') return 'Production';
-    if (s === 'staging' || s === 'stage') return 'Staging';
-    if (s === 'test' || s === 'testing') return 'Testing';
-    return 'Development';
-}
-function mapVersionChannelToReleaseChannel(channelId) {
-    var key = String(channelId || '').trim();
-    if (!key) return 'common';
-    var info = CHANNELS_FULL && CHANNELS_FULL[key];
-    if (info) {
-        var bp = String(info.build_param || '').trim();
-        if (bp) {
-            var m = bp.match(/CHANNEL\\s*=\\s*([A-Za-z0-9_.-]+)/i);
-            if (m && m[1]) return m[1];
-            if (!/^\\d+$/.test(bp)) return bp;
-        }
-        var sub = String(info.apk_subdir || '').trim();
-        if (sub && !/^\\d+$/.test(sub)) return sub;
-    }
-    if (!/^\\d+$/.test(key)) return key;
-    return key || 'common';
-}
-function switchPipelineTab(tab) {
-    document.querySelectorAll('#pipelineTabs [data-ptab]').forEach(function(b) {
-        var isActive = b.getAttribute('data-ptab') === tab;
-        b.className = 'flex-1 py-1.5 px-2 rounded text-xs font-medium transition ' + (isActive ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white/60');
-        var numSpan = b.querySelector('span');
-        if(numSpan) numSpan.className = 'w-5 h-5 inline-flex items-center justify-center rounded-full text-[10px] font-bold mr-1 ' + (isActive ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-500');
-    });
-    document.querySelectorAll('.pipeline-panel').forEach(function(p) { p.classList.add('hidden'); });
-    var panelMap = {config_export:'ptabConfigExport',resource_build:'ptabResourceBuild',hot_release:'ptabHotRelease',apk_build:'ptabApkBuild'};
-    var panel = document.getElementById(panelMap[tab]);
-    if(panel) panel.classList.remove('hidden');
-}
-function togglePipelineStep(step) {
-    setTimeout(function(){ togglePipelineStepUI(step); }, 50);
-}
-function togglePipelineStepUI(step) {
-    var cbs = {config_export:'ppConfigExportBody',resource_build:'ppResourceBuildBody',hot_release:'ppHotReleaseBody',apk_build:'ppApkBuildBody'};
-    var ck = {config_export:'ppConfigExport',resource_build:'ppResourceBuild',hot_release:'ppHotRelease',apk_build:'ppApkBuild'};
-    var cb = document.getElementById(ck[step]);
-    var body = document.getElementById(cbs[step]);
-    if(body && cb) body.classList.toggle('hidden', !cb.checked);
-}
-function togglePpChip(k){ _ppTargets[k]=!_ppTargets[k]; updatePpChips(); }
-function updatePpChips(){
-    var cs={code:['ppChipCode','bg-blue-100 text-blue-700 border-blue-300','bg-slate-100 text-slate-400 border-slate-200'],
-        resource:['ppChipResource','bg-emerald-100 text-emerald-700 border-emerald-300','bg-slate-100 text-slate-400 border-slate-200']};
-    Object.keys(cs).forEach(function(k){
-        var c=cs[k], el=document.getElementById(c[0]);
-        if(el) el.className='inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border-2 cursor-pointer select-none '+(_ppTargets[k]?c[1]:c[2]);
-    });
-    var codeCard=document.getElementById('ppStratCode');
-    var resCard=document.getElementById('ppStratResource');
-    if(codeCard) codeCard.style.display=_ppTargets.code?'':'none';
-    if(resCard) resCard.style.display=_ppTargets.resource?'':'none';
-    var codeEn=document.getElementById('ppHrCodeEnabled');
-    var resEn=document.getElementById('ppHrResEnabled');
-    if(codeEn) codeEn.checked=_ppTargets.code;
-    if(resEn) resEn.checked=_ppTargets.resource;
-}
-function onPpHrModeChange(){
-    var m=document.getElementById('ppHrMode').value;
-    var rb=document.getElementById('ppHrRollback');
-    if(rb) rb.disabled = m!=='rollback';
-}
-function collectPipeline() {
-    var p = {};
-    var stageEl = document.getElementById('versionStage');
-    var releaseEnv = stageToReleaseEnvironment(stageEl ? stageEl.value : 'dev');
-    var cfgPrefixEl = document.getElementById('ppCfgPrefix');
-    var cfgPrefix = cfgPrefixEl ? String(cfgPrefixEl.value || '').trim() : '';
-    cfgPrefix = cfgPrefix.replace(new RegExp('^/+|/+$', 'g'), '');
-    if (cfgPrefixEl) cfgPrefixEl.value = cfgPrefix;
-    var ce = document.getElementById('ppConfigExport');
-    p.config_export = {
-        enabled: ce ? ce.checked : false,
-        environment: releaseEnv,
-        platform: document.getElementById('versionPlatform').value,
-        client_version: document.getElementById('ppCfgClientVer').value.trim(),
-        remote_prefix: cfgPrefix,
-        include_code: document.getElementById('ppCfgIncludeCode').checked
-    };
-    var rbCb = document.getElementById('ppResourceBuild');
-    p.resource_build = {
-        enabled: rbCb ? rbCb.checked : false,
-        provider: document.getElementById('ppResProvider').value,
-        scenario: document.getElementById('ppResScenario').value.trim()
-    };
-    var hrCb = document.getElementById('ppHotRelease');
-    p.hot_release = {
-        enabled: hrCb ? hrCb.checked : false,
-        release_targets: Object.keys(_ppTargets).filter(function(k){return _ppTargets[k];}).join(','),
-        release_mode: document.getElementById('ppHrMode').value,
-        release_environment: releaseEnv,
-        release_channel: mapVersionChannelToReleaseChannel(document.getElementById('versionChannel').value),
-        release_hot_labels: document.getElementById('ppHrLabels').value.trim(),
-        release_upload_mode: document.getElementById('ppHrUpload').value,
-        release_rollback_target: document.getElementById('ppHrRollback').value.trim(),
-        release_compression_override: document.getElementById('ppHrCompOvr').value,
-        release_encryption_override: document.getElementById('ppHrEncOvr').value,
-        release_signature_override: document.getElementById('ppHrSigOvr').value,
-        code_enabled: document.getElementById('ppHrCodeEnabled').checked,
-        code_compression: document.getElementById('ppHrCodeComp').value,
-        code_encryption: document.getElementById('ppHrCodeEnc').value,
-        code_signature: document.getElementById('ppHrCodeSig').value,
-        code_units: document.getElementById('ppHrCodeUnits').value.trim(),
-        resource_enabled: document.getElementById('ppHrResEnabled').checked,
-        resource_compression: document.getElementById('ppHrResComp').value,
-        resource_encryption: document.getElementById('ppHrResEnc').value,
-        resource_signature: document.getElementById('ppHrResSig').value,
-        resource_units: document.getElementById('ppHrResUnits').value.trim()
-    };
-    var abCb = document.getElementById('ppApkBuild');
-    var releaseBranch = document.getElementById('ppApkBranch').value.trim();
-    p.apk_build = {
-        enabled: abCb ? abCb.checked : false,
-        unity_version: document.getElementById('ppApkUnity').value.trim(),
-        git_branch: releaseBranch,
-        app_name: document.getElementById('ppApkAppName').value.trim(),
-        output_base_dir: document.getElementById('ppApkOutput').value.trim()
-    };
-    if (releaseBranch) p.git_branch = releaseBranch;
-    return p;
-}
-function validateCommercialPipeline(p) {
-    if (!p || typeof p !== 'object') return '商业流水线参数无效';
-    var hr = p.hot_release || {};
-    if (hr.enabled) {
-        var raw = String(hr.release_targets || '').trim().toLowerCase();
-        if (!raw) return '热更发布已启用时，必须至少选择一个发布对象（代码包或资源包）';
-        var arr = raw.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
-        var allowed = { code: true, resource: true };
-        var uniq = [];
-        for (var i = 0; i < arr.length; i++) {
-            var t = arr[i];
-            if (!allowed[t]) return '发布对象仅允许 code、resource，禁止 config 或其他值';
-            if (uniq.indexOf(t) < 0) uniq.push(t);
-        }
-        if (uniq.length === 0) return '热更发布对象不能为空';
-        hr.release_targets = uniq.join(',');
-    }
-    return '';
-}
-function restorePipeline(pipeline) {
-    if(!pipeline) return;
-    var restoreCfg = function(s, cb, body, fields) {
-        if(!s) return;
-        if(cb) cb.checked = !!s.enabled;
-        if(body && cb) body.classList.toggle('hidden', !cb.checked);
-        if(fields) fields.forEach(function(f) {
-            var el = document.getElementById(f.id);
-            if(el && s[f.key] !== undefined) {
-                if(el.type==='checkbox') el.checked = !!s[f.key];
-                else el.value = s[f.key] || '';
-            }
-        });
-    };
-    var ce = pipeline.config_export;
-    restoreCfg(ce, document.getElementById('ppConfigExport'), document.getElementById('ppConfigExportBody'), [
-        {id:'ppCfgClientVer',key:'client_version'},{id:'ppCfgPrefix',key:'remote_prefix'},
-        {id:'ppCfgIncludeCode',key:'include_code'}
-    ]);
-    var rb = pipeline.resource_build;
-    restoreCfg(rb, document.getElementById('ppResourceBuild'), document.getElementById('ppResourceBuildBody'), [
-        {id:'ppResProvider',key:'provider'},{id:'ppResScenario',key:'scenario'}
-    ]);
-    var hr = pipeline.hot_release;
-    if(hr) {
-        restoreCfg(hr, document.getElementById('ppHotRelease'), document.getElementById('ppHotReleaseBody'), [
-            
-            {id:'ppHrLabels',key:'release_hot_labels'},{id:'ppHrMode',key:'release_mode'},
-            {id:'ppHrUpload',key:'release_upload_mode'},{id:'ppHrRollback',key:'release_rollback_target'},
-            {id:'ppHrCompOvr',key:'release_compression_override'},{id:'ppHrEncOvr',key:'release_encryption_override'},
-            {id:'ppHrSigOvr',key:'release_signature_override'},
-            {id:'ppHrCodeEnabled',key:'code_enabled'},{id:'ppHrCodeComp',key:'code_compression'},
-            {id:'ppHrCodeEnc',key:'code_encryption'},{id:'ppHrCodeSig',key:'code_signature'},
-            {id:'ppHrCodeUnits',key:'code_units'},
-            {id:'ppHrResEnabled',key:'resource_enabled'},{id:'ppHrResComp',key:'resource_compression'},
-            {id:'ppHrResEnc',key:'resource_encryption'},{id:'ppHrResSig',key:'resource_signature'},
-            {id:'ppHrResUnits',key:'resource_units'}
-        ]);
-        if(hr.release_targets) {
-            _ppTargets = {code:false,resource:false};
-            hr.release_targets.split(',').forEach(function(t){ t=t.trim(); if(_ppTargets.hasOwnProperty(t)) _ppTargets[t]=true; });
-            updatePpChips();
-        }
-        onPpHrModeChange();
-    }
-    var ab = pipeline.apk_build;
-    if (ab && !ab.git_branch && pipeline.git_branch) ab.git_branch = pipeline.git_branch;
-    restoreCfg(ab, document.getElementById('ppApkBuild'), document.getElementById('ppApkBuildBody'), [
-        {id:'ppApkUnity',key:'unity_version'},{id:'ppApkBranch',key:'git_branch'},
-        {id:'ppApkAppName',key:'app_name'},{id:'ppApkOutput',key:'output_base_dir'}
-    ]);
-    if (!document.getElementById('ppApkBranch').value && pipeline.git_branch) {
-        document.getElementById('ppApkBranch').value = pipeline.git_branch;
-    }
-}
-var CHANNELS_FULL=_pd.channels_full||{};
-var PROJECT_CHANNELS=_pd.project_channels||[];
-var ALL_CHANNELS=_pd.all_channels||[];
-var VERSION_STAGES=_pd.version_stages||[{id:'dev',name:'开发'},{id:'test',name:'测试'},{id:'production',name:'线上'}];
-var PROJECT_NAME_EN=(_pd.project_name_en||PROJECT_ID||'').replace(new RegExp("\\\\s","g"),"");
-var STAGE_DIR_MAP={dev:'dev',test:'test',production:'release'};
-var allVersions=(_pd.versions||[]).map(function(v){v.channel_label=v.channel_label||v.channel;v.stage=v.stage||'dev';v.stage_label=v.stage_label||'开发';return v;});
-function _esc(s){if(s==null||s===undefined)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
-var VERSION_STATUS_META={
-    draft:{label:'草稿',badge:'bg-slate-100 text-slate-700 border border-slate-200',row:'bg-slate-50/30',panel:'bg-slate-50/40'},
-    active:{label:'有效',badge:'bg-emerald-100 text-emerald-700 border border-emerald-200',row:'bg-emerald-50/35',panel:'bg-emerald-50/45'},
-    testing:{label:'测试中',badge:'bg-sky-100 text-sky-700 border border-sky-200',row:'bg-sky-50/35',panel:'bg-sky-50/45'},
-    disabled:{label:'失效',badge:'bg-rose-100 text-rose-700 border border-rose-200',row:'bg-rose-50/35',panel:'bg-rose-50/45'},
-    archived:{label:'归档',badge:'bg-slate-200 text-slate-700 border border-slate-300',row:'bg-slate-100/65',panel:'bg-slate-100/75'}
-};
-function normalizeVersionStatus(s){
-    s=String(s||'').toLowerCase().trim();
-    if(s==='draft') return 'draft';
-    if(s==='valid'||s==='enabled'||s==='online') return 'active';
-    if(s==='test'||s==='beta') return 'testing';
-    if(s==='deprecated'||s==='obsolete'||s==='invalid'||s==='inactive') return 'disabled';
-    if(s==='archive') return 'archived';
-    return VERSION_STATUS_META[s] ? s : 'active';
-}
-function getVersionStatusMeta(s){
-    return VERSION_STATUS_META[normalizeVersionStatus(s)] || VERSION_STATUS_META.active;
-}
-function _getVersionFilterKey(channelId, stageId){
-    return String(channelId||'') + '::' + String(stageId||'');
-}
-function _getVersionFilter(channelId, stageId){
-    window._versionFilters = window._versionFilters || {};
-    var key = _getVersionFilterKey(channelId, stageId);
-    if(!window._versionFilters[key]){
-        window._versionFilters[key] = { q:'', platform:'all', status:'all' };
-    }
-    return window._versionFilters[key];
-}
-
-window.switchTab=function switchTab(name){
-    var allowed={overview:1,channels:1,build:1,download:1};
-    name = String(name||'overview').toLowerCase().trim();
-    if(!allowed[name]) name='overview';
-    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('text-amber-600','border-b-2','border-amber-600'); b.classList.add('text-gray-500'); });
-    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.add('hidden'); });
-    var btn = document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1));
-    var panel = document.getElementById('panel' + name.charAt(0).toUpperCase() + name.slice(1));
-    if(btn){ btn.classList.remove('text-gray-500'); btn.classList.add('text-amber-600','border-b-2','border-amber-600'); }
-    if(panel){ panel.classList.remove('hidden'); }
-    if(name==='channels'){
-        try{ renderChannelsView(); }catch(e){ console.error('renderChannelsView failed', e); alert('版本页面初始化失败，请刷新后重试。'); }
-        var sec=document.getElementById('projectTabSection');
-        if(sec){ sec.scrollIntoView({behavior:'smooth', block:'start'}); }
-    }
-    if(typeof history!=='undefined'&&history.replaceState){ var u=new URL(window.location.href); u.searchParams.set('tab',name); history.replaceState(null,'',u.pathname+u.search); }
-};
-function loadProjectRecentBuilds(){
-    var el=document.getElementById('projectRecentBuilds'); if(!el) return;
-    fetch('/api/build/recent?limit=5', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
-        var builds=d.builds||[];
-        if(builds.length===0){ el.innerHTML='<li class="text-slate-500">暂无构建记录，请先启动 Jenkins 并前往构建页</li>'; return; }
-        var statusCls=function(r){ r=(r||'').toUpperCase(); if(r==='SUCCESS') return 'bg-green-100 text-green-800'; if(r==='FAILURE'||r==='ABORTED') return 'bg-red-100 text-red-800'; if(r==='UNSTABLE') return 'bg-yellow-100 text-yellow-800'; return 'bg-gray-100 text-gray-700'; };
-        el.innerHTML=builds.map(function(b){ var badge='<span class="ml-1 px-2 py-0.5 rounded text-xs '+statusCls(b.result)+'">'+(b.result||'中')+'</span>'; return '<li><a href="/admin/projects/'+PROJECT_ID+'/build" class="text-indigo-600 hover:underline">#'+b.number+'</a> '+badge+'</li>'; }).join('');
-    }).catch(function(){ el.innerHTML='<li class="text-slate-500">加载失败</li>'; });
-}
-window._showQR=function(filename){
-    var modal=document.getElementById('projectQRModal'); var box=document.getElementById('projectQRCode');
-    if(!modal||!box) return;
-    box.innerHTML='<p class="text-slate-400 text-sm">加载中…</p>';
-    modal.classList.remove('hidden'); modal.classList.add('flex');
-    fetch('/qr/'+encodeURIComponent(filename),{credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
-        box.innerHTML= d.qr_code ? '<img src="'+d.qr_code+'" alt="QR" class="w-48 h-48 object-contain rounded-lg">' : '<p class="text-red-500 text-sm">加载失败</p>';
-    }).catch(function(){ box.innerHTML='<p class="text-red-500 text-sm">加载失败</p>'; });
-};
-function _renderApkDownloadPanel(info){
-    if(!info||!info.available){ return '<p class="text-slate-500 text-sm py-4">该版本暂无可下载的安装包</p>'; }
-    var row=function(label,val){ return '<div class="flex gap-2 py-1"><span class="text-slate-400 w-20 shrink-0">'+label+'</span><span class="text-slate-800 break-all flex-1">'+val+'</span></div>'; };
-    var qrBlock=function(title,url,qr){
-        if(!url) return '';
-        var img=qr?'<img src="'+qr+'" alt="QR" class="w-36 h-36 object-contain rounded-lg border border-slate-100 bg-white p-1">':'<p class="text-slate-400 text-xs">无二维码</p>';
-        return '<div class="rounded-xl border border-slate-200 p-4 bg-slate-50/50"><p class="text-xs font-semibold text-slate-600 mb-2">'+title+'</p>'+img+'<p class="text-[11px] text-slate-500 mt-2 break-all">'+_esc(url)+'</p><a href="'+_esc(url)+'" target="_blank" rel="noopener" class="inline-flex mt-2 text-indigo-600 text-xs hover:underline">打开链接</a></div>';
-    };
-    var html='<div class="space-y-4">';
-    html+=row('构建时间',_esc(info.build_time||'—'));
-    html+=row('包名',_esc(info.package_name||info.app_name||'—'));
-    html+=row('文件',_esc(info.file_name||'—'));
-    html+=row('大小',_esc(info.size_label||'—'));
-    html+=row('渠道/阶段',_esc((info.channel_label||info.channel||'-')+' / '+(info.stage_label||info.stage||'-')));
-    html+='<div class="grid md:grid-cols-2 gap-4 pt-2">';
-    html+=qrBlock('本地下载',info.local_download_url,info.local_qr_dataurl);
-    html+=qrBlock('远端下载',info.oss_download_url,info.oss_qr_dataurl);
-    html+='</div>';
-    if(info.pub_download_path){ html+='<div class="pt-2"><a href="/pub/download/'+_esc(info.pub_download_path)+'" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700"><i class="fas fa-download"></i>直接下载</a></div>'; }
-    html+='</div>';
-    return html;
-}
-function openVersionDownloadsModal(vid){
-    var modal=document.getElementById('versionDownloadsModal'); var list=document.getElementById('versionDownloadsList');
-    if(!modal||!list) return;
-    list.innerHTML='<p class="text-slate-400 text-sm">加载中…</p>';
-    modal.classList.remove('hidden'); modal.classList.add('flex');
-    fetch('/api/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/'+encodeURIComponent(vid)+'/apk-download-info', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
-        if(d.error&&!d.available){ list.innerHTML='<p class="text-slate-500 text-sm py-4">'+_esc(d.error||'暂无可下载的安装包')+'</p>'; return; }
-        list.innerHTML=_renderApkDownloadPanel(d);
-    }).catch(function(){ list.innerHTML='<p class="text-red-500 text-sm">加载失败</p>'; });
-}
-(function(){
-    var h=window.location.hash;
-    var qTab=(new URLSearchParams(window.location.search)).get('tab');
-    if(qTab){ switchTab(qTab); }
-    else if(h&&h.indexOf('tab=')>=0){ var m=h.match(/tab=([a-z]+)/); if(m) switchTab(m[1]); }
-    else { switchTab('overview'); }
-    fetch('/api/projects/'+encodeURIComponent(PROJECT_ID)+'/download-stats', {credentials:'same-origin'}).then(function(r){ return r.json(); }).then(function(d){
-        var el=document.getElementById('projectTrend7d'); if(el) el.textContent = (d.sum_7d!=null) ? '最近7日：'+d.sum_7d+' 次' : '—';
-    }).catch(function(){});
-})();
-document.addEventListener('click', function(e){
-    var link = e.target.closest('a[href*="?tab=channels"]');
-    if(!link) return;
-    try{
-        var u = new URL(link.href, window.location.origin);
-        if(u.pathname === window.location.pathname){
-            e.preventDefault();
-            switchTab('channels');
-        }
-    }catch(_err){}
-});
-
-window._versionBuildState = window._versionBuildState || {};
-window._versionBuildStateLoading = false;
-window._versionBuildStateTimer = window._versionBuildStateTimer || null;
-function _isVersionBuilding(versionId){
-    if(!window._versionBuildState || typeof window._versionBuildState !== 'object'){
-        window._versionBuildState = {};
-    }
-    var st = window._versionBuildState[String(versionId||'')] || {};
-    return !!st.building;
-}
-function refreshVersionBuildState(){
-    if(window._versionBuildStateLoading) return;
-    if(!window._versionBuildState || typeof window._versionBuildState !== 'object'){
-        window._versionBuildState = {};
-    }
-    var ids = (allVersions||[]).map(function(v){ return String(v.id||'').trim(); }).filter(Boolean);
-    if(!ids.length){ window._versionBuildState = {}; return; }
-    window._versionBuildStateLoading = true;
-    Promise.all(ids.map(function(id){
-        return fetch('/api/build/history-by-version?version_id='+encodeURIComponent(id), {credentials:'same-origin'})
-            .then(function(r){ return r.json(); })
-            .then(function(d){
-                var builds = (d&&d.builds) ? d.builds : [];
-                if(!builds.length) return [id, {building:false, build_number:null}];
-                var sorted = builds.slice().sort(function(a,b){ return (parseInt(b.number||0,10)||0) - (parseInt(a.number||0,10)||0); });
-                var latest = sorted[0] || {};
-                var latestNo = parseInt(latest.number||0,10)||null;
-                var building = !!latest.building || String(latest.result||'').toUpperCase()==='BUILDING' || String(latest.result||'').toUpperCase()==='QUEUED';
-                return [id, {building: building, build_number: latestNo}];
-            })
-            .catch(function(){ return [id, {building:false, build_number:null}]; });
-    })).then(function(rows){
-        var next = {};
-        rows.forEach(function(row){ next[row[0]] = row[1]; });
-        var prev = JSON.stringify(window._versionBuildState||{});
-        var curr = JSON.stringify(next);
-        window._versionBuildState = next;
-        if(prev !== curr) renderChannelsView();
-    }).finally(function(){
-        window._versionBuildStateLoading = false;
-    });
-}
-function ensureVersionBuildStateTimer(){
-    if(window._versionBuildStateTimer) return;
-    window._versionBuildStateTimer = setInterval(refreshVersionBuildState, 5000);
-}
-
-function renderChannelsView(){
-    var wrap = document.getElementById('channelsVersionsWrap');
-    var empty = document.getElementById('channelsEmpty');
-    if(!wrap) return;
-    var chs = PROJECT_CHANNELS || [];
-    var stages = VERSION_STAGES || [{id:'dev',name:'开发'},{id:'test',name:'测试'},{id:'production',name:'线上'}];
-    if(chs.length===0){ wrap.innerHTML=''; if(empty) empty.classList.remove('hidden'); return; }
-    if(empty) empty.classList.add('hidden');
-    var activeChannelId = (window._activeChannelId || (chs[0] && chs[0].id) || '');
-    var activeChannel = null;
-    for(var ci=0; ci<chs.length; ci++){
-        if((chs[ci].id||'') === activeChannelId){ activeChannel = chs[ci]; break; }
-    }
-    if(!activeChannel){ activeChannel = chs[0]; activeChannelId = activeChannel.id || ''; }
-    window._activeChannelId = activeChannelId;
-
-    var html = '<div class="channel-card bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">';
-    html += '<div class="px-5 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">';
-    html += '<div class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2"><i class="fas fa-layer-group text-indigo-500"></i>发布渠道</div>';
-    html += '<div class="flex flex-wrap gap-2">';
-    for(var ti=0; ti<chs.length; ti++){
-        var t = chs[ti]; var tid = t.id||''; var tname = t.name||tid; var on = tid===activeChannelId;
-        html += '<button type="button" class="channel-main-tab px-3.5 py-1.5 rounded-lg text-sm font-medium transition '+(on?'bg-indigo-600 text-white shadow-sm':'bg-slate-100 text-slate-700 hover:bg-slate-200')+'" data-channel-id="'+_esc(tid)+'">'+_esc(tname)+'</button>';
-    }
-    html += '</div></div>';
-
-    var cid = activeChannel.id||'';
-    html += '<div class="px-5 py-3 border-b border-slate-50 flex flex-wrap justify-between items-center gap-2">';
-    html += '<span class="text-xs text-slate-500 shrink-0">当前渠道：'+_esc(activeChannel.name||cid)+'</span>';
-    html += '<div class="flex items-center gap-2 ml-auto flex-wrap">';
-    html += '<div class="flex rounded-lg bg-slate-100/80 p-0.5">';
-    for(var s=0;s<stages.length;s++){
-        var st = stages[s]; var sid = st.id||'dev'; var sname = st.name||'开发'; var isFirst = s===0;
-        html += '<button type="button" class="channel-stage-tab px-3.5 py-1.5 text-xs font-medium rounded-md transition '+(isFirst?'bg-white text-slate-800 shadow-sm':'text-slate-600 hover:text-slate-800')+'" data-block="channel-tabs" data-stage="'+_esc(sid)+'">'+_esc(sname)+'</button>';
-    }
-    html += '</div>';
-    html += '<div class="flex items-center gap-2 shrink-0">';
-    if(CAN_EDIT) html += '<button type="button" data-channel-id="'+_esc(cid)+'" class="ch-open-version-btn-main px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition"><i class="fas fa-plus text-[10px] mr-1"></i>新建版本</button>';
-    html += '<a href="/admin/projects/'+PROJECT_ID+'/build-history" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition inline-flex items-center"><i class="fas fa-history text-[10px] mr-1"></i>构建历史</a>';
-    if(CAN_EDIT) html += '<button type="button" onclick="openDeviceManageModal()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-700 text-white hover:bg-slate-800 shadow-sm transition inline-flex items-center"><i class="fas fa-mobile-alt text-[10px] mr-1"></i>设备管理</button>';
-    html += '</div></div></div>';
-
-    for(var s2=0;s2<stages.length;s2++){
-        var st2 = stages[s2]; var sid2 = st2.id||'dev'; var sname2 = st2.name||'开发';
-        var versAllChannel = allVersions.filter(function(v){ return ((v.channel||'').toLowerCase()===(cid||'').toLowerCase()); });
-        var f = _getVersionFilter(cid, sid2);
-        var kw = String(f.q||'').toLowerCase().trim();
-        var fPlatform = String(f.platform||'all').toLowerCase();
-        var fStatusRaw = String(f.status||'all').toLowerCase();
-        var fStatus = (fStatusRaw==='all') ? 'all' : normalizeVersionStatus(fStatusRaw);
-        var versFiltered = versAllChannel.filter(function(v){
-            var okName = !kw || String(v.version_name||'').toLowerCase().indexOf(kw) >= 0 || String(v.version_code||'').toLowerCase().indexOf(kw) >= 0;
-            var okPlatform = (fPlatform==='all') || (String(v.platform||'').toLowerCase()===fPlatform);
-            var okStatus = (fStatus==='all') || (normalizeVersionStatus(v.version_status||'active')===fStatus);
-            return okName && okPlatform && okStatus;
-        });
-        var vers = versFiltered.filter(function(v){ return (v.stage||'dev')===(sid2||'dev'); });
-        var versAll = versAllChannel;
-        var panelHidden = s2>0 ? ' hidden' : '';
-        html += '<div class="channel-stage-panel'+panelHidden+'" data-block="channel-tabs" data-stage="'+_esc(sid2)+'">';
-        html += '<div class="px-5 py-3 flex justify-between items-center border-b border-slate-50">';
-        html += '<span class="text-xs text-slate-500">'+_esc(sname2)+' 阶段 · 本阶段 '+vers.length+' 条 / 渠道内 '+versFiltered.length+' 条</span>';
-        html += '</div><div class="p-5">';
-        html += '<div class="mb-3 grid grid-cols-1 md:grid-cols-3 gap-2" data-version-filter-wrap="1">';
-        html += '<input type="text" class="version-filter-input px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500" placeholder="筛选版本号 / Version Code" value="'+_esc(f.q||'')+'" data-channel-id="'+_esc(cid)+'" data-stage="'+_esc(sid2)+'" data-filter-field="q">';
-        html += '<select class="version-filter-input px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500" data-channel-id="'+_esc(cid)+'" data-stage="'+_esc(sid2)+'" data-filter-field="platform">';
-        html += '<option value="all"'+(fPlatform==='all'?' selected':'')+'>全部平台</option><option value="android"'+(fPlatform==='android'?' selected':'')+'>Android</option><option value="ios"'+(fPlatform==='ios'?' selected':'')+'>iOS</option>';
-        html += '</select>';
-        html += '<select class="version-filter-input px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500" data-channel-id="'+_esc(cid)+'" data-stage="'+_esc(sid2)+'" data-filter-field="status">';
-        html += '<option value="all"'+(fStatus==='all'?' selected':'')+'>全部状态</option><option value="draft"'+(fStatus==='draft'?' selected':'')+'>草稿</option><option value="testing"'+(fStatus==='testing'?' selected':'')+'>测试中</option><option value="active"'+(fStatus==='active'?' selected':'')+'>有效</option><option value="disabled"'+(fStatus==='disabled'?' selected':'')+'>失效</option><option value="archived"'+(fStatus==='archived'?' selected':'')+'>归档</option>';
-        html += '</select>';
-        html += '</div>';
-        if(vers.length===0){
-            html += '<div class="py-10 text-center rounded-xl bg-slate-50/60 border border-dashed border-slate-200"><i class="fas fa-cube text-3xl text-slate-200 mb-2"></i><p class="text-slate-500 text-sm">没有匹配的版本</p><p class="text-slate-400 text-xs mt-0.5">'+(versAll.length>0?'试试调整筛选条件':'点击「新建版本」添加')+'</p></div>';
-        } else {
-            // ---- 按版本号分组（同渠道同 version_name 跨阶段归为一组）----
-            var groups = {};
-            versFiltered.forEach(function(v){
-                var vn = (v.version_name || '').trim() || '未命名';
-                if(!groups[vn]) groups[vn] = [];
-                groups[vn].push(v);
-            });
-            var groupKeys = Object.keys(groups).sort(function(a,b){ return b.localeCompare(a); });
-            html += '<div class="space-y-3">';
-            for(var gi=0; gi<groupKeys.length; gi++){
-                var gName = groupKeys[gi];
-                var gVersAll = groups[gName];
-                var gVers = gVersAll.filter(function(x){ return (x.stage||'dev')===(sid2||'dev'); });
-                var activeCount = gVersAll.filter(function(x){ return normalizeVersionStatus(x.version_status||'active')==='active'; }).length;
-                var totalDownloads = gVersAll.reduce(function(s,x){ return s + (x.download_count||0); }, 0);
-                var stageCountHint = (gVers.length<gVersAll.length) ? ('（本阶段 '+gVers.length+' 个）') : '';
-                var hasRecommended = gVers.some(function(x){ return x.recommended; });
-                var hasCommercial = gVers.some(function(x){ return (x.version_mode||'general')==='commercial'; });
-                var gStatusLabel = activeCount===gVersAll.length ? '全部有效' : (activeCount>0 ? activeCount+'/'+gVersAll.length+' 有效' : '全部非有效');
-                var gStatusColor = activeCount===gVersAll.length ? 'bg-emerald-100 text-emerald-700' : (activeCount>0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500');
-                // 组级操作（编辑/删除第一个版本，或弹出批量操作）
-                var firstV = gVersAll[0];
-                var gActions = CAN_EDIT ? '<button type="button" data-version-name="'+_esc(gName)+'" class="version-add-code-btn version-op-btn version-op-build"><i class="fas fa-plus text-[10px]" style="pointer-events:none;"></i>增加 VersionCode</button><button type="button" data-version-id="'+_esc(firstV.id||'')+'" class="version-group-edit-btn version-op-btn version-op-edit"><i class="fas fa-pen text-[10px]" style="pointer-events:none;"></i>编辑版本</button><button type="button" data-version-name="'+_esc(gName)+'" class="version-group-delete-btn version-op-btn version-op-delete"><i class="fas fa-trash text-[10px]" style="pointer-events:none;"></i>删除组</button>' : '';
-                var gRecBadge = hasRecommended ? ' <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">推荐</span>' : '';
-                var gModeBadge = hasCommercial ? ' <span class="px-1.5 py-0.5 rounded text-[10px] bg-violet-100 text-violet-700">🚀 商业版</span>' : ' <span class="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-500">📦 通用</span>';
-                html += '<div class="version-group rounded-xl border overflow-hidden '+(hasCommercial?'border-violet-200 bg-violet-50/20':'border-slate-200 bg-white')+'" style="border-left:3px solid '+(hasCommercial?'#8b5cf6':'#cbd5e1')+';">';
-                html += '<div class="version-group-header flex items-center justify-between px-4 py-3 bg-slate-50/60 cursor-pointer select-none" >';
-                html += '<div class="flex items-center gap-2">';
-                html += '<i class="fas fa-chevron-down text-[10px] text-slate-400 transition-transform version-group-arrow" style="pointer-events:none;"></i>';
-                html += '<span class="font-semibold text-sm text-slate-800">'+_esc(gName)+gRecBadge+gModeBadge+'</span>';
-                html += '<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] '+gStatusColor+'">'+gStatusLabel+'</span>';
-                html += '<span class="text-[11px] text-slate-400">'+gVersAll.length+' 个 VersionCode'+stageCountHint+' · '+totalDownloads+' 次下载</span>';
-                html += '</div>';
-                html += '<div class="flex items-center gap-2">' + gActions + '</div>';
-                html += '</div>';
-                // 子表
-                html += '<div class="version-group-body">';
-                html += '<table class="w-full text-xs"><thead><tr class="border-b border-slate-100 text-left text-slate-400"><th class="px-4 py-2 font-normal">Version Code</th><th class="px-4 py-2 font-normal">阶段</th><th class="px-4 py-2 font-normal">平台</th><th class="px-4 py-2 font-normal">状态</th><th class="px-4 py-2 font-normal">安装包</th><th class="px-4 py-2 font-normal">下载</th><th class="px-4 py-2 font-normal">路径</th><th class="px-4 py-2 font-normal w-28">操作</th></tr></thead><tbody>';
-                if(!gVers.length && gVersAll.length){
-                    html += '<tr><td colspan="8" class="px-4 py-4 text-center text-slate-500 text-xs">本阶段暂无 VersionCode，请切换到其他阶段标签查看，或在当前阶段点击「增加 VersionCode」</td></tr>';
-                }
-                for(var vj=0; vj<gVers.length; vj++){
-                    var v = gVers[vj]; var vid = v.id||'';
-                    var isBuilding = _isVersionBuilding(vid);
-                    var stMeta = getVersionStatusMeta(v.version_status);
-                    var stBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] '+stMeta.badge+'">'+_esc(stMeta.label)+'</span>';
-                    var apkBadge = (v.apk_status==='found') ? '<span class="text-[10px] text-emerald-600"><i class="fas fa-check-circle mr-0.5"></i>已落盘</span>' : ((v.apk_status==='not_found') ? '<span class="text-[10px] text-slate-400" style="display:block;line-height:1;margin-bottom:1px;">未找到</span>' : '—');
-                    var buildCls = isBuilding ? 'text-amber-500 animate-pulse' : 'text-emerald-600 hover:text-emerald-800';
-                    var buildIconCls = isBuilding ? 'fas fa-cogs fa-spin' : 'fas fa-cogs';
-                    var buildTitle = isBuilding ? '构建中（仅可查看）' : '构建';
-                    var vActions = '<a href="/admin/projects/'+PROJECT_ID+'/versions/'+_esc(vid)+'/workflow" class="'+buildCls+' text-[11px] mr-2" title="'+buildTitle+'"><i class="'+buildIconCls+'" style="pointer-events:none;"></i></a>';
-                    if(v.apk_status==='found') vActions += '<button type="button" data-version-id="'+_esc(vid)+'" class="version-downloads-btn text-emerald-600 hover:text-emerald-800 text-[11px] mr-2" title="下载安装包"><i class="fas fa-download" style="pointer-events:none;"></i></button>';
-                    if(CAN_EDIT && !isBuilding) vActions += '<button type="button" data-version-id="'+_esc(vid)+'" class="version-code-edit-btn text-indigo-500 hover:text-indigo-700 text-[11px] mr-2" title="编辑 VersionCode"><i class="fas fa-pen" style="pointer-events:none;"></i></button><button type="button" data-version-id="'+_esc(vid)+'" class="version-delete-btn text-rose-500 hover:text-rose-700 text-[11px]" title="删除"><i class="fas fa-trash" style="pointer-events:none;"></i></button>';
-                    var rowBg = vj%2===0 ? 'bg-white' : 'bg-slate-50/30';
-                    var isCommercialV = (v.version_mode||'general')==='commercial';
-                    var vModeBg = isCommercialV ? '' : rowBg; var vModeStyle = isCommercialV ? 'background:linear-gradient(to right,#ede9fe,#f5f3ff);' : '';
-                    var vModeIndicator = '';
-                    var detailId = 'vd_'+_esc(vid);
-                    // Build detail content
-                    var dHtml = '<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">';
-                    dHtml += '<div><span class="text-slate-400">渠道:</span> '+_esc(v.channel_label||v.channel||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">阶段:</span> '+_esc(v.stage_label||v.stage||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">平台:</span> '+_esc(v.platform_label||v.platform||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">版本名:</span> '+_esc(v.version_name||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">版本模式:</span> '+(isCommercialV?'<span class="text-violet-600 font-medium">商业版</span>':'<span class="text-slate-500">通用版</span>')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">发布方式:</span> '+_esc(v.distribution_method||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">包名:</span> '+_esc(v.package_name||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">最低SDK:</span> '+_esc(v.min_sdk||'-')+'</div>';
-                    dHtml += '<div><span class="text-slate-400">Jenkins:</span> '+_esc(v.jenkins_job_id||'-')+'</div>';
-                    dHtml += '<div class="col-span-3"><span class="text-slate-400">安装包:</span> '+_esc(v.apk_path||'-')+'</div>';
-                    dHtml += '<div class="col-span-3"><span class="text-slate-400">资源路径:</span> '+_esc(v.resource_path||'-')+'</div>';
-                    dHtml += '<div class="col-span-3"><span class="text-slate-400">配置路径:</span> '+_esc(v.config_path||'-')+'</div>';
-                    if(v.changelog_text) dHtml += '<div class="col-span-3"><span class="text-slate-400">更新说明:</span> '+_esc(v.changelog_text)+'</div>';
-                    if(v.notes) dHtml += '<div class="col-span-3"><span class="text-slate-400">备注:</span> '+_esc(v.notes)+'</div>';
-                    if(isCommercialV && v.pipeline){
-                        var pp = v.pipeline;
-                        dHtml += '<div class="col-span-3 mt-1 pt-1 border-t border-slate-100"><span class="text-violet-600 font-medium">流水线参数</span></div>';
-                        if(pp.config_export) dHtml += '<div class="col-span-3"><span class="text-slate-400">配置导出:</span> '+(pp.config_export.enabled?'启用':'禁用')+' | 前缀:'+_esc(pp.config_export.remote_prefix||'-')+' | 版本:'+_esc(pp.config_export.client_version||'-')+'</div>';
-                        if(pp.resource_build) dHtml += '<div class="col-span-3"><span class="text-slate-400">资源打包:</span> '+(pp.resource_build.enabled?'启用':'禁用')+' | 引擎:'+_esc(pp.resource_build.provider||'-')+'</div>';
-                        if(pp.hot_release){
-                            var hr=pp.hot_release;
-                            dHtml += '<div class="col-span-3"><span class="text-slate-400">热更发布:</span> '+(hr.enabled?'启用':'禁用')+' | 对象:'+_esc(hr.release_targets||'-')+' | 模式:'+_esc(hr.release_mode||'-')+' | 上传:'+_esc(hr.release_upload_mode||'-')+'</div>';
-                            if(hr.code_enabled) dHtml += '<div class="col-span-3 pl-3"><span class="text-blue-500">代码包:</span> 压缩:'+_esc(hr.code_compression||'-')+' 加密:'+_esc(hr.code_encryption||'-')+' 签名:'+_esc(hr.code_signature||'-')+'</div>';
-                            if(hr.resource_enabled) dHtml += '<div class="col-span-3 pl-3"><span class="text-emerald-500">资源包:</span> 压缩:'+_esc(hr.resource_compression||'-')+' 加密:'+_esc(hr.resource_encryption||'-')+' 签名:'+_esc(hr.resource_signature||'-')+'</div>';
-                        }
-                        if(pp.apk_build) dHtml += '<div class="col-span-3"><span class="text-slate-400">APK打包:</span> '+(pp.apk_build.enabled?'启用':'禁用')+'</div>';
-                    dHtml += '<div class="col-span-3 mt-2 pt-2 border-t border-slate-200"><div class="flex items-center justify-between mb-2"><span class="text-slate-600 font-semibold text-xs"><i class="fas fa-history text-emerald-500 mr-1"></i>构建记录</span><a href="/admin/projects/'+PROJECT_ID+'/versions/'+_esc(vid)+'/workflow" class="text-indigo-600 hover:underline text-[11px]">去构建</a></div><div id="buildHist_'+vid+'" data-version-id="'+vid+'" class="build-history-panel"><p class="text-slate-400 text-[11px]">展开后加载…</p></div></div>';
-                    }
-                    dHtml += '</div>';
-                    var colCount = 8;
-                    
-                    html += '<tr class="'+vModeBg+' '+stMeta.row+' border-b border-slate-50 hover:bg-slate-100/30 transition" style="'+vModeStyle+(isCommercialV?'border-left:3px solid #8b5cf6;':'')+'">';
-                    html += '<td class="px-4 py-2 font-mono text-slate-700"><div class="flex items-center gap-1.5">'+_esc(v.version_code||'-')+vModeIndicator+'<button type="button" class="ver-expand-btn ml-1 text-slate-400 hover:text-slate-600" data-detail-id="'+detailId+'"><i class="fas fa-chevron-down text-[9px] ver-expand-arrow transition-transform" style="pointer-events:none;"></i></button></div></td>';
-                    html += '<td class="px-4 py-2 text-slate-500">'+_esc(v.stage_label||v.stage||'-')+'</td>';
-                    html += '<td class="px-4 py-2 text-slate-500">'+_esc(v.platform_label||v.platform||'-')+'</td>';
-                    html += '<td class="px-4 py-2">'+stBadge+'</td>';
-                    html += '<td class="px-4 py-2">'+apkBadge+'</td>';
-                    var dlCell = '<span class="text-slate-500">'+(v.download_count||0)+'</span>';
-                    html += '<td class="px-4 py-2">'+dlCell+'</td>';
-                    html += '<td class="px-4 py-2 text-slate-400 max-w-[180px] truncate" title="'+_esc(v.apk_path||'')+'">'+_esc(v.apk_path||'-')+'</td>';
-                    html += '<td class="px-4 py-2">'+vActions+'</td>';
-                    html += '</tr>';
-                    html += '<tr id="'+detailId+'" class="hidden"><td colspan="'+colCount+'" class="px-4 py-3" style="'+(isCommercialV?'background:#ede9fe;border-left:3px solid #8b5cf6;':'background:#f8fafc;border-left:3px solid #e2e8f0;')+'">'+dHtml+'</td></tr>';
-                }
-                html += '</tbody></table></div></div>';
-            }
-            html += '</div>';
-        }
-        html += '</div></div>';
-    }
-    html += '</div>';
-    wrap.innerHTML = html;
-
-    document.querySelectorAll('.channel-main-tab').forEach(function(btn){
-        btn.onclick = function(){
-            window._activeChannelId = btn.getAttribute('data-channel-id') || '';
-            renderChannelsView();
-        };
-    });
-    document.querySelectorAll('.channel-stage-tab').forEach(function(btn){
-        btn.onclick = function(){
-            var block = btn.getAttribute('data-block'); var stage = btn.getAttribute('data-stage');
-            var card = document.querySelector('[data-block-id="'+block+'"]');
-            if(!card) card = wrap;
-            card.querySelectorAll('.channel-stage-tab').forEach(function(b){ b.classList.remove('bg-white','text-slate-800','shadow-sm'); b.classList.add('text-slate-600'); });
-            btn.classList.add('bg-white','text-slate-800','shadow-sm'); btn.classList.remove('text-slate-600');
-            card.querySelectorAll('.channel-stage-panel').forEach(function(p){ p.classList.add('hidden'); });
-            var pan = card.querySelector('.channel-stage-panel[data-stage="'+stage+'"]'); if(pan) pan.classList.remove('hidden');
-        };
-    });
-    // === 直接绑定事件（不依赖事件委托）===
-    wrap.querySelectorAll('.version-group-header').forEach(function(header){
-        header.onclick = function(e){
-            if(e.target.closest('.version-op-btn')||e.target.closest('.version-group-delete-btn')) return;
-            toggleVersionGroup(header);
-        };
-    });
-    wrap.querySelectorAll('.version-group-delete-btn').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            var vn=btn.getAttribute('data-version-name');
-            if(vn&&requireDeleteConfirm('版本组: '+vn)){deleteVersionGroup(vn);}
-        };
-    });
-    wrap.querySelectorAll('.version-group-edit-btn').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            editVersion(btn.getAttribute('data-version-id'));
-        };
-    });
-    wrap.querySelectorAll('.version-code-edit-btn').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            openVersionCodeModal(btn.getAttribute('data-version-id'));
-        };
-    });
-    wrap.querySelectorAll('.version-delete-btn').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            deleteVersion(btn.getAttribute('data-version-id'));
-        };
-    });
-    wrap.querySelectorAll('.ver-expand-btn').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            toggleVerDetail(btn);
-        };
-    });
-    wrap.querySelectorAll('.ch-open-version-btn-main').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            var chId=btn.getAttribute('data-channel-id')||'';
-            var activeStageBtn=document.querySelector('.channel-stage-tab.bg-white');
-            var stg=activeStageBtn?activeStageBtn.getAttribute('data-stage'):'dev';
-            openVersionModal(chId,stg);
-        };
-    });
-    wrap.querySelectorAll('.ch-open-version-btn').forEach(function(btn){
-        btn.onclick = function(e){
-            e.stopPropagation();
-            openVersionModal(btn.getAttribute('data-channel-id')||'',btn.getAttribute('data-stage')||'dev');
-        };
-    });
-}
-(function(){
-var _wrap = document.getElementById('channelsVersionsWrap');
-if(!_wrap) return;
-_wrap.addEventListener('click', function(e){
-    var t=e.target.closest('.ch-open-version-btn-main');if(t){e.stopPropagation();var chId=t.getAttribute('data-channel-id')||''; var activeStageBtn=document.querySelector('.channel-stage-tab.bg-white'); var stg=activeStageBtn?activeStageBtn.getAttribute('data-stage'):'dev'; openVersionModal(chId,stg); return;}
-    t=e.target.closest('.ch-open-version-btn');
-    if(t){e.stopPropagation();openVersionModal(t.getAttribute('data-channel-id')||'',t.getAttribute('data-stage')||'dev');return;}
-    t=e.target.closest('.ver-expand-btn');if(t){e.stopPropagation();toggleVerDetail(t);return;}
-    t=e.target.closest('.version-fold-btn');if(t){e.stopPropagation();var vid=t.getAttribute('data-version-id'); var row=document.querySelector('.version-params-row[data-version-id="'+vid+'"]'); if(row){ row.classList.toggle('hidden'); t.querySelector('i').className=row.classList.contains('hidden')?'fas fa-chevron-down text-[10px]':'fas fa-chevron-up text-[10px]'; } return;}
-    t=e.target.closest('.version-downloads-btn');if(t){e.stopPropagation();openVersionDownloadsModal(t.getAttribute('data-version-id'));return;}
-    t=e.target.closest('.build-detail-btn');if(t){e.stopPropagation();openBuildDetailModal(t.getAttribute('data-instance-id'), t.getAttribute('data-build-number'), t.getAttribute('data-version-id'));return;}
-    t=e.target.closest('.build-del-btn');if(t){e.stopPropagation();deleteBuildRecord(t.getAttribute('data-instance-id'), t.getAttribute('data-build-number'), t.getAttribute('data-version-id'), t.getAttribute('data-container-id'));return;}
-    t=e.target.closest('.version-group-edit-btn');if(t){e.stopPropagation();editVersion(t.getAttribute('data-version-id'));return;}
-    t=e.target.closest('.version-code-edit-btn');if(t){e.stopPropagation();openVersionCodeModal(t.getAttribute('data-version-id'));return;}
-    t=e.target.closest('.version-add-code-btn');if(t){e.stopPropagation();openAddVersionCodeModal(t.getAttribute('data-version-name'));return;}
-    t=e.target.closest('.version-delete-btn');if(t){e.stopPropagation();deleteVersion(t.getAttribute('data-version-id'));return;}
-    t=e.target.closest('.version-group-header');if(t&&!e.target.closest('.version-op-btn')&&!e.target.closest('.version-group-delete-btn')){e.stopPropagation();toggleVersionGroup(t);return;}
-    t=e.target.closest('.version-group-delete-btn');if(t){e.stopPropagation();var vn=t.getAttribute('data-version-name');if(vn&&requireDeleteConfirm('版本组: '+vn)){deleteVersionGroup(vn);}}
-}, true);
-})();
-function _buildStatusBadgeClass(result, building){
-    if(building) return 'bg-amber-100 text-amber-800';
-    var r=String(result||'').toUpperCase();
-    if(r==='SUCCESS') return 'bg-green-100 text-green-800';
-    if(r==='FAILURE'||r==='ABORTED') return 'bg-red-100 text-red-800';
-    if(r==='UNSTABLE') return 'bg-yellow-100 text-yellow-800';
-    return 'bg-gray-100 text-gray-700';
-}
-function loadVersionBuildHistory(versionId, containerId){
-    var el=document.getElementById(containerId);
-    if(!el||!versionId) return;
-    el.innerHTML='<p class="text-slate-400 text-[11px]">加载中…</p>';
-    fetch('/api/build/history-by-version?version_id='+encodeURIComponent(versionId), {credentials:'same-origin'})
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-        var builds=(d&&d.builds)||[];
-        if(!builds.length){ el.innerHTML='<p class="text-slate-400 text-[11px]">暂无构建记录</p>'; return; }
-        var html='<ul class="space-y-1.5">';
-        builds.forEach(function(b){ html+=renderBuildHistoryItem(b, versionId); });
-        html+='</ul>';
-        el.innerHTML=html;
-    })
-    .catch(function(){ el.innerHTML='<p class="text-red-500 text-[11px]">加载失败</p>'; });
-}
-function renderBuildHistoryItem(b, versionId){
-    var num=b.number||b.build_number||'-';
-    var iid=String(b.instance_id||'');
-    var result=b.result||(b.building?'BUILDING':'');
-    var badgeCls=_buildStatusBadgeClass(result, !!b.building);
-    var label=b.status_label||result||'未知';
-    var who=b.triggered_by?' · '+_esc(b.triggered_by):'';
-    var time=b.started_at?_esc(String(b.started_at).replace('T',' ').slice(0,19)):'';
-    var delBtn='';
-    if(CAN_EDIT && !b.building){
-        delBtn='<button type="button" class="build-del-btn text-rose-500 hover:text-rose-700 text-[10px] ml-2 px-1" data-instance-id="'+_esc(iid)+'" data-build-number="'+num+'" data-version-id="'+_esc(versionId||'')+'" data-container-id="buildHist_'+_esc(versionId||'')+'" title="删除记录"><i class="fas fa-trash" style="pointer-events:none;"></i></button>';
-    }
-    return '<li class="flex items-center justify-between py-1 px-2 rounded-lg bg-white border border-slate-100 hover:border-slate-200">'
-        +'<button type="button" class="build-detail-btn text-left flex-1 min-w-0" data-instance-id="'+_esc(iid)+'" data-build-number="'+num+'" data-version-id="'+_esc(versionId||'')+'">'
-        +'<span class="text-indigo-600 font-mono font-medium">#'+num+'</span> '
-        +'<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium '+badgeCls+'">'+_esc(label)+'</span>'
-        +'<span class="text-[10px] text-slate-400 ml-1">'+time+who+'</span></button>'+delBtn+'</li>';
-}
-function openBuildDetailModal(instanceId, buildNumber, versionId){
-    var modal=document.getElementById('buildDetailModal');
-    var body=document.getElementById('buildDetailBody');
-    if(!modal||!body) return;
-    body.innerHTML='<p class="text-slate-400 text-sm">加载中…</p>';
-    modal.classList.remove('hidden'); modal.classList.add('flex');
-    var q='instance_id='+encodeURIComponent(instanceId)+'&version_id='+encodeURIComponent(versionId||'')+'&project_id='+encodeURIComponent(PROJECT_ID||'');
-    fetch('/api/build/'+encodeURIComponent(buildNumber)+'/detail?'+q, {credentials:'same-origin'})
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-        if(d.error||!d.build){ body.innerHTML='<p class="text-red-500 text-sm">'+_esc(d.error||'加载失败')+'</p>'; return; }
-        body.innerHTML=renderBuildDetailContent(d.build);
-    })
-    .catch(function(){ body.innerHTML='<p class="text-red-500 text-sm">加载失败</p>'; });
-}
-function _bdFoldBlock(title, bodyHtml, open, maxH){
-    var mh=maxH||'14rem';
-    return '<details class="rounded-xl border border-slate-200 bg-white mb-3"'+(open?' open':'')+'><summary class="flex items-center justify-between px-4 py-2.5 bg-slate-50/80 hover:bg-slate-50 select-none cursor-pointer"><span class="text-xs font-semibold text-slate-600">'+title+'</span><i class="fas fa-chevron-down text-slate-400 text-[10px]"></i></summary><div class="px-4 py-3 border-t border-slate-100" style="max-height:'+mh+';overflow-y:auto;">'+bodyHtml+'</div></details>';
-}
-function renderBuildDetailContent(b){
-    var params=b.parameters||{};
-    var keys=Object.keys(params);
-    var paramRows=keys.map(function(k){
-        return '<tr class="border-b border-slate-50"><td class="py-1 pr-3 text-slate-500 whitespace-nowrap align-top w-40">'+_esc(k)+'</td><td class="py-1 font-mono text-[11px] break-all">'+_esc(String(params[k]))+'</td></tr>';
-    }).join('');
-    var summary='';
-    if(b.result==='SUCCESS'||b.status_label==='成功'){
-        summary='<div class="rounded-lg bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-800"><i class="fas fa-check-circle mr-1"></i>构建成功</div>';
-    } else if(b.building){
-        summary='<div class="rounded-lg bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800"><i class="fas fa-spinner fa-spin mr-1"></i>构建进行中…</div>';
-    } else if(b.failure_summary){
-        summary='<div class="rounded-lg bg-red-50 border border-red-100 p-3 text-sm text-red-800 whitespace-pre-wrap">'+_esc(b.failure_summary)+'</div>';
-    }
-    var consoleBtn=b.console_url?'<a href="'+_esc(b.console_url)+'" target="_blank" rel="noopener" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs hover:bg-indigo-700"><i class="fas fa-external-link-alt"></i>Jenkins 控制台</a>':'';
-    var bn=b.number||b.build_number||'';
-    var logUrl='/api/build/log/'+bn+'?instance_id='+encodeURIComponent(b.instance_id||'');
-    var dlBtn='<a href="'+logUrl+'" download="build-'+bn+'.log" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs hover:bg-slate-50"><i class="fas fa-download"></i>下载日志</a>';
-    var logPreview=(b.log||'').slice(-8000);
-    var metaHtml='<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">'
-        +'<div><span class="text-slate-400">构建号:</span> <span class="font-mono">#'+bn+'</span></div>'
-        +'<div><span class="text-slate-400">状态:</span> '+_esc(b.status_label||b.result||'-')+'</div>'
-        +'<div><span class="text-slate-400">构建人:</span> '+_esc(b.triggered_by||'-')+'</div>'
-        +'<div><span class="text-slate-400">开始:</span> '+_esc((b.started_at||'').replace('T',' ').slice(0,19)||'-')+'</div>'
-        +'<div><span class="text-slate-400">结束:</span> '+_esc(b.ended_at||'-')+'</div>'
-        +'<div><span class="text-slate-400">用时:</span> '+_esc(b.duration||'-')+'</div>'
-        +'</div>';
-    var paramBody=paramRows?'<table class="w-full text-xs">'+paramRows+'</table>':'<p class="text-slate-400 text-xs">无参数</p>';
-    var logBody='<pre class="text-[10px] leading-relaxed bg-slate-900 text-slate-100 rounded-lg p-3 whitespace-pre-wrap" style="max-height:16rem;overflow-y:auto;">'+_esc(logPreview||'（无日志）')+'</pre>';
-    return summary
-        +'<div class="flex flex-wrap gap-2 mt-3">'+consoleBtn+dlBtn+'</div>'
-        +_bdFoldBlock('基本信息', metaHtml, true)
-        +(keys.length?_bdFoldBlock('构建参数 ('+keys.length+')', paramBody, false):'')
-        +_bdFoldBlock('构建日志', logBody, false, '16rem');
-}
-function deleteBuildRecord(instanceId, buildNumber, versionId, containerId){
-    if(!window.confirm('确定删除构建 #'+buildNumber+'？将同时删除 Jenkins 构建目录，不可恢复。')) return;
-    var q='instance_id='+encodeURIComponent(instanceId)+'&version_id='+encodeURIComponent(versionId||'')+'&project_id='+encodeURIComponent(PROJECT_ID||'');
-    fetch('/api/build/'+encodeURIComponent(buildNumber)+'?'+q, {method:'DELETE', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({instance_id:instanceId})})
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-        if(!d.success){ alert(d.error||'删除失败'); return; }
-        if(containerId) loadVersionBuildHistory(versionId, containerId);
-    })
-    .catch(function(){ alert('删除失败'); });
-}
-function toggleVerDetail(btn){
-    var detailId = btn.getAttribute('data-detail-id');
-    var d = document.getElementById(detailId);
-    if(d){
-        var opening = d.classList.contains('hidden');
-        d.classList.toggle('hidden');
-        if(opening){
-            var panel = d.querySelector('.build-history-panel');
-            if(panel) loadVersionBuildHistory(panel.getAttribute('data-version-id'), panel.id);
-        }
-    }
-    var a = btn.querySelector('.ver-expand-arrow');
-    if(a) a.classList.toggle('rotate-180');
-}
-function toggleVersionGroup(header){
-    var group = header.closest('.version-group');
-    var body = group ? group.querySelector('.version-group-body') : null;
-    var arrow = header.querySelector('.version-group-arrow');
-    if(body){ body.classList.toggle('hidden'); }
-    if(arrow){ arrow.classList.toggle('fa-chevron-down'); arrow.classList.toggle('fa-chevron-up'); }
-}
-function requireDeleteConfirm(targetLabel){
-    var tip = '删除后不可恢复。\\n请输入“删除”确认删除：\\n目标：' + (targetLabel || '当前项');
-    var input = window.prompt(tip, '');
-    return input && String(input).trim() === '删除';
-}
-function deleteVersionGroup(versionName){
-    var ids = allVersions.filter(function(v){ return (v.version_name||'').trim()===versionName; }).map(function(v){ return v.id||''; }).filter(Boolean);
-    if(!ids.length) return;
-    var deleteNext = function(idx){
-        if(idx>=ids.length){ renderChannelsView(); return; }
-        var vid = ids[idx];
-        fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/delete/'+encodeURIComponent(vid), { method:'DELETE', credentials:'same-origin' })
-        .then(function(r){ return r.json(); })
-        .then(function(d){
-            if(!d || !d.error){
-                allVersions = allVersions.filter(function(v){ return (v.id||'') !== vid; });
-            }
-            deleteNext(idx+1);
-        })
-        .catch(function(){ deleteNext(idx+1); });
-    };
-    deleteNext(0);
-}
-document.getElementById("channelsVersionsWrap")&&document.getElementById("channelsVersionsWrap").addEventListener("input",function(e){
-    var el=e.target.closest(".version-filter-input");
-    if(!el) return;
-    var field=el.getAttribute("data-filter-field");
-    var channelId=el.getAttribute("data-channel-id")||"";
-    var stageId=el.getAttribute("data-stage")||"dev";
-    if(!field) return;
-    var f=_getVersionFilter(channelId, stageId);
-    f[field]=el.value||"";
-    renderChannelsView();
-});
-document.getElementById("channelsVersionsWrap")&&document.getElementById("channelsVersionsWrap").addEventListener("change",function(e){
-    var el=e.target.closest(".version-filter-input");
-    if(!el) return;
-    var field=el.getAttribute("data-filter-field");
-    var channelId=el.getAttribute("data-channel-id")||"";
-    var stageId=el.getAttribute("data-stage")||"dev";
-    if(!field) return;
-    var f=_getVersionFilter(channelId, stageId);
-    f[field]=el.value||"";
-    renderChannelsView();
-});
-function _renderAddChannelDropdown(dd){
-    if(!dd) return;
-    dd.innerHTML = '';
-    var cur = (PROJECT_CHANNELS||[]).map(function(c){ return (c.id||'').toLowerCase(); });
-    var opts = ALL_CHANNELS||[];
-    for(var i=0;i<opts.length;i++){
-        var o=opts[i];
-        if(cur.indexOf((o.id||'').toLowerCase())>=0) continue;
-        dd.innerHTML += '<button type="button" data-channel-id='+JSON.stringify(o.id||'')+' class="add-channel-btn">'+_esc(o.name||o.id)+'</button>';
-    }
-    if(dd.innerHTML==='') dd.innerHTML='<p>无更多渠道可添加</p>';
-}
-function toggleAddChannelDropdown(kind){
-    var targetId = kind === 'mirror' ? 'addChannelDropdownMirror' : 'addChannelDropdown';
-    var dd = document.getElementById(targetId);
-    var other = document.getElementById(kind === 'mirror' ? 'addChannelDropdown' : 'addChannelDropdownMirror');
-    if(!dd) return;
-    if(other) other.classList.add('hidden');
-    if(dd.classList.contains('hidden')){
-        _renderAddChannelDropdown(dd);
-        dd.classList.remove('hidden');
-    } else {
-        dd.classList.add('hidden');
-    }
-}
-document.addEventListener('click', function(e){
-    var dd=document.getElementById('addChannelDropdown');
-    var ddMirror=document.getElementById('addChannelDropdownMirror');
-    var b=e.target.closest('.add-channel-btn');
-    if(b && (b.closest('#addChannelDropdown') || b.closest('#addChannelDropdownMirror'))){
-        addProjectChannel(b.dataset.channelId);
-        if(dd) dd.classList.add('hidden');
-        if(ddMirror) ddMirror.classList.add('hidden');
-        return;
-    }
-    var rb=e.target.closest('.remove-channel-btn');
-    if(rb){ removeProjectChannel(rb.getAttribute('data-channel-id')||''); return; }
-    if(dd && !dd.classList.contains('hidden') && !e.target.closest('.pv-dropdown-shell')) dd.classList.add('hidden');
-    if(ddMirror && !ddMirror.classList.contains('hidden') && !e.target.closest('.pv-dropdown-shell')) ddMirror.classList.add('hidden');
-});
-function addProjectChannel(cid){ fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/channels/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({channel_id:cid}), credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); }); }
-function removeProjectChannel(cid){ if(!confirm('确定从项目中移除此渠道？该渠道下的版本将不再在渠道列表中显示。')) return; fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/channels/remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({channel_id:cid}), credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); }); }
-
-var _unityVersionCatalog=[];
-function _setUnityVersionHint(text,isErr){
-    var el=document.getElementById('ppApkUnityHint');
-    if(!el) return;
-    el.textContent=text||'';
-    el.className='text-[10px] mt-0.5 '+(isErr?'text-rose-500':'text-slate-400');
-}
-function fetchUnityVersionCatalog(done){
-    return fetch('/api/jenkins-manage/unity-catalog?active_only=1',{credentials:'same-origin'})
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
-    .then(function(d){
-        var rows=(d&&d.entries)||[];
-        _unityVersionCatalog=rows.map(function(e){ return {version:e.version,path:e.path,category:e.category,note:e.note}; });
-        if(done) done(_unityVersionCatalog); return _unityVersionCatalog;
-    })
-    .catch(function(e){ _unityVersionCatalog=[]; _setUnityVersionHint('加载 Unity 版本库失败：'+(e&&e.message?e.message:'请先在 Jenkins 管理维护'),true); if(done) done([]); return []; });
-}
-function renderUnityVersionSelect(selected){
-    var sel=document.getElementById('ppApkUnity');
-    if(!sel) return;
-    var want=String(selected||sel.value||'').trim();
-    var items=_unityVersionCatalog||[];
-    sel.innerHTML='';
-    if(!items.length){
-        var empty=document.createElement('option');
-        empty.value=want;
-        empty.textContent=want?('已保存: '+want):'暂无有效 Unity 版本';
-        sel.appendChild(empty);
-        _setUnityVersionHint('版本库中无有效项，请到 Jenkins 管理 → Unity 版本库 添加',true);
-        return;
-    }
-    var i, v, op, label;
-    for(i=0;i<items.length;i++){
-        v=(items[i]&&items[i].version)||'';
-        if(!v) continue;
-        op=document.createElement('option');
-        op.value=v;
-        label=v;
-        if(items[i]&&items[i].category){ label+=' ['+items[i].category+']'; }
-        if(items[i]&&items[i].note){ label+=' - '+items[i].note; }
-        op.textContent=label;
-        sel.appendChild(op);
-    }
-    if(want){
-        var found=false;
-        for(i=0;i<sel.options.length;i++){ if(sel.options[i].value===want){ found=true; break; } }
-        if(!found){
-            op=document.createElement('option');
-            op.value=want;
-            op.textContent='（已保存·可能已失效）'+want;
-            sel.insertBefore(op, sel.firstChild);
-        }
-        sel.value=want;
-    } else if(sel.options.length){ sel.selectedIndex=0; }
-    _setUnityVersionHint('已加载 '+items.length+' 个有效 Unity 版本',false);
-}
-function ensureUnityVersionSelect(selected,done){
-    var sel=document.getElementById('ppApkUnity');
-    if(sel){ sel.innerHTML='<option value="">加载中...</option>'; }
-    _setUnityVersionHint('正在加载 Unity 版本库...',false);
-    if(_unityVersionCatalog&&_unityVersionCatalog.length){
-        renderUnityVersionSelect(selected);
-        if(done) done();
-        return;
-    }
-    fetchUnityVersionCatalog(function(){ renderUnityVersionSelect(selected); if(done) done(); });
-}
-document.getElementById('btnRefreshUnityVersions')&&document.getElementById('btnRefreshUnityVersions').addEventListener('click',function(){
-    _unityVersionCatalog=[];
-    ensureUnityVersionSelect((document.getElementById('ppApkUnity')||{}).value||'');
-});
-function buildDerivedVersionBasePath(versionCode){
-    var ch=(document.getElementById('versionChannel')||{}).value||'common';
-    var st=(document.getElementById('versionStage')||{}).value||'dev';
-    var platform=((document.getElementById('versionPlatform')||{}).value||'android').toLowerCase();
-    var vn=((document.getElementById('versionName')||{}).value||'1.0.0').trim()||'1.0.0';
-    var stageMap={dev:'Development',test:'Testing',production:'Production'};
-    var env=stageMap[st]||'Development';
-    var channelSeg=mapVersionChannelToReleaseChannel(ch);
-    var verFolder='Version_'+vn;
-    var vc=String(versionCode||'').trim();
-    var codeSeg=vc?('/'+vc):'';
-    return env+'/'+channelSeg+'/'+platform+'/'+verFolder+codeSeg;
-}
-function syncDerivedVersionPaths(versionCode){
-    var base=buildDerivedVersionBasePath(versionCode);
-    var resEl=document.getElementById('versionResourcePath');
-    var cfgEl=document.getElementById('versionConfigPath');
-    if(resEl) resEl.value=base;
-    if(cfgEl) cfgEl.value=base+'/config';
-}
-function suggestVersionApkPath(){ var ch=document.getElementById('versionChannel').value; var st=(document.getElementById('versionStage')||{}).value||'dev'; var platform=(document.getElementById('versionPlatform')||{}).value||'android'; var vn=(document.getElementById('versionName')||{}).value.trim()||'1.0.0'; var info=CHANNELS_FULL&&CHANNELS_FULL[ch]; var stageDir=STAGE_DIR_MAP[st]||'dev'; var ext=platform==='ios'?'.ipa':'.apk'; var pkgName=PROJECT_ID+'_'+vn.replace(new RegExp("\\\\s","g"),"")+ext; var sug; if(info&&info.apk_subdir){ sug=info.apk_subdir+'/'+stageDir+'/'+pkgName; } else { sug=stageDir+'/'+pkgName; } var apkEl=document.getElementById('versionApkPath'); if(apkEl&&!apkEl.value) apkEl.placeholder='建议: '+sug; }
-function syncVersionPlatformFields(){ var platform=(document.getElementById('versionPlatform')||{}).value||'android'; var androidFields=document.getElementById('androidVersionFields'); var iosFields=document.getElementById('iosVersionFields'); var distribution=document.getElementById('versionDistributionMethod'); if(androidFields) androidFields.classList.toggle('hidden', platform==='ios'); if(iosFields) iosFields.classList.toggle('hidden', platform!=='ios'); if(distribution && !distribution.value){ distribution.value = platform==='ios' ? 'testflight' : 'direct'; } }
-function setVersionCodeRuntimeCompatFormFields(v){
-    var row=v||{};
-    var vn=(row.version_name||'').trim();
-    var minEl=document.getElementById('versionCodeMinClientVersion');
-    var rolloutEl=document.getElementById('versionCodeRolloutPercentage');
-    var revokedEl=document.getElementById('versionCodeIsRevoked');
-    var minStored=(row.min_client_version||'').trim();
-    if(minEl) minEl.value=(minStored&&vn&&minStored===vn)?'':minStored;
-    if(rolloutEl) rolloutEl.value=(row.rollout_percentage!=null&&row.rollout_percentage!=='')?String(row.rollout_percentage):'100';
-    if(revokedEl) revokedEl.checked=!!row.is_revoked;
-}
-function readVersionCodeRuntimeCompatPayload(fallbackVersionName){
-    var vn=(fallbackVersionName||'').trim()||'1.0.0';
-    var minEl=document.getElementById('versionCodeMinClientVersion');
-    var rolloutEl=document.getElementById('versionCodeRolloutPercentage');
-    var revokedEl=document.getElementById('versionCodeIsRevoked');
-    var minV=minEl?(minEl.value||'').trim():'';
-    var rollout=rolloutEl?parseInt(rolloutEl.value,10):100;
-    if(isNaN(rollout)) rollout=100;
-    rollout=Math.max(0, Math.min(100, rollout));
-    return { min_client_version:minV||vn, max_client_version:vn, rollout_percentage:rollout, is_revoked:!!(revokedEl&&revokedEl.checked) };
-}
-function openDeviceManageModal(){ document.getElementById('deviceManageModal').classList.remove('hidden'); resetDeviceForm(); loadTestDevices(); }
-function closeDeviceManageModal(){ document.getElementById('deviceManageModal').classList.add('hidden'); }
-function resetDeviceForm(){ ['deviceEditId','deviceEditDeviceId','deviceEditLabel','deviceEditNotes'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=''; }); var p=document.getElementById('deviceEditPlatform'); if(p) p.value='android'; var s=document.getElementById('deviceEditStage'); if(s) s.value='dev'; }
-function loadTestDevices(){
-    var wrap=document.getElementById('deviceListWrap'); if(!wrap) return; wrap.textContent='加载中…';
-    fetch('/api/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/test-devices',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
-        window._testDeviceRows=(d&&d.devices)?d.devices:[];
-        if(!window._testDeviceRows.length){ wrap.innerHTML='<p class="text-slate-400 text-xs">暂无设备</p>'; return; }
-        var stageMap={dev:'开发',test:'测试',production:'线上'}, html='<table class="w-full text-xs"><thead><tr class="text-slate-500 border-b"><th class="text-left py-1">设备ID</th><th class="text-left py-1">平台</th><th class="text-left py-1">阶段</th><th class="text-left py-1">备注</th><th class="text-right py-1">操作</th></tr></thead><tbody>';
-        window._testDeviceRows.forEach(function(row, idx){
-            html+='<tr class="border-b border-slate-100"><td class="py-1.5 font-mono text-[11px]">'+_esc(row.device_id||'')+'</td><td class="py-1.5">'+_esc(row.platform||'')+'</td><td class="py-1.5">'+_esc(stageMap[row.stage]||row.stage||'')+'</td><td class="py-1.5">'+_esc(row.label||row.notes||'-')+'</td><td class="py-1.5 text-right"><button type="button" class="text-indigo-600 hover:underline mr-2" data-idx="'+idx+'" onclick="editTestDeviceByIdx(this)">编辑</button><button type="button" class="text-rose-500 hover:underline" onclick="deleteTestDevice('+JSON.stringify(row.id||'')+')">删除</button></td></tr>';
-        });
-        wrap.innerHTML=html+'</tbody></table>';
-    }).catch(function(){ wrap.textContent='加载失败'; });
-}
-function editTestDeviceByIdx(btn){ var row=(window._testDeviceRows||[])[parseInt(btn.getAttribute('data-idx')||'0',10)]; if(!row) return; document.getElementById('deviceEditId').value=row.id||''; document.getElementById('deviceEditDeviceId').value=row.device_id||''; document.getElementById('deviceEditPlatform').value=row.platform||'android'; document.getElementById('deviceEditStage').value=row.stage||'dev'; document.getElementById('deviceEditLabel').value=row.label||''; document.getElementById('deviceEditNotes').value=row.notes||''; }
-function saveTestDevice(){
-    var payload={ id:(document.getElementById('deviceEditId')||{}).value||'', device_id:((document.getElementById('deviceEditDeviceId')||{}).value||'').trim(), platform:((document.getElementById('deviceEditPlatform')||{}).value||'android'), stage:((document.getElementById('deviceEditStage')||{}).value||'dev'), label:((document.getElementById('deviceEditLabel')||{}).value||'').trim(), notes:((document.getElementById('deviceEditNotes')||{}).value||'').trim() };
-    if(!payload.device_id){ alert('设备 ID 不能为空'); return; }
-    fetch('/api/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/test-devices',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)}).then(function(r){return r.json();}).then(function(d){ if(d.error){alert(d.error);return;} resetDeviceForm(); loadTestDevices(); });
-}
-function deleteTestDevice(id){ if(!id||!confirm('确定删除该设备？')) return; fetch('/api/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/test-devices/'+encodeURIComponent(id),{method:'DELETE',credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){ if(d.error){alert(d.error);return;} loadTestDevices(); }); }
-function openVersionModal(preselectedChannel, preselectedStage){ document.getElementById('versionModalTitle').textContent='新建版本'; document.getElementById('versionEditId').value=''; document.getElementById('chkCommercialMode').checked=false; toggleCommercialMode(); var defCh = preselectedChannel || ((PROJECT_CHANNELS&&PROJECT_CHANNELS[0]) ? PROJECT_CHANNELS[0].id : 'dev'); var defSt = preselectedStage || 'dev'; ['versionChannel','versionStage','versionPlatform','versionName','versionStatus','versionApkPath','versionResourcePath','versionConfigPath','versionJenkinsJob','versionChangelog','versionNotes','versionPackageName','versionMinSdk','versionBundleId','versionMinIosVersion'].forEach(function(id){ var e=document.getElementById(id); if(e) e.value=e.type==='textarea' ? '' : (id==='versionChannel' ? defCh : (id==='versionStage' ? defSt : (id==='versionPlatform' ? 'android' : (id==='versionStatus' ? 'active' : '')))); }); var distributionEl=document.getElementById('versionDistributionMethod'); if(distributionEl) distributionEl.value='direct'; var rec=document.getElementById('versionChangelogRecommended'); if(rec) rec.checked=false; var hintRow=document.getElementById('versionCodeHintRow'); if(hintRow) hintRow.classList.add('hidden'); syncVersionPlatformFields(); suggestVersionApkPath(); syncDerivedVersionPaths(); switchVersionModalTab('identity'); document.getElementById('versionModal').classList.remove('hidden'); ensureUnityVersionSelect(''); }
-function closeVersionModal(){ document.getElementById('versionModal').classList.add('hidden'); }
-function getActiveStageId(){
-    var stageBtn=document.querySelector('.channel-stage-tab.bg-white');
-    return (stageBtn&&stageBtn.getAttribute('data-stage'))||'dev';
-}
-function versionCodesInGroup(versionName){
-    var vn=(versionName||'').trim();
-    return allVersions.filter(function(x){ return (x.version_name||'').trim()===vn; });
-}
-function versionCodesInGroupForContext(versionName){
-    var vn=(versionName||'').trim();
-    var cid=String(window._activeChannelId||'').toLowerCase();
-    var sid=getActiveStageId();
-    return versionCodesInGroup(vn).filter(function(v){
-        return String(v.channel||'').toLowerCase()===cid && (v.stage||'dev')===sid;
-    });
-}
-function pickVersionGroupTemplate(versionName){
-    var inCtx=versionCodesInGroupForContext(versionName);
-    if(inCtx.length) return inCtx[0];
-    var cid=String(window._activeChannelId||'').toLowerCase();
-    var anyChannel=versionCodesInGroup(versionName).filter(function(v){
-        return String(v.channel||'').toLowerCase()===cid;
-    });
-    if(anyChannel.length) return anyChannel[0];
-    var all=versionCodesInGroup(versionName);
-    return all.length?all[0]:null;
-}
-function enrichVersionRow(v){
-    v.stage=v.stage||'dev';
-    var st=(VERSION_STAGES||[]).find(function(s){ return (s.id||'')===v.stage; });
-    v.stage_label=v.stage_label||(st&&st.name)||v.stage;
-    var ch=(PROJECT_CHANNELS||[]).find(function(c){ return String(c.id||'')===String(v.channel||''); });
-    if(!ch&&CHANNELS_FULL&&CHANNELS_FULL[v.channel]) ch={id:v.channel,name:CHANNELS_FULL[v.channel].name||v.channel};
-    v.channel_label=v.channel_label||(ch&&ch.name)||v.channel;
-    return v;
-}
-function reloadProjectVersions(){
-    return fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/list', {credentials:'same-origin'})
-        .then(function(r){ return r.json(); })
-        .then(function(d){
-            if(!d||!d.versions) return;
-            allVersions=(d.versions||[]).map(enrichVersionRow);
-        });
-}
-function hasDuplicateVersionCode(versionName, versionCode, excludeId){
-    var vc=String(versionCode||'').trim();
-    if(!vc) return false;
-    return versionCodesInGroup(versionName).some(function(x){
-        if(excludeId&&(x.id||'')===excludeId) return false;
-        return String(x.version_code||'').trim()===vc;
-    });
-}
-function suggestNextVersionCode(versionName){
-    var maxN=0;
-    versionCodesInGroupForContext(versionName).forEach(function(x){
-        var n=parseInt(String(x.version_code||'').trim(),10);
-        if(!isNaN(n)&&n>maxN) maxN=n;
-    });
-    return String(maxN+1);
-}
-function openVersionCodeModal(id){
-    var v=allVersions.find(function(x){ return (x.id||'')===id; });
-    if(!v) return;
-    var codeEl=document.getElementById('versionCodeEditValue');
-    var statusEl=document.getElementById('versionCodeEditStatus');
-    var changeEl=document.getElementById('versionCodeEditChangelog');
-    document.getElementById('versionCodeEditId').value=v.id||'';
-    document.getElementById('versionCodeEditMode').value='edit';
-    document.getElementById('versionCodeCloneFromId').value='';
-    var titleEl=document.getElementById('versionCodeModalTitle');
-    if(titleEl) titleEl.textContent='编辑 VersionCode';
-    document.getElementById('versionCodeEditVersionName').textContent='Version: '+(v.version_name||'-');
-    if(codeEl) codeEl.value=v.version_code||'';
-    if(statusEl) statusEl.value=normalizeVersionStatus(v.version_status||'active');
-    if(changeEl) changeEl.value=v.changelog_text||'';
-    setVersionCodeRuntimeCompatFormFields(v);
-    document.getElementById('versionCodeModal').classList.remove('hidden');
-}
-function openAddVersionCodeModal(versionName){
-    var template=pickVersionGroupTemplate(versionName);
-    if(!template){ alert('未找到该版本组，请先在当前渠道/阶段创建至少一个版本'); return; }
-    var stageLabel=template.stage_label||template.stage||'dev';
-    var chLabel=template.channel_label||template.channel||'';
-    document.getElementById('versionCodeEditId').value='';
-    document.getElementById('versionCodeEditMode').value='add';
-    document.getElementById('versionCodeCloneFromId').value=template.id||'';
-    var titleEl=document.getElementById('versionCodeModalTitle');
-    if(titleEl) titleEl.textContent='新增 VersionCode';
-    document.getElementById('versionCodeEditVersionName').textContent='Version: '+(versionName||'-')+' · 将添加到「'+chLabel+' / '+stageLabel+'」';
-    var codeEl=document.getElementById('versionCodeEditValue');
-    var statusEl=document.getElementById('versionCodeEditStatus');
-    var changeEl=document.getElementById('versionCodeEditChangelog');
-    if(codeEl) codeEl.value=suggestNextVersionCode(versionName);
-    if(statusEl) statusEl.value='active';
-    if(changeEl) changeEl.value='';
-    setVersionCodeRuntimeCompatFormFields(template||{});
-    document.getElementById('versionCodeModal').classList.remove('hidden');
-}
-function closeVersionCodeModal(){ document.getElementById('versionCodeModal').classList.add('hidden'); }
-function saveVersionCodeModal(){
-    var mode=((document.getElementById('versionCodeEditMode')||{}).value||'edit').trim();
-    var versionCode=((document.getElementById('versionCodeEditValue')||{}).value||'').trim();
-    if(!versionCode){ alert('Version Code 不能为空'); return; }
-    var versionStatus=normalizeVersionStatus(((document.getElementById('versionCodeEditStatus')||{}).value||'active'));
-    var changelog=((document.getElementById('versionCodeEditChangelog')||{}).value||'').trim();
-    if(mode==='add'){
-        var cloneId=((document.getElementById('versionCodeCloneFromId')||{}).value||'').trim();
-        var template=allVersions.find(function(x){ return (x.id||'')===cloneId; });
-        if(!template){ alert('模板版本不存在'); return; }
-        var vn=(template.version_name||'').trim();
-        if(hasDuplicateVersionCode(vn, versionCode, '')){
-            alert('版本 '+vn+' 下已存在 Version Code「'+versionCode+'」，请修改后再保存');
-            return;
-        }
-        var payload={
-            channel:template.channel||'',
-            stage:template.stage||'dev',
-            platform:template.platform||'android',
-            version_status:versionStatus,
-            version_name:vn,
-            version_mode:template.version_mode||'general',
-            version_code:versionCode,
-            distribution_method:template.distribution_method||'',
-            package_name:template.package_name||'',
-            min_sdk:template.min_sdk||'',
-            bundle_id:template.bundle_id||'',
-            min_ios_version:template.min_ios_version||'',
-            apk_path:'',
-            resource_path:template.resource_path||'',
-            config_path:template.config_path||'',
-            jenkins_job_id:template.jenkins_job_id||'',
-            changelog:changelog,
-            changelog_recommended:false,
-            notes:template.notes||''
-        };
-        Object.assign(payload, readVersionCodeRuntimeCompatPayload(vn));
-        if((template.version_mode||'general')==='commercial'&&template.pipeline){
-            try{ payload.pipeline=JSON.parse(JSON.stringify(template.pipeline)); }catch(e){ payload.pipeline=template.pipeline; }
-        }
-        fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/create', {
-            method:'POST',
-            headers:{ 'Content-Type':'application/json' },
-            body:JSON.stringify(payload),
-            credentials:'same-origin'
-        }).then(function(r){ return r.json(); }).then(function(d){
-            if(d.error){ alert(d.error); return; }
-            reloadProjectVersions().then(function(){
-                closeVersionCodeModal();
-                renderChannelsView();
-            });
-        });
-        return;
-    }
-    var id=(document.getElementById('versionCodeEditId')||{}).value||'';
-    var v=allVersions.find(function(x){ return (x.id||'')===id; });
-    if(!v){ alert('版本不存在'); return; }
-    var vn=(v.version_name||'').trim();
-    if(hasDuplicateVersionCode(vn, versionCode, id)){
-        alert('版本 '+vn+' 下已存在 Version Code「'+versionCode+'」，无法保存');
-        return;
-    }
-    var payload={
-        id:v.id||'',
-        channel:v.channel||'',
-        stage:v.stage||'dev',
-        platform:v.platform||'android',
-        version_status:versionStatus,
-        version_name:vn,
-        version_mode:v.version_mode||'general',
-        version_code:versionCode,
-        distribution_method:v.distribution_method||'',
-        package_name:v.package_name||'',
-        min_sdk:v.min_sdk||'',
-        bundle_id:v.bundle_id||'',
-        min_ios_version:v.min_ios_version||'',
-        apk_path:v.apk_path||'',
-        resource_path:v.resource_path||'',
-        config_path:v.config_path||'',
-        jenkins_job_id:v.jenkins_job_id||'',
-        changelog:changelog,
-        changelog_recommended:!!v.changelog_recommended,
-        notes:v.notes||''
-    };
-    Object.assign(payload, readVersionCodeRuntimeCompatPayload(vn));
-    payload.edit_scope='version_code';
-    if((v.version_mode||'general')==='commercial'){ payload.pipeline=v.pipeline||{}; }
-    fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/update', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body:JSON.stringify(payload),
-        credentials:'same-origin'
-    }).then(function(r){ return r.json(); }).then(function(d){
-        if(d.error){ alert(d.error); return; }
-        reloadProjectVersions().then(function(){
-            closeVersionCodeModal();
-            renderChannelsView();
-        });
-    });
-}
-
-function editVersion(id){ var v=allVersions.find(function(x){ return (x.id||'')===id; }); if(!v) return; document.getElementById('versionModalTitle').textContent='编辑版本'; document.getElementById('versionEditId').value=v.id||''; var vm = v.version_mode || 'general'; document.getElementById('chkCommercialMode').checked = (vm==='commercial'); toggleCommercialMode(); document.getElementById('versionChannel').value=v.channel||'dev'; var stageEl=document.getElementById('versionStage'); if(stageEl) stageEl.value=v.stage||'dev'; var platformEl=document.getElementById('versionPlatform'); if(platformEl) platformEl.value=v.platform||'android'; var statusEl=document.getElementById('versionStatus'); if(statusEl) statusEl.value=normalizeVersionStatus(v.version_status||'active'); document.getElementById('versionName').value=v.version_name||''; document.getElementById('versionApkPath').value=v.apk_path||''; document.getElementById('versionResourcePath').value=v.resource_path||''; document.getElementById('versionConfigPath').value=v.config_path||''; document.getElementById('versionJenkinsJob').value=v.jenkins_job_id||''; document.getElementById('versionChangelog').value=v.changelog_text||''; document.getElementById('versionChangelogRecommended').checked=!!v.changelog_recommended; document.getElementById('versionNotes').value=v.notes||''; var distributionEl=document.getElementById('versionDistributionMethod'); if(distributionEl) distributionEl.value=v.distribution_method||''; var packageNameEl=document.getElementById('versionPackageName'); if(packageNameEl) packageNameEl.value=v.package_name||''; var minSdkEl=document.getElementById('versionMinSdk'); if(minSdkEl) minSdkEl.value=v.min_sdk||''; var bundleIdEl=document.getElementById('versionBundleId'); if(bundleIdEl) bundleIdEl.value=v.bundle_id||''; var minIosEl=document.getElementById('versionMinIosVersion'); if(minIosEl) minIosEl.value=v.min_ios_version||''; var hintRow=document.getElementById('versionCodeHintRow'); var codeDisplay=document.getElementById('versionCodeDisplay'); if(hintRow){ if(v.version_code){ hintRow.classList.remove('hidden'); if(codeDisplay) codeDisplay.textContent=String(v.version_code); } else { hintRow.classList.add('hidden'); } } // 商业级参数回填
-    var pipeline=v.pipeline||{}; if(pipeline) restorePipeline(pipeline);
-    var savedUnity=(pipeline.apk_build&&pipeline.apk_build.unity_version)||'';
-    syncVersionPlatformFields(); suggestVersionApkPath(); syncDerivedVersionPaths(v.version_code||''); switchVersionModalTab('identity'); document.getElementById('versionModal').classList.remove('hidden'); ensureUnityVersionSelect(savedUnity); }
-
-function deleteVersion(id){ if(!requireDeleteConfirm('VersionCode: '+id)) return; fetch('/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/delete/'+encodeURIComponent(id), { method: 'DELETE', credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } allVersions = allVersions.filter(function(x){ return (x.id||'')!==id; }); renderChannelsView(); }); }
-
-function saveVersion(){ var id=document.getElementById('versionEditId').value; var current=id?allVersions.find(function(x){ return (x.id||'')===id; }):null; var ch=document.getElementById('versionChannel').value; var stageEl=document.getElementById('versionStage'); var stageVal=stageEl?stageEl.value:'dev'; var platform=document.getElementById('versionPlatform').value||'android'; var versionStatus=normalizeVersionStatus((document.getElementById('versionStatus')||{}).value||'active'); var vn=document.getElementById('versionName').value.trim()||'1.0.0'; var apkPath=document.getElementById('versionApkPath').value.trim(); if(!apkPath){ var info=CHANNELS_FULL&&CHANNELS_FULL[ch]; var sd=STAGE_DIR_MAP[stageVal]||'dev'; var ext=platform==='ios'?'.ipa':'.apk'; var an=PROJECT_ID+'_'+vn.replace(new RegExp("\\\\s","g"),"")+ext; apkPath=(info&&info.apk_subdir)?(info.apk_subdir+'/'+sd+'/'+an):(sd+'/'+an); } var fixedVersionCode=(current&&current.version_code)?String(current.version_code).trim():''; syncDerivedVersionPaths(fixedVersionCode); var payload={ channel: ch, stage: stageVal, platform: platform, version_status: versionStatus, version_name: vn, version_mode: _versionMode, version_code: fixedVersionCode, distribution_method: (document.getElementById('versionDistributionMethod')||{}).value||'', package_name: (document.getElementById('versionPackageName')||{}).value||'', min_sdk: (document.getElementById('versionMinSdk')||{}).value||'', bundle_id: (document.getElementById('versionBundleId')||{}).value||'', min_ios_version: (document.getElementById('versionMinIosVersion')||{}).value||'', apk_path: apkPath, resource_path: document.getElementById('versionResourcePath').value.trim(), config_path: document.getElementById('versionConfigPath').value.trim(), jenkins_job_id: document.getElementById('versionJenkinsJob').value.trim(), changelog: document.getElementById('versionChangelog').value.trim(), changelog_recommended: !!document.getElementById('versionChangelogRecommended').checked, notes: document.getElementById('versionNotes').value.trim(), edit_scope:'version_group' }; if(_versionMode==='commercial'){ payload.pipeline=collectPipeline(); var err=validateCommercialPipeline(payload.pipeline); if(err){ alert(err); return; } } var url='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/create'; var method='POST'; if(id){ payload.id=id; url='/admin/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/update'; } fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), credentials: 'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } if(d.version){ var chOpt=document.getElementById('versionChannel'); d.version.channel_label=chOpt&&chOpt.options[chOpt.selectedIndex]?chOpt.options[chOpt.selectedIndex].text:d.version.channel; d.version.stage=stageVal; d.version.stage_label=(stageEl&&stageEl.options[stageEl.selectedIndex]?stageEl.options[stageEl.selectedIndex].text:'开发'); d.version.platform=platform; d.version.platform_label=platform==='ios'?'iOS':'Android'; d.version.version_status=versionStatus; d.version.version_mode=_versionMode; d.version.commercial_release=payload.commercial_release||null; d.version.distribution_method=payload.distribution_method || (platform==='ios'?'testflight':'direct'); d.version.package_name=payload.package_name; d.version.min_sdk=payload.min_sdk; d.version.bundle_id=payload.bundle_id; d.version.min_ios_version=payload.min_ios_version; d.version.changelog_text=payload.changelog; d.version.changelog_recommended=payload.changelog_recommended; var idx=allVersions.findIndex(function(x){ return (x.id||'')===(d.version.id||''); }); if(idx>=0) allVersions[idx]=d.version; else allVersions.push(d.version); } closeVersionModal(); renderChannelsView(); }); }
-
-renderChannelsView();
-refreshVersionBuildState();
-ensureVersionBuildStateTimer();
-syncVersionPlatformFields();
-fetchUnityVersionCatalog(function(){ renderUnityVersionSelect(''); });
-</script>
-'''
-
-
-
-@bp.route('/admin/projects/<project_id>/workspace')
-@admin_required('projects')
-def admin_project_workspace(project_id):
-    username = _current_username()
-    pid = resolve_project_id((project_id or '').strip()) or ''
-    if not pid or not can_view_project(pid, username):
-        return _admin_layout('<div class=\"rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-700\">无权限或项目不存在</div>', '项目工作台')
-
-    p = projects_db.get(pid) or {}
-    project_name = _clean_display_text(p.get('name'), pid)
-    links = [
-        ('版本与发布', f'/admin/projects/{pid}/versions', 'fa-code-branch', 'text-teal-500', '项目版本、发布单、回滚与对账。'),
-        ('GM工作台', f'/admin/gm-classic?project_id={pid}', 'fa-gamepad', 'text-cyan-500', '经典 GM 玩家运营动作：检索、货币、道具、邮件与运营操作。'),
-        ('运维中心', f'/admin/ops-platform?project_id={pid}', 'fa-server', 'text-indigo-500', '分布式节点运维平台：启停、探活、Agent 状态与巡检闭环。'),
-        ('观测与审计', f'/admin/audit-log?project_id={pid}', 'fa-history', 'text-gray-500', '项目级操作审计、风险追踪与回放。'),
-        ('项目设置', f'/admin/projects/{pid}', 'fa-sliders-h', 'text-slate-500', '基础信息、渠道、凭据与默认策略。'),
-    ]
-    cards = ''.join(_render_module_card(link, icon, color, title, desc) for title, link, icon, color, desc in links)
-    content = f'''<section class="space-y-5"><div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p class="text-[11px] font-semibold tracking-[0.16em] uppercase text-slate-500">Project Workspace</p><h2 class="mt-1 text-xl font-semibold text-slate-900">{html.escape(project_name)} · 项目工作台</h2><p class="mt-1 text-sm text-slate-500">所有构建、发布、GM、运维动作均在项目上下文内执行，避免跨项目误操作。</p></div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{cards}</div></section>'''
-    return _admin_layout(content, '项目工作台', back_href='/admin')
-
-
-@bp.route('/admin/projects/<project_id>/build-history')
-@admin_required_any('projects', 'build')
-def project_build_history_page(project_id):
-    if project_id not in projects_db:
-        abort(404)
-    if not can_view_project(project_id, _current_username()):
-        abort(403)
-    proj = projects_db[project_id]
-    return render_template(
-        'project_build_history.html',
-        project_id=project_id,
-        project_name=proj.get('name') or project_id,
-        can_edit=can_edit_project(project_id, _current_username()),
-    )
 
 
 @bp.route('/api/admin/projects/<project_id>/test-devices', methods=['GET', 'POST'])
