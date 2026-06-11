@@ -14,6 +14,7 @@ from services.release.env_registry import normalize_release_env_key
 from services.release.scope_ids import resolve_channel_id
 from services.release.scope_resolver import resolve_network_profile, resolve_topology_id
 from services.release.storage import load_bundles, mutate_bundles
+from services.commercial_release_plan import build_runtime_resolve_paths, normalize_release_channel, normalize_release_platform
 
 
 def _now_iso() -> str:
@@ -93,6 +94,39 @@ def _check_remote_artifact(url: str, *, timeout: float = 5.0) -> Dict[str, Any]:
         except Exception as exc:
             return {"ok": False, "status": 0, "method": method, "error": str(exc)}
     return {"ok": False, "status": 0, "error": "artifact probe failed"}
+
+
+def _artifact_probe_targets(scope: Dict[str, Any], version_row: Dict[str, Any]) -> Dict[str, str]:
+    release_env = {
+        "development": "Development",
+        "testing": "Testing",
+        "staging": "Staging",
+        "production": "Production",
+    }.get(normalize_release_env_key(scope.get("env_key") or version_row.get("env_key") or version_row.get("stage")), "Development")
+    release_channel = normalize_release_channel(str(version_row.get("channel") or scope.get("channel_id") or "common"))
+    release_platform = normalize_release_platform(str(version_row.get("platform") or "android"))
+    runtime_paths = build_runtime_resolve_paths(
+        resource_server_url=str(version_row.get("resource_server_url") or ""),
+        release_environment=release_env,
+        release_channel=release_channel,
+        release_platform=release_platform,
+        release_version=str(version_row.get("version_name") or ""),
+        version_code=str(version_row.get("version_code") or ""),
+    )
+    resource_relative_path = str(version_row.get("resource_path") or runtime_paths.get("resource_relative_path") or "").strip("/")
+    resource_base = str(version_row.get("resource_server_url") or "").strip().rstrip("/")
+    catalog_file_name = str(version_row.get("catalog_file_name") or runtime_paths.get("catalog_file_name") or "").strip().lstrip("/")
+    catalog_url = ""
+    if resource_base and resource_relative_path and catalog_file_name:
+        catalog_url = f"{resource_base}/{resource_relative_path}/{catalog_file_name}"
+    return {
+        "apk_url": str(version_row.get("apk_url") or "").strip(),
+        "resource_url": str(version_row.get("resource_url") or "").strip(),
+        "config_url": str(version_row.get("config_url") or "").strip(),
+        "catalog_url": catalog_url,
+        "config_manifest_url": str(runtime_paths.get("config_manifest_path") or "").strip(),
+        "code_manifest_url": str(runtime_paths.get("code_manifest_path") or "").strip(),
+    }
 
 
 def find_active_bundle(scope_id: str) -> Dict[str, Any]:
@@ -274,11 +308,7 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
     artifact_checks: Dict[str, Any] = {}
     missing_artifacts: List[str] = []
     if validate_artifacts:
-        artifact_urls = {
-            "apk_url": str(version_row.get("apk_url") or "").strip(),
-            "resource_url": str(version_row.get("resource_url") or "").strip(),
-            "config_url": str(version_row.get("config_url") or "").strip(),
-        }
+        artifact_urls = _artifact_probe_targets(scope, version_row)
         artifact_checks = {key: _check_remote_artifact(value) for key, value in artifact_urls.items()}
         missing_artifacts = [key for key, result in artifact_checks.items() if not bool(result.get("ok"))]
     ok = not missing_client and not missing_profile and runtime_aligned and not alignment_errors and not missing_artifacts
@@ -296,6 +326,7 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
         "missing_client_fields": missing_client,
         "missing_profile_fields": missing_profile,
         "missing_artifact_fields": missing_artifacts,
+        "artifact_targets": artifact_urls if validate_artifacts else {},
         "artifact_checks": artifact_checks,
         "network_profile_preview": network_profile,
         "checked_at": _now_iso(),

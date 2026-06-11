@@ -98,10 +98,17 @@ class BundleServiceTests(unittest.TestCase):
             "apk_url": "https://cdn.example.com/app.apk",
             "resource_url": "https://cdn.example.com/res.zip",
             "config_url": "https://cdn.example.com/cfg.zip",
+            "resource_server_url": "https://cdn.example.com/runtime",
             "apk_version": "1.0.1",
             "resource_version": "1.0.1",
             "config_version": "1.0.1",
         }
+
+        def _artifact_result(url):
+            if url == "https://cdn.example.com/res.zip":
+                return {"ok": False, "status": 404}
+            return {"ok": True, "status": 200}
+
         with patch("services.release.bundle_service.resolve_network_profile", return_value=({
             "gateway_ws": "ws://127.0.0.1:15050/ws/",
             "login_http": "http://127.0.0.1:15501",
@@ -109,16 +116,15 @@ class BundleServiceTests(unittest.TestCase):
             "ops_http": "http://127.0.0.1:5504",
         }, "auto")), \
              patch("services.release.bundle_service.resolve_topology_id", return_value="topo-prod"), \
-             patch("services.release.bundle_service._check_remote_artifact", side_effect=[
-                 {"ok": True, "status": 200},
-                 {"ok": False, "status": 404},
-                 {"ok": True, "status": 200},
-             ]):
+             patch("services.release.bundle_service._check_remote_artifact", side_effect=_artifact_result):
             result = run_scope_precheck(scope, version_row, validate_artifacts=True)
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["missing_artifact_fields"], ["resource_url"])
         self.assertIn("artifact_checks", result)
+        self.assertEqual(result["artifact_targets"]["catalog_url"], "https://cdn.example.com/runtime/Production/wechat/android/Version_1.0.1/13/catalog_1.0.1.bin")
+        self.assertEqual(result["artifact_targets"]["config_manifest_url"], "https://cdn.example.com/runtime/Production/wechat/android/Version_1.0.1/13/config/config_patch_manifest.json")
+        self.assertEqual(result["artifact_targets"]["code_manifest_url"], "https://cdn.example.com/runtime/Production/wechat/android/Version_1.0.1/13/code/code_patch_manifest.json")
 
 
 if __name__ == "__main__":

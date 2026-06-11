@@ -51,6 +51,8 @@ def release_scope_detail(scope_id: str):
             "scope": scope_row,
             "resolved": {
                 "topology_id": ctx.get("server_snapshot", {}).get("topology_id"),
+                "runtime_run_id": ctx.get("server_snapshot", {}).get("runtime_run_id"),
+                "topology_version_label": ctx.get("server_snapshot", {}).get("topology_version_label"),
                 "profile_source": ctx.get("profile_source"),
                 "network_profile_preview": ctx.get("network_profile"),
                 "active_bundle_id": active_bundle_id,
