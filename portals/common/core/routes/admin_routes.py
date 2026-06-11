@@ -350,7 +350,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         })
     visible_projects.sort(key=lambda row: (row['id'] != project_id, row['name']))
     project_tree_html = ''
-    for row in visible_projects[:8]:
+    for row in visible_projects:
         active_project = row['id'] == project_id
         project_tree_html += (
             '<details class="pv-tree-group %s" %s>'
@@ -630,39 +630,39 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     return '''
 <div class="project-version-design-app" data-project-id="%s" data-default-stage="%s">
   <style>
-    .project-version-design-app { min-height: 100vh; background: linear-gradient(180deg, #f5f7fb 0%%, #eef3ff 100%%); color: #0f172a; overflow-x: hidden; }
-    .project-version-design-app .pv-shell { display: grid; grid-template-columns: 176px minmax(0, 1fr); min-height: 100vh; }
+    .project-version-design-app { min-height: 100vh; background: linear-gradient(180deg, #f5f7fb 0%%, #eef3ff 100%%); color: #0f172a; overflow-x: hidden; font-family: "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; }
+    .project-version-design-app .pv-shell { display: grid; grid-template-columns: 146px minmax(0, 1fr); min-height: 100vh; }
     .project-version-design-app .pv-app-nav { background: linear-gradient(180deg, #0f274f 0%%, #11264a 38%%, #0d1d38 100%%); color: #e6efff; padding: 14px 12px; display: flex; flex-direction: column; }
-    .project-version-design-app .pv-brand { display: flex; align-items: center; gap: 10px; padding: 8px 8px 18px; }
-    .project-version-design-app .pv-brand-mark { width: 40px; height: 40px; border-radius: 14px; background: linear-gradient(160deg, #4c8dff, #1f5fff); display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 20px rgba(27, 73, 180, .35); font-weight: 700; }
-    .project-version-design-app .pv-brand-copy b { display: block; font-size: 13px; letter-spacing: .02em; }
-    .project-version-design-app .pv-brand-copy span { display: block; font-size: 11px; color: rgba(230, 239, 255, .72); }
+    .project-version-design-app .pv-brand { display: flex; align-items: center; gap: 12px; padding: 4px 4px 18px; }
+    .project-version-design-app .pv-brand-mark { width: 40px; height: 40px; border-radius: 13px; background: linear-gradient(160deg, #4c8dff, #1f5fff); display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 20px rgba(27, 73, 180, .35); font-weight: 700; font-size: 24px; }
+    .project-version-design-app .pv-brand-copy b { display: block; font-size: 13px; letter-spacing: .01em; line-height: 1.1; }
+    .project-version-design-app .pv-brand-copy span { display: block; font-size: 11px; color: rgba(230, 239, 255, .72); margin-top: 4px; }
     .project-version-design-app .pv-nav-group { margin-top: 10px; }
-    .project-version-design-app .pv-nav-title { padding: 10px 10px 6px; font-size: 11px; color: rgba(214, 225, 255, .56); letter-spacing: .08em; text-transform: uppercase; }
-    .project-version-design-app .pv-nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 12px; margin-bottom: 4px; color: #d7e5ff; border-radius: 12px; font-size: 14px; }
+    .project-version-design-app .pv-nav-title { padding: 12px 10px 8px; font-size: 12px; color: rgba(214, 225, 255, .48); letter-spacing: .02em; }
+    .project-version-design-app .pv-nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 12px; margin-bottom: 4px; color: #d7e5ff; border-radius: 12px; font-size: 14px; font-weight: 500; }
     .project-version-design-app .pv-nav-item:hover { background: rgba(255,255,255,.08); }
     .project-version-design-app .pv-nav-item.is-active { background: linear-gradient(90deg, rgba(55, 116, 255, .48), rgba(67, 115, 255, .22)); box-shadow: inset 0 0 0 1px rgba(141, 180, 255, .18); }
     .project-version-design-app .pv-main { display: flex; flex-direction: column; min-width: 0; }
-    .project-version-design-app .pv-topbar { height: 54px; border-bottom: 1px solid rgba(148, 163, 184, .18); background: rgba(255,255,255,.78); backdrop-filter: blur(18px); display: flex; align-items: center; justify-content: space-between; padding: 0 22px; gap: 16px; }
+    .project-version-design-app .pv-topbar { height: 54px; border-bottom: 1px solid rgba(148, 163, 184, .18); background: rgba(255,255,255,.82); backdrop-filter: blur(18px); display: flex; align-items: center; justify-content: space-between; padding: 0 18px; gap: 12px; }
     .project-version-design-app .pv-breadcrumb { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 13px; }
     .project-version-design-app .pv-breadcrumb strong { color: #1e293b; font-weight: 700; }
-    .project-version-design-app .pv-top-actions { display: flex; align-items: center; gap: 12px; }
-    .project-version-design-app .pv-select-chip, .project-version-design-app .pv-search, .project-version-design-app .pv-white-btn, .project-version-design-app .pv-blue-btn { border-radius: 12px; height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; }
+    .project-version-design-app .pv-top-actions { display: flex; align-items: center; gap: 10px; }
+    .project-version-design-app .pv-select-chip, .project-version-design-app .pv-search, .project-version-design-app .pv-white-btn, .project-version-design-app .pv-blue-btn { border-radius: 12px; height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; font-weight: 500; }
     .project-version-design-app .pv-select-chip, .project-version-design-app .pv-search, .project-version-design-app .pv-white-btn { background: rgba(255,255,255,.9); border: 1px solid #dbe5ff; color: #334155; }
     .project-version-design-app .pv-blue-btn { background: linear-gradient(180deg, #3c78ff, #1c61ff); color: white; box-shadow: 0 10px 24px rgba(55, 116, 255, .2); }
-    .project-version-design-app .pv-search input { border: 0; outline: 0; background: transparent; width: 230px; font-size: 13px; }
-    .project-version-design-app .pv-body { padding: 14px; display: grid; grid-template-columns: 236px minmax(0, 1fr) 286px; gap: 14px; min-width: 0; align-items: start; }
-    .project-version-design-app .pv-panel { background: rgba(255,255,255,.88); border: 1px solid #dfe7ff; border-radius: 18px; box-shadow: 0 10px 30px rgba(58, 76, 122, .08); }
-    .project-version-design-app .pv-project-tree { padding: 14px; display: flex; flex-direction: column; }
-    .project-version-design-app .pv-section-title { font-size: 14px; font-weight: 700; color: #173057; }
+    .project-version-design-app .pv-search input { border: 0; outline: 0; background: transparent; width: 238px; font-size: 13px; }
+    .project-version-design-app .pv-body { padding: 14px 16px 18px; display: grid; grid-template-columns: 224px minmax(0, 1fr) 264px; gap: 14px; min-width: 0; align-items: start; }
+    .project-version-design-app .pv-panel { background: rgba(255,255,255,.92); border: 1px solid #dfe7ff; border-radius: 18px; box-shadow: 0 10px 30px rgba(58, 76, 122, .08); }
+    .project-version-design-app .pv-project-tree { padding: 16px 14px; display: flex; flex-direction: column; }
+    .project-version-design-app .pv-section-title { font-size: 15px; font-weight: 700; color: #173057; }
     .project-version-design-app .pv-tree-search { margin-top: 12px; border-radius: 12px; border: 1px solid #dbe5ff; height: 38px; display: flex; align-items: center; padding: 0 12px; gap: 8px; color: #94a3b8; }
     .project-version-design-app .pv-tree-search input { flex: 1; border: 0; outline: 0; background: transparent; font-size: 13px; color: #334155; }
     .project-version-design-app .pv-tree-scroll { margin-top: 14px; overflow: auto; padding-right: 4px; min-height: 420px; }
-    .project-version-design-app .pv-tree-group { margin-bottom: 10px; }
-    .project-version-design-app .pv-tree-group summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 700; color: #173057; padding: 8px 6px; }
+    .project-version-design-app .pv-tree-group { margin-bottom: 12px; }
+    .project-version-design-app .pv-tree-group summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 700; color: #173057; padding: 6px 6px; }
     .project-version-design-app .pv-tree-group summary::-webkit-details-marker { display: none; }
     .project-version-design-app .pv-tree-envs { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 2px 8px; }
-    .project-version-design-app .pv-tree-env { height: 34px; border-radius: 12px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #334155; font-size: 13px; background: #f7faff; }
+    .project-version-design-app .pv-tree-env { height: 34px; border-radius: 12px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #334155; font-size: 13px; background: #f7faff; border: 1px solid transparent; }
     .project-version-design-app .pv-tree-env.is-current { background: linear-gradient(180deg, #ebf7ee, #e4fff0); color: #137e4c; font-weight: 700; }
     .project-version-design-app .pv-dot { width: 8px; height: 8px; border-radius: 999px; }
     .project-version-design-app .pv-green { background: #2ecc71; }.project-version-design-app .pv-yellow { background: #ffb020; }.project-version-design-app .pv-blue { background: #3b82f6; }
@@ -671,47 +671,47 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-tree-footer { margin-top: auto; padding-top: 12px; }
     .project-version-design-app .pv-center { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
     .project-version-design-app .pv-header { padding: 10px 2px 0; }
-    .project-version-design-app .pv-header h2 { font-size: 17px; font-weight: 800; color: #173057; }
+    .project-version-design-app .pv-header h2 { font-size: 18px; font-weight: 800; color: #173057; }
     .project-version-design-app .pv-header h2 .slash { color: #94a3b8; margin: 0 8px; }
     .project-version-design-app .pv-running { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; padding: 4px 10px; border-radius: 999px; background: #e9fff1; color: #18a462; font-size: 12px; font-weight: 700; }
     .project-version-design-app .pv-kpis { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; }
-    .project-version-design-app .pv-kpi-card { min-height: 78px; background: rgba(255,255,255,.9); border: 1px solid #e4eafe; border-radius: 18px; padding: 14px; display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(78, 101, 152, .06); }
+    .project-version-design-app .pv-kpi-card { min-height: 78px; background: rgba(255,255,255,.96); border: 1px solid #e4eafe; border-radius: 18px; padding: 14px; display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(78, 101, 152, .06); }
     .project-version-design-app .pv-kpi-icon { width: 38px; height: 38px; border-radius: 12px; background: #f8fbff; display: flex; align-items: center; justify-content: center; }
     .project-version-design-app .pv-kpi-label { font-size: 12px; color: #7b8aa8; }
     .project-version-design-app .pv-kpi-value { font-size: 27px; font-weight: 800; color: #16345d; }
     .project-version-design-app .pv-kpi-card:last-child .pv-kpi-value { font-size: 21px; }
     .project-version-design-app .pv-workbench { padding: 0; overflow: visible; }
-    .project-version-design-app .pv-main-tabs { display: flex; align-items: center; gap: 28px; padding: 0 18px; height: 50px; border-bottom: 1px solid #eef3ff; background: rgba(255,255,255,.96); }
-    .project-version-design-app .pv-main-tab { font-size: 14px; color: #64748b; padding-top: 2px; height: 50px; display: inline-flex; align-items: center; position: relative; }
+    .project-version-design-app .pv-main-tabs { display: flex; align-items: center; gap: 26px; padding: 0 18px; height: 50px; border-bottom: 1px solid #eef3ff; background: rgba(255,255,255,.96); }
+    .project-version-design-app .pv-main-tab { font-size: 14px; color: #64748b; padding-top: 2px; height: 50px; display: inline-flex; align-items: center; position: relative; font-weight: 500; }
     .project-version-design-app .pv-main-tab.is-active { color: #2563eb; font-weight: 700; }
     .project-version-design-app .pv-main-tab.is-active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 999px; background: #2563eb; }
-    .project-version-design-app .pv-toolbar { padding: 12px 18px 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .project-version-design-app .pv-toolbar { padding: 12px 18px 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .project-version-design-app .pv-toolbar-left, .project-version-design-app .pv-toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .project-version-design-app .pv-segment { height: 32px; border-radius: 10px; border: 1px solid #dbe5ff; background: #fff; color: #334155; padding: 0 14px; font-size: 13px; }
+    .project-version-design-app .pv-segment { height: 32px; border-radius: 10px; border: 1px solid #dbe5ff; background: #fff; color: #334155; padding: 0 14px; font-size: 13px; font-weight: 500; }
     .project-version-design-app .pv-segment.is-active { background: linear-gradient(180deg, #3f7bff, #2b68ff); color: white; border-color: #3b72ff; }
     .project-version-design-app .pv-filter { height: 36px; border-radius: 10px; border: 1px solid #dbe5ff; background: white; padding: 0 12px; color: #64748b; font-size: 13px; }
-    .project-version-design-app .pv-filter.search { width: 220px; }
+    .project-version-design-app .pv-filter.search { width: 184px; }
     .project-version-design-app .pv-workbench-body { padding: 0 18px 16px; min-width: 0; }
     .project-version-design-app .pv-content-panel { display: none; position: relative; z-index: 0; pointer-events: none; visibility: hidden; height: 0; overflow: hidden; }
     .project-version-design-app .pv-content-panel.is-active { display: block; position: relative; z-index: 2; pointer-events: auto; visibility: visible; height: auto; overflow: visible; }
     .project-version-design-app .pv-version-board { border: 1px solid #dfe7ff; border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(247,250,255,.96)); overflow-x: auto; overflow-y: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
-    .project-version-design-app .pv-version-board-head { display: grid; grid-template-columns: minmax(0, 2.2fr) .95fr 1fr .85fr .85fr 1fr 1.1fr; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #ecf1ff; font-size: 12px; font-weight: 600; color: #7387a8; background: rgba(249, 251, 255, .92); }
+    .project-version-design-app .pv-version-board-head { display: grid; grid-template-columns: minmax(180px, 2.1fr) .86fr .82fr .84fr .76fr .92fr .8fr; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #ecf1ff; font-size: 12px; font-weight: 600; color: #7387a8; background: rgba(249, 251, 255, .92); min-width: 860px; }
     .project-version-design-app .pv-version-board-title { padding: 14px 2px 10px; font-size: 14px; font-weight: 800; color: #173057; }
     .project-version-design-app .pv-version-list { display: flex; flex-direction: column; gap: 10px; }
     .project-version-design-app .pv-group-card { border: 1px solid #e4eafe; border-radius: 16px; background: #fff; box-shadow: 0 8px 20px rgba(78, 101, 152, .04); overflow: hidden; }
     .project-version-design-app .pv-group-card summary { list-style: none; cursor: pointer; }
     .project-version-design-app .pv-group-card summary::-webkit-details-marker { display: none; }
-    .project-version-design-app .pv-group-summary { display: grid; grid-template-columns: minmax(0, 2.2fr) .95fr 1fr .85fr .85fr 1fr 1.1fr; align-items: center; gap: 10px; padding: 12px 16px; font-size: 13px; color: #173057; }
+    .project-version-design-app .pv-group-summary { display: grid; grid-template-columns: minmax(180px, 2.1fr) .86fr .82fr .84fr .76fr .92fr .8fr; align-items: center; gap: 10px; padding: 12px 16px; font-size: 13px; color: #173057; min-width: 860px; }
     .project-version-design-app .pv-group-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .project-version-design-app .pv-group-name strong { font-size: 15px; font-weight: 800; color: #173057; }
+    .project-version-design-app .pv-group-name strong { font-size: 14px; font-weight: 800; color: #173057; }
     .project-version-design-app .pv-expand-caret { width: 14px; color: #7b8aa8; font-size: 11px; transition: transform .18s ease; }
     .project-version-design-app .pv-group-card[open] .pv-expand-caret { transform: rotate(180deg); }
     .project-version-design-app .pv-group-col { font-size: 12px; color: #3f557c; }
     .project-version-design-app .pv-group-body { border-top: 1px solid #eef3ff; background: #fcfdff; }
     .project-version-design-app .pv-group-subtitle { padding: 10px 20px 4px; font-size: 12px; color: #7387a8; font-weight: 600; }
-    .project-version-design-app .pv-code-table { width: 100%%; border-collapse: collapse; }
+    .project-version-design-app .pv-code-table { width: 100%%; border-collapse: collapse; min-width: 860px; }
     .project-version-design-app .pv-code-table thead th { text-align: left; padding: 10px 16px; font-size: 12px; font-weight: 600; color: #7b8aa8; }
-    .project-version-design-app .pv-code-table tbody td { padding: 12px 16px; border-top: 1px solid #eef3ff; font-size: 13px; color: #334155; vertical-align: middle; }
+    .project-version-design-app .pv-code-table tbody td { padding: 10px 16px; border-top: 1px solid #eef3ff; font-size: 13px; color: #334155; vertical-align: middle; }
     .project-version-design-app .pv-code-row:hover { background: #f8fbff; }
     .project-version-design-app .pv-radio-cell { display: flex; align-items: center; gap: 10px; font-weight: 700; color: #173057; }
     .project-version-design-app .pv-radio-dot { width: 12px; height: 12px; border-radius: 999px; border: 1.5px solid #9db6ea; display: inline-block; box-shadow: inset 0 0 0 2px #fff; background: #2f6cff; }
@@ -731,14 +731,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-empty-state { border: 1px dashed #dbe5ff; border-radius: 16px; padding: 38px 24px; text-align: center; color: #8da0c0; background: rgba(255,255,255,.82); }
     .project-version-design-app .pv-side { display: flex; flex-direction: column; gap: 12px; }
     .project-version-design-app .pv-side-card { padding: 16px; }
-    .project-version-design-app .pv-side-card h3 { font-size: 14px; font-weight: 800; color: #173057; margin-bottom: 12px; }
+    .project-version-design-app .pv-side-card h3 { font-size: 15px; font-weight: 800; color: #173057; margin-bottom: 12px; }
     .project-version-design-app .pv-side-kv { display: grid; grid-template-columns: 72px 1fr; row-gap: 10px; column-gap: 8px; font-size: 12px; color: #64748b; }
     .project-version-design-app .pv-side-kv b { color: #1e293b; font-weight: 700; }
     .project-version-design-app .pv-topology-preview { min-height: 112px; border: 1px dashed #cedbff; border-radius: 14px; background: linear-gradient(180deg, #fcfdff, #f7faff); padding: 12px; position: relative; overflow: hidden; }
     .project-version-design-app .pv-topology-preview .mini-box { position: absolute; border: 1px solid #cfe0ff; border-radius: 10px; background: white; font-size: 10px; color: #456184; padding: 4px 6px; box-shadow: 0 4px 10px rgba(64,92,160,.08); }
     .project-version-design-app .pv-mini-svg { position: absolute; inset: 0; width: 100%%; height: 100%%; }
     .project-version-design-app .pv-quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
-    .project-version-design-app .pv-quick-link { min-height: 62px; border-radius: 14px; border: 1px solid #e1e9ff; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: #456184; }
+    .project-version-design-app .pv-quick-link { min-height: 64px; border-radius: 14px; border: 1px solid #e1e9ff; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: #456184; font-weight: 500; }
     .project-version-design-app .pv-quick-link i { color: #2f6cff; }
     .project-version-design-app .pv-activity-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 12px; color: #64748b; border-bottom: 1px solid #f1f5ff; }
     .project-version-design-app .pv-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .44); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 90; padding: 24px; }
@@ -829,7 +829,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           <strong>项目版本管理</strong>
         </div>
         <div class="pv-top-actions">
-          <button type="button" class="pv-select-chip"><i class="fas fa-circle-info text-blue-500"></i><span>项目：%s</span><i class="fas fa-chevron-down text-[10px] text-slate-400"></i></button>
+          <button type="button" class="pv-select-chip"><i class="fas fa-circle-info text-blue-500"></i><span>项目：%s_%s</span><i class="fas fa-chevron-down text-[10px] text-slate-400"></i></button>
           <a href="/admin/projects" class="pv-blue-btn"><i class="fas fa-plus"></i><span>创建项目</span></a>
           <button type="button" class="pv-white-btn" onclick="pvOpenModal('topology')"><i class="fas fa-plus"></i><span>新建拓扑图</span></button>
           <label class="pv-search"><i class="fas fa-search text-slate-400"></i><input type="text" id="pvGlobalSearch" placeholder="搜索项目、环境、版本、渠道"></label>
@@ -849,7 +849,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         </aside>
         <section class="pv-center">
           <div class="pv-header">
-            <h2>项目版本管理 <span class="slash">/</span> %s <span class="pv-running"><i class="fas fa-circle text-[8px]"></i>运行中</span></h2>
+            <h2>项目版本管理 <span class="slash">/</span> %s_%s <span class="pv-running"><i class="fas fa-circle text-[8px]"></i>运行中</span></h2>
           </div>
           <div class="pv-kpis">%s</div>
           <div class="pv-panel pv-workbench">
@@ -928,7 +928,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             <h3>项目信息</h3>
             <div class="flex items-center gap-2 mb-4">
               <span class="w-9 h-9 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center"><i class="fas fa-cube"></i></span>
-              <div><div class="font-semibold text-[#173057]">%s</div><div class="text-xs text-slate-500">%s</div></div>
+              <div><div class="font-semibold text-[#173057]">%s <i class="fas fa-pen text-[11px] text-[#3f7bff] ml-1"></i></div><div class="text-xs text-slate-500">%s</div></div>
             </div>
             <div class="pv-side-kv">
               <span>项目 ID：</span><b>%s</b>
@@ -958,12 +958,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           <div class="pv-panel pv-side-card">
             <h3>快捷操作</h3>
             <div class="pv-quick-grid">
-              <button type="button" class="pv-quick-link" data-pv-modal-open="topology"><i class="fas fa-boxes-stacked"></i><span>新建拓扑图</span></button>
-              <button type="button" class="pv-quick-link" data-pv-modal-open="channels"><i class="fas fa-code-compare"></i><span>渠道管理</span></button>
-              <button type="button" class="pv-quick-link" data-pv-modal-open="version-group"><i class="fas fa-layer-group"></i><span>新建版本组</span></button>
-              <button type="button" class="pv-quick-link" data-pv-modal-open="version-code"><i class="fas fa-pen-to-square"></i><span>编辑 VersionCode</span></button>
+              <button type="button" class="pv-quick-link" data-pv-modal-open="topology"><i class="fas fa-boxes-stacked"></i><span>构建版本</span></button>
+              <button type="button" class="pv-quick-link" data-pv-modal-open="channels"><i class="fas fa-code-compare"></i><span>版本对比</span></button>
               <button type="button" class="pv-quick-link" data-pv-modal-open="gm-wizard"><i class="fas fa-rocket"></i><span>发版工作台</span></button>
-              <button type="button" class="pv-quick-link" data-pv-modal-open="qr-download"><i class="fas fa-download"></i><span>扫码下载</span></button>
+              <a href="/admin/ops-platform?project_id=%s" class="pv-quick-link"><i class="fas fa-screwdriver-wrench"></i><span>运维中心</span></a>
+              <a href="/download-center?project=%s" class="pv-quick-link"><i class="fas fa-download"></i><span>下载中心</span></a>
+              <button type="button" class="pv-quick-link" onclick="openDeviceManageModal()"><i class="fas fa-mobile-screen-button"></i><span>测试设备</span></button>
+              <a href="/admin/projects/%s/build-history" class="pv-quick-link"><i class="fas fa-clock-rotate-left"></i><span>构建历史</span></a>
+              <a href="/admin/projects/%s" class="pv-quick-link"><i class="fas fa-gear"></i><span>项目设置</span></a>
             </div>
           </div>
           <div class="pv-panel pv-side-card">
@@ -1331,9 +1333,11 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(selected_stage),
         project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url,
         html.escape(project_name),
+        html.escape(phase_label),
         html.escape(username or '运维管理员'),
         project_tree_html,
         html.escape(project_name),
+        html.escape(phase_label),
         metrics_html,
         version_overview_html,
         project_channels_html or '<span class="text-slate-400">暂无渠道</span>',
@@ -1350,6 +1354,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(phase_label),
         html.escape(created_at or '-'),
         html.escape(owner or '-'),
+        project_id_url,
+        project_id_url,
+        project_id_url,
+        project_id_url,
         project_id_url,
         recent_activity_html,
         html.escape(project_id),
