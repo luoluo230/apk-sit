@@ -150,6 +150,14 @@ def resolve_scope_by_inputs(project_id: str, env_raw: str, channel_raw: str) -> 
     return resolve_scope(project_id, env_key, channel_id)
 
 
+def resolve_existing_scope_by_inputs(project_id: str, env_raw: str, channel_raw: str) -> Dict[str, Any]:
+    env_key = normalize_release_env_key(env_raw)
+    channel_id = resolve_channel_id(project_id, channel_raw)
+    if not channel_id:
+        channel_id = str(channel_raw or "").strip()
+    return resolve_scope(project_id, env_key, channel_id, auto_create=False)
+
+
 def list_scopes(project_id: str = "") -> List[Dict[str, Any]]:
     pid = str(project_id or "").strip()
     rows = load_scopes()

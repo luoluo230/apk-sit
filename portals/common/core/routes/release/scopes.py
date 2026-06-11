@@ -84,7 +84,6 @@ def release_scope_upsert():
 @admin_required("gm_ops")
 def release_scope_precheck(scope_id: str):
     from services.release.storage import find_scope as _find_scope
-    from models.data import project_versions_db
     from routes.gm_ops import _find_best_release
 
     scope_row = _find_scope(scope_id)
@@ -93,7 +92,9 @@ def release_scope_precheck(scope_id: str):
     project_id = str(scope_row.get("project_id") or "")
     env = str(scope_row.get("env_key") or "")
     channel = str(scope_row.get("channel_id") or "")
-    release = _find_best_release(project_id, env, channel, "android", "", published_only=False)
+    platform = (request.args.get("platform") or "android").strip().lower()
+    version_name = (request.args.get("version_name") or "").strip()
+    release = _find_best_release(project_id, env, channel, platform, version_name, published_only=False)
     if not release:
         return jsonify({"ok": False, "error": "release not found for scope"}), 404
     result = run_scope_precheck(scope_row, release)

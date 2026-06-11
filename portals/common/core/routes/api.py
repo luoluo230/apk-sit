@@ -162,7 +162,7 @@ def resolve_runtime_version():
     """按项目版本管理数据解析运行时版本：同 VersionName 下返回最大可用 VersionCode。"""
     project_id = (request.args.get('project_id') or '').strip()
     version_name = (request.args.get('version_name') or request.args.get('client_version') or '').strip()
-    channel = (request.args.get('channel') or '').strip().lower()
+    channel = (request.args.get('channel_id') or request.args.get('channel_key') or request.args.get('channel') or '').strip().lower()
     platform = (request.args.get('platform') or '').strip().lower()
     status = _normalize_version_status(request.args.get('status') or request.args.get('state') or 'active')
     include_status_raw = (request.args.get('include_status') or '').strip()
@@ -180,9 +180,14 @@ def resolve_runtime_version():
     elif scope_id_param:
         from services.release.storage import find_scope as _find_scope
         scope_row = _find_scope(scope_id_param)
-        if scope_row:
-            effective_env_key = normalize_release_env_key(scope_row.get('env_key'))
-            effective_stage = {'development': 'dev', 'testing': 'test', 'staging': 'staging', 'production': 'production'}.get(effective_env_key, '')
+        if not scope_row:
+            return jsonify({
+                'ok': False,
+                'error': 'RELEASE_SCOPE_NOT_FOUND',
+                'data': None,
+            }), 404
+        effective_env_key = normalize_release_env_key(scope_row.get('env_key'))
+        effective_stage = {'development': 'dev', 'testing': 'test', 'staging': 'staging', 'production': 'production'}.get(effective_env_key, '')
     elif stage_param in ('dev', 'test', 'production', 'staging'):
         effective_stage = stage_param
         effective_env_key = normalize_release_env_key(stage_param)

@@ -42,6 +42,7 @@ def resolve_release_context(
     channel_raw: str = "",
     *,
     version_row: Optional[Dict[str, Any]] = None,
+    auto_create_scope: bool = True,
 ) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
     if version_row and isinstance(version_row, dict):
@@ -52,10 +53,10 @@ def resolve_release_context(
         env_key = normalize_release_env_key(scope_probe.get("env_key") or env_raw)
         channel_id = str(scope_probe.get("channel_id") or resolve_channel_id(pid, channel_raw) or channel_raw).strip()
 
-    scope = resolve_scope(pid, env_key, channel_id)
-    network_profile, profile_source = resolve_network_profile(scope)
-    topology_id = resolve_topology_id(scope)
-    active_bundle = find_active_bundle(str(scope.get("scope_id") or ""))
+    scope = resolve_scope(pid, env_key, channel_id, auto_create=auto_create_scope)
+    network_profile, profile_source = resolve_network_profile(scope) if scope else ({}, "legacy")
+    topology_id = resolve_topology_id(scope) if scope else ""
+    active_bundle = find_active_bundle(str(scope.get("scope_id") or "")) if scope else {}
 
     server_snapshot = {
         "topology_id": topology_id,

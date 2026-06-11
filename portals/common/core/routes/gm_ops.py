@@ -30,7 +30,7 @@ from services.release.bundle_service import create_bundle_from_publish, find_act
 from services.release.env_registry import env_key_to_gm_env, normalize_release_env_key
 from services.release.scope_ids import resolve_channel_id
 from services.release.release_context import release_matches_env, resolve_release_context
-from services.release.scope_resolver import resolve_scope_by_inputs
+from services.release.scope_resolver import resolve_existing_scope_by_inputs, resolve_scope_by_inputs
 from services.release.storage import find_manifest
 
 bp = Blueprint("gm_ops", __name__)
@@ -227,6 +227,54 @@ def _find_best_release(project_id: str, env: str, channel: str, platform: str, v
     return candidates[0]
 
 
+def _release_request_inputs(args) -> Dict[str, str]:
+    env_key = (args.get("env_key") or args.get("env") or args.get("environment") or "").strip()
+    channel_value = (
+        args.get("channel_id")
+        or args.get("channel_key")
+        or args.get("channel")
+        or ""
+    ).strip()
+    return {
+        "env_key": normalize_release_env_key(env_key) if env_key else "",
+        "channel": channel_value,
+        "platform": (args.get("platform") or "android").strip().lower(),
+        "version_name": (args.get("version_name") or args.get("client_version") or "").strip(),
+    }
+
+
+def _resolve_public_release(project_id: str, *, env_key: str, channel: str, platform: str, version_name: str) -> Tuple[Dict[str, Any], Dict[str, Any], Optional[Tuple[Dict[str, Any], int]]]:
+    if not version_name:
+        return {}, {}, ({"ok": False, "error": "version_name required"}, 400)
+    if not env_key:
+        return {}, {}, ({"ok": False, "error": "env_key required"}, 400)
+    if not channel:
+        return {}, {}, ({"ok": False, "error": "channel_id or channel_key required"}, 400)
+    scope = resolve_existing_scope_by_inputs(project_id, env_key, channel)
+    if not scope:
+        return {}, {}, ({"ok": False, "error": "RELEASE_SCOPE_NOT_FOUND"}, 404)
+    release = _find_best_release(
+        project_id,
+        str(scope.get("env_key") or env_key),
+        str(scope.get("channel_id") or channel),
+        platform,
+        version_name,
+        published_only=True,
+    )
+    if not release:
+        return scope, {}, ({"ok": False, "error": "published release not found", "scope_id": str(scope.get("scope_id") or "")}, 404)
+    precheck = run_scope_precheck(scope, release, validate_artifacts=True)
+    if not precheck.get("ok"):
+        status = 409 if not precheck.get("topology_runtime_aligned") else 412
+        return scope, release, ({
+            "ok": False,
+            "error": "RELEASE_PRECHECK_FAILED",
+            "scope_id": str(scope.get("scope_id") or ""),
+            "precheck": precheck,
+        }, status)
+    return scope, release, None
+
+
 def _parse_version_tuple(version_text: str) -> Tuple[int, ...]:
     text = (version_text or "").strip()
     if not text:
@@ -283,7 +331,9 @@ def _execute_release_publish(
     published_by: str = "",
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """GM 发布唯一写 Bundle 路径：precheck 由调用方保证或在此前执行。"""
-    scope = resolve_scope_by_inputs(resolved, env, channel)
+    scope = resolve_existing_scope_by_inputs(resolved, env, channel)
+    if not scope:
+        raise ValueError(json.dumps({"error": "RELEASE_SCOPE_NOT_FOUND"}, ensure_ascii=False))
     precheck = run_scope_precheck(scope, release)
     if not precheck.get("ok"):
         raise ValueError(json.dumps({"error": "precheck failed", "precheck": precheck}, ensure_ascii=False))
@@ -296,6 +346,7 @@ def _execute_release_publish(
     release["publish_trace_id"] = trace_id or uuid.uuid4().hex[:16]
     release["updated_at"] = datetime.now().isoformat()
     release["updated_by"] = published_by or _current_user()
+    release["_precheck"] = precheck
 
     versions = project_versions_db.get(resolved) or []
     for i, item in enumerate(versions):
@@ -317,7 +368,9 @@ def _execute_release_rollback(
     trace_id: str = "",
     rolled_by: str = "",
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    scope = resolve_scope_by_inputs(resolved, env, channel)
+    scope = resolve_existing_scope_by_inputs(resolved, env, channel)
+    if not scope:
+        raise ValueError(json.dumps({"error": "RELEASE_SCOPE_NOT_FOUND"}, ensure_ascii=False))
     target_bundle_id = str(bundle_id or release.get("active_bundle_id") or "").strip()
     bundle: Dict[str, Any] = {}
     if target_bundle_id:
@@ -349,7 +402,7 @@ def _build_public_release_payload(
     channel: str,
     platform: str,
 ) -> Dict[str, Any]:
-    ctx = resolve_release_context(project_id, env, channel, version_row=release)
+    ctx = resolve_release_context(project_id, env, channel, version_row=release, auto_create_scope=False)
     paths = ctx.get("bootstrap_paths") or {}
     profile = ctx.get("network_profile") or {}
     return {
@@ -357,6 +410,49 @@ def _build_public_release_payload(
         "paths": paths,
         "profile": profile,
         "platform": platform,
+    }
+
+
+def _release_operation_payload(
+    project_id: str,
+    release: Dict[str, Any],
+    bundle: Dict[str, Any],
+    *,
+    env: str,
+    channel: str,
+    action: str,
+    trace_id: str = "",
+    precheck: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    ctx = resolve_release_context(project_id, env, channel, version_row=release, auto_create_scope=False)
+    server_snapshot = dict(ctx.get("server_snapshot") or {})
+    bundle_server = bundle.get("server") if isinstance(bundle.get("server"), dict) else {}
+    if bundle_server:
+        server_snapshot = {
+            "topology_id": str(bundle_server.get("topology_id") or server_snapshot.get("topology_id") or ""),
+            "topology_version_label": str(bundle_server.get("topology_version_label") or server_snapshot.get("topology_version_label") or ""),
+            "runtime_run_id": str(bundle_server.get("runtime_run_id") or server_snapshot.get("runtime_run_id") or ""),
+        }
+    network_profile = dict(bundle_server.get("network_profile_snapshot") or ctx.get("network_profile") or {})
+    return {
+        "project_id": project_id,
+        "action": action,
+        "trace_id": trace_id,
+        "release_id": str(release.get("id") or ""),
+        "version_name": str(release.get("version_name") or ""),
+        "version_code": str(release.get("version_code") or ""),
+        "platform": str(release.get("platform") or "android"),
+        "publish_status": str(release.get("publish_status") or ""),
+        "scope_id": str(ctx.get("scope_id") or release.get("scope_id") or ""),
+        "env_key": str(ctx.get("env_key") or release.get("env_key") or ""),
+        "channel_id": str(ctx.get("channel_id") or release.get("channel") or ""),
+        "channel_key": str(ctx.get("channel_key") or ""),
+        "active_bundle_id": str(release.get("active_bundle_id") or bundle.get("bundle_id") or ctx.get("active_bundle_id") or ""),
+        "bundle_id": str(bundle.get("bundle_id") or ""),
+        "profile_source": str(bundle_server.get("profile_source") or ctx.get("profile_source") or ""),
+        "server_snapshot": server_snapshot,
+        "network_profile": network_profile,
+        "precheck": precheck or None,
     }
 
 
@@ -1187,7 +1283,15 @@ function upsertChannelOptions(el, options, pick){
   el.innerHTML = rows.map(x=>`<option value="${x.id}">${x.id} · ${x.name}</option>`).join('');
   if(pick && rows.some(x=>x.id===pick)) el.value=pick;
 }
-function currentReleasePayload(){ return { project_id: selectedProjectId(), env: selectedEnv(), channel: selectedChannel(), platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
+function normalizeEnvKeyUi(value){
+  const raw=String(value||'').trim().toLowerCase();
+  if(raw==='dev' || raw==='development') return 'development';
+  if(raw==='test' || raw==='testing') return 'testing';
+  if(raw==='staging' || raw==='stage') return 'staging';
+  if(raw==='prod' || raw==='production' || raw==='release') return 'production';
+  return raw;
+}
+function currentReleasePayload(){ const env=selectedEnv(); const channel=selectedChannel(); return { project_id: selectedProjectId(), env: env, env_key: normalizeEnvKeyUi(env), channel: channel, channel_id: channel, platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
 function currentProfilePayload(){ return { id: (document.getElementById('serverProfile').value || '').trim() || 'default', name: (document.getElementById('serverProfile').value || '').trim() || 'default', env: selectedEnv(), channel: selectedChannel(), gateway_ws: (document.getElementById('gatewayWs').value||'').trim(), login_http: (document.getElementById('loginHttp').value||'').trim(), game_ws: (document.getElementById('gameWs').value||'').trim(), battle_udp: (document.getElementById('battleUdp').value||'').trim(), ops_http: (document.getElementById('opsHttp').value||'').trim(), notice_url: (document.getElementById('noticeUrl').value||'').trim() }; }
 function refreshPreview(){ const p=currentReleasePayload(); document.getElementById('preview').textContent = JSON.stringify({project_id:p.project_id, env:p.env, channel:p.channel, version_name:p.version_name, apk_version:p.apk_version, resource_version:p.resource_version, config_version:p.config_version},null,2); }
 function renderDictRows(rows){ const cat=(document.getElementById('dictCategory')?.value||'all'); const kw=(document.getElementById('dictKeyword')?.value||'').trim().toLowerCase(); const body=document.getElementById('closureTableBody'); if(!body) return; const filtered=(rows||[]).filter(x=>{ const okCat=(cat==='all'||String(x.sourceLayer||'')===cat); const okKw=(!kw||String(x.key||'').toLowerCase().includes(kw)||String(x.description||'').toLowerCase().includes(kw)); return okCat&&okKw;}); body.innerHTML = filtered.map(x=>`<tr class="border-b"><td class="px-2 py-1">${x.key||'-'}</td><td class="px-2 py-1">${x.description||'-'}</td><td class="px-2 py-1">${x.sourceLayer||x.source||'-'}</td><td class="px-2 py-1">${x.value===undefined||x.value===null||x.value===''?'-':String(x.value)}</td><td class="px-2 py-1">${x.effectiveStage||'-'}</td><td class="px-2 py-1">${(x.logKey||'-')+' / '+(x.readbackField||'-')}</td></tr>`).join('') || '<tr><td class="px-2 py-2" colspan="6">暂无参数映射</td></tr>'; }
@@ -1414,10 +1518,13 @@ def _quality_gate_core(project_id_raw: str, env: str, channel: str, platform: st
 
     release = _find_best_release(resolved, env, channel, platform, version_name, published_only=False)
     if release:
-        scope = resolve_scope_by_inputs(resolved, env, channel)
-        precheck_data = run_scope_precheck(scope, release)
-        precheck_data["scope_resolved"] = bool(scope.get("scope_id"))
-        precheck_data["bundle_server_snapshot"] = bool(find_active_bundle(str(scope.get("scope_id") or "")).get("server"))
+        scope = resolve_existing_scope_by_inputs(resolved, env, channel)
+        if scope:
+            precheck_data = run_scope_precheck(scope, release, validate_artifacts=True)
+            precheck_data["scope_resolved"] = bool(scope.get("scope_id"))
+            precheck_data["bundle_server_snapshot"] = bool(find_active_bundle(str(scope.get("scope_id") or "")).get("server"))
+        else:
+            precheck_data = {"ok": False, "error": "RELEASE_SCOPE_NOT_FOUND", "scope_resolved": False}
     else:
         precheck_data = {"ok": False, "error": "release not found", "scope_resolved": False}
     precheck_ok = bool(precheck_data.get("ok"))
@@ -1432,6 +1539,7 @@ def _quality_gate_core(project_id_raw: str, env: str, channel: str, platform: st
         {"name": "scope_resolved", "ok": bool(precheck_data.get("scope_resolved")), "detail": {"scope_id": precheck_data.get("scope_id")}},
         {"name": "topology_runtime_aligned", "ok": bool(precheck_data.get("topology_runtime_aligned", True)), "detail": precheck_data},
         {"name": "profile_probe_pass", "ok": not precheck_data.get("missing_profile_fields"), "detail": precheck_data.get("network_profile_preview")},
+        {"name": "artifacts_reachable", "ok": not precheck_data.get("missing_artifact_fields"), "detail": precheck_data.get("artifact_checks")},
         {"name": "closure_evidence", "ok": evidence_ok, "detail": evidence},
         {"name": "infra_mongo_redis", "ok": infra_ok, "detail": {"mongo": infra_data.get("mongo"), "redis": infra_data.get("redis")}},
     ]
@@ -1762,8 +1870,10 @@ def gm_release_precheck():
     if not release:
         return jsonify({"ok": False, "error": "release not found"}), 404
 
-    scope = resolve_scope_by_inputs(resolved, env, channel)
-    precheck = run_scope_precheck(scope, release)
+    scope = resolve_existing_scope_by_inputs(resolved, env, channel)
+    if not scope:
+        return jsonify({"ok": False, "error": "RELEASE_SCOPE_NOT_FOUND"}), 404
+    precheck = run_scope_precheck(scope, release, validate_artifacts=True)
     return jsonify(
         {
             "ok": bool(precheck.get("ok")),
@@ -1773,9 +1883,15 @@ def gm_release_precheck():
             "scope_id": precheck.get("scope_id"),
             "missing_release_fields": precheck.get("missing_client_fields"),
             "missing_profile_fields": precheck.get("missing_profile_fields"),
+            "missing_artifact_fields": precheck.get("missing_artifact_fields"),
+            "artifact_checks": precheck.get("artifact_checks"),
             "topology_runtime_aligned": precheck.get("topology_runtime_aligned"),
             "profile_source": precheck.get("profile_source"),
             "publish_status": release.get("publish_status"),
+            "server_snapshot": {
+                "topology_id": precheck.get("topology_id"),
+                "runtime_topology_id": precheck.get("runtime_topology_id"),
+            },
             "checked_at": precheck.get("checked_at"),
         }
     ), (200 if precheck.get("ok") else 412)
@@ -1825,8 +1941,18 @@ def gm_release_publish():
             return jsonify({"ok": False, **err_payload}), 412
         return jsonify({"ok": False, **err_payload}), 400
 
+    operation = _release_operation_payload(
+        resolved,
+        release,
+        bundle,
+        env=env,
+        channel=channel,
+        action="publish",
+        trace_id=str(release.get("publish_trace_id") or ""),
+        precheck=release.get("_precheck"),
+    )
     log_audit("gm_release_publish", f"project={resolved}; version={release.get('version_name')}; bundle={bundle.get('bundle_id')}; trace={release.get('publish_trace_id')}")
-    return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle})
+    return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle, "operation": operation})
 
 
 @bp.route("/api/gm-ops/release/rollback", methods=["POST"])
@@ -1859,8 +1985,17 @@ def gm_release_rollback():
         rolled_by=_current_user(),
     )
 
+    operation = _release_operation_payload(
+        resolved,
+        release,
+        bundle,
+        env=env,
+        channel=channel,
+        action="rollback",
+        trace_id=str(release.get("rollback_trace_id") or ""),
+    )
     log_audit("gm_release_rollback", f"project={resolved}; version={release.get('version_name')}; trace={release.get('rollback_trace_id')}")
-    return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle})
+    return jsonify({"ok": True, "project_id": resolved, "entry": release, "bundle": bundle, "operation": operation})
 
 
 @bp.route("/api/gm-ops/release/reconcile")
@@ -2265,6 +2400,17 @@ def gm_ops_execute_action():
                 "publish_status": release.get("publish_status"),
                 "active_bundle_id": release.get("active_bundle_id"),
                 "bundle_id": bundle.get("bundle_id"),
+                "scope_id": release.get("scope_id"),
+                "operation": _release_operation_payload(
+                    resolved,
+                    release,
+                    bundle,
+                    env=env,
+                    channel=channel,
+                    action="publish" if action_type == "release_publish" else "rollback",
+                    trace_id=trace_id,
+                    precheck=release.get("_precheck"),
+                ),
             },
         }
         log_audit("gm_ops_action_execute", f"action={action_type}; domain={domain}; target={target}; trace={trace_id}; success=True; local=True")
@@ -2304,22 +2450,27 @@ def gm_ops_execute_action():
 def gm_public_release_config():
     """前端启动拉取发布配置（按 project_id）。"""
     project_id = (request.args.get("project_id") or "").strip()
-    env_key = (request.args.get("env_key") or "").strip()
-    env = (request.args.get("env") or env_key or "").strip()
-    channel = (request.args.get("channel") or "").strip()
-    platform = (request.args.get("platform") or "android").strip().lower()
-    version_name = (request.args.get("version_name") or "").strip()
+    lookup = _release_request_inputs(request.args)
+    env_key = lookup["env_key"]
+    channel = lookup["channel"]
+    platform = lookup["platform"]
+    version_name = lookup["version_name"]
 
     if not project_id:
         return jsonify({"ok": False, "error": "project_id required"}), 400
 
-    release = _find_best_release(project_id, env, channel, platform, version_name, published_only=True)
-    if not release:
-        release = _find_best_release(project_id, env, channel, platform, version_name, published_only=False)
-    if not release:
-        return jsonify({"ok": False, "error": "release config not found"}), 404
+    scope, release, error = _resolve_public_release(
+        project_id,
+        env_key=env_key,
+        channel=channel,
+        platform=platform,
+        version_name=version_name,
+    )
+    if error:
+        payload, status = error
+        return jsonify(payload), status
 
-    built = _build_public_release_payload(project_id, release, env, channel, platform)
+    built = _build_public_release_payload(project_id, release, str(scope.get("env_key") or env_key), str(scope.get("channel_id") or channel), platform)
     ctx = built["ctx"]
     paths = built["paths"]
     profile = built["profile"]
@@ -2371,11 +2522,11 @@ def gm_public_runtime_bootstrap():
     """前端运行时拉取入口（按 game_id + game_key）。"""
     game_id = (request.args.get("game_id") or "").strip()
     game_key = (request.args.get("game_key") or "").strip()
-    env_key = (request.args.get("env_key") or "").strip()
-    env = (request.args.get("env") or env_key or "").strip()
-    channel = (request.args.get("channel") or "").strip()
-    platform = (request.args.get("platform") or "android").strip().lower()
-    version_name = (request.args.get("version_name") or "").strip()
+    lookup = _release_request_inputs(request.args)
+    env_key = lookup["env_key"]
+    channel = lookup["channel"]
+    platform = lookup["platform"]
+    version_name = lookup["version_name"]
 
     if not game_id or not game_key:
         return jsonify({"ok": False, "error": "game_id and game_key required"}), 400
@@ -2384,13 +2535,18 @@ def gm_public_runtime_bootstrap():
     if not project_id:
         return jsonify({"ok": False, "error": "invalid game credentials"}), 401
 
-    release = _find_best_release(project_id, env, channel, platform, version_name, published_only=True)
-    if not release:
-        release = _find_best_release(project_id, env, channel, platform, version_name, published_only=False)
-    if not release:
-        return jsonify({"ok": False, "error": "release config not found"}), 404
+    scope, release, error = _resolve_public_release(
+        project_id,
+        env_key=env_key,
+        channel=channel,
+        platform=platform,
+        version_name=version_name,
+    )
+    if error:
+        payload, status = error
+        return jsonify(payload), status
 
-    built = _build_public_release_payload(project_id, release, env, channel, platform)
+    built = _build_public_release_payload(project_id, release, str(scope.get("env_key") or env_key), str(scope.get("channel_id") or channel), platform)
     ctx = built["ctx"]
     paths = built["paths"]
     profile = built["profile"]
