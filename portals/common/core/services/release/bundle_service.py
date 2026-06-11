@@ -166,6 +166,20 @@ def create_bundle_from_publish(
         return {}
     network_profile, profile_source = resolve_network_profile(scope)
     topology_id = resolve_topology_id(scope)
+    effective_runtime_run_id = str(runtime_run_id or "").strip()
+    if not effective_runtime_run_id:
+        try:
+            from services.ops.helpers import _runtime_active_for_scope
+
+            active_runtime = _runtime_active_for_scope(
+                str(scope.get("project_id") or ""),
+                str(scope.get("env_key") or ""),
+                topology_id,
+            )
+            if bool(active_runtime.get("active")):
+                effective_runtime_run_id = str(active_runtime.get("run_id") or "")
+        except Exception:
+            effective_runtime_run_id = ""
 
     def _mutate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         prev = _supersede_published_rows(rows, scope_id)
@@ -187,7 +201,7 @@ def create_bundle_from_publish(
             "server": {
                 "topology_id": topology_id,
                 "topology_version_label": topology_version_label,
-                "runtime_run_id": runtime_run_id,
+                "runtime_run_id": effective_runtime_run_id,
                 "cluster_sync_at": _now_iso(),
                 "network_profile_snapshot": dict(network_profile or {}),
                 "profile_source": profile_source,

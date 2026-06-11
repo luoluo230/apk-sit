@@ -85,11 +85,16 @@ def _find_action(action_type: str) -> Dict[str, Any]:
     return {}
 
 
-def _normalize_release_entry(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_release_entry(payload: Dict[str, Any], project_id: str = "") -> Dict[str, Any]:
+    env_key = normalize_release_env_key(payload.get("env_key") or payload.get("env") or "development")
+    channel_value = str(payload.get("channel") or "dev").strip()
+    scope = resolve_scope_by_inputs(project_id, env_key, channel_value) if project_id else {}
     return {
         "id": str(payload.get("id") or uuid.uuid4().hex[:16]),
-        "channel": str(payload.get("channel") or "dev").strip(),
+        "channel": str((scope.get("channel_id") if isinstance(scope, dict) else "") or channel_value).strip(),
         "env": str(payload.get("env") or "dev").strip(),
+        "env_key": env_key,
+        "scope_id": str((scope.get("scope_id") if isinstance(scope, dict) else "") or payload.get("scope_id") or "").strip(),
         "server_profile": str(payload.get("server_profile") or "default").strip(),
         "version_name": str(payload.get("version_name") or "").strip(),
         "version_code": str(payload.get("version_code") or "").strip(),
@@ -231,6 +236,59 @@ def _find_best_release(project_id: str, env: str, channel: str, platform: str, v
     return candidates[0]
 
 
+def _find_release_by_id(project_id: str, release_id: str) -> Dict[str, Any]:
+    rid = str(release_id or "").strip()
+    if not rid:
+        return {}
+    versions = project_versions_db.get(project_id) or []
+    for item in versions:
+        if isinstance(item, dict) and str(item.get("id") or "").strip() == rid:
+            return item
+    return {}
+
+
+def _sync_scope_release_rows(
+    project_id: str,
+    *,
+    scope_id: str,
+    platform: str,
+    active_release_id: str,
+    active_bundle_id: str,
+    active_publish_status: str,
+    updated_by: str,
+) -> Dict[str, Any]:
+    versions = project_versions_db.get(project_id) or []
+    active_row: Dict[str, Any] = {}
+    now = datetime.now().isoformat()
+    for idx, item in enumerate(versions):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("scope_id") or "").strip() != scope_id:
+            continue
+        if str(item.get("platform") or "android").strip().lower() != str(platform or "android").strip().lower():
+            continue
+        row = dict(item)
+        if str(row.get("id") or "").strip() == active_release_id:
+            row["publish_status"] = active_publish_status
+            row["active_bundle_id"] = active_bundle_id
+            row["version_status"] = "active"
+            row["is_revoked"] = False
+            row["updated_at"] = now
+            row["updated_by"] = updated_by
+            active_row = row
+        else:
+            current_publish = str(row.get("publish_status") or "").strip()
+            if current_publish in ("published", "rolled_back", "superseded", "draft"):
+                row["publish_status"] = "superseded"
+            row["version_status"] = "disabled"
+            row["updated_at"] = now
+            row["updated_by"] = updated_by
+        versions[idx] = row
+    project_versions_db[project_id] = versions
+    save_project_versions()
+    return active_row
+
+
 def _release_request_inputs(args) -> Dict[str, str]:
     env_key = (args.get("env_key") or args.get("env") or args.get("environment") or "").strip()
     channel_value = (
@@ -338,27 +396,36 @@ def _execute_release_publish(
     scope = resolve_existing_scope_by_inputs(resolved, env, channel)
     if not scope:
         raise ValueError(json.dumps({"error": "RELEASE_SCOPE_NOT_FOUND"}, ensure_ascii=False))
-    precheck = run_scope_precheck(scope, release)
+    precheck = run_scope_precheck(scope, release, validate_artifacts=True)
     if not precheck.get("ok"):
         raise ValueError(json.dumps({"error": "precheck failed", "precheck": precheck}, ensure_ascii=False))
 
     bundle = create_bundle_from_publish(scope, release, published_by=published_by or _current_user())
     release = dict(release)
+    actor = published_by or _current_user()
     release["publish_status"] = "published"
     release["active_bundle_id"] = bundle.get("bundle_id")
     release["approval_id"] = str((approved_ref or {}).get("id") or release.get("approval_id") or "")
     release["publish_trace_id"] = trace_id or uuid.uuid4().hex[:16]
     release["updated_at"] = datetime.now().isoformat()
-    release["updated_by"] = published_by or _current_user()
+    release["updated_by"] = actor
+    release["version_status"] = "active"
+    release["is_revoked"] = False
     release["_precheck"] = precheck
-
-    versions = project_versions_db.get(resolved) or []
-    for i, item in enumerate(versions):
-        if str(item.get("id") or "") == str(release.get("id") or ""):
-            versions[i] = release
-            break
-    project_versions_db[resolved] = versions
-    save_project_versions()
+    synced = _sync_scope_release_rows(
+        resolved,
+        scope_id=str(scope.get("scope_id") or ""),
+        platform=str(release.get("platform") or "android"),
+        active_release_id=str(release.get("id") or ""),
+        active_bundle_id=str(bundle.get("bundle_id") or ""),
+        active_publish_status="published",
+        updated_by=actor,
+    )
+    if synced:
+        synced["_precheck"] = precheck
+        synced["approval_id"] = release.get("approval_id")
+        synced["publish_trace_id"] = release.get("publish_trace_id")
+        return synced, bundle
     return release, bundle
 
 
@@ -375,10 +442,11 @@ def _execute_release_rollback(
     scope = resolve_existing_scope_by_inputs(resolved, env, channel)
     if not scope:
         raise ValueError(json.dumps({"error": "RELEASE_SCOPE_NOT_FOUND"}, ensure_ascii=False))
+    actor = rolled_by or _current_user()
     target_bundle_id = str(bundle_id or release.get("active_bundle_id") or "").strip()
     bundle: Dict[str, Any] = {}
     if target_bundle_id:
-        bundle = rollback_bundle(str(scope.get("scope_id") or ""), target_bundle_id, rolled_by=rolled_by or _current_user()) or {}
+        bundle = rollback_bundle(str(scope.get("scope_id") or ""), target_bundle_id, rolled_by=actor) or {}
         if bundle:
             release = dict(release)
             release["active_bundle_id"] = bundle.get("bundle_id")
@@ -387,7 +455,23 @@ def _execute_release_rollback(
     release["publish_status"] = "rolled_back"
     release["rollback_trace_id"] = trace_id or uuid.uuid4().hex[:16]
     release["updated_at"] = datetime.now().isoformat()
-    release["updated_by"] = rolled_by or _current_user()
+    release["updated_by"] = actor
+    release["version_status"] = "disabled"
+
+    target_release_id = str(((bundle.get("client") or {}).get("version_id")) or "").strip()
+    if target_release_id:
+        synced = _sync_scope_release_rows(
+            resolved,
+            scope_id=str(scope.get("scope_id") or ""),
+            platform=str(((bundle.get("client") or {}).get("platform")) or release.get("platform") or "android"),
+            active_release_id=target_release_id,
+            active_bundle_id=str(bundle.get("bundle_id") or ""),
+            active_publish_status="published",
+            updated_by=actor,
+        )
+        if synced:
+            synced["rollback_trace_id"] = release.get("rollback_trace_id")
+            return synced, bundle
 
     versions = project_versions_db.get(resolved) or []
     for i, item in enumerate(versions):
@@ -407,6 +491,15 @@ def _build_public_release_payload(
     platform: str,
 ) -> Dict[str, Any]:
     ctx = resolve_release_context(project_id, env, channel, version_row=release, auto_create_scope=False)
+    active_bundle = find_active_bundle(str(ctx.get("scope_id") or ""))
+    bundle_client = active_bundle.get("client") if isinstance(active_bundle.get("client"), dict) else {}
+    release_row = dict(release)
+    bundle_version_id = str(bundle_client.get("version_id") or "").strip()
+    if bundle_version_id:
+        matched = _find_release_by_id(project_id, bundle_version_id)
+        if matched:
+            release_row = dict(matched)
+            ctx = resolve_release_context(project_id, env, channel, version_row=release_row, auto_create_scope=False)
     paths = ctx.get("bootstrap_paths") or {}
     profile = ctx.get("network_profile") or {}
     return {
@@ -414,6 +507,8 @@ def _build_public_release_payload(
         "paths": paths,
         "profile": profile,
         "platform": platform,
+        "release": release_row,
+        "active_bundle": active_bundle,
     }
 
 
@@ -1846,7 +1941,7 @@ def gm_ops_release_upsert():
             ):
                 entry["id"] = str(it.get("id") or "").strip()
                 break
-    normalized = _normalize_release_entry(entry)
+    normalized = _normalize_release_entry(entry, resolved)
     replaced = False
     for i, item in enumerate(versions):
         if str(item.get("id") or "") == normalized["id"]:
@@ -2486,6 +2581,9 @@ def gm_public_release_config():
     ctx = built["ctx"]
     paths = built["paths"]
     profile = built["profile"]
+    effective_release = built["release"]
+    active_bundle = built["active_bundle"]
+    effective_bundle_id = str(active_bundle.get("bundle_id") or ctx.get("active_bundle_id") or "")
 
     response = {
         "ok": True,
@@ -2494,34 +2592,34 @@ def gm_public_release_config():
         "env_key": ctx.get("env_key"),
         "channel_id": ctx.get("channel_id"),
         "channel_key": ctx.get("channel_key"),
-        "env": release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
-        "channel": release.get("channel") or channel,
-        "platform": release.get("platform") or platform,
+        "env": effective_release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
+        "channel": effective_release.get("channel") or channel,
+        "platform": effective_release.get("platform") or platform,
         "active_bundle_id": ctx.get("active_bundle_id"),
-        "bundle_id": ctx.get("active_bundle_id"),
+        "bundle_id": effective_bundle_id,
         "topology_id": (ctx.get("server_snapshot") or {}).get("topology_id"),
         "runtime_run_id": (ctx.get("server_snapshot") or {}).get("runtime_run_id"),
         "topology_version_label": (ctx.get("server_snapshot") or {}).get("topology_version_label"),
         "profile_source": ctx.get("profile_source"),
         "version": {
-            "version_name": release.get("version_name"),
-            "version_code": release.get("version_code"),
-            "apk_version": release.get("apk_version"),
-            "resource_version": release.get("resource_version"),
-            "config_version": release.get("config_version"),
-            "apk_url": release.get("apk_url"),
-            "resource_url": release.get("resource_url"),
-            "config_url": release.get("config_url"),
-            "distribution_method": release.get("distribution_method"),
-            "package_name": release.get("package_name"),
-            "bundle_id": release.get("bundle_id"),
-            "min_sdk": release.get("min_sdk"),
-            "min_ios_version": release.get("min_ios_version"),
-            "changelog": release.get("changelog"),
-            "notes": release.get("notes"),
-            "server_profile": release.get("server_profile"),
-            "publish_status": release.get("publish_status"),
-            "updated_at": release.get("updated_at"),
+            "version_name": effective_release.get("version_name"),
+            "version_code": effective_release.get("version_code"),
+            "apk_version": effective_release.get("apk_version"),
+            "resource_version": effective_release.get("resource_version"),
+            "config_version": effective_release.get("config_version"),
+            "apk_url": effective_release.get("apk_url"),
+            "resource_url": effective_release.get("resource_url"),
+            "config_url": effective_release.get("config_url"),
+            "distribution_method": effective_release.get("distribution_method"),
+            "package_name": effective_release.get("package_name"),
+            "bundle_id": effective_bundle_id,
+            "min_sdk": effective_release.get("min_sdk"),
+            "min_ios_version": effective_release.get("min_ios_version"),
+            "changelog": effective_release.get("changelog"),
+            "notes": effective_release.get("notes"),
+            "server_profile": effective_release.get("server_profile"),
+            "publish_status": effective_release.get("publish_status"),
+            "updated_at": effective_release.get("updated_at"),
             "resource_relative_path": paths.get("resource_relative_path"),
             "config_relative_path": paths.get("config_relative_path"),
             "code_relative_path": paths.get("code_relative_path"),
@@ -2566,7 +2664,10 @@ def gm_public_runtime_bootstrap():
     ctx = built["ctx"]
     paths = built["paths"]
     profile = built["profile"]
-    gate_fields = _bootstrap_gate_fields(release, version_name)
+    effective_release = built["release"]
+    active_bundle = built["active_bundle"]
+    effective_bundle_id = str(active_bundle.get("bundle_id") or ctx.get("active_bundle_id") or "")
+    gate_fields = _bootstrap_gate_fields(effective_release, version_name)
     return jsonify(
         {
             "ok": True,
@@ -2576,11 +2677,11 @@ def gm_public_runtime_bootstrap():
             "env_key": ctx.get("env_key"),
             "channel_id": ctx.get("channel_id"),
             "channel_key": ctx.get("channel_key"),
-            "env": release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
-            "channel": release.get("channel") or channel,
-            "platform": release.get("platform") or platform,
+            "env": effective_release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
+            "channel": effective_release.get("channel") or channel,
+            "platform": effective_release.get("platform") or platform,
             "active_bundle_id": ctx.get("active_bundle_id"),
-            "bundle_id": ctx.get("active_bundle_id"),
+            "bundle_id": effective_bundle_id,
             "topology_id": (ctx.get("server_snapshot") or {}).get("topology_id"),
             "runtime_run_id": (ctx.get("server_snapshot") or {}).get("runtime_run_id"),
             "topology_version_label": (ctx.get("server_snapshot") or {}).get("topology_version_label"),
@@ -2592,27 +2693,27 @@ def gm_public_runtime_bootstrap():
                 "is_revoked": gate_fields.get("is_revoked"),
             },
             "bootstrap": {
-                "version_name": release.get("version_name"),
-                "version_code": release.get("version_code"),
-                "apk_version": release.get("apk_version"),
-                "resource_version": release.get("resource_version"),
-                "config_version": release.get("config_version"),
-                "apk_url": release.get("apk_url"),
-                "resource_url": release.get("resource_url"),
-                "config_url": release.get("config_url"),
+                "version_name": effective_release.get("version_name"),
+                "version_code": effective_release.get("version_code"),
+                "apk_version": effective_release.get("apk_version"),
+                "resource_version": effective_release.get("resource_version"),
+                "config_version": effective_release.get("config_version"),
+                "apk_url": effective_release.get("apk_url"),
+                "resource_url": effective_release.get("resource_url"),
+                "config_url": effective_release.get("config_url"),
                 "resource_relative_path": paths.get("resource_relative_path"),
                 "config_relative_path": paths.get("config_relative_path"),
                 "code_relative_path": paths.get("code_relative_path"),
                 "catalog_file_name": paths.get("catalog_file_name"),
-                "distribution_method": release.get("distribution_method"),
-                "package_name": release.get("package_name"),
-                "bundle_id": release.get("bundle_id"),
-                "min_sdk": release.get("min_sdk"),
-                "min_ios_version": release.get("min_ios_version"),
-                "changelog": release.get("changelog"),
-                "notes": release.get("notes"),
-                "publish_status": release.get("publish_status"),
-                "updated_at": release.get("updated_at"),
+                "distribution_method": effective_release.get("distribution_method"),
+                "package_name": effective_release.get("package_name"),
+                "bundle_id": effective_bundle_id,
+                "min_sdk": effective_release.get("min_sdk"),
+                "min_ios_version": effective_release.get("min_ios_version"),
+                "changelog": effective_release.get("changelog"),
+                "notes": effective_release.get("notes"),
+                "publish_status": effective_release.get("publish_status"),
+                "updated_at": effective_release.get("updated_at"),
                 "min_client_version": gate_fields.get("min_client_version"),
                 "max_client_version": gate_fields.get("max_client_version"),
                 "rollout_percentage": gate_fields.get("rollout_percentage"),

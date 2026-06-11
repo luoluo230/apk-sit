@@ -159,6 +159,13 @@ def main() -> int:
             bundle_id = str(((publish_payload.get("operation") or {}).get("bundle_id")) or "")
             rollback_target_bundle_id = str(((publish_payload.get("bundle") or {}).get("supersedes_bundle_id")) or "")
 
+            version_resolve_qs = (
+                f"/api/runtime/version-resolve?project_id={project_id}"
+                f"&version_name={version_name}&channel_id={channel}&platform={platform}&env_key={env_key}&status=active"
+            )
+            resp = client.get(version_resolve_qs)
+            _step(report, "runtime_version_resolve", resp)
+
             rel_cfg_qs = f"/api/public/release-config?project_id={project_id}&env_key={env_key}&channel_id={channel}&platform={platform}&version_name={version_name}"
             resp = client.get(rel_cfg_qs)
             _step(report, "public_release_config", resp)
