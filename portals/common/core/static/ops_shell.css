@@ -1,15 +1,15 @@
-/* ── Ops Shell: unified sidebar + layout for all ops pages ── */
+/* Ops Shell: aligned with the deep-blue project version sidebar */
 
 .ops-shell-app {
-  --tw-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --tw-font: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   --tw-primary: #2f6bff;
   --tw-primary-hover: #1f5dff;
-  --tw-bg: #f5f7fb;
+  --tw-bg: linear-gradient(180deg, #f5f7fb 0%, #eef3ff 100%);
   --tw-surface: #ffffff;
-  --tw-border: #e7edf7;
+  --tw-border: #dbe5ff;
   --tw-text: #101828;
-  --tw-sub: #667085;
-  --tw-muted: #98a2b3;
+  --tw-sub: #d7e5ff;
+  --tw-muted: rgba(214, 225, 255, 0.62);
   --tw-label: #344054;
   --tw-success: #16c47f;
   --tw-danger: #ff4d6d;
@@ -17,9 +17,9 @@
   --tw-radius-lg: 12px;
   --tw-radius: 8px;
   --tw-radius-sm: 6px;
-  --tw-shadow: 0 10px 30px rgba(31, 41, 55, 0.05);
+  --tw-shadow: 0 16px 32px rgba(15, 29, 56, 0.12);
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-columns: 146px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--tw-bg);
   color: var(--tw-text);
@@ -29,14 +29,12 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Sidebar ── */
 .ops-shell-nav {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 8px;
-  background: var(--tw-surface);
-  border-right: 1px solid var(--tw-border);
+  padding: 14px 12px;
+  background: linear-gradient(180deg, #0f274f 0%, #11264a 38%, #0d1d38 100%);
   overflow-y: auto;
   position: sticky;
   top: 0;
@@ -46,44 +44,44 @@
 .ops-shell-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 8px 12px;
+  gap: 12px;
+  padding: 4px 4px 18px;
 }
 
 .ops-shell-brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--tw-radius);
-  background: var(--tw-primary);
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: linear-gradient(160deg, #4c8dff, #1f5fff);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
-  font-size: 16px;
+  box-shadow: 0 10px 20px rgba(27, 73, 180, 0.35);
+  font-weight: 700;
+  font-size: 24px;
   flex-shrink: 0;
 }
 
 .ops-shell-brand-title {
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--tw-text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #ffffff;
 }
 
 .ops-shell-brand-sub {
-  margin-top: 2px;
-  color: var(--tw-muted);
-  font-size: 12px;
+  margin-top: 4px;
+  color: rgba(230, 239, 255, 0.72);
+  font-size: 11px;
 }
 
-/* ── Scope selectors ── */
 .ops-shell-scope {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 0 8px 12px;
-  border-bottom: 1px solid var(--tw-border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 4px;
 }
 
@@ -103,10 +101,10 @@
 .ops-shell-scope-select {
   height: 30px;
   padding: 0 8px;
-  border: 1px solid var(--tw-border);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--tw-radius-sm);
-  background: var(--tw-surface);
-  color: var(--tw-text);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
@@ -115,17 +113,17 @@
 
 .ops-shell-scope-select:focus {
   outline: none;
-  border-color: var(--tw-primary);
-  box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.15);
+  border-color: rgba(141, 180, 255, 0.42);
+  box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.18);
 }
 
 .ops-shell-scope-project {
   min-height: 30px;
   padding: 5px 8px;
-  border: 1px solid var(--tw-border);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--tw-radius-sm);
-  background: #f8fafc;
-  color: var(--tw-text);
+  background: rgba(255, 255, 255, 0.08);
+  color: #eef4ff;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
@@ -136,7 +134,7 @@
 
 .ops-shell-env-warn {
   padding: 3px 8px;
-  background: linear-gradient(135deg, #ff6b35, #ff4d6d);
+  background: linear-gradient(135deg, #ff9f1a, #ff5d73);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
@@ -145,11 +143,10 @@
   text-align: center;
 }
 
-/* ── Nav tree ── */
 .ops-shell-nav-tree {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   flex: 1;
 }
 
@@ -160,37 +157,37 @@
 }
 
 .ops-shell-nav-group > span {
-  padding: 0 12px;
-  color: var(--tw-muted);
+  padding: 12px 10px 8px;
+  color: rgba(214, 225, 255, 0.48);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
+  letter-spacing: 0.02em;
 }
 
 .ops-shell-nav-group > a {
   min-height: 40px;
-  padding: 0 12px;
-  border-radius: var(--tw-radius);
+  padding: 0 10px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--tw-sub);
-  font-size: 14px;
+  gap: 9px;
+  color: #d7e5ff;
+  font-size: 12px;
   font-weight: 500;
   text-decoration: none;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
   cursor: pointer;
 }
 
 .ops-shell-nav-group > a:hover {
-  background: #eaf1ff;
-  color: var(--tw-primary);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }
 
 .ops-shell-nav-group > a.active {
-  background: #eaf1ff;
-  color: var(--tw-primary);
+  background: linear-gradient(90deg, rgba(55, 116, 255, 0.48), rgba(67, 115, 255, 0.22));
+  box-shadow: inset 0 0 0 1px rgba(141, 180, 255, 0.18);
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -201,7 +198,6 @@
   fill: currentColor;
 }
 
-/* ── Footer ── */
 .ops-shell-nav-footer {
   margin-top: auto;
   padding-top: 8px;
@@ -210,10 +206,10 @@
 .ops-shell-collapse-btn {
   width: 100%;
   height: 36px;
-  border: 1px solid var(--tw-border);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--tw-radius);
   background: transparent;
-  color: var(--tw-muted);
+  color: #d7e5ff;
   font-size: 13px;
   display: flex;
   align-items: center;
@@ -224,17 +220,16 @@
 }
 
 .ops-shell-collapse-btn:hover {
-  border-color: var(--tw-primary);
-  color: var(--tw-primary);
+  border-color: rgba(141, 180, 255, 0.3);
+  color: #ffffff;
 }
 
-/* ── Main content ── */
 .ops-shell-main {
   overflow-y: auto;
   min-height: 100vh;
+  background: linear-gradient(180deg, #f5f7fb 0%, #eef3ff 100%);
 }
 
-/* ── Collapsed sidebar ── */
 .ops-shell-app.sidebar-collapsed {
   grid-template-columns: 56px minmax(0, 1fr);
 }
@@ -262,7 +257,6 @@
   padding: 16px 4px;
 }
 
-/* ── Embedded pages — disable their own sidebar/grid when inside shell ── */
 .ops-topology-app.ops-topology-app--embedded {
   display: block !important;
   grid-template-columns: none !important;
@@ -278,11 +272,11 @@
   display: none !important;
 }
 
-/* ── Responsive ── */
 @media (max-width: 768px) {
   .ops-shell-app {
     grid-template-columns: 1fr;
   }
+
   .ops-shell-nav {
     display: none;
   }

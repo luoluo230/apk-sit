@@ -515,3 +515,39 @@ def delete_version(project_id: str, version_id: str, username: str) -> Tuple[Dic
     versions_repo.save_versions(project_id, versions)
     versions_repo.audit("delete_project_version", "%s %s" % (project_id, version_id))
     return {"success": True}, 200
+
+
+def delete_version_group(project_id: str, version_name: str, username: str) -> Tuple[Dict[str, Any], int]:
+    if not versions_repo.has_project(project_id) or not versions_repo.can_edit(project_id, username):
+        return {"error": "无权限"}, 403
+
+    version_name_text = str(version_name or "").strip()
+    if not version_name_text:
+        return {"error": "缺少版本组名称"}, 400
+
+    versions = versions_repo.list_versions(project_id)
+    matched = [row for row in versions if str((row or {}).get("version_name") or "").strip() == version_name_text]
+    if not matched:
+        return {"error": "版本组不存在"}, 404
+
+    if versions_repo.approval_required_for_delete():
+        blocked = []
+        for row in matched:
+            version_id = str(row.get("id") or "").strip()
+            if version_id and not versions_repo.has_approved_delete(project_id, version_id):
+                blocked.append(version_id)
+        if blocked:
+            return {
+                "error": "删除版本组需先完成审批。请先审批该组下所有版本删除申请。",
+                "version_name": version_name_text,
+                "blocked_version_ids": blocked,
+            }, 403
+
+    kept = [row for row in versions if str((row or {}).get("version_name") or "").strip() != version_name_text]
+    versions_repo.save_versions(project_id, kept)
+    versions_repo.audit("delete_project_version_group", "%s %s count=%s" % (project_id, version_name_text, len(matched)))
+    return {
+        "success": True,
+        "version_name": version_name_text,
+        "deleted_count": len(matched),
+    }, 200

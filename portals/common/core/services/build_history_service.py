@@ -186,6 +186,68 @@ def _recent_numbers_for_instance(instance_id: str, cache: dict) -> set:
     return nums
 
 
+def _recent_status_map_for_instance(instance_id: str, cache: dict) -> Dict[int, Dict[str, Any]]:
+    if not instance_id:
+        return {}
+    cache_key = f"status::{instance_id}"
+    if cache_key in cache:
+        return cache[cache_key]
+    items: Dict[int, Dict[str, Any]] = {}
+    try:
+        iurl = jm.get_jenkins_url_for_instance(instance_id=instance_id)
+        bdir = jm.get_builds_dir_for_instance(instance_id=instance_id)
+        st = jenkins_svc.fetch_jenkins_status(base_url=iurl, builds_dir=bdir, instance_id=instance_id)
+        for row in (st.get("recent") or []):
+            try:
+                num = int(row.get("number") or 0)
+            except Exception:
+                num = 0
+            if num <= 0:
+                continue
+            items[num] = {
+                "building": bool(row.get("building")),
+                "result": str(row.get("result") or "").strip().upper(),
+            }
+    except Exception:
+        items = {}
+    cache[cache_key] = items
+    return items
+
+
+def _load_local_build_meta(builds_dir: str, build_number: int) -> Dict[str, Any]:
+    if not builds_dir:
+        return {}
+    build_xml = os.path.join(builds_dir, str(build_number), "build.xml")
+    if not os.path.exists(build_xml):
+        return {}
+    info: Dict[str, Any] = {}
+    try:
+        import xml.etree.ElementTree as ET
+
+        tree = ET.parse(build_xml)
+        root = tree.getroot()
+        result_el = root.find("result")
+        if result_el is not None and result_el.text:
+            info["result"] = result_el.text.strip().upper()
+        ts_el = root.find("timestamp")
+        if ts_el is not None and ts_el.text:
+            try:
+                info["ended_at"] = datetime.fromtimestamp(int(ts_el.text) / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        duration_el = root.find("duration")
+        if duration_el is not None and duration_el.text:
+            try:
+                duration_seconds = int(duration_el.text) / 1000
+                info["duration"] = f"{duration_seconds:.1f}s"
+                info["duration_seconds"] = duration_seconds
+            except Exception:
+                pass
+    except Exception:
+        return {}
+    return info
+
+
 def _extract_failure_summary(log_text: str, max_lines: int = 8) -> str:
     if not log_text:
         return "构建失败，请查看完整日志"
@@ -197,7 +259,7 @@ def _extract_failure_summary(log_text: str, max_lines: int = 8) -> str:
     return "\n".join(hits[:max_lines])
 
 
-def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None) -> dict:
+def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None, detail_mode: bool = False) -> dict:
     recent_cache = recent_cache if recent_cache is not None else {}
     bn = int(record.get("build_number") or 0)
     iid = (record.get("instance_id") or "").strip()
@@ -234,9 +296,14 @@ def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None) -> 
     bdir = jm.get_builds_dir_for_instance(instance_id=iid)
     if not (bdir or iurl):
         return item
-    st = jenkins_svc.get_build_status(bn, base_url=iurl, builds_dir=bdir, instance_id=iid)
-    status = (st.get("status") or "").strip()
-    is_building = bool(st.get("building"))
+    local_meta = _load_local_build_meta(bdir, bn)
+    recent_status = _recent_status_map_for_instance(iid, recent_cache).get(bn) or {}
+    status = str(local_meta.get("result") or recent_status.get("result") or "").strip().upper()
+    is_building = bool(recent_status.get("building"))
+    if detail_mode and not (status or is_building):
+        st = jenkins_svc.get_build_status(bn, base_url=iurl, builds_dir=bdir, instance_id=iid)
+        status = (st.get("status") or "").strip().upper()
+        is_building = bool(st.get("building"))
     local_exists = bool(bdir and os.path.isdir(os.path.join(bdir, str(bn))))
     recent_nums = _recent_numbers_for_instance(iid, recent_cache)
     if is_building and status in ("BUILDING", "QUEUED", "UNKNOWN"):
@@ -246,24 +313,30 @@ def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None) -> 
     item["building"] = is_building
     if not is_building and status not in ("BUILDING", "QUEUED", "UNKNOWN", ""):
         item["result"] = status
-    detail = jenkins_svc.get_build_detail(bn, base_url=iurl, builds_dir=bdir) or {}
-    if detail.get("timestamp"):
-        item["ended_at"] = detail.get("timestamp") or ""
-    if detail.get("duration"):
-        item["duration"] = detail.get("duration") or ""
-        m = re.match(r"^([\d.]+)s$", item["duration"])
-        if m:
-            try:
-                item["duration_seconds"] = float(m.group(1))
-            except Exception:
-                pass
+    item["ended_at"] = str(local_meta.get("ended_at") or "")
+    item["duration"] = str(local_meta.get("duration") or "")
+    item["duration_seconds"] = local_meta.get("duration_seconds")
+    detail = {}
+    if detail_mode:
+        detail = jenkins_svc.get_build_detail(bn, base_url=iurl, builds_dir=bdir) or {}
+        if detail.get("timestamp"):
+            item["ended_at"] = detail.get("timestamp") or item["ended_at"]
+        if detail.get("duration"):
+            item["duration"] = detail.get("duration") or item["duration"]
+            m = re.match(r"^([\d.]+)s$", item["duration"])
+            if m:
+                try:
+                    item["duration_seconds"] = float(m.group(1))
+                except Exception:
+                    pass
     if is_building:
         item["status_label"] = "构建中"
     elif status == "SUCCESS":
         item["status_label"] = "成功"
     elif status == "FAILURE":
         item["status_label"] = "失败"
-        item["failure_summary"] = _extract_failure_summary(detail.get("log") or "")
+        if detail_mode:
+            item["failure_summary"] = _extract_failure_summary(detail.get("log") or "")
     elif status == "ABORTED":
         item["status_label"] = "已中断"
         if item["stopped_by"]:
@@ -280,7 +353,7 @@ def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None) -> 
 def builds_for_version_enriched(version_id: str, instance_id: str = "") -> list:
     records = list_records_for_version(version_id, instance_id=instance_id)
     cache: dict = {}
-    return [_resolve_build_status(r, cache) for r in records]
+    return [_resolve_build_status(r, cache, detail_mode=False) for r in records]
 
 
 def builds_grouped_by_project(project_id: str) -> dict:
@@ -295,7 +368,7 @@ def builds_grouped_by_project(project_id: str) -> dict:
         vid = (rec.get("version_id") or "").strip()
         if not vid:
             continue
-        by_vid.setdefault(vid, []).append(_resolve_build_status(rec, cache))
+        by_vid.setdefault(vid, []).append(_resolve_build_status(rec, cache, detail_mode=False))
     groups: Dict[str, dict] = {}
     for vid, builds in by_vid.items():
         meta = version_map.get(vid) or {}
@@ -338,7 +411,7 @@ def build_detail_enriched(
     if not record and version_id:
         records = list_records_for_version(version_id, instance_id=instance_id)
         record = next((r for r in records if int(r.get("build_number") or 0) == int(build_number)), None)
-    summary = _resolve_build_status(record or {"instance_id": instance_id, "build_number": build_number}, {})
+    summary = _resolve_build_status(record or {"instance_id": instance_id, "build_number": build_number}, {}, detail_mode=True)
     if version_id and project_id and not summary.get("version_name"):
         meta = _version_meta(project_id, version_id)
         if meta:

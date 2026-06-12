@@ -38,6 +38,116 @@ bp = Blueprint("gm_ops", __name__)
 _client = GameOpsClient()
 
 RELEASE_PROFILES_KEY = "GM_RELEASE_PROFILES"
+
+
+def _current_user_name() -> str:
+    return str(session.get("user") or "").strip() or "admin"
+
+
+def _gm_console_shell(content: str, page_title: str, *, project_id: str = "", active_nav: str = "gm") -> str:
+    user_name = _current_user_name()
+    avatar_text = (user_name[:1] or "A").upper()
+    project_label = project_id or "未选择项目"
+    nav_active = {
+        "versions": " is-active" if active_nav == "versions" else "",
+        "builds": " is-active" if active_nav == "builds" else "",
+        "gm": " is-active" if active_nav == "gm" else "",
+        "topology": " is-active" if active_nav == "topology" else "",
+        "agents": " is-active" if active_nav == "agents" else "",
+        "logs": " is-active" if active_nav == "logs" else "",
+    }
+    return f"""
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{page_title}</title>
+  <link rel="stylesheet" href="/static/tailwind.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <style>
+    body {{ margin:0; font-family:"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; background:linear-gradient(180deg,#f5f7fb 0%,#eef3ff 100%); color:#0f172a; }}
+    .gm-console {{ min-height:100vh; display:grid; grid-template-columns:146px minmax(0,1fr); }}
+    .gm-side {{ background:linear-gradient(180deg,#0f274f 0%, #11264a 38%, #0d1d38 100%); color:#e6efff; padding:14px 12px; display:flex; flex-direction:column; }}
+    .gm-brand {{ display:flex; align-items:center; gap:12px; padding:4px 4px 18px; }}
+    .gm-brand-mark {{ width:40px; height:40px; border-radius:13px; background:linear-gradient(160deg,#4c8dff,#1f5fff); display:flex; align-items:center; justify-content:center; box-shadow:0 10px 20px rgba(27,73,180,.35); font-weight:700; font-size:24px; }}
+    .gm-brand-copy b {{ display:block; font-size:13px; line-height:1.1; }}
+    .gm-brand-copy span {{ display:block; font-size:11px; color:rgba(230,239,255,.72); margin-top:4px; }}
+    .gm-side-group {{ margin-top:10px; }}
+    .gm-side-title {{ padding:12px 10px 8px; font-size:12px; color:rgba(214,225,255,.48); letter-spacing:.02em; }}
+    .gm-side-link {{ display:flex; align-items:center; gap:9px; padding:10px 10px; margin-bottom:4px; color:#d7e5ff; border-radius:12px; font-size:12px; font-weight:500; text-decoration:none; }}
+    .gm-side-link:hover {{ background:rgba(255,255,255,.08); }}
+    .gm-side-link.is-active {{ background:linear-gradient(90deg, rgba(55, 116, 255, .48), rgba(67, 115, 255, .22)); box-shadow:inset 0 0 0 1px rgba(141, 180, 255, .18); }}
+    .gm-side-footer {{ margin-top:auto; padding-top:12px; }}
+    .gm-main {{ min-width:0; display:flex; flex-direction:column; }}
+    .gm-topbar {{ height:54px; border-bottom:1px solid rgba(148,163,184,.18); background:rgba(255,255,255,.82); backdrop-filter:blur(18px); display:flex; align-items:center; justify-content:space-between; padding:0 18px; gap:12px; }}
+    .gm-breadcrumb {{ display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; }}
+    .gm-breadcrumb strong {{ color:#1e293b; font-weight:700; }}
+    .gm-top-actions {{ display:flex; align-items:center; gap:10px; }}
+    .gm-chip,.gm-btn,.gm-profile {{ border-radius:12px; height:38px; display:inline-flex; align-items:center; gap:8px; padding:0 14px; font-size:13px; font-weight:500; text-decoration:none; }}
+    .gm-chip,.gm-profile {{ background:rgba(255,255,255,.9); border:1px solid #dbe5ff; color:#334155; }}
+    .gm-btn {{ background:linear-gradient(180deg,#3c78ff,#1c61ff); color:#fff; box-shadow:0 10px 24px rgba(55,116,255,.2); }}
+    .gm-profile-avatar {{ width:28px; height:28px; border-radius:999px; background:linear-gradient(180deg,#1d67ff,#0f49ce); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }}
+    .gm-content {{ padding:16px 18px 18px; min-width:0; }}
+    @media (max-width: 1120px) {{
+      .gm-console {{ grid-template-columns:1fr; }}
+      .gm-side {{ display:none; }}
+      .gm-topbar {{ padding:0 12px; }}
+      .gm-content {{ padding:12px; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="gm-console">
+    <aside class="gm-side">
+      <div class="gm-brand">
+        <div class="gm-brand-mark">G</div>
+        <div class="gm-brand-copy"><b>运维平台</b><span>GameOps Console</span></div>
+      </div>
+      <div class="gm-side-group">
+        <a href="/admin" class="gm-side-link"><i class="fas fa-house"></i><span>工作台</span></a>
+        <a href="/admin/dashboard" class="gm-side-link"><i class="fas fa-chart-pie"></i><span>总览看板</span></a>
+      </div>
+      <div class="gm-side-group">
+        <div class="gm-side-title">项目管理</div>
+        <a href="/admin/projects" class="gm-side-link"><i class="fas fa-table-list"></i><span>项目列表</span></a>
+        <a href="/admin/projects/{project_id or 'GomeKu'}" class="gm-side-link"><i class="fas fa-grid-2"></i><span>项目工作台</span></a>
+        <a href="/admin/projects/{project_id or 'GomeKu'}/versions" class="gm-side-link{nav_active['versions']}"><i class="fas fa-layer-group"></i><span>项目版本管理</span></a>
+        <a href="/admin/projects/{project_id or 'GomeKu'}/build-history" class="gm-side-link{nav_active['builds']}"><i class="fas fa-clock-rotate-left"></i><span>构建历史</span></a>
+        <a href="/admin/gm-ops?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['gm']}"><i class="fas fa-wand-magic-sparkles"></i><span>GM 发版工作台</span></a>
+        <a href="/download-center?project={project_id or 'GomeKu'}" class="gm-side-link"><i class="fas fa-download"></i><span>下载中心</span></a>
+      </div>
+      <div class="gm-side-group">
+        <div class="gm-side-title">运维平台</div>
+        <a href="/admin/ops-platform?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['topology']}"><i class="fas fa-sitemap"></i><span>拓扑编排</span></a>
+        <a href="/admin/ops-platform?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['agents']}"><i class="fas fa-server"></i><span>Agent 与服务器</span></a>
+        <a href="/admin/audit-log?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['logs']}"><i class="fas fa-scroll"></i><span>日志中心</span></a>
+      </div>
+      <div class="gm-side-footer">
+        <a href="/logout" class="gm-side-link"><i class="fas fa-angles-left"></i><span>收起菜单</span></a>
+      </div>
+    </aside>
+    <div class="gm-main">
+      <div class="gm-topbar">
+        <div class="gm-breadcrumb">
+          <i class="fas fa-bars text-slate-500"></i>
+          <span>项目管理</span>
+          <i class="fas fa-chevron-right text-[10px] text-slate-400"></i>
+          <strong>{page_title}</strong>
+        </div>
+        <div class="gm-top-actions">
+          <a href="/admin/projects/{project_id or 'GomeKu'}/versions" class="gm-chip"><i class="fas fa-circle-info text-blue-500"></i><span>项目：{project_label}</span></a>
+          <a href="/admin/projects/{project_id or 'GomeKu'}/versions" class="gm-btn"><i class="fas fa-layer-group"></i><span>版本管理</span></a>
+          <a href="/admin/ops-platform?project_id={project_id or 'GomeKu'}" class="gm-chip"><i class="fas fa-sitemap text-slate-400"></i><span>拓扑编排</span></a>
+          <a href="/profile" class="gm-profile"><span class="gm-profile-avatar">{avatar_text}</span><span>{user_name}</span></a>
+        </div>
+      </div>
+      <div class="gm-content">{content}</div>
+    </div>
+  </div>
+</body>
+</html>
+"""
 PENDING_ACTIONS_KEY = "GM_APPROVAL_PENDING_ACTIONS"
 
 ACTION_CATALOG: List[Dict[str, Any]] = [
@@ -1625,16 +1735,10 @@ loadCatalog();
     content = content.replace("GM运营中心（项目优先）", center_title, 1)
     content = content.replace("单项目工作台：项目身份、构建、发布、运维、快照、执行日志统一在同一上下文闭环。", center_desc, 1)
     content = content.replace("<script>", "<script>\nconst GM_VIEW_MODE = " + json.dumps(view_mode, ensure_ascii=False) + ";", 1)
-    try:
-        from routes.admin_routes import _admin_layout
-        return _admin_layout(content, page_title, back_href="/admin")
-    except Exception:
-        html = """
-<!doctype html>
-<html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>""" + page_title + """</title><link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head>
-<body class=\"bg-slate-50 min-h-screen\"><div class=\"max-w-7xl mx-auto p-6\">""" + content + """</div></body></html>
-"""
-        return render_template_string(html)
+    project_label = (request.args.get("project_id") or "").strip() or "GomeKu"
+    return render_template_string(
+        _gm_console_shell(content, page_title, project_id=project_label, active_nav="gm")
+    )
 
 def _build_closure_evidence(project_id: str, env: str, channel: str, platform: str, version_name: str) -> Dict[str, Any]:
     release = _find_best_release(project_id, env, channel, platform, version_name, published_only=False)
@@ -1958,7 +2062,28 @@ def gm_ops_release_versions():
     if not ok:
         return jsonify({"ok": False, "error": resolved}), 404
     versions = project_versions_db.get(resolved) or []
-    return jsonify({"ok": True, "project_id": resolved, "count": len(versions), "data": versions})
+    enriched_versions = []
+    for item in versions:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        ctx = resolve_release_context(resolved, row)
+        env_key = normalize_release_env_key(row.get("env_key") or row.get("stage") or row.get("env"))
+        channel_id = str(ctx.get("channel_id") or row.get("channel") or "").strip()
+        channel_key = str(ctx.get("channel_key") or row.get("channel_key") or channel_id).strip()
+        channel_info = get_channel_by_id(channel_id) if channel_id else None
+        row["env_key"] = env_key
+        row["env"] = env_key_to_gm_env(env_key)
+        row["channel_id"] = channel_id
+        row["channel_key"] = channel_key
+        row["channel_name"] = str(
+            (channel_info or {}).get("name")
+            or ctx.get("channel_name")
+            or channel_key
+            or channel_id
+        ).strip()
+        enriched_versions.append(row)
+    return jsonify({"ok": True, "project_id": resolved, "count": len(enriched_versions), "data": enriched_versions})
 
 
 @bp.route("/api/gm-ops/release/versions", methods=["POST"])

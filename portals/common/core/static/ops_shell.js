@@ -8,12 +8,15 @@
   if (localStorage.getItem(STORAGE_KEY) === "1") {
     app.classList.add("sidebar-collapsed");
   }
+
   if (btn) {
     btn.addEventListener("click", function () {
       var collapsed = app.classList.toggle("sidebar-collapsed");
       localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
       var label = btn.querySelector("span");
-      if (label) label.textContent = collapsed ? "展开菜单" : "收起菜单";
+      if (label) {
+        label.textContent = collapsed ? "展开菜单" : "收起菜单";
+      }
     });
   }
 

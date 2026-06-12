@@ -16,10 +16,10 @@
     "env_key": "testing",
     "channel_id": "1001",
     "channel_key": "wechat",
-    "default_topology_id": "topology-gomeku-testing-default",
+    "default_topology_id": "topology-design-gomeku-testing",
     "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
     "status": "active",
-    "updated_at": "2026-06-09T12:00:00+08:00"
+    "updated_at": "2026-06-12T15:40:00+08:00"
   },
   {
     "scope_id": "gomeku:staging:1001",
@@ -60,10 +60,10 @@
     "env_key": "testing",
     "channel_id": "1002",
     "channel_key": "douyin",
-    "default_topology_id": "topology-gomeku-testing-default",
+    "default_topology_id": "topology-design-gomeku-testing",
     "override": { "topology_id": "", "server_profile_id": "", "use_auto_profile": true },
     "status": "active",
-    "updated_at": "2026-06-09T12:00:00+08:00"
+    "updated_at": "2026-06-12T15:40:00+08:00"
   },
   {
     "scope_id": "gomeku:staging:1002",

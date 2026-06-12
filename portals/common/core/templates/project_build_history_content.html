@@ -1,0 +1,319 @@
+<section class="mx-auto max-w-[1360px] space-y-5">
+  <div class="rounded-[28px] border border-[#dbe5ff] bg-white/92 p-6 shadow-[0_16px_40px_rgba(81,108,172,0.10)]">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="text-[12px] font-semibold tracking-[0.16em] text-[#8aa0c7]">BUILD HISTORY</p>
+        <h1 class="mt-2 text-[30px] font-[800] text-[#0f274f]">构建历史</h1>
+        <p class="mt-2 text-[14px] text-[#6d7f9f]">
+          项目 <span class="font-semibold text-[#244476]">{{ project_name }}</span> 的版本构建流水，按版本组与 VersionCode 聚合展示。
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <a href="/admin/projects/{{ project_id }}/versions?stage=test" class="inline-flex h-10 items-center gap-2 rounded-[14px] border border-[#d7e4ff] bg-white px-4 text-[13px] font-semibold text-[#35507a] hover:border-[#9fbaff] hover:text-[#1f5dff]">
+          <i class="fas fa-arrow-left text-[12px]"></i>
+          <span>返回版本管理</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-[24px] border border-[#dbe5ff] bg-white p-5 shadow-[0_16px_40px_rgba(81,108,172,0.08)]">
+    <div class="flex flex-wrap items-center gap-3">
+      <input id="bhFilter" type="search" placeholder="搜索版本号 / VersionCode / 构建号 / 构建人" class="h-11 min-w-[260px] flex-1 rounded-[14px] border border-[#d7e4ff] bg-[#fbfdff] px-4 text-[14px] text-[#1d3557] outline-none transition focus:border-[#8fb0ff] focus:ring-4 focus:ring-[#2f6bff]/10">
+      {% if can_edit %}
+      <button type="button" id="bhBatchDelete" class="inline-flex h-11 items-center gap-2 rounded-[14px] border border-[#ffcdd3] bg-white px-4 text-[13px] font-semibold text-[#ef5f73] hover:bg-[#fff6f7]">
+        <i class="fas fa-trash-alt text-[12px]"></i>
+        <span>批量删除</span>
+      </button>
+      {% endif %}
+      <button type="button" id="bhRefresh" class="inline-flex h-11 items-center gap-2 rounded-[14px] bg-[#2f6bff] px-5 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(47,107,255,0.22)] hover:bg-[#1f5dff]">
+        <i class="fas fa-rotate-right text-[12px]"></i>
+        <span>刷新</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="bhRoot" class="space-y-4">
+    <div class="rounded-[24px] border border-dashed border-[#dbe5ff] bg-white/80 px-6 py-14 text-center text-[14px] text-[#7f93b5]">正在加载构建历史...</div>
+  </div>
+</section>
+
+<div id="buildDetailModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-[#0f172a]/58 p-4 backdrop-blur-sm" onclick="if(event.target===this) closeBuildDetailModal()">
+  <div class="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-[#dbe5ff] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)]" onclick="event.stopPropagation()">
+    <div class="flex shrink-0 items-center justify-between border-b border-[#edf2ff] bg-[linear-gradient(90deg,#f8fbff,#f3f7ff)] px-6 py-5">
+      <div>
+        <h3 class="flex items-center gap-2 text-[18px] font-[800] text-[#102a4d]">
+          <i class="fas fa-circle-info text-[#2f6bff]"></i>
+          <span id="bhModalTitle">构建详情</span>
+        </h3>
+        <p id="bhModalSub" class="mt-1 text-[12px] text-[#7890b3]"></p>
+      </div>
+      <button type="button" onclick="closeBuildDetailModal()" class="flex h-9 w-9 items-center justify-center rounded-full border border-[#dbe5ff] text-[#8ea1c2] hover:border-[#9fbaff] hover:text-[#2f6bff]">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div id="buildDetailBody" class="flex-1 overflow-y-auto p-6 text-[14px] text-[#36507a]">正在加载构建详情...</div>
+  </div>
+</div>
+
+<style>
+  details.bh-fold > summary { list-style: none; cursor: pointer; }
+  details.bh-fold > summary::-webkit-details-marker { display: none; }
+  details.bh-fold > summary .bh-chevron { transition: transform .16s ease; }
+  details.bh-fold[open] > summary .bh-chevron { transform: rotate(180deg); }
+</style>
+
+<script>
+var PROJECT_ID = {{ project_id|tojson }};
+var CAN_EDIT = {{ 'true' if can_edit else 'false' }};
+var _bhGroups = [];
+
+function esc(s){
+  if(s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function statusBadge(result, building, label){
+  var cls = 'bg-slate-100 text-slate-700';
+  if (building) cls = 'bg-amber-100 text-amber-800';
+  else {
+    var r = String(result || '').toUpperCase();
+    if (r === 'SUCCESS') cls = 'bg-emerald-100 text-emerald-700';
+    else if (r === 'FAILURE' || r === 'ABORTED') cls = 'bg-rose-100 text-rose-700';
+    else if (r === 'UNSTABLE') cls = 'bg-orange-100 text-orange-700';
+  }
+  return '<span class="inline-flex h-7 items-center rounded-full px-3 text-[12px] font-semibold ' + cls + '">' + esc(label || result || '未知') + '</span>';
+}
+
+function closeBuildDetailModal(){
+  var modal = document.getElementById('buildDetailModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+function foldBlock(title, bodyHtml, open, maxH){
+  var mh = maxH || (title.indexOf('日志') >= 0 ? '16rem' : '14rem');
+  return '<details class="bh-fold mb-3 overflow-hidden rounded-[18px] border border-[#dbe5ff] bg-white"' + (open ? ' open' : '') + '>'
+    + '<summary class="flex items-center justify-between bg-[#f8fbff] px-4 py-3 select-none hover:bg-[#f4f8ff]">'
+    + '<span class="text-[14px] font-semibold text-[#264879]">' + title + '</span>'
+    + '<i class="fas fa-chevron-down bh-chevron text-[11px] text-[#89a0c6]"></i></summary>'
+    + '<div class="border-t border-[#edf2ff] px-4 py-3" style="max-height:' + mh + ';overflow-y:auto;">' + bodyHtml + '</div></details>';
+}
+
+function renderBuildDetailContent(b){
+  var bn = b.number || b.build_number || '';
+  document.getElementById('bhModalTitle').textContent = '构建 #' + bn;
+  document.getElementById('bhModalSub').textContent = (b.version_name || '') + (b.version_code ? (' / code ' + b.version_code) : '');
+  var summary = '';
+  if (b.result === 'SUCCESS' || b.status_label === '成功') {
+    summary = '<div class="rounded-[16px] border border-emerald-100 bg-emerald-50 p-4 text-[14px] text-emerald-700"><i class="fas fa-check-circle mr-1"></i>构建成功</div>';
+  } else if (b.building) {
+    summary = '<div class="rounded-[16px] border border-amber-100 bg-amber-50 p-4 text-[14px] text-amber-800"><i class="fas fa-spinner fa-spin mr-1"></i>构建进行中</div>';
+  } else if (b.failure_summary) {
+    summary = '<div class="whitespace-pre-wrap rounded-[16px] border border-rose-100 bg-rose-50 p-4 text-[14px] text-rose-700">' + esc(b.failure_summary) + '</div>';
+  } else {
+    summary = '<div class="rounded-[16px] border border-slate-200 bg-slate-50 p-4 text-[14px] text-slate-600">' + esc(b.status_label || b.result || '未知状态') + '</div>';
+  }
+  var consoleBtn = b.console_url
+    ? '<a href="' + esc(b.console_url) + '" target="_blank" rel="noopener" class="inline-flex h-10 items-center gap-2 rounded-[14px] bg-[#2f6bff] px-4 text-[13px] font-semibold text-white"><i class="fas fa-arrow-up-right-from-square text-[12px]"></i>Jenkins 控制台</a>'
+    : '';
+  var logUrl = '/api/build/log/' + bn + '?instance_id=' + encodeURIComponent(b.instance_id || '');
+  var wfUrl = '/admin/projects/' + encodeURIComponent(PROJECT_ID) + '/versions/' + encodeURIComponent(b.version_id || '') + '/workflow';
+  var actions = '<div class="mb-4 flex flex-wrap gap-2">' + consoleBtn
+    + '<a href="' + logUrl + '" download="build-' + bn + '.log" class="inline-flex h-10 items-center gap-2 rounded-[14px] border border-[#dbe5ff] bg-white px-4 text-[13px] font-semibold text-[#35507a]"><i class="fas fa-download text-[12px]"></i>下载日志</a>'
+    + (b.version_id ? '<a href="' + wfUrl + '" class="inline-flex h-10 items-center gap-2 rounded-[14px] border border-emerald-200 bg-white px-4 text-[13px] font-semibold text-emerald-700"><i class="fas fa-hammer text-[12px]"></i>前往构建</a>' : '')
+    + '</div>';
+  var metaHtml = '<div class="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">'
+    + '<div><span class="text-[#8ea1c2]">状态</span><div class="mt-1">' + statusBadge(b.result, b.building, b.status_label) + '</div></div>'
+    + '<div><span class="text-[#8ea1c2]">构建人</span><div class="mt-1 font-semibold">' + esc(b.triggered_by || '-') + '</div></div>'
+    + '<div><span class="text-[#8ea1c2]">开始时间</span><div class="mt-1">' + esc((b.started_at || '').replace('T',' ').slice(0,19) || '-') + '</div></div>'
+    + '<div><span class="text-[#8ea1c2]">结束时间</span><div class="mt-1">' + esc(b.ended_at || '-') + '</div></div>'
+    + '<div><span class="text-[#8ea1c2]">耗时</span><div class="mt-1">' + esc(b.duration || '-') + '</div></div>'
+    + '<div><span class="text-[#8ea1c2]">实例</span><div class="mt-1 font-mono text-[12px]">' + esc(b.instance_id || '-') + '</div></div>'
+    + '</div>';
+  var params = b.parameters || {};
+  var keys = Object.keys(params);
+  var paramRows = keys.map(function(k){
+    return '<tr class="border-b border-[#eef3ff]"><td class="w-40 whitespace-nowrap py-2 pr-3 align-top text-[#8ea1c2]">' + esc(k) + '</td><td class="break-all py-2 font-mono text-[12px] text-[#244476]">' + esc(String(params[k])) + '</td></tr>';
+  }).join('');
+  var paramBody = paramRows ? '<table class="w-full text-[13px]">' + paramRows + '</table>' : '<p class="text-[13px] text-[#8ea1c2]">无参数</p>';
+  var logBody = '<pre class="max-h-[16rem] overflow-y-auto whitespace-pre-wrap rounded-[16px] bg-[#0f172a] p-4 text-[11px] leading-relaxed text-[#d9ebff]">' + esc((b.log || '').slice(-12000) || '（无日志）') + '</pre>';
+  return summary + actions + foldBlock('基本信息', metaHtml, true) + foldBlock('构建参数' + (keys.length ? (' (' + keys.length + ')') : ''), paramBody, false) + foldBlock('构建日志', logBody, false);
+}
+
+function openBuildDetail(iid, num, vid){
+  var modal = document.getElementById('buildDetailModal');
+  var body = document.getElementById('buildDetailBody');
+  body.innerHTML = '<p class="text-[14px] text-[#8ea1c2]">正在加载构建详情...</p>';
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  var q = 'instance_id=' + encodeURIComponent(iid) + '&version_id=' + encodeURIComponent(vid || '') + '&project_id=' + encodeURIComponent(PROJECT_ID || '');
+  fetch('/api/build/' + encodeURIComponent(num) + '/detail?' + q, { credentials:'same-origin' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.error || !d.build) {
+        body.innerHTML = '<p class="text-[14px] text-rose-600">' + esc(d.error || '加载失败') + '</p>';
+        return;
+      }
+      body.innerHTML = renderBuildDetailContent(d.build);
+    })
+    .catch(function(){
+      body.innerHTML = '<p class="text-[14px] text-rose-600">加载失败</p>';
+    });
+}
+
+function deleteBuild(iid, num, vid){
+  if (!window.confirm('确定删除构建 #' + num + '？将同时删除 Jenkins 构建目录，且不可恢复。')) return;
+  var q = 'instance_id=' + encodeURIComponent(iid) + '&version_id=' + encodeURIComponent(vid || '') + '&project_id=' + encodeURIComponent(PROJECT_ID || '');
+  fetch('/api/build/' + encodeURIComponent(num) + '?' + q, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instance_id: iid })
+  }).then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success) {
+        alert(d.error || '删除失败');
+        return;
+      }
+      loadHistory();
+    })
+    .catch(function(){ alert('删除失败'); });
+}
+
+function batchDeleteBuilds(){
+  if (!CAN_EDIT) return;
+  var items = [];
+  document.querySelectorAll('.bh-check:checked').forEach(function(c){
+    items.push({
+      instance_id: c.getAttribute('data-iid'),
+      build_number: parseInt(c.getAttribute('data-num'), 10),
+      version_id: c.getAttribute('data-vid') || ''
+    });
+  });
+  if (!items.length) {
+    alert('请先勾选要删除的构建。');
+    return;
+  }
+  if (!window.confirm('确定批量删除 ' + items.length + ' 条构建记录？将同时删除 Jenkins 构建目录，且不可恢复。')) return;
+  fetch('/api/build/records/batch-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ project_id: PROJECT_ID, items: items })
+  }).then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success && !d.deleted) {
+        alert(d.error || '删除失败');
+        return;
+      }
+      if (d.error) alert('已删除 ' + d.deleted + ' 条，部分失败：' + d.error);
+      loadHistory();
+    })
+    .catch(function(){ alert('删除失败'); });
+}
+
+function renderBuildRow(b, vid){
+  var num = b.number || b.build_number;
+  var time = (b.started_at || '').replace('T', ' ').slice(0, 19);
+  var chk = (CAN_EDIT && !b.building)
+    ? '<input type="checkbox" class="bh-check h-4 w-4 rounded border-slate-300 text-[#2f6bff]" data-iid="' + esc(b.instance_id || '') + '" data-num="' + num + '" data-vid="' + esc(vid || '') + '">'
+    : '';
+  var del = (CAN_EDIT && !b.building)
+    ? '<button type="button" class="bh-del ml-2 flex h-9 w-9 items-center justify-center rounded-[12px] border border-[#ffd2d8] text-[#ef5f73] hover:bg-[#fff6f7]" data-iid="' + esc(b.instance_id || '') + '" data-num="' + num + '" data-vid="' + esc(vid || '') + '" title="删除"><i class="fas fa-trash text-[12px]"></i></button>'
+    : '';
+  return '<div class="flex items-center gap-3 border-b border-[#eef3ff] px-4 py-3 last:border-0 hover:bg-[#fbfdff]">'
+    + chk
+    + '<button type="button" class="bh-open min-w-0 flex-1 text-left" data-iid="' + esc(b.instance_id || '') + '" data-num="' + num + '" data-vid="' + esc(vid || '') + '">'
+    + '<div class="flex flex-wrap items-center gap-2">'
+    + '<span class="font-mono text-[14px] font-semibold text-[#2f6bff]">#' + num + '</span>'
+    + statusBadge(b.result, b.building, b.status_label)
+    + '<span class="text-[12px] text-[#8ea1c2]">' + esc(time) + '</span>'
+    + (b.triggered_by ? '<span class="text-[12px] text-[#667fa7]"><i class="fas fa-user mr-1 text-[10px]"></i>' + esc(b.triggered_by) + '</span>' : '')
+    + (b.duration ? '<span class="text-[12px] text-[#8ea1c2]">' + esc(b.duration) + '</span>' : '')
+    + '</div></button>'
+    + del
+    + '</div>';
+}
+
+function renderGroups(groups, filter){
+  var kw = String(filter || '').toLowerCase().trim();
+  if (!groups.length) {
+    return '<div class="rounded-[24px] border border-dashed border-[#dbe5ff] bg-white px-6 py-16 text-center text-[14px] text-[#7f93b5]">暂无构建记录</div>';
+  }
+  var html = '';
+  groups.forEach(function(g){
+    var vn = g.version_name || '未命名版本';
+    var codes = (g.version_codes || []).map(function(vc){
+      var builds = (vc.builds || []).filter(function(b){
+        if (!kw) return true;
+        var hay = [vn, vc.version_code, b.number, b.build_number, b.triggered_by, b.result, b.status_label].join(' ').toLowerCase();
+        return hay.indexOf(kw) >= 0;
+      });
+      return { vc: vc, builds: builds };
+    }).filter(function(x){ return x.builds.length > 0 || !kw; });
+    if (kw && !codes.length) return;
+    var total = codes.reduce(function(sum, x){ return sum + x.builds.length; }, 0);
+    html += '<details class="bh-fold overflow-hidden rounded-[24px] border border-[#dbe5ff] bg-white shadow-[0_12px_28px_rgba(81,108,172,0.08)]" open>'
+      + '<summary class="flex items-center justify-between bg-[linear-gradient(90deg,#f8fbff,#ffffff)] px-5 py-4 hover:bg-[#f4f8ff]">'
+      + '<div class="flex items-center gap-2"><i class="fas fa-chevron-down bh-chevron text-[12px] text-[#89a0c6]"></i>'
+      + '<span class="text-[16px] font-[800] text-[#14345c]">' + esc(vn) + '</span>'
+      + '<span class="text-[12px] text-[#8ea1c2]">' + codes.length + ' 个 VersionCode / ' + total + ' 条构建</span></div></summary>'
+      + '<div class="divide-y divide-[#eef3ff] border-t border-[#eef3ff]">';
+    codes.forEach(function(item){
+      var vc = item.vc;
+      var builds = item.builds;
+      var vid = vc.version_id || '';
+      var wf = '/admin/projects/' + encodeURIComponent(PROJECT_ID) + '/versions/' + encodeURIComponent(vid) + '/workflow';
+      html += '<details class="bh-fold" open><summary class="flex items-center justify-between bg-[#f9fbff] px-5 py-3 hover:bg-[#f4f8ff]">'
+        + '<div class="flex items-center gap-2 pl-2"><i class="fas fa-chevron-down bh-chevron text-[11px] text-[#89a0c6]"></i>'
+        + '<span class="font-mono text-[14px] font-semibold text-[#274879]">VersionCode ' + esc(vc.version_code || '-') + '</span>'
+        + '<span class="text-[12px] text-[#8ea1c2]">' + esc(vc.stage || '-') + ' / ' + esc(vc.platform || '-') + ' / ' + builds.length + ' 条</span></div>'
+        + '<a href="' + wf + '" class="mr-2 text-[12px] font-semibold text-[#2f6bff] hover:underline" onclick="event.stopPropagation()">前往构建</a></summary>'
+        + '<div class="bg-white">';
+      if (!builds.length) html += '<p class="px-5 py-4 text-[13px] text-[#8ea1c2]">暂无构建</p>';
+      else builds.forEach(function(b){ html += renderBuildRow(b, vid); });
+      html += '</div></details>';
+    });
+    html += '</div></details>';
+  });
+  return html || '<div class="rounded-[24px] border border-dashed border-[#dbe5ff] bg-white px-6 py-12 text-center text-[14px] text-[#7f93b5]">没有匹配的构建记录</div>';
+}
+
+function loadHistory(){
+  var root = document.getElementById('bhRoot');
+  root.innerHTML = '<div class="rounded-[24px] border border-dashed border-[#dbe5ff] bg-white px-6 py-14 text-center text-[14px] text-[#7f93b5]">正在加载构建历史...</div>';
+  fetch('/api/build/history-by-project?project_id=' + encodeURIComponent(PROJECT_ID), { credentials:'same-origin' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      _bhGroups = (d && d.groups) || [];
+      applyFilter();
+    })
+    .catch(function(){
+      root.innerHTML = '<div class="rounded-[24px] border border-dashed border-[#ffd2d8] bg-white px-6 py-14 text-center text-[14px] text-[#ef5f73]">加载失败</div>';
+    });
+}
+
+function applyFilter(){
+  document.getElementById('bhRoot').innerHTML = renderGroups(_bhGroups, (document.getElementById('bhFilter') || {}).value || '');
+}
+
+document.getElementById('bhRefresh').addEventListener('click', loadHistory);
+document.getElementById('bhFilter').addEventListener('input', applyFilter);
+var _bhBatchBtn = document.getElementById('bhBatchDelete');
+if (_bhBatchBtn) _bhBatchBtn.addEventListener('click', batchDeleteBuilds);
+document.getElementById('bhRoot').addEventListener('click', function(e){
+  var open = e.target.closest('.bh-open');
+  if (open) {
+    openBuildDetail(open.getAttribute('data-iid'), open.getAttribute('data-num'), open.getAttribute('data-vid'));
+    return;
+  }
+  var del = e.target.closest('.bh-del');
+  if (del) deleteBuild(del.getAttribute('data-iid'), del.getAttribute('data-num'), del.getAttribute('data-vid'));
+});
+loadHistory();
+</script>

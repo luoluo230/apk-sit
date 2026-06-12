@@ -9,8 +9,7 @@ import re
 import uuid
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
-from flask import Blueprint, request, jsonify, render_template, render_template_string, session
-from flask import redirect
+from flask import Blueprint, request, jsonify, render_template, render_template_string, session, abort
 from services.authz import login_required, admin_required, admin_required_any, get_visible_modules, ADMIN_MODULES, ALL_MODULES_EXCEPT_USER_MANAGEMENT, is_super_admin_or_admin
 from models.data import (
     users_db, projects_db, products_db, audit_log_db, project_tasks_db, project_versions_db,
@@ -719,8 +718,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 download_total=html.escape(str(group['download_total'])),
                 edit_id=html.escape(group['rows'][0]['id'] if group['rows'] else ''),
                 delete_button=(
-                    '<button type="button" class="pv-icon-btn danger" title="删除" data-delete-version="{id}"><i class="fas fa-trash"></i></button>'.format(
-                        id=html.escape(group['rows'][0]['id'])
+                    '<button type="button" class="pv-icon-btn danger" title="删除版本组" data-delete-version-group="{version_name}"><i class="fas fa-trash"></i></button>'.format(
+                        version_name=html.escape(group['version_name'])
                     )
                     if can_edit and group['rows'] else ''
                 ),
@@ -1800,6 +1799,15 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       if(!confirm('确定删除该 VersionCode 吗？')) return;
       fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/delete/' + encodeURIComponent(id), { method:'DELETE', credentials:'same-origin' }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); });
     }
+    function pvDeleteVersionGroup(versionName){
+      if(!versionName || !confirm('确定删除整个版本组「' + versionName + '」吗？此操作会删除该组下全部 VersionCode。')) return;
+      fetch('/admin/projects/' + encodeURIComponent(%s) + '/versions/delete-group', {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({version_name: versionName})
+      }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); });
+    }
     function pvStageKeyFromGmEnv(env){
       var normalized = String(env || '').trim().toLowerCase();
       if(normalized === 'prod' || normalized === 'production'){ return 'production'; }
@@ -2048,6 +2056,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         }
         var delBtn = e.target.closest('[data-delete-version]');
         if(delBtn){ pvDeleteVersion(delBtn.getAttribute('data-delete-version') || ''); return; }
+        var delGroupBtn = e.target.closest('[data-delete-version-group]');
+        if(delGroupBtn){ pvDeleteVersionGroup(delGroupBtn.getAttribute('data-delete-version-group') || ''); return; }
         var editGroupBtn = e.target.closest('[data-edit-version-group]');
         if(editGroupBtn){ pvOpenVersionGroupModal(editGroupBtn.getAttribute('data-edit-version-group') || ''); return; }
         var gmRowBtn = e.target.closest('[data-gm-version-id]');
@@ -2155,6 +2165,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         project_id_js,
         project_id_js,
         available_channels_js,
+        project_id_js,
         project_id_js,
         project_id_js,
         project_id_js,
@@ -4405,6 +4416,27 @@ def project_versions_page(project_id):
 
     content = _project_versions_redesign_html(project_id, proj, can_edit, task_stats, recent_tasks, apk_count, project_apk_files, is_admin_logged_in)
     return _admin_layout(content, '项目版本管理', back_href=f'/admin/projects/{project_id}')
+
+
+@bp.route('/admin/projects/<project_id>/build-history')
+@admin_required_any('projects', 'build')
+def project_build_history_page(project_id):
+    if project_id not in projects_db:
+        abort(404)
+    if not can_view_project(project_id, _current_username()):
+        abort(403)
+    proj = projects_db[project_id]
+    from routes.gm_ops import _gm_console_shell
+
+    content = render_template(
+        'project_build_history_content.html',
+        project_id=project_id,
+        project_name=proj.get('name') or project_id,
+        can_edit=can_edit_project(project_id, _current_username()),
+    )
+    return render_template_string(
+        _gm_console_shell(content, '构建历史', project_id=project_id, active_nav='builds')
+    )
 
 
 def _user_project_role(project_id, username):

@@ -43,6 +43,13 @@ def versions_delete_response(project_id: str, version_id: str, username: str):
     return jsonify(payload), status
 
 
+def versions_delete_group_response(project_id: str, username: str):
+    payload = request.get_json(silent=True) or {}
+    version_name = str(payload.get("version_name") or "").strip()
+    result, status = version_service.delete_version_group(project_id, version_name, username)
+    return jsonify(result), status
+
+
 def register_routes(bp, current_username_getter):
     @login_required
     def _project_download_stats(project_id: str):
@@ -71,6 +78,10 @@ def register_routes(bp, current_username_getter):
     @admin_required("projects")
     def _versions_delete(project_id: str, version_id: str):
         return versions_delete_response(project_id, version_id, current_username_getter())
+
+    @admin_required("projects")
+    def _versions_delete_group(project_id: str):
+        return versions_delete_group_response(project_id, current_username_getter())
 
     bp.add_url_rule("/api/projects/<project_id>/download-stats", endpoint="project_download_stats", view_func=_project_download_stats)
     bp.add_url_rule("/admin/projects/<project_id>/versions/list", endpoint="project_versions_list", view_func=_versions_list)
@@ -101,6 +112,12 @@ def register_routes(bp, current_username_getter):
         endpoint="project_versions_delete",
         view_func=_versions_delete,
         methods=["DELETE"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/versions/delete-group",
+        endpoint="project_versions_delete_group",
+        view_func=_versions_delete_group,
+        methods=["POST", "DELETE"],
     )
     # 兼容旧前端删除地址，避免缓存旧脚本时出现 404。
     bp.add_url_rule(
