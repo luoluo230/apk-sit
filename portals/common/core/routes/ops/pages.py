@@ -58,13 +58,11 @@ def ops_platform_topology_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     topology_id = ops_helpers._resolve_ops_topology_id(project_id, env_key, request.args.get("topology_id") or "")
-    legacy_workbench = ops_helpers._render_local_template("ops_topology_workbench.html", project_id=project_id, env_key=env_key, topology_id=topology_id)
     content = ops_helpers._render_local_template(
         "ops_topology_workspace_page.html",
         project_id=project_id,
         env_key=env_key,
         topology_id=topology_id,
-        legacy_workbench=legacy_workbench,
     )
     return ops_helpers._render_ops_page(
         content, "拓扑管理",
@@ -72,7 +70,29 @@ def ops_platform_topology_page(project_id: str = ""):
         project_id=project_id,
         env_key=env_key,
         topology_id=topology_id,
-        extra_css='<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260609-unified-v1">',
+    )
+
+
+@bp.route("/admin/projects/<project_id>/topologies/canvas")
+@admin_required("gm_ops")
+def ops_platform_topology_canvas_page(project_id: str = ""):
+    project_id, env_key, _, redirect_resp = _page_scope(project_id)
+    if redirect_resp is not None:
+        return redirect_resp
+    topology_id = ops_helpers._resolve_ops_topology_id(project_id, env_key, request.args.get("topology_id") or "")
+    content = ops_helpers._render_local_template(
+        "ops_topology_workbench.html",
+        project_id=project_id,
+        env_key=env_key,
+        topology_id=topology_id,
+    )
+    return ops_helpers._render_ops_page(
+        content, "拓扑画布",
+        active_page="topology",
+        project_id=project_id,
+        env_key=env_key,
+        topology_id=topology_id,
+        extra_css='<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260612-project-canvas-v1">',
         extra_js='<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>\n<script src="/static/ops_platform_workbench.js?v=20260609-unified-v1"></script>',
     )
 

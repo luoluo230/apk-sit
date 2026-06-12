@@ -592,6 +592,13 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         )
         for row in recent_build_rows
     ) or '<div class="pv-empty-state">暂无构建记录，先完成一次版本构建后这里会出现真实流水。</div>'
+    recent_builds_html = render_template(
+        'project_build_history_content.html',
+        project_id=project_id,
+        project_name=proj.get('name') or project_id,
+        can_edit=can_edit,
+        embedded=True,
+    )
 
     def _build_version_rows(rows):
         out = []
@@ -1328,10 +1335,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 </div>
               </div>
               <div id="pvPanelBuilds" class="pv-content-panel">
-                <div class="pv-panel pv-side-card">
-                  <h3>构建历史</h3>
-                  <div id="projectRecentBuilds" class="pv-build-list">%s</div>
-                  <div class="mt-4"><a href="/admin/projects/%s/build-history" class="pv-blue-btn"><i class="fas fa-clock-rotate-left"></i><span>进入构建历史</span></a></div>
+                <div class="pv-panel pv-side-card pv-full-build-history">
+                  <div class="pv-panel-toolbar">
+                    <div>
+                      <h3>完整构建历史</h3>
+                      <p>与独立构建历史页使用同一真实数据源，展示当前项目全部构建流水。</p>
+                    </div>
+                  </div>
+                  <div id="projectRecentBuilds">%s</div>
                 </div>
               </div>
               <div id="pvPanelDevices" class="pv-content-panel">
@@ -2523,7 +2534,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(selected_ops_env_key),
         binding_channel_options_html,
         recent_builds_html,
-        project_id_url,
         project_id_url,
         download_center_html,
         html.escape(project_name),
