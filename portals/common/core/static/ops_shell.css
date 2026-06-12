@@ -1,152 +1,72 @@
-/* Ops Shell: aligned with the deep-blue project version sidebar */
-
 .ops-shell-app {
-  --tw-font: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
-  --tw-primary: #2f6bff;
-  --tw-primary-hover: #1f5dff;
-  --tw-bg: linear-gradient(180deg, #f5f7fb 0%, #eef3ff 100%);
-  --tw-surface: #ffffff;
-  --tw-border: #dbe5ff;
-  --tw-text: #101828;
-  --tw-sub: #d7e5ff;
-  --tw-muted: rgba(214, 225, 255, 0.62);
-  --tw-label: #344054;
-  --tw-success: #16c47f;
-  --tw-danger: #ff4d6d;
-  --tw-warning: #ff9f1a;
-  --tw-radius-lg: 12px;
-  --tw-radius: 8px;
-  --tw-radius-sm: 6px;
-  --tw-shadow: 0 16px 32px rgba(15, 29, 56, 0.12);
+  --shell-bg: linear-gradient(180deg, #f5f7fb 0%, #eef3ff 100%);
+  --shell-surface: #ffffff;
+  --shell-border: #dbe5ff;
+  --shell-sidebar: linear-gradient(180deg, #0f274f 0%, #11264a 38%, #0d1d38 100%);
+  --shell-primary: #2f6cff;
+  --shell-primary-hover: #1f5dff;
+  --shell-text: #173057;
+  --shell-sub: #6981aa;
   display: grid;
-  grid-template-columns: 146px minmax(0, 1fr);
+  grid-template-columns: 132px minmax(0, 1fr);
   min-height: 100vh;
-  background: var(--tw-bg);
-  color: var(--tw-text);
-  font-family: var(--tw-font);
-  font-size: 14px;
-  line-height: 1.5715;
-  -webkit-font-smoothing: antialiased;
+  background: var(--shell-bg);
+  color: var(--shell-text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
 .ops-shell-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 12px;
-  background: linear-gradient(180deg, #0f274f 0%, #11264a 38%, #0d1d38 100%);
-  overflow-y: auto;
   position: sticky;
   top: 0;
   height: 100vh;
+  padding: 12px 10px;
+  background: var(--shell-sidebar);
+  color: #e8f0ff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
 }
 
 .ops-shell-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 4px 4px 18px;
+  gap: 10px;
+  padding: 4px 6px 14px;
 }
 
 .ops-shell-brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: 13px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
   background: linear-gradient(160deg, #4c8dff, #1f5fff);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 28px;
+  font-weight: 800;
   box-shadow: 0 10px 20px rgba(27, 73, 180, 0.35);
-  font-weight: 700;
-  font-size: 24px;
   flex-shrink: 0;
 }
 
 .ops-shell-brand-title {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.1;
-  color: #ffffff;
+  color: #fff;
 }
 
 .ops-shell-brand-sub {
   margin-top: 4px;
-  color: rgba(230, 239, 255, 0.72);
+  color: rgba(232, 240, 255, 0.74);
   font-size: 11px;
-}
-
-.ops-shell-scope {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 8px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 4px;
-}
-
-.ops-shell-scope-field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ops-shell-scope-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--tw-muted);
-  letter-spacing: 0.04em;
-}
-
-.ops-shell-scope-select {
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--tw-radius-sm);
-  background: rgba(255, 255, 255, 0.08);
-  color: #eef4ff;
-  font-size: 13px;
-  font-family: inherit;
-  cursor: pointer;
-  width: 100%;
-}
-
-.ops-shell-scope-select:focus {
-  outline: none;
-  border-color: rgba(141, 180, 255, 0.42);
-  box-shadow: 0 0 0 2px rgba(47, 107, 255, 0.18);
-}
-
-.ops-shell-scope-project {
-  min-height: 30px;
-  padding: 5px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--tw-radius-sm);
-  background: rgba(255, 255, 255, 0.08);
-  color: #eef4ff;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ops-shell-env-warn {
-  padding: 3px 8px;
-  background: linear-gradient(135deg, #ff9f1a, #ff5d73);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  border-radius: var(--tw-radius-sm);
-  text-align: center;
 }
 
 .ops-shell-nav-tree {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
 }
 
@@ -157,14 +77,14 @@
 }
 
 .ops-shell-nav-group > span {
-  padding: 12px 10px 8px;
+  padding: 10px 8px 6px;
   color: rgba(214, 225, 255, 0.48);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
 }
 
-.ops-shell-nav-group > a {
+.ops-shell-nav-group > a,
+.ops-shell-nav-footer button {
   min-height: 40px;
   padding: 0 10px;
   border-radius: 12px;
@@ -175,109 +95,242 @@
   font-size: 12px;
   font-weight: 500;
   text-decoration: none;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
-  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.ops-shell-nav-group > a:hover {
+.ops-shell-nav-group > a:hover,
+.ops-shell-nav-footer button:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: #fff;
 }
 
 .ops-shell-nav-group > a.active {
   background: linear-gradient(90deg, rgba(55, 116, 255, 0.48), rgba(67, 115, 255, 0.22));
   box-shadow: inset 0 0 0 1px rgba(141, 180, 255, 0.18);
-  color: #ffffff;
+  color: #fff;
   font-weight: 700;
 }
 
-.ops-shell-app .nav-ico {
+.nav-ico {
   width: 16px;
   height: 16px;
-  flex-shrink: 0;
   fill: currentColor;
+  flex-shrink: 0;
 }
 
 .ops-shell-nav-footer {
   margin-top: auto;
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .ops-shell-collapse-btn {
   width: 100%;
-  height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--tw-radius);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: transparent;
-  color: #d7e5ff;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.ops-shell-collapse-btn:hover {
-  border-color: rgba(141, 180, 255, 0.3);
-  color: #ffffff;
 }
 
 .ops-shell-main {
-  overflow-y: auto;
-  min-height: 100vh;
-  background: linear-gradient(180deg, #f5f7fb 0%, #eef3ff 100%);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-shell-topbar {
+  height: 54px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  gap: 12px;
+}
+
+.ops-shell-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #64748b;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ops-shell-breadcrumb strong {
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.ops-shell-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ops-shell-chip,
+.ops-shell-primary-btn,
+.ops-shell-white-btn {
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ops-shell-chip,
+.ops-shell-white-btn {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--shell-border);
+  color: #334155;
+}
+
+.ops-shell-primary-btn {
+  background: linear-gradient(180deg, #3c78ff, #1c61ff);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(55, 116, 255, 0.2);
+}
+
+.ops-shell-search {
+  width: 300px;
+  max-width: 300px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--shell-border);
+  background: rgba(255, 255, 255, 0.94);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.ops-shell-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #334155;
+  font-size: 13px;
+}
+
+.ops-shell-icon-pill {
+  position: relative;
+  padding: 0 10px;
+}
+
+.ops-shell-bell-badge {
+  position: absolute;
+  top: -6px;
+  right: -3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ff5c78;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ops-shell-profile-chip {
+  padding-right: 12px;
+}
+
+.ops-shell-profile-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #1d67ff, #0f49ce);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ops-shell-profile-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ops-shell-content {
+  padding: 18px;
+  min-width: 0;
 }
 
 .ops-shell-app.sidebar-collapsed {
-  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
 }
 
 .ops-shell-app.sidebar-collapsed .ops-shell-brand-title,
 .ops-shell-app.sidebar-collapsed .ops-shell-brand-sub,
-.ops-shell-app.sidebar-collapsed .ops-shell-scope,
 .ops-shell-app.sidebar-collapsed .ops-shell-nav-group > span,
 .ops-shell-app.sidebar-collapsed .ops-shell-nav-group > a span,
 .ops-shell-app.sidebar-collapsed .ops-shell-collapse-btn > span {
   display: none;
 }
 
-.ops-shell-app.sidebar-collapsed .ops-shell-nav-group > a {
+.ops-shell-app.sidebar-collapsed .ops-shell-nav-group > a,
+.ops-shell-app.sidebar-collapsed .ops-shell-collapse-btn {
   justify-content: center;
   padding: 0;
 }
 
-.ops-shell-app.sidebar-collapsed .ops-shell-collapse-btn .nav-ico {
-  margin-right: 0;
-  transform: rotate(180deg);
-}
-
 .ops-shell-app.sidebar-collapsed .ops-shell-nav {
-  padding: 16px 4px;
+  padding: 14px 4px;
 }
 
-.ops-topology-app.ops-topology-app--embedded {
-  display: block !important;
-  grid-template-columns: none !important;
-  min-height: auto;
-}
-
+.ops-topology-app.ops-topology-app--embedded,
 .agent-screen.agent-screen--embedded {
   display: block !important;
-  min-height: auto;
+  min-height: auto !important;
 }
 
 .agent-screen--embedded .agent-shell-sidebar {
   display: none !important;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1440px) {
+  .ops-shell-search {
+    width: 220px;
+    max-width: 220px;
+  }
+}
+
+@media (max-width: 1160px) {
   .ops-shell-app {
     grid-template-columns: 1fr;
   }
 
   .ops-shell-nav {
     display: none;
+  }
+
+  .ops-shell-topbar {
+    padding: 0 12px;
+  }
+
+  .ops-shell-top-actions {
+    gap: 8px;
+  }
+
+  .ops-shell-search {
+    display: none;
+  }
+
+  .ops-shell-content {
+    padding: 12px;
   }
 }

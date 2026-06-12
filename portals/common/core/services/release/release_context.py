@@ -18,6 +18,7 @@ from services.release.scope_resolver import (
     resolve_network_profile,
     resolve_scope,
     resolve_scope_by_inputs,
+    resolve_topology_binding_for_scope,
     resolve_topology_id,
 )
 
@@ -54,8 +55,10 @@ def resolve_release_context(
         channel_id = str(scope_probe.get("channel_id") or resolve_channel_id(pid, channel_raw) or channel_raw).strip()
 
     scope = resolve_scope(pid, env_key, channel_id, auto_create=auto_create_scope)
-    network_profile, profile_source = resolve_network_profile(scope) if scope else ({}, "legacy")
-    topology_id = resolve_topology_id(scope) if scope else ""
+    version_name = str((version_row or {}).get("version_name") or "").strip() if isinstance(version_row, dict) else ""
+    network_profile, profile_source = resolve_network_profile(scope, version_name=version_name) if scope else ({}, "legacy")
+    topology_binding = resolve_topology_binding_for_scope(scope, version_name=version_name) if scope else {}
+    topology_id = str(topology_binding.get("topology_id") or resolve_topology_id(scope, version_name=version_name) or "")
     active_bundle = find_active_bundle(str(scope.get("scope_id") or "")) if scope else {}
 
     server_snapshot = {
@@ -94,6 +97,8 @@ def resolve_release_context(
         "channel_key": str(scope.get("channel_key") or channel_id),
         "network_profile": network_profile,
         "profile_source": profile_source,
+        "topology_binding_source": str(topology_binding.get("binding_source") or ""),
+        "topology_binding_source_label": str(topology_binding.get("binding_source_label") or ""),
         "server_snapshot": server_snapshot,
         "active_bundle_id": str(
             active_bundle.get("bundle_id")

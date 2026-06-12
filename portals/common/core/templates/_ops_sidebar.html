@@ -7,48 +7,100 @@
     </div>
   </div>
 
-  <div class="ops-shell-scope">
-    <div class="ops-shell-scope-field">
-      <span class="ops-shell-scope-label">当前项目</span>
-      <div class="ops-shell-scope-project" title="{{ project_id }}">{{ project_id or '未选择项目' }}</div>
-    </div>
-    <label class="ops-shell-scope-field">
-      <span class="ops-shell-scope-label">环境</span>
-      <select id="opsShellEnvSelect" class="ops-shell-scope-select" data-current="{{ env_key }}">
-        <option value="development" {% if env_key == 'development' %}selected{% endif %}>开发环境</option>
-        <option value="testing" {% if env_key == 'testing' %}selected{% endif %}>测试环境</option>
-        <option value="staging" {% if env_key == 'staging' %}selected{% endif %}>预发环境</option>
-        <option value="production" {% if env_key == 'production' or not env_key %}selected{% endif %}>生产环境</option>
-      </select>
-    </label>
-    {% if env_key == 'production' or not env_key %}
-    <div class="ops-shell-env-warn">生产环境</div>
-    {% endif %}
-  </div>
-
   <nav class="ops-shell-nav-tree">
     <div class="ops-shell-nav-group">
       <span>工作台</span>
-      <a {% if active_page == 'overview' %}class="active"{% endif %} href="/admin/ops-platform?project_id={{ project_id }}&amp;env_key={{ env_key or 'production' }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h16v2H4v-2z"/></svg><span>总览看板</span></a>
+      <a {% if active_page == 'home' %}class="active"{% endif %} href="/admin">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 3l9 8h-3v9h-4v-6H10v6H6v-9H3l9-8z"/></svg>
+        <span>工作台</span>
+      </a>
+      <a {% if active_page == 'dashboard' or active_page == 'overview' %}class="active"{% endif %} href="/admin/dashboard">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 13h4v7H4v-7zm6-9h4v16h-4V4zm6 5h4v11h-4V9z"/></svg>
+        <span>总览看板</span>
+      </a>
     </div>
+
     <div class="ops-shell-nav-group">
-      <span>架构编排</span>
-      <a {% if active_page == 'topology' %}class="active"{% endif %} href="/admin/ops-platform/topology?project_id={{ project_id }}&amp;env_key={{ env_key or 'production' }}{% if topology_id %}&amp;topology_id={{ topology_id }}{% endif %}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M6 6h5v5H6V6zm7 0h5v5h-5V6zM6 13h5v5H6v-5zm7 3h5v2h-5v-2z"/></svg><span>拓扑编排</span></a>
-      <a {% if active_page == 'agent-control' or active_page == 'agent-detail' or active_page == 'agent-device-local' %}class="active"{% endif %} href="/admin/ops-platform/agent-control?project_id={{ project_id }}&amp;env_key={{ env_key or 'production' }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a3 3 0 100 6 3 3 0 000-6zM5 20v-2a4 4 0 014-4h6a4 4 0 014 4v2H5z"/></svg><span>Agent 与服务器</span></a>
+      <span>项目管理</span>
+      <a {% if active_page == 'projects' %}class="active"{% endif %} href="/admin/projects">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm2 2h8v2H8V9zm0 4h6v2H8v-2z"/></svg>
+        <span>项目列表</span>
+      </a>
+      <a {% if active_page == 'project-home' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z"/></svg>
+        <span>项目工作台</span>
+      </a>
+      <a {% if active_page == 'versions' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/versions{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M5 5h14v4H5V5zm0 5h14v4H5v-4zm0 5h14v4H5v-4z"/></svg>
+        <span>项目版本管理</span>
+      </a>
+      <a {% if active_page == 'builds' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/build-history{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v5l4 2-.9 1.5L11 13V7h2z"/></svg>
+        <span>构建历史</span>
+      </a>
+      <a {% if active_page == 'gm' %}class="active"{% endif %} href="{% if project_id %}/admin/gm-ops?project_id={{ project_id }}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M5 12l7-7 7 7-7 7-7-7zm7-3l-3 3 3 3 3-3-3-3z"/></svg>
+        <span>GM 发版工作台</span>
+      </a>
+      <a href="{% if project_id %}/download-center?project={{ project_id }}{% else %}/download-center{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 3v11m0 0l4-4m-4 4l-4-4M4 19h16"/></svg>
+        <span>下载中心</span>
+      </a>
+      <a href="{% if project_id %}/admin/projects/{{ project_id }}/versions?tab=devices{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2zm5 17a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 5h8v9H8V5z"/></svg>
+        <span>测试设备</span>
+      </a>
     </div>
+
     <div class="ops-shell-nav-group">
-      <span>执行与诊断</span>
-      <a {% if active_page == 'actions' %}class="active"{% endif %} href="/admin/ops-platform/actions?project_id={{ project_id }}&amp;env_key={{ env_key or 'production' }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg><span>动作执行</span></a>
-      <a {% if active_page == 'diagnostics' %}class="active"{% endif %} href="/admin/ops-platform/diagnostics?project_id={{ project_id }}&amp;env_key={{ env_key or 'production' }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v5l4 2-.9 1.5L11 13V7h2z"/></svg><span>节点诊断</span></a>
+      <span>项目运维</span>
+      <a {% if active_page == 'topology' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/topologies?env_key={{ env_key or 'production' }}{% if topology_id %}&amp;topology_id={{ topology_id }}{% endif %}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M6 6h5v5H6V6zm7 0h5v5h-5V6zM6 13h5v5H6v-5zm7 3h5v2h-5v-2z"/></svg>
+        <span>拓扑管理</span>
+      </a>
+      <a {% if active_page == 'agent-control' or active_page == 'agent-detail' or active_page == 'agent-device-local' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/agents?env_key={{ env_key or 'production' }}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a3 3 0 100 6 3 3 0 000-6zM5 20v-2a4 4 0 014-4h6a4 4 0 014 4v2H5z"/></svg>
+        <span>Agent 与服务器</span>
+      </a>
+      <a {% if active_page == 'actions' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/actions?env_key={{ env_key or 'production' }}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5z"/></svg>
+        <span>动作执行</span>
+      </a>
+      <a {% if active_page == 'diagnostics' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/diagnostics?env_key={{ env_key or 'production' }}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v5l4 2-.9 1.5L11 13V7h2z"/></svg>
+        <span>节点诊断</span>
+      </a>
+      <a {% if active_page == 'change-governance' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/change-governance?env_key={{ env_key or 'production' }}{% else %}/admin/projects{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg>
+        <span>变更治理</span>
+      </a>
+      <a href="/admin/approval">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 11l2 2 4-4 2 2-6 6-4-4 2-2zM5 3h14a2 2 0 012 2v14l-7-3-7 3V5a2 2 0 012-2z"/></svg>
+        <span>审批中心</span>
+      </a>
+      <a href="{% if project_id %}/admin/audit-log?project_id={{ project_id }}{% else %}/admin/audit-log{% endif %}">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M6 4h9l5 5v11H6V4zm8 1v5h5"/></svg>
+        <span>日志中心</span>
+      </a>
     </div>
+
     <div class="ops-shell-nav-group">
-      <span>治理与合规</span>
-      <a {% if active_page == 'change-governance' %}class="active"{% endif %} href="/admin/ops-platform/change-governance?project_id={{ project_id }}&amp;env_key={{ env_key or 'production' }}"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2l7 4v6c0 5-3 9-7 10-4-1-7-5-7-10V6l7-4z"/></svg><span>变更治理</span></a>
-      <a {% if active_page == 'approval' %}class="active"{% endif %} href="/admin/approval"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M9 11l2 2 4-4 2 2-6 6-4-4 2-2zM5 3h14a2 2 0 012 2v14l-7-3-7 3V5a2 2 0 012-2z"/></svg><span>审批中心</span></a>
+      <span>系统管理</span>
+      <a href="/admin/users">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a5 5 0 100 10 5 5 0 000-10zM4 20a8 8 0 1116 0H4z"/></svg>
+        <span>成员管理</span>
+      </a>
+      <a href="/admin/settings">
+        <svg class="nav-ico" viewBox="0 0 24 24"><path d="M19.14 12.94a7.49 7.49 0 000-1.88l2.03-1.58-1.92-3.32-2.39.96a7.55 7.55 0 00-1.63-.95L14.96 2h-3.92l-.27 2.12c-.58.22-1.12.53-1.63.95l-2.39-.96-1.92 3.32 2.03 1.58a7.49 7.49 0 000 1.88l-2.03 1.58 1.92 3.32 2.39-.96c.51.42 1.05.73 1.63.95l.27 2.12h3.92l.27-2.12c.58-.22 1.12-.53 1.63-.95l2.39.96 1.92-3.32-2.03-1.58zM13 15a3 3 0 110-6 3 3 0 010 6z"/></svg>
+        <span>平台设置</span>
+      </a>
     </div>
   </nav>
 
   <div class="ops-shell-nav-footer">
-    <button class="ops-shell-collapse-btn" type="button"><svg class="nav-ico" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg><span>收起菜单</span></button>
+    <button class="ops-shell-collapse-btn" type="button">
+      <svg class="nav-ico" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+      <span>收起菜单</span>
+    </button>
   </div>
 </aside>

@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 from services.release.env_registry import normalize_release_env_key
 from services.release.scope_ids import resolve_channel_id
-from services.release.scope_resolver import resolve_network_profile, resolve_topology_id
+from services.release.scope_resolver import resolve_network_profile, resolve_topology_binding_for_scope, resolve_topology_id
 from services.release.storage import load_bundles, mutate_bundles
 from services.commercial_release_plan import build_runtime_resolve_paths, normalize_release_channel, normalize_release_platform
 
@@ -164,8 +164,10 @@ def create_bundle_from_publish(
     scope_id = str(scope.get("scope_id") or "")
     if not scope_id:
         return {}
-    network_profile, profile_source = resolve_network_profile(scope)
-    topology_id = resolve_topology_id(scope)
+    version_name = str(version_row.get("version_name") or "").strip()
+    network_profile, profile_source = resolve_network_profile(scope, version_name=version_name)
+    topology_binding = resolve_topology_binding_for_scope(scope, version_name=version_name)
+    topology_id = str(topology_binding.get("topology_id") or resolve_topology_id(scope, version_name=version_name) or "")
     effective_runtime_run_id = str(runtime_run_id or "").strip()
     if not effective_runtime_run_id:
         try:
@@ -205,6 +207,7 @@ def create_bundle_from_publish(
                 "cluster_sync_at": _now_iso(),
                 "network_profile_snapshot": dict(network_profile or {}),
                 "profile_source": profile_source,
+                "binding_source": str(topology_binding.get("binding_source") or ""),
                 "gateway_probe": gateway_probe or {},
             },
             "publish_status": "published",
@@ -278,8 +281,10 @@ def bind_active_bundle_on_step4_activate(project_id: str, version_row: Dict[str,
 
 def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, validate_artifacts: bool = False) -> Dict[str, Any]:
     scope_id = str(scope.get("scope_id") or "")
-    network_profile, profile_source = resolve_network_profile(scope)
-    topology_id = resolve_topology_id(scope)
+    version_name = str(version_row.get("version_name") or "").strip()
+    network_profile, profile_source = resolve_network_profile(scope, version_name=version_name)
+    topology_binding = resolve_topology_binding_for_scope(scope, version_name=version_name)
+    topology_id = str(topology_binding.get("topology_id") or resolve_topology_id(scope, version_name=version_name) or "")
     client_keys = [
         "version_name",
         "version_code",
@@ -337,6 +342,7 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
         "channel_alignment_ok": channel_aligned,
         "alignment_errors": alignment_errors,
         "profile_source": profile_source,
+        "binding_source": str(topology_binding.get("binding_source") or ""),
         "missing_client_fields": missing_client,
         "missing_profile_fields": missing_profile,
         "missing_artifact_fields": missing_artifacts,

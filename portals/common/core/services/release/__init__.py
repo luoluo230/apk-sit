@@ -12,6 +12,7 @@ from services.release.scope_ids import build_scope_id, project_slug, resolve_cha
 from services.release.scope_resolver import (
     resolve_scope,
     resolve_topology_id,
+    resolve_topology_binding_for_scope,
     resolve_network_profile,
 )
 from services.release.release_context import resolve_release_context
@@ -24,6 +25,7 @@ __all__ = [
     "stage_to_env_key",
     "resolve_scope",
     "resolve_topology_id",
+    "resolve_topology_binding_for_scope",
     "resolve_network_profile",
     "build_scope_id",
     "project_slug",

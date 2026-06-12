@@ -30,6 +30,7 @@ from models.data import (
     get_approved_approval,
     get_system_config,
     log_audit,
+    projects_db,
     set_system_config,
 )
 from services.authz import admin_required, can_access_module, has_scope, is_admin
@@ -625,14 +626,26 @@ def _render_ops_page(
         session["ops_last_env"] = env_key
     if not topology_id:
         topology_id = str(request.args.get("topology_id", ""))
+    project_name = project_id
+    try:
+        row = (projects_db or {}).get(project_id) or {}
+        project_name = str(row.get("name") or project_id or "未选择项目").strip() or project_id or "未选择项目"
+    except Exception:
+        project_name = project_id or "未选择项目"
+    env_label = _env_label(env_key) if env_key else ""
+    user_name = str(session.get("user") or "").strip() or "运维管理员"
     return render_template(
         "ops_shell.html",
         content=content,
         title=title,
         active_page=active_page,
         project_id=project_id,
+        project_name=project_name,
+        project_label=f"{project_name}_{env_label}" if project_name and env_label else project_name or "未选择项目",
         env_key=env_key,
         topology_id=topology_id,
+        avatar_text=(user_name[:1] or "A").upper(),
+        user_name=user_name,
         extra_css=extra_css,
         extra_js=extra_js,
     )

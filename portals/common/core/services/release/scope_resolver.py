@@ -10,6 +10,7 @@ from models.data import get_system_config
 from services.release.env_registry import normalize_release_env_key
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.profile_builder import build_network_profile_from_topology, merge_network_profiles
+from services.release.topology_binding_service import resolve_topology_binding
 from services.release.storage import find_scope, load_scopes, upsert_scope, find_manifest
 
 RELEASE_PROFILES_KEY = "GM_RELEASE_PROFILES"
@@ -62,25 +63,42 @@ def resolve_scope(
     return upsert_scope(scope)
 
 
-def resolve_topology_id(scope: Dict[str, Any]) -> str:
+def resolve_topology_binding_for_scope(scope: Dict[str, Any], version_name: str = "") -> Dict[str, Any]:
     if not isinstance(scope, dict):
-        return ""
+        return {"topology_id": "", "binding_source": "", "binding_source_label": "", "binding": {}}
     override = scope.get("override") if isinstance(scope.get("override"), dict) else {}
     tid = str(override.get("topology_id") or "").strip()
     if tid:
-        return tid
-    tid = str(scope.get("default_topology_id") or "").strip()
-    if tid:
-        return tid
-    return _default_topology_id(str(scope.get("project_id") or ""), str(scope.get("env_key") or "production"), scope)
+        return {
+            "topology_id": tid,
+            "binding_source": "scope_override",
+            "binding_source_label": "Scope 覆盖",
+            "binding": {},
+        }
+    fallback = str(scope.get("default_topology_id") or "").strip() or _default_topology_id(
+        str(scope.get("project_id") or ""),
+        str(scope.get("env_key") or "production"),
+        scope,
+    )
+    return resolve_topology_binding(
+        str(scope.get("project_id") or ""),
+        str(scope.get("env_key") or ""),
+        str(scope.get("channel_id") or ""),
+        version_name=version_name,
+        fallback_topology_id=fallback,
+    )
 
 
-def _load_topology_for_scope(scope: Dict[str, Any]) -> Dict[str, Any]:
+def resolve_topology_id(scope: Dict[str, Any], version_name: str = "") -> str:
+    return str(resolve_topology_binding_for_scope(scope, version_name).get("topology_id") or "").strip()
+
+
+def _load_topology_for_scope(scope: Dict[str, Any], version_name: str = "") -> Dict[str, Any]:
     from services.ops.helpers import _load_topology_scoped
 
     project_id = str(scope.get("project_id") or "").strip()
     env_key = normalize_release_env_key(scope.get("env_key"))
-    topology_id = resolve_topology_id(scope)
+    topology_id = resolve_topology_id(scope, version_name)
     loaded = _load_topology_scoped(project_id, env_key, topology_id)
     if not isinstance(loaded, dict):
         return {}
@@ -117,7 +135,7 @@ def _legacy_match_profile(env_key: str, channel_id: str, server_profile_id: str 
     return dict(profiles[0]), "legacy"
 
 
-def resolve_network_profile(scope: Dict[str, Any]) -> Tuple[Dict[str, Any], str]:
+def resolve_network_profile(scope: Dict[str, Any], version_name: str = "") -> Tuple[Dict[str, Any], str]:
     if not isinstance(scope, dict) or not scope:
         return {}, "legacy"
     override = scope.get("override") if isinstance(scope.get("override"), dict) else {}
@@ -128,7 +146,7 @@ def resolve_network_profile(scope: Dict[str, Any]) -> Tuple[Dict[str, Any], str]
         if manual:
             return manual, "manual"
     if use_auto is not False:
-        topo = _load_topology_for_scope(scope)
+        topo = _load_topology_for_scope(scope, version_name)
         if topo.get("nodes"):
             manifest = find_manifest(str(scope.get("project_id") or ""))
             notice = str((manifest or {}).get("notice_url") or "").strip()

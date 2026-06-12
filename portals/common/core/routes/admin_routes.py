@@ -295,12 +295,18 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         'test': '测试环境',
         'dev': '开发环境',
     }
+    stage_env_key_map = {
+        'production': 'production',
+        'test': 'testing',
+        'dev': 'development',
+    }
     stage_short_map = {
         'production': 'prod',
         'test': 'test',
         'dev': 'dev',
     }
     selected_stage_label = stage_label_map.get(selected_stage, '生产环境')
+    selected_ops_env_key = stage_env_key_map.get(selected_stage, 'production')
     created_at = (proj.get('created_at') or '')[:19]
     owner = ((proj.get('editors') or [])[:1] or ['-'])[0]
     project_versions = project_versions_db.get(project_id) or []
@@ -1058,9 +1064,13 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         <a href="/download-center?project=%s" class="pv-nav-item"><i class="fas fa-download"></i><span>下载中心</span></a>
       </div>
       <div class="pv-nav-group">
-        <div class="pv-nav-title">运维平台</div>
-        <a href="/admin/ops-platform?project_id=%s" class="pv-nav-item"><i class="fas fa-sitemap"></i><span>拓扑编排</span></a>
-        <a href="/admin/ops-platform?project_id=%s" class="pv-nav-item"><i class="fas fa-server"></i><span>Agent 与服务器</span></a>
+        <div class="pv-nav-title">项目运维</div>
+        <a href="/admin/projects/%s/topologies?env_key=%s" class="pv-nav-item"><i class="fas fa-sitemap"></i><span>拓扑管理</span></a>
+        <a href="/admin/projects/%s/agents?env_key=%s" class="pv-nav-item"><i class="fas fa-server"></i><span>Agent 与服务器</span></a>
+        <a href="/admin/projects/%s/actions?env_key=%s" class="pv-nav-item"><i class="fas fa-play-circle"></i><span>动作执行</span></a>
+        <a href="/admin/projects/%s/diagnostics?env_key=%s" class="pv-nav-item"><i class="fas fa-stethoscope"></i><span>节点诊断</span></a>
+        <a href="/admin/projects/%s/change-governance?env_key=%s" class="pv-nav-item"><i class="fas fa-shield-halved"></i><span>变更治理</span></a>
+        <a href="/admin/approval" class="pv-nav-item"><i class="fas fa-clipboard-check"></i><span>审批中心</span></a>
         <a href="/admin/audit-log?project_id=%s" class="pv-nav-item"><i class="fas fa-scroll"></i><span>日志中心</span></a>
       </div>
       <div class="pv-tree-footer">
@@ -1104,6 +1114,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             <div class="pv-main-tabs">
               <button type="button" class="pv-main-tab is-active" data-target="versions">版本总览</button>
               <button type="button" class="pv-main-tab" data-target="channels">渠道管理</button>
+              <button type="button" class="pv-main-tab" data-target="topologyBindings">拓扑绑定</button>
               <button type="button" class="pv-main-tab" data-target="builds">构建历史</button>
               <button type="button" class="pv-main-tab" data-target="devices">测试设备</button>
               <button type="button" class="pv-main-tab" data-target="downloads">下载中心</button>
@@ -1148,6 +1159,71 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                     %s
                   </div>
                   <div class="pv-channel-table" id="projectChannelsList">%s</div>
+                </div>
+              </div>
+              <div id="pvPanelTopologyBindings" class="pv-content-panel">
+                <div class="pv-panel pv-side-card">
+                  <div class="pv-panel-toolbar">
+                    <div>
+                      <h3>拓扑绑定矩阵</h3>
+                      <p>按项目默认、环境/渠道、大版本三级规则决定当前版本命中的拓扑。</p>
+                    </div>
+                    <a href="/admin/projects/%s/topologies?env_key=%s" class="pv-white-btn"><i class="fas fa-sitemap"></i><span>进入拓扑管理</span></a>
+                  </div>
+                  <div class="mt-4 grid gap-3 xl:grid-cols-[1.15fr_.85fr]">
+                    <div class="rounded-2xl border border-[#dce6ff] bg-[#f8fbff] p-4">
+                      <div class="flex items-center justify-between gap-3 mb-3">
+                        <h4 class="text-[15px] font-bold text-[#173057]">当前绑定规则</h4>
+                        <span id="pvTopologyBindingSummary" class="text-xs font-semibold text-[#6f85ae]">加载中…</span>
+                      </div>
+                      <div id="pvTopologyBindingList" class="space-y-3"></div>
+                    </div>
+                    <div class="rounded-2xl border border-[#dce6ff] bg-white p-4">
+                      <h4 class="text-[15px] font-bold text-[#173057] mb-3">新增 / 编辑绑定</h4>
+                      <input type="hidden" id="pvTopologyBindingId" value="">
+                      <div class="space-y-3">
+                        <div class="pv-field">
+                          <label>绑定层级</label>
+                          <select id="pvTopologyBindingLevel" class="pv-select">
+                            <option value="project_default">项目默认</option>
+                            <option value="env_channel">环境 / 渠道</option>
+                            <option value="version">大版本覆盖</option>
+                          </select>
+                        </div>
+                        <div class="pv-inline-two">
+                          <div class="pv-field">
+                            <label>环境</label>
+                            <select id="pvTopologyBindingEnv" class="pv-select">
+                              <option value="development">开发环境</option>
+                              <option value="testing">测试环境</option>
+                              <option value="staging">预发布环境</option>
+                              <option value="production">生产环境</option>
+                            </select>
+                          </div>
+                          <div class="pv-field">
+                            <label>渠道</label>
+                            <select id="pvTopologyBindingChannel" class="pv-select">%s</select>
+                          </div>
+                        </div>
+                        <div class="pv-field">
+                          <label>大版本</label>
+                          <select id="pvTopologyBindingVersion" class="pv-select"><option value="">不指定</option></select>
+                        </div>
+                        <div class="pv-field">
+                          <label>目标拓扑</label>
+                          <select id="pvTopologyBindingTopology" class="pv-select"><option value="">加载中…</option></select>
+                        </div>
+                        <div class="pv-field">
+                          <label>说明</label>
+                          <input id="pvTopologyBindingNote" class="pv-input" placeholder="例如：v1.2.4 微信测试环境指向新拓扑">
+                        </div>
+                        <div class="pv-dock-actions">
+                          <button type="button" class="pv-secondary" id="pvTopologyBindingResetBtn">重置</button>
+                          <button type="button" class="pv-primary" id="pvTopologyBindingSaveBtn">保存绑定</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div id="pvPanelBuilds" class="pv-content-panel">
@@ -1219,7 +1295,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             </div>
             <div class="mt-3 flex items-center justify-between text-sm">
               <div><div class="text-slate-500">拓扑图：</div><div class="font-semibold text-[#173057]">%s / 当前运行视图</div></div>
-              <a href="/admin/ops-platform?project_id=%s" class="text-[#2f6cff] text-xs font-semibold">查看拓扑图</a>
+              <a href="/admin/projects/%s/topologies?env_key=%s" class="text-[#2f6cff] text-xs font-semibold">查看拓扑图</a>
             </div>
           </div>
           <div class="pv-panel pv-side-card">
@@ -1228,10 +1304,11 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
               <button type="button" class="pv-quick-link" id="pvQuickOpenVersionGroup"><i class="fas fa-boxes-stacked"></i><span>构建版本</span></button>
               <button type="button" class="pv-quick-link" data-pv-modal-open="compare"><i class="fas fa-code-compare"></i><span>版本对比</span></button>
               <button type="button" class="pv-quick-link" data-pv-modal-open="gm-wizard"><i class="fas fa-rocket"></i><span>发版工作台</span></button>
-              <a href="/admin/ops-platform?project_id=%s" class="pv-quick-link"><i class="fas fa-screwdriver-wrench"></i><span>运维中心</span></a>
+              <a href="/admin/projects/%s/topologies?env_key=%s" class="pv-quick-link"><i class="fas fa-sitemap"></i><span>拓扑管理</span></a>
               <a href="/download-center?project=%s" class="pv-quick-link"><i class="fas fa-download"></i><span>下载中心</span></a>
               <button type="button" class="pv-quick-link" id="pvQuickOpenDevices"><i class="fas fa-mobile-screen-button"></i><span>测试设备</span></button>
               <a href="/admin/projects/%s/build-history" class="pv-quick-link"><i class="fas fa-clock-rotate-left"></i><span>构建历史</span></a>
+              <button type="button" class="pv-quick-link" id="pvQuickOpenTopologyBindings"><i class="fas fa-link"></i><span>拓扑绑定</span></button>
               <a href="/admin/projects/%s" class="pv-quick-link"><i class="fas fa-gear"></i><span>项目设置</span></a>
             </div>
           </div>
@@ -1252,8 +1329,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           <div class="pv-field"><label>运行环境</label><select id="pvTopologyStage" class="pv-select"><option value="production">生产环境</option><option value="test">测试环境</option><option value="dev">开发环境</option></select></div>
           <div class="pv-field"><label>说明</label><textarea id="pvTopologyDesc" class="pv-textarea">生产环境最新拓扑编排</textarea></div>
           <div class="pv-dock-actions">
-            <button type="button" class="pv-secondary" onclick="location.href='/admin/ops-platform?project_id=%s'">空白拓扑</button>
-            <button type="button" class="pv-primary" onclick="location.href='/admin/ops-platform?project_id=%s'">创建拓扑图</button>
+            <button type="button" class="pv-secondary" onclick="location.href='/admin/projects/%s/topologies?env_key=%s'">空白拓扑</button>
+            <button type="button" class="pv-primary" onclick="location.href='/admin/projects/%s/topologies?env_key=%s'">创建拓扑图</button>
           </div>
     </div>
   </div>
@@ -1486,8 +1563,15 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       document.querySelectorAll('.pv-content-panel').forEach(function(panel){
         panel.classList.toggle('is-active', panel.id === 'pvPanel' + target.charAt(0).toUpperCase() + target.slice(1));
       });
+      var toolbar = document.querySelector('.pv-toolbar');
+      if(toolbar){
+        toolbar.style.display = target === 'versions' ? 'flex' : 'none';
+      }
       if(target === 'devices' && typeof pvLoadTestDevices === 'function'){
         pvLoadTestDevices();
+      }
+      if(target === 'topologyBindings' && typeof pvLoadTopologyBindings === 'function'){
+        pvLoadTopologyBindings();
       }
     }
     function pvApplyFilters(){
@@ -1704,6 +1788,166 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     function pvOpenDevicesPanel(){
       switchPvPanel('devices');
       pvLoadTestDevices();
+    }
+    function pvResetTopologyBindingForm(){
+      document.getElementById('pvTopologyBindingId').value = '';
+      document.getElementById('pvTopologyBindingLevel').value = 'project_default';
+      document.getElementById('pvTopologyBindingEnv').value = 'development';
+      document.getElementById('pvTopologyBindingChannel').value = document.getElementById('pvTopologyBindingChannel').options.length ? document.getElementById('pvTopologyBindingChannel').options[0].value : '';
+      document.getElementById('pvTopologyBindingVersion').value = '';
+      document.getElementById('pvTopologyBindingNote').value = '';
+      pvApplyTopologyBindingLevel();
+    }
+    function pvApplyTopologyBindingLevel(){
+      var level = document.getElementById('pvTopologyBindingLevel').value || 'project_default';
+      var envEl = document.getElementById('pvTopologyBindingEnv');
+      var channelEl = document.getElementById('pvTopologyBindingChannel');
+      var versionEl = document.getElementById('pvTopologyBindingVersion');
+      var envDisabled = level === 'project_default';
+      var versionDisabled = level !== 'version';
+      envEl.disabled = envDisabled;
+      channelEl.disabled = envDisabled;
+      versionEl.disabled = versionDisabled;
+      if(envDisabled){
+        envEl.value = '';
+        channelEl.value = '';
+      }
+      if(versionDisabled){
+        versionEl.value = '';
+      }
+    }
+    function pvFillTopologyBindingVersions(list){
+      var select = document.getElementById('pvTopologyBindingVersion');
+      if(!select){ return; }
+      var rows = ['<option value=\"\">不指定</option>'];
+      (list || []).forEach(function(name){
+        rows.push('<option value=\"' + String(name || '') + '\">' + String(name || '') + '</option>');
+      });
+      select.innerHTML = rows.join('');
+    }
+    function pvFillTopologyBindingTopologies(rows){
+      var select = document.getElementById('pvTopologyBindingTopology');
+      if(!select){ return; }
+      if(!(rows || []).length){
+        select.innerHTML = '<option value=\"\">暂无拓扑</option>';
+        return;
+      }
+      select.innerHTML = rows.map(function(row){
+        var name = String(row.name || row.topology_id || '-');
+        var env = String(row.env_label || row.env_key || '');
+        return '<option value=\"' + String(row.topology_id || '') + '\">' + name + (env ? (' / ' + env) : '') + '</option>';
+      }).join('');
+    }
+    function pvRenderTopologyBindings(payload){
+      window.__PV_TOPOLOGY_BINDINGS = payload || {};
+      pvFillTopologyBindingVersions(payload && payload.version_names ? payload.version_names : []);
+      pvFillTopologyBindingTopologies(payload && payload.topologies ? payload.topologies : []);
+      var summary = document.getElementById('pvTopologyBindingSummary');
+      if(summary){
+        var count = payload && Array.isArray(payload.bindings) ? payload.bindings.length : 0;
+        summary.textContent = count ? ('共 ' + count + ' 条规则') : '尚未配置规则';
+      }
+      var wrap = document.getElementById('pvTopologyBindingList');
+      if(!wrap){ return; }
+      var bindings = payload && Array.isArray(payload.bindings) ? payload.bindings : [];
+      if(!bindings.length){
+        wrap.innerHTML = '<div class="pv-empty-state">当前项目还没有拓扑绑定规则，先配置项目默认拓扑。</div>';
+        return;
+      }
+      var channelMap = {};
+      ((payload && payload.channels) || []).forEach(function(item){
+        channelMap[String(item.channel_id || '')] = String(item.channel_name || item.channel_key || item.channel_id || '');
+      });
+      var envMap = {development:'开发环境', testing:'测试环境', staging:'预发布环境', production:'生产环境'};
+      wrap.innerHTML = bindings.map(function(row){
+        var tags = [];
+        if(row.env_key){ tags.push(envMap[row.env_key] || row.env_key); }
+        if(row.channel_id){ tags.push(channelMap[row.channel_id] || row.channel_id); }
+        if(row.version_name){ tags.push(row.version_name); }
+        return ''
+          + '<div class="rounded-2xl border border-[#dce6ff] bg-white px-4 py-3">'
+          + '<div class="flex items-start justify-between gap-3">'
+          + '<div class="min-w-0">'
+          + '<div class="flex items-center gap-2 flex-wrap"><strong class="text-[#173057] text-sm">' + String(row.level_label || row.level || '-') + '</strong><span class="px-2 py-1 rounded-full bg-[#eef4ff] text-[#2f6cff] text-[11px] font-semibold">' + String(row.topology_id || '-') + '</span></div>'
+          + '<div class="mt-2 text-xs text-[#6f85ae]">' + (tags.length ? tags.join(' / ') : '作用于整个项目') + '</div>'
+          + '<div class="mt-2 text-xs text-slate-500">' + String(row.note || '未填写说明') + '</div>'
+          + '</div>'
+          + '<div class="flex items-center gap-2 shrink-0">'
+          + '<button type="button" class="pv-white-btn !h-8 !px-3 !text-xs" data-binding-edit=\"' + String(row.binding_id || '') + '\">编辑</button>'
+          + '<button type="button" class="pv-white-btn !h-8 !px-3 !text-xs !border-[#ffd8df] !text-[#e25574]" data-binding-delete=\"' + String(row.binding_id || '') + '\">删除</button>'
+          + '</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+    function pvLoadTopologyBindings(){
+      var wrap = document.getElementById('pvTopologyBindingList');
+      if(wrap){ wrap.innerHTML = '<div class="text-sm text-slate-400">加载中…</div>'; }
+      fetch('/api/ops-platform/topology-bindings?project_id=' + encodeURIComponent(%s), { credentials:'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if(!d || d.ok === false){ throw new Error((d && d.error) || 'load_failed'); }
+          pvRenderTopologyBindings(d);
+          pvApplyTopologyBindingLevel();
+        })
+        .catch(function(){
+          if(wrap){ wrap.innerHTML = '<div class="pv-empty-state">拓扑绑定加载失败，请检查接口或后端日志。</div>'; }
+        });
+    }
+    function pvEditTopologyBinding(bindingId){
+      var rows = (window.__PV_TOPOLOGY_BINDINGS && window.__PV_TOPOLOGY_BINDINGS.bindings) || [];
+      var row = rows.find(function(item){ return String(item.binding_id || '') === String(bindingId || ''); });
+      if(!row){ return; }
+      document.getElementById('pvTopologyBindingId').value = row.binding_id || '';
+      document.getElementById('pvTopologyBindingLevel').value = row.level || 'project_default';
+      document.getElementById('pvTopologyBindingEnv').value = row.env_key || '';
+      document.getElementById('pvTopologyBindingChannel').value = row.channel_id || '';
+      document.getElementById('pvTopologyBindingVersion').value = row.version_name || '';
+      document.getElementById('pvTopologyBindingTopology').value = row.topology_id || '';
+      document.getElementById('pvTopologyBindingNote').value = row.note || '';
+      pvApplyTopologyBindingLevel();
+      switchPvPanel('topologyBindings');
+    }
+    function pvSaveTopologyBinding(){
+      var payload = {
+        binding_id: document.getElementById('pvTopologyBindingId').value || '',
+        project_id: %s,
+        env_key: document.getElementById('pvTopologyBindingEnv').value || '',
+        channel_id: document.getElementById('pvTopologyBindingChannel').value || '',
+        version_name: document.getElementById('pvTopologyBindingVersion').value || '',
+        topology_id: document.getElementById('pvTopologyBindingTopology').value || '',
+        note: (document.getElementById('pvTopologyBindingNote').value || '').trim()
+      };
+      var level = document.getElementById('pvTopologyBindingLevel').value || 'project_default';
+      if(level === 'project_default'){
+        payload.env_key = '';
+        payload.channel_id = '';
+        payload.version_name = '';
+      } else if(level === 'env_channel'){
+        payload.version_name = '';
+      }
+      fetch('/api/ops-platform/topology-bindings/upsert', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify(payload)
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if(!d || d.ok === false){ alert((d && d.error) || '保存失败'); return; }
+        pvResetTopologyBindingForm();
+        pvLoadTopologyBindings();
+      });
+    }
+    function pvDeleteTopologyBinding(bindingId){
+      if(!bindingId || !confirm('确定删除这条拓扑绑定规则吗？')){ return; }
+      fetch('/api/ops-platform/topology-bindings/delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify({binding_id: bindingId, project_id: %s})
+      }).then(function(r){ return r.json(); }).then(function(d){
+        if(!d || d.ok === false){ alert((d && d.error) || '删除失败'); return; }
+        pvLoadTopologyBindings();
+      });
     }
     function pvQuickCreateVersionGroup(){
       var versionName = (document.getElementById('pvQuickVersionName').value || '').trim();
@@ -1988,8 +2232,12 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       document.getElementById('pvCreateVersionBtn').addEventListener('click', function(){ pvOpenVersionGroupModal(''); });
       document.getElementById('pvQuickOpenVersionGroup').addEventListener('click', function(){ pvOpenVersionGroupModal(''); });
       document.getElementById('pvQuickOpenDevices').addEventListener('click', pvOpenDevicesPanel);
+      document.getElementById('pvQuickOpenTopologyBindings').addEventListener('click', function(){ switchPvPanel('topologyBindings'); pvLoadTopologyBindings(); });
       document.getElementById('pvQuickCreateVersion').addEventListener('click', pvQuickCreateVersionGroup);
       document.getElementById('pvSaveQuickVersionCode').addEventListener('click', pvQuickSaveVersionCode);
+      document.getElementById('pvTopologyBindingSaveBtn').addEventListener('click', pvSaveTopologyBinding);
+      document.getElementById('pvTopologyBindingResetBtn').addEventListener('click', pvResetTopologyBindingForm);
+      document.getElementById('pvTopologyBindingLevel').addEventListener('change', pvApplyTopologyBindingLevel);
       document.getElementById('pvGotoGmWizard').addEventListener('click', pvGotoGmWizard);
       document.getElementById('pvRunGmPrecheck').addEventListener('click', pvRunGmPrecheck);
       document.getElementById('pvCompareRunBtn').addEventListener('click', pvRenderCompare);
@@ -2060,6 +2308,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         if(delGroupBtn){ pvDeleteVersionGroup(delGroupBtn.getAttribute('data-delete-version-group') || ''); return; }
         var editGroupBtn = e.target.closest('[data-edit-version-group]');
         if(editGroupBtn){ pvOpenVersionGroupModal(editGroupBtn.getAttribute('data-edit-version-group') || ''); return; }
+        var bindingEditBtn = e.target.closest('[data-binding-edit]');
+        if(bindingEditBtn){ pvEditTopologyBinding(bindingEditBtn.getAttribute('data-binding-edit') || ''); return; }
+        var bindingDeleteBtn = e.target.closest('[data-binding-delete]');
+        if(bindingDeleteBtn){ pvDeleteTopologyBinding(bindingDeleteBtn.getAttribute('data-binding-delete') || ''); return; }
         var gmRowBtn = e.target.closest('[data-gm-version-id]');
         if(gmRowBtn){
           var gmId = gmRowBtn.getAttribute('data-gm-version-id') || '';
@@ -2096,9 +2348,11 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       }
       setTimeout(function(){
         try{
-          switchPvPanel('versions');
+          var initialTab = new URLSearchParams(window.location.search).get('tab') || 'versions';
+          switchPvPanel(initialTab);
           if(typeof pvRefreshSummaries === 'function'){ pvRefreshSummaries(); }
           if(typeof pvResetDeviceForm === 'function'){ pvResetDeviceForm(); }
+          if(typeof pvResetTopologyBindingForm === 'function'){ pvResetTopologyBindingForm(); }
           var desiredStage = document.querySelector('.project-version-design-app').getAttribute('data-default-stage') || 'production';
           document.getElementById('pvQuickVersionStage').value = desiredStage;
           document.getElementById('pvGmEnv').value = pvGmEnvFromStageKey(desiredStage);
@@ -2115,7 +2369,22 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
 ''' % (
         html.escape(project_id),
         html.escape(selected_stage),
-        project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url,
+        project_id_url,
+        project_id_url,
+        project_id_url,
+        project_id_url,
+        project_id_url,
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        project_id_url,
         html.escape(project_name),
         html.escape(selected_stage_label),
         html.escape(topbar_avatar_text),
@@ -2130,6 +2399,9 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             if can_edit else ''
         ),
         project_channels_modal_rows_html,
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        channel_options_html,
         recent_builds_html,
         project_id_url,
         project_id_url,
@@ -2142,14 +2414,19 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(owner or '-'),
         html.escape(selected_stage_label),
         project_id_url,
+        html.escape(selected_ops_env_key),
         project_id_url,
+        html.escape(selected_ops_env_key),
         project_id_url,
         project_id_url,
         project_id_url,
         recent_activity_html,
+        html.escape(project_name),
         html.escape(project_id),
-        html.escape(project_id),
-        project_id_url, project_id_url,
+        project_id_url,
+        html.escape(selected_ops_env_key),
+        project_id_url,
+        html.escape(selected_ops_env_key),
         project_channels_modal_rows_html,
         channel_options_html,
         channel_options_html,
@@ -2157,6 +2434,9 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(qr_filename or (project_name + '.apk')),
         html.escape(qr_size),
         ('onclick="pvOpenQrPreview()"' if qr_filename else 'disabled'),
+        project_id_js,
+        project_id_js,
+        project_id_js,
         project_id_js,
         project_id_js,
         project_id_js,

@@ -4,8 +4,14 @@ from __future__ import annotations
 from routes.ops.common import *  # noqa: F403
 from flask import jsonify, redirect, render_template_string, request, session
 
-from models.data import log_audit
+from models.data import get_channels_for_project, log_audit, project_versions_db
 from services.authz import admin_required
+from services.release.topology_binding_service import (
+    delete_topology_binding,
+    list_topology_bindings,
+    resolve_topology_binding,
+    upsert_topology_binding,
+)
 import services.ops.helpers as ops_helpers
 from routes.ops import bp
 
@@ -27,6 +33,100 @@ def ops_platform_topologies():
         seen_env.add(key)
         env_values.append({"env_key": key, "label": str(item.get("label") or ops_helpers._env_label(key))})
     return jsonify({"ok": True, "project_id": project_id, "env_key": env_filter or "", "count": len(rows), "topologies": rows, "environments": env_values})
+
+
+@bp.route("/api/ops-platform/topology-bindings")
+@admin_required("gm_ops")
+def ops_platform_topology_bindings():
+    if not ops_helpers._allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    if not project_id:
+        return jsonify({"ok": False, "error": "missing_project_id"}), 400
+    bindings = list_topology_bindings(project_id)
+    topologies = ops_helpers._list_topologies(project_id, None)
+    channels = [
+        {
+            "channel_id": str(item.get("id") or "").strip(),
+            "channel_name": str(item.get("name") or item.get("id") or "").strip(),
+            "channel_key": str(item.get("apk_subdir") or item.get("build_param") or item.get("id") or "").strip(),
+        }
+        for item in (get_channels_for_project(project_id) or [])
+        if str(item.get("id") or "").strip()
+    ]
+    version_names = sorted(
+        {
+            str(item.get("version_name") or "").strip()
+            for item in (project_versions_db.get(project_id) or [])
+            if isinstance(item, dict) and str(item.get("version_name") or "").strip()
+        }
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "project_id": project_id,
+            "bindings": bindings,
+            "topologies": topologies,
+            "channels": channels,
+            "version_names": version_names,
+        }
+    )
+
+
+@bp.route("/api/ops-platform/topology-bindings/resolve")
+@admin_required("gm_ops")
+def ops_platform_topology_bindings_resolve():
+    if not ops_helpers._allow_ops_view():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    project_id = str(request.args.get("project_id") or "").strip()
+    env_key = str(request.args.get("env_key") or "").strip()
+    channel_id = str(request.args.get("channel_id") or "").strip()
+    version_name = str(request.args.get("version_name") or "").strip()
+    fallback_topology_id = str(request.args.get("fallback_topology_id") or "").strip()
+    if not project_id:
+        return jsonify({"ok": False, "error": "missing_project_id"}), 400
+    resolved = resolve_topology_binding(
+        project_id,
+        env_key,
+        channel_id,
+        version_name=version_name,
+        fallback_topology_id=fallback_topology_id,
+    )
+    return jsonify({"ok": True, "project_id": project_id, "resolved": resolved})
+
+
+@bp.route("/api/ops-platform/topology-bindings/upsert", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_bindings_upsert():
+    if not ops_helpers._allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    try:
+        row = upsert_topology_binding(payload, actor=str(session.get("user") or "admin"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    log_audit(
+        "ops_platform_topology_binding_upsert",
+        f"project={row.get('project_id')}; env={row.get('env_key') or '-'}; channel={row.get('channel_id') or '-'}; version={row.get('version_name') or '-'}; topology={row.get('topology_id')}",
+    )
+    return jsonify({"ok": True, "binding": row, "bindings": list_topology_bindings(str(row.get('project_id') or ''))})
+
+
+@bp.route("/api/ops-platform/topology-bindings/delete", methods=["POST"])
+@admin_required("gm_ops")
+def ops_platform_topology_bindings_delete():
+    if not ops_helpers._allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    binding_id = str(payload.get("binding_id") or "").strip()
+    project_id = str(payload.get("project_id") or "").strip()
+    if not binding_id:
+        return jsonify({"ok": False, "error": "missing_binding_id"}), 400
+    ok = delete_topology_binding(binding_id, actor=str(session.get("user") or "admin"))
+    if not ok:
+        return jsonify({"ok": False, "error": "binding_not_found"}), 404
+    log_audit("ops_platform_topology_binding_delete", f"binding={binding_id}; project={project_id or '-'}")
+    return jsonify({"ok": True, "bindings": list_topology_bindings(project_id)})
 
 
 

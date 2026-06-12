@@ -9,7 +9,7 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, render_template_string, request, session
+from flask import Blueprint, jsonify, render_template, render_template_string, request, session
 
 from models.data import (
     create_approval,
@@ -47,107 +47,30 @@ def _current_user_name() -> str:
 def _gm_console_shell(content: str, page_title: str, *, project_id: str = "", active_nav: str = "gm") -> str:
     user_name = _current_user_name()
     avatar_text = (user_name[:1] or "A").upper()
-    project_label = project_id or "未选择项目"
-    nav_active = {
-        "versions": " is-active" if active_nav == "versions" else "",
-        "builds": " is-active" if active_nav == "builds" else "",
-        "gm": " is-active" if active_nav == "gm" else "",
-        "topology": " is-active" if active_nav == "topology" else "",
-        "agents": " is-active" if active_nav == "agents" else "",
-        "logs": " is-active" if active_nav == "logs" else "",
-    }
-    return f"""
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{page_title}</title>
-  <link rel="stylesheet" href="/static/tailwind.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-  <style>
-    body {{ margin:0; font-family:"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; background:linear-gradient(180deg,#f5f7fb 0%,#eef3ff 100%); color:#0f172a; }}
-    .gm-console {{ min-height:100vh; display:grid; grid-template-columns:146px minmax(0,1fr); }}
-    .gm-side {{ background:linear-gradient(180deg,#0f274f 0%, #11264a 38%, #0d1d38 100%); color:#e6efff; padding:14px 12px; display:flex; flex-direction:column; }}
-    .gm-brand {{ display:flex; align-items:center; gap:12px; padding:4px 4px 18px; }}
-    .gm-brand-mark {{ width:40px; height:40px; border-radius:13px; background:linear-gradient(160deg,#4c8dff,#1f5fff); display:flex; align-items:center; justify-content:center; box-shadow:0 10px 20px rgba(27,73,180,.35); font-weight:700; font-size:24px; }}
-    .gm-brand-copy b {{ display:block; font-size:13px; line-height:1.1; }}
-    .gm-brand-copy span {{ display:block; font-size:11px; color:rgba(230,239,255,.72); margin-top:4px; }}
-    .gm-side-group {{ margin-top:10px; }}
-    .gm-side-title {{ padding:12px 10px 8px; font-size:12px; color:rgba(214,225,255,.48); letter-spacing:.02em; }}
-    .gm-side-link {{ display:flex; align-items:center; gap:9px; padding:10px 10px; margin-bottom:4px; color:#d7e5ff; border-radius:12px; font-size:12px; font-weight:500; text-decoration:none; }}
-    .gm-side-link:hover {{ background:rgba(255,255,255,.08); }}
-    .gm-side-link.is-active {{ background:linear-gradient(90deg, rgba(55, 116, 255, .48), rgba(67, 115, 255, .22)); box-shadow:inset 0 0 0 1px rgba(141, 180, 255, .18); }}
-    .gm-side-footer {{ margin-top:auto; padding-top:12px; }}
-    .gm-main {{ min-width:0; display:flex; flex-direction:column; }}
-    .gm-topbar {{ height:54px; border-bottom:1px solid rgba(148,163,184,.18); background:rgba(255,255,255,.82); backdrop-filter:blur(18px); display:flex; align-items:center; justify-content:space-between; padding:0 18px; gap:12px; }}
-    .gm-breadcrumb {{ display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; }}
-    .gm-breadcrumb strong {{ color:#1e293b; font-weight:700; }}
-    .gm-top-actions {{ display:flex; align-items:center; gap:10px; }}
-    .gm-chip,.gm-btn,.gm-profile {{ border-radius:12px; height:38px; display:inline-flex; align-items:center; gap:8px; padding:0 14px; font-size:13px; font-weight:500; text-decoration:none; }}
-    .gm-chip,.gm-profile {{ background:rgba(255,255,255,.9); border:1px solid #dbe5ff; color:#334155; }}
-    .gm-btn {{ background:linear-gradient(180deg,#3c78ff,#1c61ff); color:#fff; box-shadow:0 10px 24px rgba(55,116,255,.2); }}
-    .gm-profile-avatar {{ width:28px; height:28px; border-radius:999px; background:linear-gradient(180deg,#1d67ff,#0f49ce); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }}
-    .gm-content {{ padding:16px 18px 18px; min-width:0; }}
-    @media (max-width: 1120px) {{
-      .gm-console {{ grid-template-columns:1fr; }}
-      .gm-side {{ display:none; }}
-      .gm-topbar {{ padding:0 12px; }}
-      .gm-content {{ padding:12px; }}
-    }}
-  </style>
-</head>
-<body>
-  <div class="gm-console">
-    <aside class="gm-side">
-      <div class="gm-brand">
-        <div class="gm-brand-mark">G</div>
-        <div class="gm-brand-copy"><b>运维平台</b><span>GameOps Console</span></div>
-      </div>
-      <div class="gm-side-group">
-        <a href="/admin" class="gm-side-link"><i class="fas fa-house"></i><span>工作台</span></a>
-        <a href="/admin/dashboard" class="gm-side-link"><i class="fas fa-chart-pie"></i><span>总览看板</span></a>
-      </div>
-      <div class="gm-side-group">
-        <div class="gm-side-title">项目管理</div>
-        <a href="/admin/projects" class="gm-side-link"><i class="fas fa-table-list"></i><span>项目列表</span></a>
-        <a href="/admin/projects/{project_id or 'GomeKu'}" class="gm-side-link"><i class="fas fa-grid-2"></i><span>项目工作台</span></a>
-        <a href="/admin/projects/{project_id or 'GomeKu'}/versions" class="gm-side-link{nav_active['versions']}"><i class="fas fa-layer-group"></i><span>项目版本管理</span></a>
-        <a href="/admin/projects/{project_id or 'GomeKu'}/build-history" class="gm-side-link{nav_active['builds']}"><i class="fas fa-clock-rotate-left"></i><span>构建历史</span></a>
-        <a href="/admin/gm-ops?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['gm']}"><i class="fas fa-wand-magic-sparkles"></i><span>GM 发版工作台</span></a>
-        <a href="/download-center?project={project_id or 'GomeKu'}" class="gm-side-link"><i class="fas fa-download"></i><span>下载中心</span></a>
-      </div>
-      <div class="gm-side-group">
-        <div class="gm-side-title">运维平台</div>
-        <a href="/admin/ops-platform?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['topology']}"><i class="fas fa-sitemap"></i><span>拓扑编排</span></a>
-        <a href="/admin/ops-platform?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['agents']}"><i class="fas fa-server"></i><span>Agent 与服务器</span></a>
-        <a href="/admin/audit-log?project_id={project_id or 'GomeKu'}" class="gm-side-link{nav_active['logs']}"><i class="fas fa-scroll"></i><span>日志中心</span></a>
-      </div>
-      <div class="gm-side-footer">
-        <a href="/logout" class="gm-side-link"><i class="fas fa-angles-left"></i><span>收起菜单</span></a>
-      </div>
-    </aside>
-    <div class="gm-main">
-      <div class="gm-topbar">
-        <div class="gm-breadcrumb">
-          <i class="fas fa-bars text-slate-500"></i>
-          <span>项目管理</span>
-          <i class="fas fa-chevron-right text-[10px] text-slate-400"></i>
-          <strong>{page_title}</strong>
-        </div>
-        <div class="gm-top-actions">
-          <a href="/admin/projects/{project_id or 'GomeKu'}/versions" class="gm-chip"><i class="fas fa-circle-info text-blue-500"></i><span>项目：{project_label}</span></a>
-          <a href="/admin/projects/{project_id or 'GomeKu'}/versions" class="gm-btn"><i class="fas fa-layer-group"></i><span>版本管理</span></a>
-          <a href="/admin/ops-platform?project_id={project_id or 'GomeKu'}" class="gm-chip"><i class="fas fa-sitemap text-slate-400"></i><span>拓扑编排</span></a>
-          <a href="/profile" class="gm-profile"><span class="gm-profile-avatar">{avatar_text}</span><span>{user_name}</span></a>
-        </div>
-      </div>
-      <div class="gm-content">{content}</div>
-    </div>
-  </div>
-</body>
-</html>
-"""
+    project_row = projects_db.get(project_id) or {}
+    project_name = str(project_row.get("name") or project_id or "未选择项目").strip() or project_id or "未选择项目"
+    env_key = normalize_release_env_key(request.args.get("env_key") or request.args.get("env") or "production")
+    env_label = {
+        "development": "开发环境",
+        "testing": "测试环境",
+        "staging": "预发布环境",
+        "production": "生产环境",
+    }.get(env_key, env_key or "生产环境")
+    return render_template(
+        "ops_shell.html",
+        content=content,
+        title=page_title,
+        active_page=active_nav,
+        project_id=project_id,
+        project_name=project_name,
+        project_label=f"{project_name}_{env_label}",
+        env_key=env_key,
+        topology_id=str(request.args.get("topology_id") or ""),
+        avatar_text=avatar_text,
+        user_name=user_name,
+        extra_css="",
+        extra_js="",
+    )
 PENDING_ACTIONS_KEY = "GM_APPROVAL_PENDING_ACTIONS"
 
 ACTION_CATALOG: List[Dict[str, Any]] = [
@@ -662,6 +585,7 @@ def _release_operation_payload(
         "topology_id": str(server_snapshot.get("topology_id") or ""),
         "runtime_run_id": str(server_snapshot.get("runtime_run_id") or ""),
         "topology_version_label": str(server_snapshot.get("topology_version_label") or ""),
+        "binding_source": str(bundle_server.get("binding_source") or ctx.get("topology_binding_source") or ""),
         "profile_source": str(bundle_server.get("profile_source") or ctx.get("profile_source") or ""),
         "supersedes_bundle_id": str(bundle.get("supersedes_bundle_id") or ""),
         "rollback_of_bundle_id": str(bundle.get("rollback_of_bundle_id") or ""),
@@ -2166,11 +2090,13 @@ def gm_release_precheck():
             "topology_runtime_aligned": precheck.get("topology_runtime_aligned"),
             "topology_id": precheck.get("topology_id"),
             "runtime_topology_id": precheck.get("runtime_topology_id"),
+            "active_binding_source": precheck.get("binding_source"),
             "profile_source": precheck.get("profile_source"),
             "publish_status": release.get("publish_status"),
             "server_snapshot": {
                 "topology_id": precheck.get("topology_id"),
                 "runtime_topology_id": precheck.get("runtime_topology_id"),
+                "binding_source": precheck.get("binding_source"),
             },
             "checked_at": precheck.get("checked_at"),
         }
@@ -2773,6 +2699,7 @@ def gm_public_release_config():
         "topology_id": (ctx.get("server_snapshot") or {}).get("topology_id"),
         "runtime_run_id": (ctx.get("server_snapshot") or {}).get("runtime_run_id"),
         "topology_version_label": (ctx.get("server_snapshot") or {}).get("topology_version_label"),
+        "binding_source": ctx.get("topology_binding_source"),
         "profile_source": ctx.get("profile_source"),
         "version": {
             "version_name": effective_release.get("version_name"),
@@ -2858,6 +2785,7 @@ def gm_public_runtime_bootstrap():
             "topology_id": (ctx.get("server_snapshot") or {}).get("topology_id"),
             "runtime_run_id": (ctx.get("server_snapshot") or {}).get("runtime_run_id"),
             "topology_version_label": (ctx.get("server_snapshot") or {}).get("topology_version_label"),
+            "binding_source": ctx.get("topology_binding_source"),
             "profile_source": ctx.get("profile_source"),
             "network_profile": profile,
             "server_snapshot": ctx.get("server_snapshot"),

@@ -5,17 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
   <link rel="stylesheet" href="/static/tailwind.css">
-  <link rel="stylesheet" href="/static/ops_shell.css?v=20260609-scope-v1">
+  <link rel="stylesheet" href="/static/ops_shell.css?v=20260612-project-workspace-v1">
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
 </head>
 <body>
 <div class="ops-shell-app" data-page="{{ active_page }}" data-project-id="{{ project_id }}" data-env-key="{{ env_key or 'production' }}" {% if topology_id %}data-topology-id="{{ topology_id }}"{% endif %}>
   {% include '_ops_sidebar.html' %}
   <main class="ops-shell-main">
-    {{ content|safe }}
+    <header class="ops-shell-topbar">
+      <div class="ops-shell-breadcrumb">
+        <i class="fas fa-bars text-slate-500"></i>
+        <span>项目管理</span>
+        <i class="fas fa-chevron-right text-[10px] text-slate-400"></i>
+        <strong>{{ title }}</strong>
+      </div>
+      <div class="ops-shell-top-actions">
+        <a href="{% if project_id %}/admin/projects/{{ project_id }}/versions{% else %}/admin/projects{% endif %}" class="ops-shell-chip">
+          <i class="fas fa-circle-info text-blue-500"></i>
+          <span>项目：{{ project_label or project_id or '未选择项目' }}</span>
+          <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+        </a>
+        <a href="/admin/projects" class="ops-shell-primary-btn">
+          <i class="fas fa-plus"></i>
+          <span>创建项目</span>
+        </a>
+        {% if project_id %}
+        <a href="/admin/projects/{{ project_id }}/topologies?env_key={{ env_key or 'production' }}" class="ops-shell-white-btn">
+          <i class="fas fa-plus"></i>
+          <span>新建拓扑图</span>
+        </a>
+        {% endif %}
+        <label class="ops-shell-search">
+          <i class="fas fa-search text-slate-400"></i>
+          <input type="text" placeholder="搜索项目、环境、版本、渠道">
+        </label>
+        <a href="/docs?module=projects" class="ops-shell-white-btn">
+          <i class="fas fa-circle-question text-slate-400"></i>
+          <span>帮助中心</span>
+        </a>
+        <button type="button" class="ops-shell-white-btn ops-shell-icon-pill" title="通知中心" onclick="location.href='/admin/notifications'">
+          <i class="fas fa-bell text-slate-500"></i>
+          <span class="ops-shell-bell-badge">12</span>
+        </button>
+        <a href="/profile" class="ops-shell-white-btn ops-shell-profile-chip">
+          <span class="ops-shell-profile-avatar">{{ avatar_text or 'A' }}</span>
+          <span class="ops-shell-profile-text">
+            <span>{{ user_name or '运维管理员' }}</span>
+            <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+          </span>
+        </a>
+      </div>
+    </header>
+    <section class="ops-shell-content">
+      {{ content|safe }}
+    </section>
   </main>
 </div>
-<script src="/static/ops_shell.js?v=20260609-scope-v1"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+<script src="/static/ops_shell.js?v=20260612-project-workspace-v1"></script>
 {% if extra_js %}{{ extra_js|safe }}{% endif %}
 </body>
 </html>
