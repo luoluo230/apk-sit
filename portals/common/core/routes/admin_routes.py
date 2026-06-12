@@ -578,6 +578,18 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         active_count_group = len([item for item in normalized_rows if item['version_status'] == 'active'])
         download_total_group = sum(item['download_count'] for item in normalized_rows)
         latest_row = sorted(normalized_rows, key=lambda item: item['updated_at'] or '', reverse=True)[0] if normalized_rows else {}
+        channel_stage_platform = []
+        seen_triplets = set()
+        for item in normalized_rows:
+            triplet = (
+                item.get('channel_label') or item.get('channel') or '-',
+                item.get('stage_short_label') or item.get('stage') or '-',
+                item.get('platform_label') or item.get('platform') or '-',
+            )
+            if triplet in seen_triplets:
+                continue
+            seen_triplets.add(triplet)
+            channel_stage_platform.append(' / '.join(str(part) for part in triplet if part))
         version_groups.append({
             'version_name': version_name,
             'rows': normalized_rows,
@@ -587,6 +599,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             'version_code_count': len(normalized_rows),
             'download_total': download_total_group,
             'latest_updated_at': latest_row.get('updated_at') or '',
+            'meta_line': '；'.join(channel_stage_platform[:3]) or '-',
         })
     version_groups.sort(key=lambda item: (item['latest_updated_at'], item['version_name']), reverse=True)
 
@@ -658,7 +671,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         version_group_cards.append(
             '<details class="pv-group-card pv-version-group" {open_attr}>'
             '<summary class="pv-group-summary">'
-            '<div class="pv-group-col pv-group-name"><span class="pv-expand-caret"><i class="fas fa-chevron-down"></i></span><strong>{version_name}</strong>{recommend_badge}<span class="pv-mini-tag {mode_class}">{mode_label}</span></div>'
+            '<div class="pv-group-col pv-group-name"><span class="pv-expand-caret"><i class="fas fa-chevron-down"></i></span><div class="pv-group-name-stack"><div class="pv-group-name-top"><strong>{version_name}</strong>{recommend_badge}<span class="pv-mini-tag {mode_class}">{mode_label}</span></div><div class="pv-group-name-meta">{meta_line}</div></div></div>'
             '<div class="pv-group-col">{mode_label_plain}</div>'
             '<div class="pv-group-col"><span class="pv-status-pill {group_status_class}">{group_status_label}</span></div>'
             '<div class="pv-group-col">{version_code_count}</div>'
@@ -667,10 +680,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             '<div class="pv-group-col">'
             '<div class="pv-row-actions">'
             '<a href="/admin/projects/{project_id}/build-history" class="pv-icon-btn" title="查看构建历史"><i class="fas fa-eye"></i></a>'
-                '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-up-right-from-square"></i></a>'
+            '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-up-right-from-square"></i></a>'
             '<button type="button" class="pv-icon-btn" title="编辑版本组" data-edit-version-group="{edit_id}"><i class="fas fa-pen"></i></button>'
             '{delete_button}'
-            '<button type="button" class="pv-icon-btn" title="打开发版工作台" data-pv-modal-open="gm-wizard"><i class="fas fa-ellipsis"></i></button>'
+            '<button type="button" class="pv-icon-btn" title="打开发版工作台" data-pv-modal-open="gm-wizard"><i class="fas fa-rocket"></i></button>'
             '</div>'
             '</div>'
             '</summary>'
@@ -691,6 +704,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 project_id=html.escape(project_id),
                 group_status_class=group_status_class,
                 group_status_label=html.escape(group_status_label),
+                meta_line=html.escape(group['meta_line']),
                 version_code_count=html.escape(str(group['version_code_count'])),
                 active_count=html.escape(str(group['active_count'])),
                 download_total=html.escape(str(group['download_total'])),
@@ -829,7 +843,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-group-card summary::-webkit-details-marker { display: none; }
     .project-version-design-app .pv-group-summary { display: grid; grid-template-columns: minmax(180px, 2.1fr) .86fr .82fr .84fr .76fr .92fr .8fr; align-items: center; gap: 10px; padding: 10px 16px; font-size: 13px; color: #173057; min-width: 860px; }
     .project-version-design-app .pv-group-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .project-version-design-app .pv-group-name-stack { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+    .project-version-design-app .pv-group-name-top { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
     .project-version-design-app .pv-group-name strong { font-size: 14px; font-weight: 800; color: #173057; }
+    .project-version-design-app .pv-group-name-meta { font-size: 12px; color: #6f85ae; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .project-version-design-app .pv-expand-caret { width: 14px; color: #7b8aa8; font-size: 11px; transition: transform .18s ease; }
     .project-version-design-app .pv-group-card[open] .pv-expand-caret { transform: rotate(180deg); }
     .project-version-design-app .pv-group-col { font-size: 12px; color: #3f557c; }
