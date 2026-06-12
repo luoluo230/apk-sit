@@ -988,17 +988,72 @@ def gm_ops_page():
   <section id="sec-release" class="gm-card p-5 space-y-4" style="display:none;">
     <div class="flex items-start justify-between gap-3 flex-wrap">
       <div>
-        <h3 class="font-semibold text-slate-900">发布域参数（分步向导）</h3>
-        <p class="text-xs text-slate-500 mt-1">按步骤填写，先完成核心参数。高级参数默认折叠，避免信息过载。</p>
+        <h3 class="font-semibold text-slate-900">GM 发版工作台</h3>
+        <p class="text-xs text-slate-500 mt-1">整页与版本管理弹窗统一为五步发版向导。先选版本，再预检，再审批，再执行发布，最后做结果对账。</p>
       </div>
       <label class="inline-flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" id="releaseOnlyRequired" class="rounded border-slate-300">仅看必填</label>
     </div>
+    <div class="rounded-[18px] border border-[#dbe5ff] bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-4 space-y-4">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h4 class="text-[15px] font-extrabold text-[#173057]">选择发布版本</h4>
+          <p class="mt-1 text-[12px] text-[#7d90b3]">环境、渠道、平台与版本必须对齐；选中版本后再执行 Scope / 拓扑 / 产物预检。</p>
+        </div>
+        <button type="button" class="gm-tab-btn" onclick="loadReleaseScopePanel()">刷新候选版本</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">发布版本</label>
+          <select id="releaseVersionSelector" class="w-full border rounded-lg px-3 py-2">
+            <option value="">请先加载候选版本</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">VersionCode</label>
+          <input id="releaseVersionCodePreview" readonly class="w-full border rounded-lg px-3 py-2 bg-slate-50" placeholder="自动带入">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-500 mb-1">操作原因</label>
+          <input id="reason" class="w-full border rounded-lg px-3 py-2" placeholder="追热修 / 正式发版 / 渠道补发">
+        </div>
+      </div>
+      <div class="overflow-hidden rounded-[16px] border border-[#dbe6ff] bg-white">
+        <div class="grid grid-cols-[minmax(0,1.25fr)_120px_140px_120px_110px] gap-2 bg-[#f4f8ff] px-4 py-3 text-[12px] font-bold text-[#6f85ae]">
+          <div>版本组 / 渠道</div>
+          <div>VersionCode</div>
+          <div>构建时间</div>
+          <div>发布状态</div>
+          <div>Bundle</div>
+        </div>
+        <div id="releaseVersionTableBody" class="divide-y divide-[#edf2ff] text-[12px] text-[#173057]">
+          <div class="px-4 py-6 text-center text-[#8ca0c3]">当前环境 / 渠道 / 平台下暂无可选版本。</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+          <div class="text-[11px] text-[#7e90b3]">版本组</div>
+          <div id="releaseSelectedVersionName" class="mt-1 text-[14px] font-extrabold text-[#173057]">--</div>
+        </div>
+        <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+          <div class="text-[11px] text-[#7e90b3]">VersionCode</div>
+          <div id="releaseSelectedVersionCode" class="mt-1 text-[14px] font-extrabold text-[#173057]">--</div>
+        </div>
+        <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+          <div class="text-[11px] text-[#7e90b3]">渠道 / 平台</div>
+          <div id="releaseSelectedChannelPlatform" class="mt-1 text-[14px] font-extrabold text-[#173057]">--</div>
+        </div>
+        <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+          <div class="text-[11px] text-[#7e90b3]">作用域</div>
+          <div id="releaseSelectedScope" class="mt-1 text-[14px] font-extrabold text-[#173057]">--</div>
+        </div>
+      </div>
+    </div>
     <div id="releaseStepNav" class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
-      <button type="button" id="releaseStepBtn-1" class="gm-tab-btn gm-tab-btn-active" onclick="setReleaseStep(1)">1.版本与资源基础</button>
-      <button type="button" id="releaseStepBtn-2" class="gm-tab-btn" onclick="setReleaseStep(2)">2.分发与客户端</button>
-      <button type="button" id="releaseStepBtn-3" class="gm-tab-btn" onclick="setReleaseStep(3)">3.策略与执行编排</button>
-      <button type="button" id="releaseStepBtn-4" class="gm-tab-btn" onclick="setReleaseStep(4)">4.路由与审批</button>
-      <button type="button" id="releaseStepBtn-5" class="gm-tab-btn" onclick="setReleaseStep(5)">5.预检与执行</button>
+      <button type="button" id="releaseStepBtn-1" class="gm-tab-btn gm-tab-btn-active" onclick="setReleaseStep(1)">1.选择版本</button>
+      <button type="button" id="releaseStepBtn-2" class="gm-tab-btn" onclick="setReleaseStep(2)">2.预检检查</button>
+      <button type="button" id="releaseStepBtn-3" class="gm-tab-btn" onclick="setReleaseStep(3)">3.审批确认</button>
+      <button type="button" id="releaseStepBtn-4" class="gm-tab-btn" onclick="setReleaseStep(4)">4.执行发布</button>
+      <button type="button" id="releaseStepBtn-5" class="gm-tab-btn" onclick="setReleaseStep(5)">5.结果对账</button>
     </div>
     <div id="releaseStepStatus" class="text-xs rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600"></div>
     <div id="releaseStepPanes" class="space-y-3">
@@ -1058,7 +1113,7 @@ def gm_ops_page():
             <div class="gm-release-field"><label class="block text-xs text-slate-500 mb-1">战斗UDP</label><input id="battleUdp" class="w-full" placeholder="battle_udp"></div>
             <div class="gm-release-field"><label class="block text-xs text-slate-500 mb-1">运维HTTP</label><input id="opsHttp" class="w-full" placeholder="ops_http"></div>
             <div class="gm-release-field"><label class="block text-xs text-slate-500 mb-1">公告地址</label><input id="noticeUrl" class="w-full" placeholder="notice_url"></div>
-            <div class="gm-release-field md:col-span-2" data-required="1"><label class="block text-xs text-slate-500 mb-1">审批理由 <span class="text-rose-500">*</span></label><input id="reason" class="w-full" placeholder="approval_reason"></div>
+            <div class="gm-release-field md:col-span-2" data-required="1"><label class="block text-xs text-slate-500 mb-1">审批理由 <span class="text-rose-500">*</span></label><input class="w-full bg-slate-50" value="请在顶部“操作原因”中维护" readonly></div>
           </div>
         </details>
       </div>
@@ -1078,11 +1133,23 @@ def gm_ops_page():
             <button type="button" class="gm-tab-btn" onclick="loadReleaseScopePanel()">刷新</button>
           </div>
           <div id="releaseScopeSummary" class="text-xs text-slate-600 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 mb-2">尚未加载</div>
-          <div class="overflow-auto max-h-48">
-            <table class="min-w-full text-xs border border-slate-200">
-              <thead class="bg-slate-100"><tr><th class="px-2 py-1 text-left border-b">版本</th><th class="px-2 py-1 text-left border-b">scope_id</th><th class="px-2 py-1 text-left border-b">active_bundle_id</th><th class="px-2 py-1 text-left border-b">publish</th></tr></thead>
-              <tbody id="releaseVersionTableBody"><tr><td class="px-2 py-2 text-slate-400" colspan="4">点击刷新加载</td></tr></tbody>
-            </table>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+              <div class="text-[11px] text-[#7e90b3]">scope_id</div>
+              <div id="releaseScopeIdCard" class="mt-1 text-[13px] font-extrabold text-[#173057] break-all">--</div>
+            </div>
+            <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+              <div class="text-[11px] text-[#7e90b3]">topology_id</div>
+              <div id="releaseTopologyIdCard" class="mt-1 text-[13px] font-extrabold text-[#173057] break-all">--</div>
+            </div>
+            <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+              <div class="text-[11px] text-[#7e90b3]">runtime_topology_id</div>
+              <div id="releaseRuntimeTopologyIdCard" class="mt-1 text-[13px] font-extrabold text-[#173057] break-all">--</div>
+            </div>
+            <div class="rounded-[14px] border border-[#d9e5ff] bg-[#f7faff] p-3">
+              <div class="text-[11px] text-[#7e90b3]">active_bundle_id</div>
+              <div id="releaseBundleIdCard" class="mt-1 text-[13px] font-extrabold text-[#173057] break-all">--</div>
+            </div>
           </div>
         </div>
         <div class="gm-actions">
@@ -1179,11 +1246,11 @@ const RELEASE_STEP_CORE_MAP = {
   5: []
 };
 const RELEASE_STEP_INFO = {
-  1: {title:'版本与资源基础', goal:'建立发布版本的核心身份与资源入口。', input:'完成版本名称、APK/资源/配置版本与三类下载地址。', next:'进入分发与客户端元数据配置。'},
-  2: {title:'分发与客户端元数据', goal:'补齐终端识别与分发基础元信息。', input:'按平台填写包标识、上传存储与 CDN 路径。', next:'进入发布策略与执行编排。'},
-  3: {title:'策略与执行编排', goal:'声明发布模式和执行单元。', input:'设置模式、目标对象与代码/配置/资源单元。', next:'进入运行时路由与审批上下文。'},
-  4: {title:'路由与审批', goal:'确认服务入口与审批理由。', input:'维护网关/登录/游戏/战斗/运维路由，补齐审批理由。', next:'进入预检与执行确认。'},
-  5: {title:'预检与执行', goal:'按链路执行预检、审批、发布、回滚、对账。', input:'先通过预检，再按状态条推进后续动作。', next:'执行后可在执行日志查看摘要和原始返回。'}
+  1: {title:'选择版本', goal:'锁定当前环境、渠道、平台下唯一的待发布版本。', input:'从候选版本中选择版本组与 VersionCode，并自动带入核心字段。', next:'进入 Scope / 拓扑 / 产物预检。'},
+  2: {title:'预检检查', goal:'提前验证 Scope、拓扑、运行态与产物可达性。', input:'先执行预检，确保 scope_id、topology_id、runtime_topology_id 能全部解析。', next:'预检通过后进入审批确认。'},
+  3: {title:'审批确认', goal:'固化操作原因与审批上下文。', input:'确认操作原因、目标版本、目标拓扑与命中的 Bundle。', next:'审批通过后进入执行发布。'},
+  4: {title:'执行发布', goal:'真正写入发布结果并生成 Bundle。', input:'执行发布后需要确认 active_bundle_id 是否回写成功。', next:'发布完成后进入结果对账。'},
+  5: {title:'结果对账', goal:'核对 Bundle、拓扑、运行态与页面状态是否一致。', input:'确认 scope_id / topology_id / runtime_topology_id / active_bundle_id 全链路一致。', next:'完成后可去执行日志和版本页继续追踪。'}
 };
 const SECTION_GUIDE = {
   identity: {title:'项目身份', goal:'确认当前项目鉴权与接入信息。', input:'此区以只读信息为主，必要时先刷新项目身份。', next:'完成后进入构建或发布分区填写参数。'},
@@ -1476,7 +1543,7 @@ function normalizeEnvKeyUi(value){
   if(raw==='prod' || raw==='production' || raw==='release') return 'production';
   return raw;
 }
-function currentReleasePayload(){ const env=selectedEnv(); const channel=selectedChannel(); return { project_id: selectedProjectId(), env: env, env_key: normalizeEnvKeyUi(env), channel: channel, channel_key: channel, platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
+function currentReleasePayload(){ const env=selectedEnv(); const channel=selectedChannel(); return { project_id: selectedProjectId(), env: env, env_key: normalizeEnvKeyUi(env), channel: channel, channel_key: channel, platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), version_code: (document.getElementById('releaseVersionCodePreview')?.value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
 function currentProfilePayload(){ return { id: (document.getElementById('serverProfile').value || '').trim() || 'default', name: (document.getElementById('serverProfile').value || '').trim() || 'default', env: selectedEnv(), channel: selectedChannel(), gateway_ws: (document.getElementById('gatewayWs').value||'').trim(), login_http: (document.getElementById('loginHttp').value||'').trim(), game_ws: (document.getElementById('gameWs').value||'').trim(), battle_udp: (document.getElementById('battleUdp').value||'').trim(), ops_http: (document.getElementById('opsHttp').value||'').trim(), notice_url: (document.getElementById('noticeUrl').value||'').trim() }; }
 function refreshPreview(){ const p=currentReleasePayload(); document.getElementById('preview').textContent = JSON.stringify({project_id:p.project_id, env:p.env, channel:p.channel, version_name:p.version_name, apk_version:p.apk_version, resource_version:p.resource_version, config_version:p.config_version},null,2); }
 function renderDictRows(rows){ const cat=(document.getElementById('dictCategory')?.value||'all'); const kw=(document.getElementById('dictKeyword')?.value||'').trim().toLowerCase(); const body=document.getElementById('closureTableBody'); if(!body) return; const filtered=(rows||[]).filter(x=>{ const okCat=(cat==='all'||String(x.sourceLayer||'')===cat); const okKw=(!kw||String(x.key||'').toLowerCase().includes(kw)||String(x.description||'').toLowerCase().includes(kw)); return okCat&&okKw;}); body.innerHTML = filtered.map(x=>`<tr class="border-b"><td class="px-2 py-1">${x.key||'-'}</td><td class="px-2 py-1">${x.description||'-'}</td><td class="px-2 py-1">${x.sourceLayer||x.source||'-'}</td><td class="px-2 py-1">${x.value===undefined||x.value===null||x.value===''?'-':String(x.value)}</td><td class="px-2 py-1">${x.effectiveStage||'-'}</td><td class="px-2 py-1">${(x.logKey||'-')+' / '+(x.readbackField||'-')}</td></tr>`).join('') || '<tr><td class="px-2 py-2" colspan="6">暂无参数映射</td></tr>'; }
@@ -1493,14 +1560,67 @@ function renderBeforeAfterDiff(beforeObj, afterObj){
   }).join('');
 }
 async function loadCatalog(){ const r=await fetch('/api/gm-ops/projects/catalog'); const d=await r.json(); if(!d.ok){ updateResult(d); return; } const rows=d.data||[]; const sel=document.getElementById('projectSelect'); sel.innerHTML=rows.map(p=>`<option value="${p.project_id}">${p.project_id} / ${p.project_name}</option>`).join(''); const q=new URLSearchParams(window.location.search); const qpid=(q.get('project_id')||'').trim(); if(qpid && rows.some(x=>String(x.project_id)===qpid)){ sel.value=qpid; } refreshContextHeader(); if(rows.length){ document.getElementById('projectId').value=(sel.value||rows[0].project_id); await loadWorkspace(); } }
-async function loadWorkspace(){ const pid=(document.getElementById('projectSelect').value||'').trim(); if(!pid){ return; } document.getElementById('projectId').value=pid; const rs=await fetch('/api/gm-ops/projects/catalog?project_id='+encodeURIComponent(pid)); const d=await rs.json(); if(!d.ok){ updateResult(d); return; } const item=(d.data||[])[0]||{}; const envRows=(item.envs || ['dev','test','staging','prod']).map(v=>({ value:v, text:envLabel(v) })); upsertOptions(document.getElementById('env'), envRows, item.default_env || 'dev'); upsertChannelOptions(document.getElementById('channel'), item.channel_options || [], item.default_channel || 'default'); document.getElementById('gameId').value=item.game_id||''; document.getElementById('gameKeyMasked').value=item.game_key_masked||'***'; document.getElementById('serverProfile').value=item.default_server_profile||'default'; document.getElementById('credentialSummary').innerText=`gameId: ${item.game_id||'-'} | gameKey: ${item.game_key_masked||'***'} | 更新时间: ${item.updated_at||'-'}`; document.getElementById('workspaceSummary').innerText=`项目 ${item.project_id||pid}，可用环境 ${(item.envs||[]).map(envLabel).join('/')||'-'}，可用渠道 ${(item.channel_options||[]).map(x=>(x.channel_key||x.key||x.id)+'·'+x.name).join('/')||'-'}`; refreshContextHeader(); refreshPreview(); updateResult({ok:true, workspace:item}); }
+async function loadWorkspace(){ const pid=(document.getElementById('projectSelect').value||'').trim(); if(!pid){ return; } document.getElementById('projectId').value=pid; const rs=await fetch('/api/gm-ops/projects/catalog?project_id='+encodeURIComponent(pid)); const d=await rs.json(); if(!d.ok){ updateResult(d); return; } const item=(d.data||[])[0]||{}; const envRows=(item.envs || ['dev','test','staging','prod']).map(v=>({ value:v, text:envLabel(v) })); upsertOptions(document.getElementById('env'), envRows, item.default_env || 'dev'); upsertChannelOptions(document.getElementById('channel'), item.channel_options || [], item.default_channel || 'default'); document.getElementById('gameId').value=item.game_id||''; document.getElementById('gameKeyMasked').value=item.game_key_masked||'***'; document.getElementById('serverProfile').value=item.default_server_profile||'default'; document.getElementById('credentialSummary').innerText=`gameId: ${item.game_id||'-'} | gameKey: ${item.game_key_masked||'***'} | 更新时间: ${item.updated_at||'-'}`; document.getElementById('workspaceSummary').innerText=`项目 ${item.project_id||pid}，可用环境 ${(item.envs||[]).map(envLabel).join('/')||'-'}，可用渠道 ${(item.channel_options||[]).map(x=>(x.channel_key||x.key||x.id)+'·'+x.name).join('/')||'-'}`; refreshContextHeader(); refreshPreview(); await loadReleaseScopePanel(); updateResult({ok:true, workspace:item}); }
+function applyReleaseVersionRow(row){
+  if(!row){ return; }
+  document.getElementById('versionName').value = row.version_name || '';
+  document.getElementById('releaseVersionCodePreview').value = row.version_code || '';
+  document.getElementById('releaseSelectedVersionName').innerText = row.version_name || '--';
+  document.getElementById('releaseSelectedVersionCode').innerText = row.version_code || '--';
+  document.getElementById('releaseSelectedChannelPlatform').innerText = `${row.channel_name || row.channel_key || row.channel_id || '-'} / ${platformLabel(row.platform || selectedPlatform())}`;
+  document.getElementById('releaseSelectedScope').innerText = row.scope_id || '--';
+  if(row.apk_version){ document.getElementById('apkVersion').value = row.apk_version || ''; }
+  if(row.resource_version){ document.getElementById('resourceVersion').value = row.resource_version || ''; }
+  if(row.config_version){ document.getElementById('configVersion').value = row.config_version || ''; }
+  if(row.apk_url){ document.getElementById('apkUrl').value = row.apk_url || ''; }
+  if(row.resource_url){ document.getElementById('resourceUrl').value = row.resource_url || ''; }
+  if(row.config_url){ document.getElementById('configUrl').value = row.config_url || ''; }
+  if(row.distribution_method){ document.getElementById('distributionMethod').value = row.distribution_method || 'direct'; }
+  refreshPreview();
+}
+function renderReleaseCandidateRows(rows){
+  const bodyEl = document.getElementById('releaseVersionTableBody');
+  const selectEl = document.getElementById('releaseVersionSelector');
+  if(selectEl){
+    selectEl.innerHTML = '<option value="">请选择下方候选版本</option>' + rows.map(function(row, index){
+      const value = String(row.id || row.version_name || index);
+      const label = `${row.version_name || '-'} / ${row.channel_name || row.channel_key || row.channel_id || '-'} / VC ${row.version_code || '-'}`;
+      return `<option value="${value}">${label}</option>`;
+    }).join('');
+  }
+  if(!bodyEl){ return; }
+  if(!rows.length){
+    bodyEl.innerHTML = '<div class="px-4 py-6 text-center text-[#8ca0c3]">当前环境 / 渠道 / 平台下暂无可选版本。</div>';
+    return;
+  }
+  bodyEl.innerHTML = rows.map(function(row, index){
+    const value = String(row.id || row.version_name || index);
+    return ''
+      + `<button type="button" class="w-full grid grid-cols-[minmax(0,1.25fr)_120px_140px_120px_110px] gap-2 px-4 py-3 text-left hover:bg-[#f8fbff]" data-release-row="${value}">`
+      + `<div><div class="font-semibold text-[#173057]">${row.version_name || '-'}</div><div class="mt-1 text-[11px] text-[#6f85ae]">${row.channel_name || row.channel_key || row.channel_id || '-'} / ${envLabel(row.env_key || row.env || selectedEnv())} / ${platformLabel(row.platform || selectedPlatform())}</div></div>`
+      + `<div class="font-mono text-[#173057]">${row.version_code || '-'}</div>`
+      + `<div class="text-[#51637f]">${String(row.updated_at || row.created_at || '').replace('T', ' ').slice(0, 16) || '-'}</div>`
+      + `<div class="text-[#51637f]">${row.publish_status || '-'}</div>`
+      + `<div class="font-mono text-[#173057]">${row.active_bundle_id || '-'}</div>`
+      + `</button>`;
+  }).join('');
+  bodyEl.querySelectorAll('[data-release-row]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const hit = rows.find(function(row){
+        return String(row.id || row.version_name || '') === String(btn.getAttribute('data-release-row') || '');
+      });
+      if(selectEl && hit){ selectEl.value = String(hit.id || hit.version_name || ''); }
+      applyReleaseVersionRow(hit || {});
+    });
+  });
+  if(rows[0]){ applyReleaseVersionRow(rows[0]); if(selectEl){ selectEl.value = String(rows[0].id || rows[0].version_name || ''); } }
+}
 async function loadReleaseScopePanel(){
   const pid=selectedProjectId();
   if(!pid){ return; }
   const env=selectedEnv();
   const channel=selectedChannel();
   const summaryEl=document.getElementById('releaseScopeSummary');
-  const bodyEl=document.getElementById('releaseVersionTableBody');
   if(summaryEl){ summaryEl.innerText='加载中…'; }
   try{
     const scopesResp=await fetch('/api/release/scopes?project_id='+encodeURIComponent(pid));
@@ -1522,20 +1642,21 @@ async function loadReleaseScopePanel(){
       resolved=(scopeData.resolved)||{};
     }
     const profile=(resolved.network_profile_preview)||{};
-    if(summaryEl){
-      summaryEl.innerText='scope_id='+(scopeId||'-')+' | profile_source='+(resolved.profile_source||'-')+' | gateway_ws='+(profile.gateway_ws||'-')+' | active_bundle_id='+(resolved.active_bundle_id||'-');
-    }
+    if(summaryEl){ summaryEl.innerText='scope_id='+(scopeId||'-')+' | profile_source='+(resolved.profile_source||'-')+' | gateway_ws='+(profile.gateway_ws||'-')+' | active_bundle_id='+(resolved.active_bundle_id||'-'); }
+    const scopeCard=document.getElementById('releaseScopeIdCard'); if(scopeCard){ scopeCard.innerText = scopeId || '--'; }
+    const topologyCard=document.getElementById('releaseTopologyIdCard'); if(topologyCard){ topologyCard.innerText = resolved.topology_id || '--'; }
+    const runtimeTopologyCard=document.getElementById('releaseRuntimeTopologyIdCard'); if(runtimeTopologyCard){ runtimeTopologyCard.innerText = resolved.runtime_topology_id || '--'; }
+    const bundleCard=document.getElementById('releaseBundleIdCard'); if(bundleCard){ bundleCard.innerText = resolved.active_bundle_id || '--'; }
     const verResp=await fetch('/api/gm-ops/release/versions?project_id='+encodeURIComponent(pid));
     const verData=await verResp.json();
-    const rows=(verData.data||[]).slice(0,20);
-    if(bodyEl){
-      if(!rows.length){ bodyEl.innerHTML='<tr><td class="px-2 py-2 text-slate-400" colspan="4">暂无版本</td></tr>'; }
-      else{
-        bodyEl.innerHTML=rows.map(function(r){
-          return '<tr><td class="px-2 py-1 border-b">'+(r.version_name||'-')+'</td><td class="px-2 py-1 border-b font-mono">'+(r.scope_id||'-')+'</td><td class="px-2 py-1 border-b font-mono">'+(r.active_bundle_id||'-')+'</td><td class="px-2 py-1 border-b">'+(r.publish_status||'-')+'</td></tr>';
-        }).join('');
-      }
-    }
+    const rows=(verData.data||[]).filter(function(r){
+      const envOk = String(r.env_key || r.env || '').toLowerCase() === String(normalizeEnvKeyUi(env) || '').toLowerCase();
+      const channelHit = [r.channel_id, r.channel_key, r.channel, r.channel_name].map(function(v){ return String(v || ''); });
+      const channelOk = !channel || channelHit.indexOf(String(channel)) >= 0;
+      const platformOk = String(r.platform || 'android').toLowerCase() === String(selectedPlatform() || 'android').toLowerCase();
+      return envOk && channelOk && platformOk;
+    }).slice(0,20);
+    renderReleaseCandidateRows(rows);
   }catch(e){
     if(summaryEl){ summaryEl.innerText='加载失败: '+String(e); }
   }
@@ -1650,6 +1771,18 @@ const dc=document.getElementById('dictCategory'); if(dc){ dc.addEventListener('c
 const dk=document.getElementById('dictKeyword'); if(dk){ dk.addEventListener('input', ()=>renderDictRows(__dictRows)); }
 document.getElementById('projectSelect').addEventListener('change', loadWorkspace);
 ['env','channel','platform'].forEach(function(id){ const el=document.getElementById(id); if(el){ el.addEventListener('change', refreshContextHeader); } });
+const releaseVersionSelector = document.getElementById('releaseVersionSelector');
+if(releaseVersionSelector){
+  releaseVersionSelector.addEventListener('change', async function(){
+    const pid = selectedProjectId();
+    if(!pid){ return; }
+    const resp = await fetch('/api/gm-ops/release/versions?project_id=' + encodeURIComponent(pid));
+    const data = await resp.json();
+    const rows = (data.data || []);
+    const hit = rows.find(function(row){ return String(row.id || row.version_name || '') === String(releaseVersionSelector.value || ''); });
+    if(hit){ applyReleaseVersionRow(hit); }
+  });
+}
 refreshContextHeader();
 switchSection(GM_VIEW_MODE === 'ops' ? 'ops' : 'identity');
 applyCenterViewMode();

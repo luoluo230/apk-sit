@@ -1,0 +1,377 @@
+<section class="topology-product-page" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-topology-id="{{ topology_id }}">
+  <style>
+    .topology-product-page { display:flex; flex-direction:column; gap:16px; }
+    .topology-product-card { border:1px solid #dbe5ff; border-radius:20px; background:#fff; box-shadow:0 10px 30px rgba(30, 64, 175, .06); }
+    .topology-product-card.pad { padding:18px 20px; }
+    .topology-product-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+    .topology-product-title { font-size:26px; line-height:1.1; font-weight:800; color:#173057; }
+    .topology-product-sub { margin-top:6px; font-size:13px; color:#6f85ae; }
+    .topology-product-chip { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; border:1px solid #dbe5ff; background:#f8fbff; color:#2f6cff; font-size:12px; font-weight:700; }
+    .topology-product-actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .topology-product-btn { display:inline-flex; align-items:center; gap:8px; height:40px; padding:0 14px; border-radius:12px; border:1px solid #dbe5ff; background:#fff; color:#173057; font-size:13px; font-weight:700; text-decoration:none; }
+    .topology-product-btn.primary { background:linear-gradient(180deg,#3c78ff,#1c61ff); border-color:#2f6cff; color:#fff; box-shadow:0 10px 24px rgba(55,116,255,.18); }
+    .topology-product-btn:hover { transform:translateY(-1px); }
+    .topology-product-matrix { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-top:16px; }
+    .topology-product-kpi { border:1px solid #dce6ff; border-radius:16px; background:#f8fbff; padding:14px; }
+    .topology-product-kpi label { display:block; font-size:12px; color:#6f85ae; }
+    .topology-product-kpi strong { display:block; margin-top:8px; font-size:24px; color:#173057; }
+    .topology-product-grid { display:grid; grid-template-columns:1.08fr .92fr; gap:16px; }
+    .topology-product-stack { display:flex; flex-direction:column; gap:16px; }
+    .topology-product-filters { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-top:14px; }
+    .topology-product-field label { display:block; margin-bottom:6px; font-size:12px; font-weight:700; color:#6f85ae; }
+    .topology-product-field select,
+    .topology-product-field input { width:100%; height:40px; border:1px solid #dbe5ff; border-radius:12px; background:#fff; padding:0 12px; font-size:13px; color:#173057; }
+    .topology-product-field input { height:42px; }
+    .topology-product-field textarea { width:100%; min-height:88px; border:1px solid #dbe5ff; border-radius:12px; background:#fff; padding:10px 12px; font-size:13px; color:#173057; resize:vertical; }
+    .topology-product-empty { border:1px dashed #dbe5ff; border-radius:16px; background:#f8fbff; padding:28px 16px; text-align:center; color:#8da0c0; font-size:13px; }
+    .topology-asset-list,
+    .topology-binding-list,
+    .topology-bound-list { display:flex; flex-direction:column; gap:12px; margin-top:14px; }
+    .topology-asset-item,
+    .topology-binding-item,
+    .topology-bound-item { border:1px solid #dbe5ff; border-radius:16px; background:#f8fbff; padding:14px 16px; }
+    .topology-item-top { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; }
+    .topology-item-top strong { color:#173057; font-size:14px; }
+    .topology-item-meta { margin-top:6px; font-size:12px; color:#6f85ae; line-height:1.6; }
+    .topology-item-tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .topology-item-tag { padding:4px 8px; border-radius:999px; background:#fff; border:1px solid #dbe5ff; color:#456184; font-size:11px; font-weight:700; }
+    .topology-item-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .topology-inline-btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:10px; border:1px solid #dbe5ff; background:#fff; color:#35507a; font-size:12px; font-weight:700; text-decoration:none; }
+    .topology-resolved-card { border:1px solid #dbe5ff; border-radius:18px; background:linear-gradient(180deg,#ffffff,#f8fbff); padding:16px; }
+    .topology-resolved-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-top:12px; }
+    .topology-resolved-chip { border-radius:14px; border:1px solid #d9e5ff; background:#f7faff; padding:10px 12px; }
+    .topology-resolved-chip label { display:block; font-size:11px; color:#7e90b3; margin-bottom:4px; }
+    .topology-resolved-chip div { font-size:13px; font-weight:700; color:#173057; word-break:break-all; }
+    .topology-canvas-shell .topology-page-header,
+    .topology-canvas-shell .topology-rule-toolbar { display:none; }
+    .topology-canvas-shell .topology-workspace-shell { margin-top:0; }
+    .topology-canvas-shell .ops-topology-app { gap:0; }
+    .topology-canvas-shell .topology-sidebar-header { display:none; }
+    .topology-canvas-shell .topology-scaffold { border-top:1px solid #eef3ff; padding-top:14px; }
+    @media (max-width: 1360px) {
+      .topology-product-grid { grid-template-columns:1fr; }
+      .topology-product-filters { grid-template-columns:repeat(2, minmax(0,1fr)); }
+      .topology-resolved-grid,
+      .topology-product-matrix { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 860px) {
+      .topology-product-filters,
+      .topology-resolved-grid,
+      .topology-product-matrix { grid-template-columns:1fr; }
+    }
+  </style>
+
+  <div class="topology-product-card pad">
+    <div class="topology-product-head">
+      <div>
+        <div class="topology-product-title">项目拓扑资产与绑定</div>
+        <div class="topology-product-sub">拓扑已经从全局运维入口下沉为项目资产。这里同时管理拓扑资产、绑定矩阵、当前命中结果，发布时冻结进 Bundle。</div>
+      </div>
+      <div class="topology-product-actions">
+        <span class="topology-product-chip" id="topologyWorkspaceContext">环境：{{ env_key }} / 当前拓扑：{{ topology_id }}</span>
+        <a class="topology-product-btn" href="/admin/projects/{{ project_id }}/versions?stage={% if env_key == 'testing' %}test{% elif env_key == 'development' %}dev{% else %}production{% endif %}&tab=builds">查看构建历史</a>
+        <a class="topology-product-btn primary" href="/admin/projects/{{ project_id }}/versions?stage={% if env_key == 'testing' %}test{% elif env_key == 'development' %}dev{% else %}production{% endif %}&tab=topologyBindings">进入版本绑定矩阵</a>
+      </div>
+    </div>
+    <div class="topology-product-matrix">
+      <div class="topology-product-kpi"><label>拓扑资产</label><strong id="topologyAssetCount">--</strong></div>
+      <div class="topology-product-kpi"><label>绑定规则</label><strong id="topologyBindingCount">--</strong></div>
+      <div class="topology-product-kpi"><label>当前命中拓扑</label><strong id="topologyResolvedName">--</strong></div>
+    </div>
+  </div>
+
+  <div class="topology-product-grid">
+    <div class="topology-product-stack">
+      <div class="topology-product-card pad">
+        <div class="topology-product-head">
+          <div>
+            <div class="text-[16px] font-extrabold text-[#173057]">绑定解析工作台</div>
+            <div class="topology-product-sub">按项目默认 → 环境/渠道 → 大版本三级继承解析当前 scope 命中的拓扑。</div>
+          </div>
+          <div class="topology-product-actions">
+            <button class="topology-product-btn" type="button" id="topologyResolveRefreshBtn">刷新解析</button>
+            <a class="topology-product-btn primary" href="/admin/gm-ops?project_id={{ project_id }}&env_key={{ env_key }}">打开 GM 发版</a>
+          </div>
+        </div>
+        <div class="topology-product-filters">
+          <div class="topology-product-field">
+            <label>环境</label>
+            <select id="topologyResolveEnv"></select>
+          </div>
+          <div class="topology-product-field">
+            <label>渠道</label>
+            <select id="topologyResolveChannel"></select>
+          </div>
+          <div class="topology-product-field">
+            <label>大版本</label>
+            <select id="topologyResolveVersion"></select>
+          </div>
+          <div class="topology-product-field">
+            <label>解析来源</label>
+            <input id="topologyResolvedSource" readonly value="加载中…">
+          </div>
+        </div>
+        <div class="topology-resolved-card mt-4">
+          <div class="topology-item-top">
+            <strong>当前命中结果</strong>
+            <span class="text-[12px] text-[#6f85ae]" id="topologyResolvedHint">等待解析…</span>
+          </div>
+          <div class="topology-resolved-grid">
+            <div class="topology-resolved-chip"><label>scope 环境</label><div id="topologyResolvedEnv">--</div></div>
+            <div class="topology-resolved-chip"><label>scope 渠道</label><div id="topologyResolvedChannel">--</div></div>
+            <div class="topology-resolved-chip"><label>命中拓扑</label><div id="topologyResolvedId">--</div></div>
+            <div class="topology-resolved-chip"><label>来源层级</label><div id="topologyResolvedLevel">--</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="topology-product-card pad">
+        <div class="topology-product-head">
+          <div>
+            <div class="text-[16px] font-extrabold text-[#173057]">拓扑资产列表</div>
+            <div class="topology-product-sub">每一套拓扑都是项目资产，可草稿、验证、复制、设默认，再被版本与发版流程消费。</div>
+          </div>
+          <div class="topology-product-actions">
+            <button class="topology-product-btn primary" type="button" id="topologyAssetCreateBtn">新建拓扑</button>
+            <button class="topology-product-btn" type="button" id="topologyAssetRefreshBtn">刷新资产</button>
+          </div>
+        </div>
+        <div id="topologyAssetList" class="topology-asset-list">
+          <div class="topology-product-empty">正在加载拓扑资产…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="topology-product-stack">
+      <div class="topology-product-card pad">
+        <div class="topology-product-head">
+          <div>
+            <div class="text-[16px] font-extrabold text-[#173057]">绑定关系</div>
+            <div class="topology-product-sub">展示当前项目已经配置的绑定矩阵，便于回到版本页继续调整。</div>
+          </div>
+          <div class="topology-product-actions">
+            <a class="topology-product-btn" href="/admin/projects/{{ project_id }}/versions?stage={% if env_key == 'testing' %}test{% elif env_key == 'development' %}dev{% else %}production{% endif %}&tab=topologyBindings">去版本页配置</a>
+          </div>
+        </div>
+        <div id="topologyBindingListMini" class="topology-binding-list">
+          <div class="topology-product-empty">正在加载绑定关系…</div>
+        </div>
+      </div>
+
+      <div class="topology-product-card pad">
+        <div class="topology-product-head">
+          <div>
+            <div class="text-[16px] font-extrabold text-[#173057]">已生效视图</div>
+            <div class="topology-product-sub">把环境、渠道、大版本三种维度组合成可读视图，直接看当前项目的绑定覆盖情况。</div>
+          </div>
+        </div>
+        <div id="topologyBoundView" class="topology-bound-list">
+          <div class="topology-product-empty">等待绑定数据…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <details class="topology-product-card topology-canvas-shell" open>
+    <summary class="px-5 py-4 text-[15px] font-extrabold text-[#173057] cursor-pointer select-none">拓扑画布编辑器</summary>
+    <div class="px-4 pb-4 topology-scaffold">
+      {{ legacy_workbench | safe }}
+    </div>
+  </details>
+
+  <script>
+    (function(){
+      var root = document.querySelector('.topology-product-page');
+      if(!root || !window.fetch){ return; }
+      var projectId = root.getAttribute('data-project-id') || '';
+      var defaultEnvKey = root.getAttribute('data-env-key') || 'production';
+      var topologyId = root.getAttribute('data-topology-id') || '';
+      var envLabelMap = { development:'开发环境', testing:'测试环境', staging:'预发布环境', production:'生产环境' };
+      var pageState = { topologies: [], bindings: [], channels: [], versionNames: [] };
+
+      function text(value, fallback){
+        var out = String(value || '').trim();
+        return out || (fallback || '-');
+      }
+
+      function fillSelect(select, rows, currentValue){
+        if(!select){ return; }
+        select.innerHTML = rows.join('');
+        if(currentValue && Array.from(select.options).some(function(option){ return option.value === currentValue; })){
+          select.value = currentValue;
+        } else if(select.options.length){
+          select.selectedIndex = 0;
+        }
+      }
+
+      function renderAssetList(rows){
+        var wrap = document.getElementById('topologyAssetList');
+        if(!wrap){ return; }
+        if(!(rows || []).length){
+          wrap.innerHTML = '<div class="topology-product-empty">当前项目还没有拓扑资产，先创建一套项目默认拓扑。</div>';
+          return;
+        }
+        wrap.innerHTML = rows.map(function(item){
+          var tags = [
+            text(envLabelMap[String(item.env_key || '')] || item.env_key, '-'),
+            text(item.status_label || item.status, 'draft')
+          ];
+          if(item.is_default){ tags.push('默认拓扑'); }
+          if(String(item.topology_id || '') === String(topologyId || '')){ tags.push('当前画布'); }
+          return ''
+            + '<div class="topology-asset-item">'
+            + '<div class="topology-item-top"><strong>' + text(item.name || item.topology_id, '-') + '</strong><span class="text-[12px] text-[#6f85ae]">' + text(item.topology_id, '-') + '</span></div>'
+            + '<div class="topology-item-meta">' + text(item.description, '未填写说明') + '</div>'
+            + '<div class="topology-item-tags">' + tags.map(function(tag){ return '<span class="topology-item-tag">' + text(tag, '-') + '</span>'; }).join('') + '</div>'
+            + '<div class="topology-item-actions">'
+            + '<a class="topology-inline-btn" href="/admin/projects/' + encodeURIComponent(projectId) + '/topologies?env_key=' + encodeURIComponent(item.env_key || defaultEnvKey) + '&topology_id=' + encodeURIComponent(item.topology_id || '') + '">打开发布画布</a>'
+            + '<a class="topology-inline-btn" href="/admin/projects/' + encodeURIComponent(projectId) + '/versions?stage=' + encodeURIComponent(item.env_key === 'testing' ? 'test' : (item.env_key === 'development' ? 'dev' : 'production')) + '&tab=topologyBindings">查看引用</a>'
+            + '</div>'
+            + '</div>';
+        }).join('');
+      }
+
+      function renderBindingList(bindings, topologies, channels){
+        var wrap = document.getElementById('topologyBindingListMini');
+        if(!wrap){ return; }
+        var topologyMap = {};
+        var channelMap = {};
+        (topologies || []).forEach(function(item){ topologyMap[String(item.topology_id || '')] = text(item.name || item.topology_id, '-'); });
+        (channels || []).forEach(function(item){ channelMap[String(item.channel_id || '')] = text(item.channel_name || item.channel_key || item.channel_id, '-'); });
+        if(!(bindings || []).length){
+          wrap.innerHTML = '<div class="topology-product-empty">当前没有绑定规则，版本解析会回退到项目默认拓扑。</div>';
+          return;
+        }
+        wrap.innerHTML = bindings.map(function(item){
+          var tags = [];
+          if(item.env_key){ tags.push(text(envLabelMap[String(item.env_key || '')] || item.env_key, '-')); }
+          if(item.channel_id){ tags.push(text(channelMap[String(item.channel_id || '')] || item.channel_id, '-')); }
+          if(item.version_name){ tags.push(text(item.version_name, '-')); }
+          return ''
+            + '<div class="topology-binding-item">'
+            + '<div class="topology-item-top"><strong>' + text(item.level_label || item.level, '-') + '</strong><span class="text-[12px] text-[#2f6cff]">' + text(topologyMap[String(item.topology_id || '')] || item.topology_id, '-') + '</span></div>'
+            + '<div class="topology-item-meta">' + text(item.note, '未填写说明') + '</div>'
+            + '<div class="topology-item-tags">' + (tags.length ? tags.map(function(tag){ return '<span class="topology-item-tag">' + text(tag, '-') + '</span>'; }).join('') : '<span class="topology-item-tag">作用于整个项目</span>') + '</div>'
+            + '</div>';
+        }).join('');
+      }
+
+      function renderBoundView(bindings, topologies, channels){
+        var wrap = document.getElementById('topologyBoundView');
+        if(!wrap){ return; }
+        if(!(bindings || []).length){
+          wrap.innerHTML = '<div class="topology-product-empty">尚未生成环境 / 渠道 / 大版本的绑定视图，先创建绑定规则。</div>';
+          return;
+        }
+        var topologyMap = {};
+        var channelMap = {};
+        (topologies || []).forEach(function(item){ topologyMap[String(item.topology_id || '')] = text(item.name || item.topology_id, '-'); });
+        (channels || []).forEach(function(item){ channelMap[String(item.channel_id || '')] = text(item.channel_name || item.channel_key || item.channel_id, '-'); });
+        wrap.innerHTML = bindings.map(function(item){
+          var title = text(item.level_label || item.level, '-');
+          var meta = [];
+          meta.push(item.env_key ? text(envLabelMap[String(item.env_key || '')] || item.env_key, '-') : '项目全部环境');
+          meta.push(item.channel_id ? text(channelMap[String(item.channel_id || '')] || item.channel_id, '-') : '项目全部渠道');
+          meta.push(item.version_name ? text(item.version_name, '-') : '不指定大版本');
+          return ''
+            + '<div class="topology-bound-item">'
+            + '<div class="topology-item-top"><strong>' + title + '</strong><span class="text-[12px] text-[#6f85ae]">' + text(topologyMap[String(item.topology_id || '')] || item.topology_id, '-') + '</span></div>'
+            + '<div class="topology-item-meta">' + meta.join(' / ') + '</div>'
+            + '<div class="topology-item-tags"><span class="topology-item-tag">' + text(item.note, '无说明') + '</span></div>'
+            + '</div>';
+        }).join('');
+      }
+
+      function refreshSummary(topologies, bindings, resolved){
+        var currentName = text((resolved && resolved.topology_name) || (resolved && resolved.topology_id) || topologyId, '未命中');
+        document.getElementById('topologyAssetCount').textContent = String((topologies || []).length || 0);
+        document.getElementById('topologyBindingCount').textContent = String((bindings || []).length || 0);
+        document.getElementById('topologyResolvedName').textContent = currentName;
+        document.getElementById('topologyResolvedId').textContent = currentName;
+        document.getElementById('topologyResolvedLevel').textContent = text((resolved && resolved.binding_source_label) || (resolved && resolved.binding_source), '未命中');
+        document.getElementById('topologyResolvedHint').textContent = resolved && resolved.topology_id ? '当前 scope 解析完成' : '当前没有命中规则';
+      }
+
+      function loadResolved(){
+        var envKey = (document.getElementById('topologyResolveEnv') || {}).value || defaultEnvKey;
+        var channelId = (document.getElementById('topologyResolveChannel') || {}).value || '';
+        var versionName = (document.getElementById('topologyResolveVersion') || {}).value || '';
+        var query = new URLSearchParams({
+          project_id: projectId,
+          env_key: envKey,
+          channel_id: channelId,
+          version_name: versionName,
+          fallback_topology_id: topologyId || ''
+        });
+        fetch('/api/ops-platform/topology-bindings/resolve?' + query.toString(), { credentials:'same-origin' })
+          .then(function(resp){ return resp.json(); })
+          .then(function(data){
+            var resolved = (data && data.resolved) || {};
+            var topologyMap = {};
+            (pageState.topologies || []).forEach(function(item){ topologyMap[String(item.topology_id || '')] = text(item.name || item.topology_id, '-'); });
+            var channelMap = {};
+            (pageState.channels || []).forEach(function(item){ channelMap[String(item.channel_id || '')] = text(item.channel_name || item.channel_key || item.channel_id, '-'); });
+            document.getElementById('topologyResolvedEnv').textContent = text(envLabelMap[envKey] || envKey, '-');
+            document.getElementById('topologyResolvedChannel').textContent = text(channelMap[channelId] || channelId, '项目全部渠道');
+            document.getElementById('topologyResolvedSource').value = text(resolved.binding_source_label || resolved.binding_source, '未命中规则');
+            resolved.topology_name = topologyMap[String(resolved.topology_id || '')] || text(resolved.topology_id, '未命中');
+            refreshSummary(pageState.topologies, pageState.bindings, resolved);
+          })
+          .catch(function(){
+            document.getElementById('topologyResolvedSource').value = '解析失败';
+            document.getElementById('topologyResolvedHint').textContent = '请检查绑定接口或后端日志';
+          });
+      }
+
+      function applyWorkspaceData(topologyData, bindingData){
+        pageState.topologies = Array.isArray(topologyData.topologies) ? topologyData.topologies : [];
+        pageState.bindings = Array.isArray(bindingData.bindings) ? bindingData.bindings : [];
+        pageState.channels = Array.isArray(bindingData.channels) ? bindingData.channels : [];
+        pageState.versionNames = Array.isArray(bindingData.version_names) ? bindingData.version_names : [];
+        var envOptions = ['<option value="development">开发环境</option>', '<option value="testing">测试环境</option>', '<option value="staging">预发布环境</option>', '<option value="production">生产环境</option>'];
+        var channelOptions = ['<option value="">项目全部渠道</option>'].concat(pageState.channels.map(function(item){
+          return '<option value="' + text(item.channel_id, '') + '">' + text(item.channel_name || item.channel_key || item.channel_id, '-') + '</option>';
+        }));
+        var versionOptions = ['<option value="">不指定大版本</option>'].concat(pageState.versionNames.map(function(name){
+          return '<option value="' + text(name, '') + '">' + text(name, '-') + '</option>';
+        }));
+        fillSelect(document.getElementById('topologyResolveEnv'), envOptions, defaultEnvKey);
+        fillSelect(document.getElementById('topologyResolveChannel'), channelOptions, pageState.channels[0] ? text(pageState.channels[0].channel_id, '') : '');
+        fillSelect(document.getElementById('topologyResolveVersion'), versionOptions, '');
+        renderAssetList(pageState.topologies);
+        renderBindingList(pageState.bindings, pageState.topologies, pageState.channels);
+        renderBoundView(pageState.bindings, pageState.topologies, pageState.channels);
+        loadResolved();
+      }
+
+      function loadWorkspaceData(){
+        Promise.all([
+          fetch('/api/ops-platform/topologies?project_id=' + encodeURIComponent(projectId), { credentials:'same-origin' }).then(function(r){ return r.json(); }),
+          fetch('/api/ops-platform/topology-bindings?project_id=' + encodeURIComponent(projectId), { credentials:'same-origin' }).then(function(r){ return r.json(); })
+        ]).then(function(results){
+          applyWorkspaceData(results[0] || {}, results[1] || {});
+        }).catch(function(){
+          document.getElementById('topologyAssetList').innerHTML = '<div class="topology-product-empty">拓扑资产加载失败，请刷新后重试。</div>';
+          document.getElementById('topologyBindingListMini').innerHTML = '<div class="topology-product-empty">绑定规则加载失败，请检查接口或后端日志。</div>';
+          document.getElementById('topologyBoundView').innerHTML = '<div class="topology-product-empty">绑定视图暂时不可用。</div>';
+        });
+      }
+
+      ['topologyResolveEnv', 'topologyResolveChannel', 'topologyResolveVersion'].forEach(function(id){
+        var el = document.getElementById(id);
+        if(el){ el.addEventListener('change', loadResolved); }
+      });
+      var refreshBtn = document.getElementById('topologyAssetRefreshBtn');
+      if(refreshBtn){ refreshBtn.addEventListener('click', loadWorkspaceData); }
+      var resolveBtn = document.getElementById('topologyResolveRefreshBtn');
+      if(resolveBtn){ resolveBtn.addEventListener('click', loadResolved); }
+      var createBtn = document.getElementById('topologyAssetCreateBtn');
+      if(createBtn){
+        createBtn.addEventListener('click', function(){
+          window.location.href = '/admin/projects/' + encodeURIComponent(projectId) + '/versions?stage=' + encodeURIComponent(defaultEnvKey === 'testing' ? 'test' : (defaultEnvKey === 'development' ? 'dev' : 'production')) + '&tab=topologyBindings';
+        });
+      }
+      loadWorkspaceData();
+    })();
+  </script>
+</section>

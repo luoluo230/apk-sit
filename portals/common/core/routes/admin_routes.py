@@ -67,6 +67,8 @@ from routes.admin.api_site_config import register_routes as register_site_config
 from routes.admin.api_audit import register_routes as register_audit_api_routes
 from services.admin import audit_service
 from services.admin import notification_page_service
+import services.ops.helpers as ops_helpers
+from services.release.topology_binding_service import list_topology_bindings, resolve_topology_binding
 
 bp = Blueprint('admin_routes', __name__, url_prefix='')
 
@@ -394,6 +396,102 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     ) or '<div class="pv-empty-state">当前项目还没有可用渠道。</div>'
     channel_key_map = {cid: ckey for cid, _, ckey in project_channels}
     channel_name_map = {cid: cname for cid, cname, _ in project_channels}
+    binding_channel_options_html = '<option value="">项目全部渠道</option>' + ''.join(
+        '<option value="%s">%s</option>' % (html.escape(cid), html.escape(cname))
+        for cid, cname, _ in project_channels
+    )
+    env_display_map = {
+        'development': '开发环境',
+        'testing': '测试环境',
+        'staging': '预发布环境',
+        'production': '生产环境',
+    }
+    topology_rows = []
+    topology_name_map = {}
+    topology_binding_rows = []
+    topology_binding_preview_html = '<div class="pv-empty-mini">当前项目还没有拓扑资产或绑定规则。</div>'
+    topology_binding_preview_summary = '暂无绑定规则'
+    try:
+        topology_rows = ops_helpers._list_topologies(project_id, None)
+        topology_name_map = {
+            str(item.get('topology_id') or '').strip(): str(item.get('name') or item.get('topology_id') or '-').strip()
+            for item in topology_rows
+            if isinstance(item, dict) and str(item.get('topology_id') or '').strip()
+        }
+        topology_binding_rows = list_topology_bindings(project_id)
+    except Exception:
+        topology_rows = []
+        topology_name_map = {}
+        topology_binding_rows = []
+    binding_preview_cards = []
+    if topology_binding_rows:
+        for item in topology_binding_rows[:8]:
+            env_key = str(item.get('env_key') or '').strip()
+            channel_id = str(item.get('channel_id') or '').strip()
+            version_name = str(item.get('version_name') or '').strip()
+            topology_id = str(item.get('topology_id') or '').strip()
+            tags = []
+            if env_key:
+                tags.append(env_display_map.get(env_key, env_key))
+            if channel_id:
+                tags.append(channel_name_map.get(channel_id, channel_id))
+            if version_name:
+                tags.append(version_name)
+            binding_preview_cards.append(
+                '<div class="pv-binding-mini">'
+                '<div class="pv-binding-mini-top"><strong>%s</strong><span>%s</span></div>'
+                '<div class="pv-binding-mini-tags">%s</div>'
+                '</div>' % (
+                    html.escape(str(item.get('level_label') or item.get('level') or '-')),
+                    html.escape(topology_name_map.get(topology_id, topology_id or '-')),
+                    html.escape(' / '.join(tags) if tags else '作用于整个项目'),
+                )
+            )
+        topology_binding_preview_summary = '规则 %s 条 / 资产 %s 套' % (len(topology_binding_rows), len(topology_rows))
+    elif topology_rows:
+        for item in topology_rows[:6]:
+            topology_id = str(item.get('topology_id') or '').strip()
+            tag_line = env_display_map.get(str(item.get('env_key') or ''), str(item.get('env_key') or '-'))
+            if bool(item.get('is_default')):
+                tag_line += ' / 默认'
+            binding_preview_cards.append(
+                '<div class="pv-binding-mini">'
+                '<div class="pv-binding-mini-top"><strong>%s</strong><span>%s</span></div>'
+                '<div class="pv-binding-mini-tags">%s</div>'
+                '</div>' % (
+                    html.escape(str(item.get('name') or topology_id or '-')),
+                    html.escape(str(item.get('status') or '-')),
+                    html.escape(tag_line),
+                )
+            )
+        topology_binding_preview_summary = '已建拓扑 %s 套，尚未配置绑定矩阵' % len(topology_rows)
+    if binding_preview_cards:
+        topology_binding_preview_html = ''.join(binding_preview_cards)
+    current_topology_focus = ''
+    current_topology_binding_source = ''
+    if project_channels:
+        try:
+            current_binding = resolve_topology_binding(
+                project_id,
+                selected_ops_env_key,
+                project_channels[0][0],
+            )
+            current_topology_focus = current_binding.get('topology_id') or ''
+            current_topology_binding_source = current_binding.get('binding_source_label') or ''
+        except Exception:
+            current_topology_focus = ''
+            current_topology_binding_source = ''
+    if not current_topology_focus:
+        current_topology_focus = next(
+            (
+                str(item.get('topology_id') or '').strip()
+                for item in topology_rows
+                if str(item.get('env_key') or '').strip() == selected_ops_env_key and bool(item.get('is_default'))
+            ),
+            '',
+        )
+    current_topology_label = topology_name_map.get(current_topology_focus, current_topology_focus or '未绑定拓扑')
+    current_topology_binding_label = current_topology_binding_source or '按项目默认解析'
 
     def _stage_count(pid, stage_key):
         rows = project_versions_db.get(pid) or []
@@ -473,21 +571,22 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
 
     recent_build_rows = [
         row for row in sorted(
-            versions,
+            all_versions,
             key=lambda item: str(item.get('updated_at') or item.get('created_at') or item.get('version_code') or ''),
             reverse=True,
         )
         if str(row.get('jenkins_job_id') or '').strip()
-    ][:8]
+    ][:12]
     recent_builds_html = ''.join(
         '<div class="pv-build-row">'
-        '<div><div class="pv-build-title">%s</div><div class="pv-build-meta">%s / %s / %s</div></div>'
+        '<div><div class="pv-build-title">%s</div><div class="pv-build-meta">%s / %s / %s / VC %s</div></div>'
         '<div class="pv-build-side"><span>%s</span><span>%s</span></div>'
         '</div>' % (
             html.escape(str(row.get('version_name') or '-') or '-'),
             html.escape(channel_key_map.get(str(row.get('channel') or '').strip(), str(row.get('channel') or '-') or '-')),
             html.escape(stage_short_map.get(str(row.get('stage') or 'dev').strip() or 'dev', 'dev')),
             html.escape('iOS' if str(row.get('platform') or 'android').strip().lower() == 'ios' else 'Android'),
+            html.escape(str(row.get('version_code') or '-') or '-'),
             html.escape(str(row.get('jenkins_job_id') or '-') or '-'),
             html.escape(str(row.get('updated_at') or row.get('created_at') or '-')[:16]),
         )
@@ -767,7 +866,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     download_center_html = _project_download_tab_html(project_apk_files, project_id)
 
     return '''
-<div class="project-version-design-app" data-project-id="%s" data-default-stage="%s">
+<div class="project-version-design-app" data-project-id="%s" data-default-stage="%s" data-default-ops-env="%s">
   <style>
     .project-version-design-app { min-height: 100vh; background: linear-gradient(180deg, #f5f7fb 0%%, #eef3ff 100%%); color: #0f172a; overflow-x: hidden; font-family: "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif; }
     .project-version-design-app .pv-shell { display: grid; grid-template-columns: 146px minmax(0, 1fr); min-height: 100vh; }
@@ -899,9 +998,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-build-title { font-size: 13px; font-weight: 700; color: #173057; }
     .project-version-design-app .pv-build-meta { margin-top: 4px; font-size: 12px; color: #7387a8; }
     .project-version-design-app .pv-build-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12px; color: #51637f; white-space: nowrap; }
-    .project-version-design-app .pv-topology-preview { min-height: 112px; border: 1px dashed #cedbff; border-radius: 14px; background: linear-gradient(180deg, #fcfdff, #f7faff); padding: 12px; position: relative; overflow: hidden; }
-    .project-version-design-app .pv-topology-preview .mini-box { position: absolute; border: 1px solid #cfe0ff; border-radius: 10px; background: white; font-size: 10px; color: #456184; padding: 4px 6px; box-shadow: 0 4px 10px rgba(64,92,160,.08); }
-    .project-version-design-app .pv-mini-svg { position: absolute; inset: 0; width: 100%%; height: 100%%; }
+    .project-version-design-app .pv-binding-mini { border: 1px solid #dce6ff; border-radius: 14px; background: #fff; padding: 10px 12px; }
+    .project-version-design-app .pv-binding-mini-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #7387a8; }
+    .project-version-design-app .pv-binding-mini-top strong { font-size: 13px; color: #173057; }
+    .project-version-design-app .pv-binding-mini-tags { margin-top: 6px; font-size: 12px; color: #51637f; line-height: 1.5; }
     .project-version-design-app .pv-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
     .project-version-design-app .pv-quick-link { min-height: 58px; border-radius: 14px; border: 1px solid #e1e9ff; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: #456184; font-weight: 500; text-align: center; padding: 8px 4px; }
     .project-version-design-app .pv-quick-link i { color: #2f6cff; font-size: 14px; }
@@ -1194,6 +1294,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                           <div class="pv-field">
                             <label>环境</label>
                             <select id="pvTopologyBindingEnv" class="pv-select">
+                              <option value="">项目全部环境</option>
                               <option value="development">开发环境</option>
                               <option value="testing">测试环境</option>
                               <option value="staging">预发布环境</option>
@@ -1281,20 +1382,18 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             </div>
           </div>
           <div class="pv-panel pv-side-card">
-            <h3>当前拓扑图</h3>
-            <div class="pv-topology-preview">
-              <svg class="pv-mini-svg" viewBox="0 0 220 110" aria-hidden="true">
-                <path d="M42 26 C72 26, 72 56, 103 56" stroke="#7ab2ff" stroke-width="2.5" fill="none"></path>
-                <path d="M116 56 C146 56, 146 32, 176 32" stroke="#88d3b0" stroke-width="2.5" fill="none"></path>
-                <path d="M116 56 C146 56, 146 82, 176 82" stroke="#f4a261" stroke-width="2.5" fill="none"></path>
-              </svg>
-              <div class="mini-box" style="left:14px;top:16px;">gateway</div>
-              <div class="mini-box" style="left:88px;top:46px;">router</div>
-              <div class="mini-box" style="right:14px;top:22px;">login</div>
-              <div class="mini-box" style="right:14px;bottom:14px;">game</div>
+            <div class="flex items-center justify-between gap-3">
+              <h3>当前拓扑图</h3>
+              <span class="text-[11px] font-semibold text-[#6f85ae]">%s</span>
+            </div>
+            <div class="mt-3 rounded-2xl border border-[#dce6ff] bg-[#f8fbff] p-3">
+              <div class="text-xs text-slate-500">当前环境命中</div>
+              <div class="mt-1 text-sm font-semibold text-[#173057]">%s</div>
+              <div class="mt-1 text-[12px] text-[#6f85ae]">%s</div>
+              <div class="mt-3 space-y-2">%s</div>
             </div>
             <div class="mt-3 flex items-center justify-between text-sm">
-              <div><div class="text-slate-500">拓扑图：</div><div class="font-semibold text-[#173057]">%s / 当前运行视图</div></div>
+              <div><div class="text-slate-500">拓扑管理：</div><div class="font-semibold text-[#173057]">%s</div></div>
               <a href="/admin/projects/%s/topologies?env_key=%s" class="text-[#2f6cff] text-xs font-semibold">查看拓扑图</a>
             </div>
           </div>
@@ -1792,13 +1891,15 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     function pvResetTopologyBindingForm(){
       document.getElementById('pvTopologyBindingId').value = '';
       document.getElementById('pvTopologyBindingLevel').value = 'project_default';
-      document.getElementById('pvTopologyBindingEnv').value = 'development';
-      document.getElementById('pvTopologyBindingChannel').value = document.getElementById('pvTopologyBindingChannel').options.length ? document.getElementById('pvTopologyBindingChannel').options[0].value : '';
+      document.getElementById('pvTopologyBindingEnv').value = '';
+      document.getElementById('pvTopologyBindingChannel').value = '';
       document.getElementById('pvTopologyBindingVersion').value = '';
       document.getElementById('pvTopologyBindingNote').value = '';
       pvApplyTopologyBindingLevel();
     }
     function pvApplyTopologyBindingLevel(){
+      var root = document.querySelector('.project-version-design-app');
+      var defaultOpsEnv = root ? (root.getAttribute('data-default-ops-env') || 'production') : 'production';
       var level = document.getElementById('pvTopologyBindingLevel').value || 'project_default';
       var envEl = document.getElementById('pvTopologyBindingEnv');
       var channelEl = document.getElementById('pvTopologyBindingChannel');
@@ -1811,6 +1912,20 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       if(envDisabled){
         envEl.value = '';
         channelEl.value = '';
+      }
+      if(level === 'env_channel' && !envEl.value){
+        envEl.value = defaultOpsEnv;
+      }
+      if(level === 'env_channel' && !channelEl.value){
+        var firstChannel = Array.from(channelEl.options || []).find(function(option){ return option.value; });
+        channelEl.value = firstChannel ? firstChannel.value : '';
+      }
+      if(level === 'version' && !envEl.value){
+        envEl.value = defaultOpsEnv;
+      }
+      if(level === 'version' && !channelEl.value){
+        var versionChannel = Array.from(channelEl.options || []).find(function(option){ return option.value; });
+        channelEl.value = versionChannel ? versionChannel.value : '';
       }
       if(versionDisabled){
         versionEl.value = '';
@@ -1850,6 +1965,10 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       var wrap = document.getElementById('pvTopologyBindingList');
       if(!wrap){ return; }
       var bindings = payload && Array.isArray(payload.bindings) ? payload.bindings : [];
+      var topologyMap = {};
+      ((payload && payload.topologies) || []).forEach(function(item){
+        topologyMap[String(item.topology_id || '')] = String(item.name || item.topology_id || '-');
+      });
       if(!bindings.length){
         wrap.innerHTML = '<div class="pv-empty-state">当前项目还没有拓扑绑定规则，先配置项目默认拓扑。</div>';
         return;
@@ -1868,7 +1987,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           + '<div class="rounded-2xl border border-[#dce6ff] bg-white px-4 py-3">'
           + '<div class="flex items-start justify-between gap-3">'
           + '<div class="min-w-0">'
-          + '<div class="flex items-center gap-2 flex-wrap"><strong class="text-[#173057] text-sm">' + String(row.level_label || row.level || '-') + '</strong><span class="px-2 py-1 rounded-full bg-[#eef4ff] text-[#2f6cff] text-[11px] font-semibold">' + String(row.topology_id || '-') + '</span></div>'
+          + '<div class="flex items-center gap-2 flex-wrap"><strong class="text-[#173057] text-sm">' + String(row.level_label || row.level || '-') + '</strong><span class="px-2 py-1 rounded-full bg-[#eef4ff] text-[#2f6cff] text-[11px] font-semibold">' + String(topologyMap[String(row.topology_id || '')] || row.topology_id || '-') + '</span></div>'
           + '<div class="mt-2 text-xs text-[#6f85ae]">' + (tags.length ? tags.join(' / ') : '作用于整个项目') + '</div>'
           + '<div class="mt-2 text-xs text-slate-500">' + String(row.note || '未填写说明') + '</div>'
           + '</div>'
@@ -2369,6 +2488,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
 ''' % (
         html.escape(project_id),
         html.escape(selected_stage),
+        html.escape(selected_ops_env_key),
         project_id_url,
         project_id_url,
         project_id_url,
@@ -2401,7 +2521,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         project_channels_modal_rows_html,
         project_id_url,
         html.escape(selected_ops_env_key),
-        channel_options_html,
+        binding_channel_options_html,
         recent_builds_html,
         project_id_url,
         project_id_url,
@@ -2412,7 +2532,11 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(selected_stage_label),
         html.escape(created_at or '-'),
         html.escape(owner or '-'),
-        html.escape(selected_stage_label),
+        html.escape(topology_binding_preview_summary),
+        html.escape(current_topology_label),
+        html.escape(current_topology_binding_label),
+        topology_binding_preview_html,
+        html.escape(current_topology_label),
         project_id_url,
         html.escape(selected_ops_env_key),
         project_id_url,

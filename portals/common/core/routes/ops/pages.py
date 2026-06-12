@@ -58,7 +58,14 @@ def ops_platform_topology_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     topology_id = ops_helpers._resolve_ops_topology_id(project_id, env_key, request.args.get("topology_id") or "")
-    content = ops_helpers._render_local_template("ops_topology_workbench.html", project_id=project_id, env_key=env_key, topology_id=topology_id)
+    legacy_workbench = ops_helpers._render_local_template("ops_topology_workbench.html", project_id=project_id, env_key=env_key, topology_id=topology_id)
+    content = ops_helpers._render_local_template(
+        "ops_topology_workspace_page.html",
+        project_id=project_id,
+        env_key=env_key,
+        topology_id=topology_id,
+        legacy_workbench=legacy_workbench,
+    )
     return ops_helpers._render_ops_page(
         content, "拓扑管理",
         active_page="topology",
