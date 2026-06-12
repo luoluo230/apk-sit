@@ -734,6 +734,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
 
     qr_filename = project_apk_files[0]['name'] if project_apk_files else ''
     qr_size = ('%.2f MB' % float(project_apk_files[0].get('size_mb', 0))) if project_apk_files else '--'
+    topbar_avatar_text = ((username or '运维管理员').strip()[:1] or '运').upper()
 
     download_center_html = _project_download_tab_html(project_apk_files, project_id)
 
@@ -757,11 +758,16 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
     .project-version-design-app .pv-topbar { height: 54px; border-bottom: 1px solid rgba(148, 163, 184, .18); background: rgba(255,255,255,.82); backdrop-filter: blur(18px); display: flex; align-items: center; justify-content: space-between; padding: 0 18px; gap: 12px; }
     .project-version-design-app .pv-breadcrumb { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 13px; }
     .project-version-design-app .pv-breadcrumb strong { color: #1e293b; font-weight: 700; }
-    .project-version-design-app .pv-top-actions { display: flex; align-items: center; gap: 10px; }
+    .project-version-design-app .pv-top-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .project-version-design-app .pv-select-chip, .project-version-design-app .pv-search, .project-version-design-app .pv-white-btn, .project-version-design-app .pv-blue-btn { border-radius: 12px; height: 38px; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px; font-weight: 500; }
     .project-version-design-app .pv-select-chip, .project-version-design-app .pv-search, .project-version-design-app .pv-white-btn { background: rgba(255,255,255,.9); border: 1px solid #dbe5ff; color: #334155; }
     .project-version-design-app .pv-blue-btn { background: linear-gradient(180deg, #3c78ff, #1c61ff); color: white; box-shadow: 0 10px 24px rgba(55, 116, 255, .2); }
     .project-version-design-app .pv-search input { border: 0; outline: 0; background: transparent; width: 238px; font-size: 13px; }
+    .project-version-design-app .pv-icon-pill { width: 38px; justify-content: center; padding: 0; position: relative; }
+    .project-version-design-app .pv-bell-badge { position: absolute; top: -4px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #ff4d6d; color: #fff; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 6px 12px rgba(255, 77, 109, .24); }
+    .project-version-design-app .pv-profile-chip { display: inline-flex; align-items: center; gap: 10px; padding-right: 12px; }
+    .project-version-design-app .pv-profile-avatar { width: 28px; height: 28px; border-radius: 999px; background: linear-gradient(180deg, #1d67ff, #0f49ce); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; box-shadow: 0 8px 16px rgba(33, 98, 255, .18); }
+    .project-version-design-app .pv-profile-text { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
     .project-version-design-app .pv-body { padding: 14px 16px 18px; display: grid; grid-template-columns: 236px minmax(0, 1fr) 248px; gap: 14px; min-width: 0; align-items: start; }
     .project-version-design-app .pv-body.is-tree-collapsed { grid-template-columns: minmax(0, 1fr) 248px; }
     .project-version-design-app .pv-panel { background: rgba(255,255,255,.92); border: 1px solid #dfe7ff; border-radius: 18px; box-shadow: 0 10px 30px rgba(58, 76, 122, .08); }
@@ -1047,7 +1053,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           <button type="button" class="pv-white-btn" onclick="pvOpenModal('topology')"><i class="fas fa-plus"></i><span>新建拓扑图</span></button>
           <label class="pv-search"><i class="fas fa-search text-slate-400"></i><input type="text" id="pvGlobalSearch" placeholder="搜索项目、环境、版本、渠道"></label>
           <a href="/docs?module=projects" class="pv-white-btn"><i class="fas fa-circle-question text-slate-400"></i><span>帮助中心</span></a>
-          <a href="/profile" class="pv-white-btn"><i class="fas fa-user-circle text-blue-500"></i><span>%s</span></a>
+          <button type="button" class="pv-white-btn pv-icon-pill" title="通知中心" onclick="location.href='/admin/notifications'"><i class="fas fa-bell text-slate-500"></i><span class="pv-bell-badge">12</span></button>
+          <a href="/profile" class="pv-white-btn pv-profile-chip"><span class="pv-profile-avatar">%s</span><span class="pv-profile-text"><span>%s</span><i class="fas fa-chevron-down text-[10px] text-slate-400"></i></span></a>
         </div>
       </div>
       <div class="pv-body">
@@ -1234,7 +1241,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             <div class="pv-channel-table" id="projectChannelsListMirror">%s</div>
           </div>
           <div class="pv-modal-footer">
-            <button type="button" class="pv-secondary" onclick="pvCloseModal('channels');switchPvPanel('channels')">查看列表</button>
+            <button type="button" class="pv-secondary" onclick="pvCloseModal('channels')">关闭</button>
             <div class="pv-dropdown-shell">
               <button type="button" class="pv-primary" onclick="toggleAddChannelDropdown('mirror')">添加渠道</button>
               <div id="addChannelDropdownMirror" class="pv-channel-dropdown hidden"></div>
@@ -2069,6 +2076,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url, project_id_url,
         html.escape(project_name),
         html.escape(selected_stage_label),
+        html.escape(topbar_avatar_text),
         html.escape(username or '运维管理员'),
         project_tree_html,
         html.escape(project_name),
