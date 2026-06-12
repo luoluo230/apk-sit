@@ -334,6 +334,7 @@ def resolve_runtime_version():
             'scope_id': release_ctx.get('scope_id') or selected.get('scope_id') or '',
             'env_key': row_env_key,
             'channel_id': str(selected.get('channel') or ''),
+            'channel_key': row_channel,
             'active_bundle_id': release_ctx.get('active_bundle_id') or selected.get('active_bundle_id') or '',
             'version_record': dict(selected),
         },

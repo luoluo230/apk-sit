@@ -23,6 +23,7 @@ from models.data import (
     save_projects,
     set_system_config,
     get_channels_for_project,
+    get_channel_by_id,
 )
 from services.authz import admin_required, can_access_module, has_scope
 from services.game_ops_client import GameOpsClient
@@ -688,18 +689,40 @@ def _get_project_credentials(project_id: str) -> Dict[str, Any]:
 
 def _project_envs_and_channels(project_id: str) -> Dict[str, List[str]]:
     versions = project_versions_db.get(project_id) or []
-    envs = sorted({str(v.get("env") or "").strip() for v in versions if str(v.get("env") or "").strip()})
-    channels = sorted({str(v.get("channel") or "").strip() for v in versions if str(v.get("channel") or "").strip()})
+    env_order = ["dev", "test", "staging", "prod"]
+    env_seen = []
+    for v in versions:
+        if not isinstance(v, dict):
+            continue
+        raw_env = str(v.get("env") or v.get("stage") or "").strip()
+        if not raw_env:
+            continue
+        gm_env = env_key_to_gm_env(normalize_release_env_key(raw_env))
+        if gm_env and gm_env not in env_seen:
+            env_seen.append(gm_env)
+    envs = [env for env in env_order if env in env_seen]
+    channels = sorted({
+        str((get_channel_by_id(str(v.get("channel") or "").strip()) or {}).get("apk_subdir") or v.get("channel") or "").strip()
+        for v in versions
+        if str(v.get("channel") or "").strip()
+    })
     if not envs:
         envs = ["dev", "test", "staging", "prod"]
     if not channels:
         manifest = find_manifest(project_id)
         manifest_channels = manifest.get("channels") if isinstance(manifest, dict) else None
         if isinstance(manifest_channels, list) and manifest_channels:
-            channels = sorted({str(mc.get("channel_id") or "").strip() for mc in manifest_channels
-                               if isinstance(mc, dict) and str(mc.get("channel_id") or "").strip()})
+            channels = sorted({
+                str(mc.get("channel_key") or mc.get("channel_id") or "").strip()
+                for mc in manifest_channels
+                if isinstance(mc, dict) and str(mc.get("channel_id") or mc.get("channel_key") or "").strip()
+            })
         if not channels:
-            channels = [str(c).strip() for c in ((projects_db.get(project_id) or {}).get("channels") or []) if str(c).strip()]
+            channels = [
+                str((get_channel_by_id(str(c).strip()) or {}).get("apk_subdir") or c).strip()
+                for c in ((projects_db.get(project_id) or {}).get("channels") or [])
+                if str(c).strip()
+            ]
     return {"envs": envs, "channels": channels}
 
 
@@ -844,7 +867,7 @@ def gm_ops_page():
       </div>
       <div class="md:col-span-1 gm-fit">
         <label class="gm-compact-label">平台</label>
-        <select id="platform" class="w-full border rounded px-2 py-2 text-sm"><option value="android">android</option><option value="ios">ios</option></select>
+        <select id="platform" class="w-full border rounded px-2 py-2 text-sm"><option value="android">安卓</option><option value="ios">iOS</option></select>
       </div>
       <div class="md:col-span-3"><button onclick="loadWorkspace()" class="w-full gm-primary-btn bg-indigo-600">加载项目工作台</button></div>
       <div class="md:col-span-9 gm-context-kpi">
@@ -1163,10 +1186,24 @@ function selectedProjectId(){ return (document.getElementById('projectId').value
 function selectedEnv(){ return (document.getElementById('env').value || '').trim(); }
 function selectedChannel(){ return (document.getElementById('channel').value || '').trim(); }
 function selectedPlatform(){ return (document.getElementById('platform').value || 'android').trim(); }
+function envLabel(value){
+  const raw=String(value||'').trim().toLowerCase();
+  if(raw==='dev' || raw==='development') return '开发环境';
+  if(raw==='test' || raw==='testing') return '测试环境';
+  if(raw==='staging' || raw==='stage') return '预发环境';
+  if(raw==='prod' || raw==='production' || raw==='release') return '生产环境';
+  return String(value||'-');
+}
+function platformLabel(value){
+  const raw=String(value||'').trim().toLowerCase();
+  if(raw==='android') return '安卓';
+  if(raw==='ios') return 'iOS';
+  return String(value||'-');
+}
 function refreshContextHeader(){
   const projectSel=document.getElementById('projectSelect');
   const ptxt=projectSel?.selectedOptions?.[0]?.text || selectedProjectId() || '-';
-  const ctx=[selectedEnv() || '-', selectedChannel() || '-', selectedPlatform() || '-'].join(' / ');
+  const ctx=[envLabel(selectedEnv()), selectedChannel() || '-', platformLabel(selectedPlatform())].join(' / ');
   const pEl=document.getElementById('ctxProjectName');
   const cEl=document.getElementById('ctxContextName');
   if(pEl){ pEl.innerText = ptxt; }
@@ -1380,12 +1417,22 @@ function applyCenterViewMode(){
     switchSection(fallback);
   }
 }
-function upsertOptions(el, values, pick){ if(!el) return; el.innerHTML = (values||[]).map(v=>`<option value="${v}">${v}</option>`).join(''); if(pick && values && values.includes(pick)) el.value = pick; }
+function upsertOptions(el, values, pick){
+  if(!el) return;
+  const rows=(values||[]).map(v=>{
+    if(v && typeof v === 'object'){
+      return { value: String(v.value ?? ''), text: String(v.text ?? v.label ?? v.value ?? '') };
+    }
+    return { value: String(v ?? ''), text: String(v ?? '') };
+  }).filter(v=>v.value);
+  el.innerHTML = rows.map(v=>`<option value="${v.value}">${v.text}</option>`).join('');
+  if(pick && rows.some(v=>v.value===pick)) el.value = pick;
+}
 function upsertChannelOptions(el, options, pick){
   if(!el) return;
-  const rows=(options||[]).filter(x=>x&&x.id).map(x=>({id:String(x.id),name:String(x.name||x.id)}));
-  el.innerHTML = rows.map(x=>`<option value="${x.id}">${x.id} · ${x.name}</option>`).join('');
-  if(pick && rows.some(x=>x.id===pick)) el.value=pick;
+  const rows=(options||[]).filter(x=>x&&x.id).map(x=>({id:String(x.id),name:String(x.name||x.id),key:String(x.channel_key||x.key||x.apk_subdir||x.build_param||x.id)}));
+  el.innerHTML = rows.map(x=>`<option value="${x.key}">${x.name}</option>`).join('');
+  if(pick && rows.some(x=>x.key===pick || x.id===pick)) el.value=(rows.find(x=>x.key===pick || x.id===pick)||{}).key||pick;
 }
 function normalizeEnvKeyUi(value){
   const raw=String(value||'').trim().toLowerCase();
@@ -1395,7 +1442,7 @@ function normalizeEnvKeyUi(value){
   if(raw==='prod' || raw==='production' || raw==='release') return 'production';
   return raw;
 }
-function currentReleasePayload(){ const env=selectedEnv(); const channel=selectedChannel(); return { project_id: selectedProjectId(), env: env, env_key: normalizeEnvKeyUi(env), channel: channel, channel_id: channel, platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
+function currentReleasePayload(){ const env=selectedEnv(); const channel=selectedChannel(); return { project_id: selectedProjectId(), env: env, env_key: normalizeEnvKeyUi(env), channel: channel, channel_key: channel, platform: selectedPlatform(), version_name: (document.getElementById('versionName').value || '').trim(), server_profile: (document.getElementById('serverProfile').value || '').trim() || 'default', apk_version: (document.getElementById('apkVersion').value || '').trim(), resource_version: (document.getElementById('resourceVersion').value || '').trim(), config_version: (document.getElementById('configVersion').value || '').trim(), apk_url: (document.getElementById('apkUrl').value || '').trim(), resource_url: (document.getElementById('resourceUrl').value || '').trim(), config_url: (document.getElementById('configUrl').value || '').trim(), distribution_method: (document.getElementById('distributionMethod').value || '').trim(), package_name: (document.getElementById('packageName').value || '').trim(), bundle_id: (document.getElementById('bundleId').value || '').trim(), changelog: (document.getElementById('changelog').value || '').trim(), build_output: (document.getElementById('buildOutput').value || '').trim(), project_code: (document.getElementById('projectCode').value || '').trim(), resource_builder: (document.getElementById('resourceBuilder').value || '').trim(), baseline_version_dir: (document.getElementById('baselineVersionDir').value || '').trim(), diff_keyword: (document.getElementById('diffKeyword').value || '').trim(), hot_update_base_url: (document.getElementById('hotUpdateBaseUrl').value || '').trim(), client_version: (document.getElementById('clientVersion').value || '').trim(), upload_provider: (document.getElementById('uploadProvider').value || '').trim(), bucket: (document.getElementById('bucket').value || '').trim(), region: (document.getElementById('region').value || '').trim(), cdn_prefix: (document.getElementById('cdnPrefix').value || '').trim(), path_template: (document.getElementById('pathTemplate').value || '').trim(), automation_plan_path: (document.getElementById('automationPlanPath').value || '').trim(), cli_result_path: (document.getElementById('cliResultPath').value || '').trim(), entry_point: (document.getElementById('entryPoint').value || '').trim(), release_mode: (document.getElementById('releaseMode').value || '').trim(), targets: (document.getElementById('targets').value || '').trim(), code_units: (document.getElementById('codeUnits').value || '').trim(), config_units: (document.getElementById('configUnits').value || '').trim(), asset_units: (document.getElementById('assetUnits').value || '').trim() }; }
 function currentProfilePayload(){ return { id: (document.getElementById('serverProfile').value || '').trim() || 'default', name: (document.getElementById('serverProfile').value || '').trim() || 'default', env: selectedEnv(), channel: selectedChannel(), gateway_ws: (document.getElementById('gatewayWs').value||'').trim(), login_http: (document.getElementById('loginHttp').value||'').trim(), game_ws: (document.getElementById('gameWs').value||'').trim(), battle_udp: (document.getElementById('battleUdp').value||'').trim(), ops_http: (document.getElementById('opsHttp').value||'').trim(), notice_url: (document.getElementById('noticeUrl').value||'').trim() }; }
 function refreshPreview(){ const p=currentReleasePayload(); document.getElementById('preview').textContent = JSON.stringify({project_id:p.project_id, env:p.env, channel:p.channel, version_name:p.version_name, apk_version:p.apk_version, resource_version:p.resource_version, config_version:p.config_version},null,2); }
 function renderDictRows(rows){ const cat=(document.getElementById('dictCategory')?.value||'all'); const kw=(document.getElementById('dictKeyword')?.value||'').trim().toLowerCase(); const body=document.getElementById('closureTableBody'); if(!body) return; const filtered=(rows||[]).filter(x=>{ const okCat=(cat==='all'||String(x.sourceLayer||'')===cat); const okKw=(!kw||String(x.key||'').toLowerCase().includes(kw)||String(x.description||'').toLowerCase().includes(kw)); return okCat&&okKw;}); body.innerHTML = filtered.map(x=>`<tr class="border-b"><td class="px-2 py-1">${x.key||'-'}</td><td class="px-2 py-1">${x.description||'-'}</td><td class="px-2 py-1">${x.sourceLayer||x.source||'-'}</td><td class="px-2 py-1">${x.value===undefined||x.value===null||x.value===''?'-':String(x.value)}</td><td class="px-2 py-1">${x.effectiveStage||'-'}</td><td class="px-2 py-1">${(x.logKey||'-')+' / '+(x.readbackField||'-')}</td></tr>`).join('') || '<tr><td class="px-2 py-2" colspan="6">暂无参数映射</td></tr>'; }
@@ -1412,7 +1459,7 @@ function renderBeforeAfterDiff(beforeObj, afterObj){
   }).join('');
 }
 async function loadCatalog(){ const r=await fetch('/api/gm-ops/projects/catalog'); const d=await r.json(); if(!d.ok){ updateResult(d); return; } const rows=d.data||[]; const sel=document.getElementById('projectSelect'); sel.innerHTML=rows.map(p=>`<option value="${p.project_id}">${p.project_id} / ${p.project_name}</option>`).join(''); const q=new URLSearchParams(window.location.search); const qpid=(q.get('project_id')||'').trim(); if(qpid && rows.some(x=>String(x.project_id)===qpid)){ sel.value=qpid; } refreshContextHeader(); if(rows.length){ document.getElementById('projectId').value=(sel.value||rows[0].project_id); await loadWorkspace(); } }
-async function loadWorkspace(){ const pid=(document.getElementById('projectSelect').value||'').trim(); if(!pid){ return; } document.getElementById('projectId').value=pid; const rs=await fetch('/api/gm-ops/projects/catalog?project_id='+encodeURIComponent(pid)); const d=await rs.json(); if(!d.ok){ updateResult(d); return; } const item=(d.data||[])[0]||{}; upsertOptions(document.getElementById('env'), item.envs || ['dev','test','staging','prod'], item.default_env || 'dev'); upsertChannelOptions(document.getElementById('channel'), item.channel_options || [], item.default_channel || 'default'); document.getElementById('gameId').value=item.game_id||''; document.getElementById('gameKeyMasked').value=item.game_key_masked||'***'; document.getElementById('serverProfile').value=item.default_server_profile||'default'; document.getElementById('credentialSummary').innerText=`gameId: ${item.game_id||'-'} | gameKey: ${item.game_key_masked||'***'} | 更新时间: ${item.updated_at||'-'}`; document.getElementById('workspaceSummary').innerText=`项目 ${item.project_id||pid}，可用环境 ${(item.envs||[]).join('/')||'-'}，可用渠道 ${(item.channel_options||[]).map(x=>x.id+'·'+x.name).join('/')||'-'}`; refreshContextHeader(); refreshPreview(); updateResult({ok:true, workspace:item}); }
+async function loadWorkspace(){ const pid=(document.getElementById('projectSelect').value||'').trim(); if(!pid){ return; } document.getElementById('projectId').value=pid; const rs=await fetch('/api/gm-ops/projects/catalog?project_id='+encodeURIComponent(pid)); const d=await rs.json(); if(!d.ok){ updateResult(d); return; } const item=(d.data||[])[0]||{}; const envRows=(item.envs || ['dev','test','staging','prod']).map(v=>({ value:v, text:envLabel(v) })); upsertOptions(document.getElementById('env'), envRows, item.default_env || 'dev'); upsertChannelOptions(document.getElementById('channel'), item.channel_options || [], item.default_channel || 'default'); document.getElementById('gameId').value=item.game_id||''; document.getElementById('gameKeyMasked').value=item.game_key_masked||'***'; document.getElementById('serverProfile').value=item.default_server_profile||'default'; document.getElementById('credentialSummary').innerText=`gameId: ${item.game_id||'-'} | gameKey: ${item.game_key_masked||'***'} | 更新时间: ${item.updated_at||'-'}`; document.getElementById('workspaceSummary').innerText=`项目 ${item.project_id||pid}，可用环境 ${(item.envs||[]).map(envLabel).join('/')||'-'}，可用渠道 ${(item.channel_options||[]).map(x=>(x.channel_key||x.key||x.id)+'·'+x.name).join('/')||'-'}`; refreshContextHeader(); refreshPreview(); updateResult({ok:true, workspace:item}); }
 async function loadReleaseScopePanel(){
   const pid=selectedProjectId();
   if(!pid){ return; }
@@ -1692,13 +1739,14 @@ def gm_projects_catalog():
                 cid = str(mc.get("channel_id") or "").strip()
                 ckey = str(mc.get("channel_key") or "").strip()
                 if cid:
-                    channel_options.append({"id": cid, "name": ckey or cid})
+                    cfg = get_channel_by_id(cid) or {}
+                    channel_options.append({"id": cid, "name": str(cfg.get("name") or ckey or cid).strip(), "channel_key": ckey or cid})
         else:
             for item_channel in get_channels_for_project(pid):
                 cid = str(item_channel.get("id") or "").strip()
                 cname = str(item_channel.get("name") or cid).strip()
                 if cid:
-                    channel_options.append({"id": cid, "name": cname})
+                    channel_options.append({"id": cid, "name": cname, "channel_key": str(item_channel.get("apk_subdir") or item_channel.get("build_param") or cid).strip()})
         rows.append(
             {
                 "project_id": pid,
@@ -1707,7 +1755,7 @@ def gm_projects_catalog():
                 "game_key_masked": (str(item.get("game_key") or "").strip()[:6] + "***") if str(item.get("game_key") or "").strip() else "",
                 "default_server_profile": str(item.get("default_server_profile") or "default").strip() or "default",
                 "default_env": default_env,
-                "default_channel": default_channel,
+                "default_channel": str((get_channel_by_id(default_channel) or {}).get("apk_subdir") or default_channel).strip() or "default",
                 "envs": ec["envs"],
                 "channels": ec["channels"],
                 "channel_options": channel_options,
@@ -2593,7 +2641,7 @@ def gm_public_release_config():
         "channel_id": ctx.get("channel_id"),
         "channel_key": ctx.get("channel_key"),
         "env": effective_release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
-        "channel": effective_release.get("channel") or channel,
+        "channel": ctx.get("channel_key") or effective_release.get("channel") or channel,
         "platform": effective_release.get("platform") or platform,
         "active_bundle_id": ctx.get("active_bundle_id"),
         "bundle_id": effective_bundle_id,
@@ -2678,7 +2726,7 @@ def gm_public_runtime_bootstrap():
             "channel_id": ctx.get("channel_id"),
             "channel_key": ctx.get("channel_key"),
             "env": effective_release.get("env") or env_key_to_gm_env(str(ctx.get("env_key") or "")),
-            "channel": effective_release.get("channel") or channel,
+            "channel": ctx.get("channel_key") or effective_release.get("channel") or channel,
             "platform": effective_release.get("platform") or platform,
             "active_bundle_id": ctx.get("active_bundle_id"),
             "bundle_id": effective_bundle_id,

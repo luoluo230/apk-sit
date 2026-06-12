@@ -18,6 +18,7 @@ from services.commercial_release_plan import (
 )
 from services.release.release_context import apply_scope_fields_to_version_row
 from services.release.env_registry import normalize_release_env_key, env_key_to_gm_env, stage_to_env_key
+from services.release.scope_ids import resolve_channel_id
 
 VERSION_STAGES = [("dev", "开发"), ("test", "测试"), ("production", "线上")]
 VERSION_STATUSES = [("draft", "草稿"), ("testing", "测试中"), ("active", "有效"), ("disabled", "失效"), ("archived", "归档")]
@@ -61,16 +62,27 @@ def _version_row_labels(channel_id: str, stage_id: str) -> dict[str, str]:
     from models.data import channels_db
 
     ch_map = {
-        (c.get("id") or "").strip(): (c.get("name") or c.get("id") or "").strip()
+        (c.get("id") or "").strip(): {
+            "label": (c.get("name") or c.get("id") or "").strip(),
+            "key": (c.get("apk_subdir") or c.get("build_param") or c.get("id") or "").strip(),
+        }
         for c in (channels_db if isinstance(channels_db, list) else [])
         if (c.get("id") or "").strip()
     }
     cid = (channel_id or "").strip()
     sid = (stage_id or "dev").strip() or "dev"
     return {
-        "channel_label": ch_map.get(cid, cid or "-"),
+        "channel_label": (ch_map.get(cid) or {}).get("label") or cid or "-",
+        "channel_key": (ch_map.get(cid) or {}).get("key") or cid or "-",
         "stage_label": STAGE_LABEL_MAP.get(sid, sid),
     }
+
+
+def _normalize_channel_storage_value(project_id: str, raw_channel: Any) -> str:
+    channel_text = str(raw_channel or "").strip()
+    if not channel_text:
+        return ""
+    return resolve_channel_id(project_id, channel_text) or channel_text
 
 
 def _normalize_version_status(raw_status):
@@ -311,7 +323,7 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
 
     v = {
         "id": vid,
-        "channel": (data.get("channel") or "dev").strip() or "dev",
+        "channel": _normalize_channel_storage_value(project_id, data.get("channel") or "dev") or "dev",
         "stage": stage,
         "platform": platform,
         "version_status": _normalize_version_status(data.get("version_status") or "active"),
@@ -364,6 +376,8 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     v_out = {
         **v,
         **labels,
+        "channel": labels.get("channel_key") or v.get("channel"),
+        "channel_id": v.get("channel"),
         "platform_label": versions_repo.platform_label(platform),
         "version_status": _normalize_version_status(v.get("version_status") or "active"),
         "version_status_label": VERSION_STATUS_MAP.get(_normalize_version_status(v.get("version_status") or "active"), "有效"),
@@ -401,7 +415,7 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
         stage = current_row.get("stage") or "dev"
 
     update_payload = {
-        "channel": (data.get("channel") or current_row.get("channel") or "dev").strip() or "dev",
+        "channel": _normalize_channel_storage_value(project_id, data.get("channel") or current_row.get("channel") or "dev") or "dev",
         "stage": stage,
         "platform": platform,
         "version_status": _normalize_version_status(data.get("version_status") or current_row.get("version_status") or "active"),
@@ -470,8 +484,12 @@ def update_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
     for tag in _build_status_audit_tags(old_status, new_status):
         versions_repo.audit("update_project_version_status", "%s %s %s" % (project_id, vid, tag))
     row = versions[idx]
+    labels = _version_row_labels(row.get("channel"), row.get("stage"))
     v_out = {
         **row,
+        **labels,
+        "channel": labels.get("channel_key") or row.get("channel"),
+        "channel_id": row.get("channel"),
         "platform_label": versions_repo.platform_label(platform),
         "version_status": _normalize_version_status(row.get("version_status") or "active"),
         "version_status_label": VERSION_STATUS_MAP.get(_normalize_version_status(row.get("version_status") or "active"), "有效"),

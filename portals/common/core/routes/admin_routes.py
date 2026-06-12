@@ -329,7 +329,11 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
 
     project_channel_ids = proj.get('channels') or []
     all_channels_list = [
-        (c.get('id', '').strip(), (c.get('name') or c.get('id', '')).strip())
+        (
+            c.get('id', '').strip(),
+            (c.get('name') or c.get('id', '')).strip(),
+            (c.get('apk_subdir') or c.get('build_param') or c.get('id') or '').strip(),
+        )
         for c in (channels_db if isinstance(channels_db, list) else [])
         if (c.get('id') or '').strip()
     ]
@@ -340,13 +344,14 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             'description': (c.get('description') or '').strip(),
             'apk_subdir': (c.get('apk_subdir') or '').strip(),
             'build_param': (c.get('build_param') or '').strip(),
+            'channel_key': (c.get('apk_subdir') or c.get('build_param') or c.get('id') or '').strip(),
         }
         for c in (channels_db if isinstance(channels_db, list) else [])
         if (c.get('id') or '').strip()
     }
     project_channels = [row for row in all_channels_list if row[0] in project_channel_ids] if project_channel_ids else all_channels_list
     if not project_channels:
-        project_channels = [('default', '默认渠道')]
+        project_channels = [('default', '默认渠道', 'default')]
     project_channels_html = ''.join(
         '<span class="pv-chip-item" data-channel="%s">%s%s</span>' % (
             html.escape(cid),
@@ -357,7 +362,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 else '<button type="button" data-channel-id="%s" class="remove-channel-btn"><i class="fas fa-times text-[10px]"></i></button>' % html.escape(cid)
             ),
         )
-        for cid, cname in project_channels
+        for cid, cname, _ in project_channels
     )
     project_channels_modal_rows_html = ''.join(
         '<div class="pv-channel-row">'
@@ -372,16 +377,18 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         '%s'
         '</div>' % (
             html.escape((channel_details_map.get(cid) or {}).get('name') or cname),
-            html.escape(cid),
-            html.escape((channel_details_map.get(cid) or {}).get('apk_subdir') or '未配置 APK 子目录'),
+            html.escape((channel_details_map.get(cid) or {}).get('channel_key') or ckey or cid),
+            html.escape((channel_details_map.get(cid) or {}).get('apk_subdir') or (channel_details_map.get(cid) or {}).get('channel_key') or '未配置渠道 key'),
             html.escape((channel_details_map.get(cid) or {}).get('build_param') or '未配置构建参数'),
             (
                 '<button type="button" class="pv-channel-remove remove-channel-btn" data-channel-id="%s"><i class="fas fa-trash"></i></button>' % html.escape(cid)
                 if can_edit else ''
             ),
         )
-        for cid, cname in project_channels
+        for cid, cname, ckey in project_channels
     ) or '<div class="pv-empty-state">当前项目还没有可用渠道。</div>'
+    channel_key_map = {cid: ckey for cid, _, ckey in project_channels}
+    channel_name_map = {cid: cname for cid, cname, _ in project_channels}
 
     def _stage_count(pid, stage_key):
         rows = project_versions_db.get(pid) or []
@@ -473,7 +480,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         '<div class="pv-build-side"><span>%s</span><span>%s</span></div>'
         '</div>' % (
             html.escape(str(row.get('version_name') or '-') or '-'),
-            html.escape(next((name for channel_id, name in project_channels if channel_id == str(row.get('channel') or '').strip()), str(row.get('channel') or '-') or '-')),
+            html.escape(channel_key_map.get(str(row.get('channel') or '').strip(), str(row.get('channel') or '-') or '-')),
             html.escape(stage_short_map.get(str(row.get('stage') or 'dev').strip() or 'dev', 'dev')),
             html.escape('iOS' if str(row.get('platform') or 'android').strip().lower() == 'ios' else 'Android'),
             html.escape(str(row.get('jenkins_job_id') or '-') or '-'),
@@ -503,7 +510,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 'version_name': str(row.get('version_name') or '').strip() or '-',
                 'version_code': str(row.get('version_code') or '').strip() or '',
                 'channel': cid,
-                'channel_label': next((name for channel_id, name in project_channels if channel_id == cid), cid or '-'),
+                'channel_label': channel_name_map.get(cid, cid or '-'),
+                'channel_key': channel_key_map.get(cid, cid or '-'),
                 'stage': sid,
                 'stage_label': STAGE_MAP.get(sid, sid),
                 'stage_short_label': stage_short_map.get(sid, sid),
@@ -559,7 +567,8 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 'version_name': version_name,
                 'version_code': str(row.get('version_code') or '').strip() or '-',
                 'channel': cid,
-                'channel_label': next((name for channel_id, name in project_channels if channel_id == cid), cid or '-'),
+                'channel_label': channel_name_map.get(cid, cid or '-'),
+                'channel_key': channel_key_map.get(cid, cid or '-'),
                 'stage': sid,
                 'stage_label': STAGE_MAP.get(sid, sid),
                 'stage_short_label': stage_short_map.get(sid, sid),
@@ -582,7 +591,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         seen_triplets = set()
         for item in normalized_rows:
             triplet = (
-                item.get('channel_label') or item.get('channel') or '-',
+                item.get('channel_key') or item.get('channel') or '-',
                 item.get('stage_short_label') or item.get('stage') or '-',
                 item.get('platform_label') or item.get('platform') or '-',
             )
@@ -720,13 +729,13 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         )
     version_overview_html = ''.join(version_group_cards) or '<div class="pv-empty-state">暂无版本数据，先创建一个版本组开始。</div>'
     available_channels = [
-        {'id': cid, 'name': cname}
-        for cid, cname in all_channels_list
+        {'id': cid, 'name': cname, 'channel_key': ckey}
+        for cid, cname, ckey in all_channels_list
         if cid not in {row[0] for row in project_channels}
     ]
     channel_options_html = ''.join(
-        '<option value="%s">%s</option>' % (html.escape(cid), html.escape(cname))
-        for cid, cname in project_channels
+        '<option value="%s">%s</option>' % (html.escape(ckey or cid), html.escape(cname))
+        for cid, cname, ckey in project_channels
     )
     project_id_url = quote(project_id)
     project_id_js = json.dumps(project_id, ensure_ascii=False)
@@ -1110,7 +1119,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
               <div class="pv-toolbar-right">
                 <input type="text" id="pvVersionSearch" class="pv-filter search" placeholder="搜索版本号 / VersionCode">
                 <select id="pvStageFilter" class="pv-filter"><option value="all">全部阶段</option><option value="production">线上</option><option value="test">测试</option><option value="dev">开发</option></select>
-                <select id="pvStatusFilter" class="pv-filter"><option value="all">全部状态</option><option value="active">active</option><option value="testing">testing</option><option value="draft">draft</option><option value="disabled">disabled</option><option value="archived">archived</option></select>
+                <select id="pvStatusFilter" class="pv-filter"><option value="all">全部状态</option><option value="active">有效</option><option value="testing">测试中</option><option value="draft">草稿</option><option value="disabled">失效</option><option value="archived">归档</option></select>
                  <button type="button" class="pv-blue-btn" id="pvCreateVersionBtn"><i class="fas fa-plus"></i><span>新建版本组</span></button>
               </div>
             </div>
@@ -1295,7 +1304,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             <div class="pv-field"><label>版本号（Version Name）</label><input id="pvQuickVersionName" class="pv-input" placeholder="v1.2.4"></div>
             <div class="pv-inline-two">
               <div class="pv-field"><label>渠道</label><select id="pvQuickVersionChannel" class="pv-select">%s</select></div>
-              <div class="pv-field"><label>阶段</label><select id="pvQuickVersionStage" class="pv-select"><option value="production">prod</option><option value="test">test</option><option value="dev">dev</option></select></div>
+              <div class="pv-field"><label>阶段</label><select id="pvQuickVersionStage" class="pv-select"><option value="production">线上环境</option><option value="test">测试环境</option><option value="dev">开发环境</option></select></div>
             </div>
           </div>
           <div class="pv-modal-section">
@@ -1312,7 +1321,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 </div>
                 <select id="pvQuickVersionMode" class="pv-select hidden"><option value="general">通用版</option><option value="commercial">商业版</option></select>
               </div>
-              <div class="pv-field"><label>发布阶段</label><select id="pvQuickVersionStatus" class="pv-select"><option value="draft">draft</option><option value="testing">testing</option><option value="active">active</option><option value="disabled">disabled</option></select></div>
+              <div class="pv-field"><label>发布阶段</label><select id="pvQuickVersionStatus" class="pv-select"><option value="draft">草稿</option><option value="testing">测试中</option><option value="active">有效</option><option value="disabled">失效</option></select></div>
             </div>
             <div class="pv-field"><label>说明</label><input id="pvQuickVersionNotes" class="pv-input" placeholder="1.2.4 新版本"></div>
           </div>
@@ -1340,7 +1349,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             </div>
             <div class="pv-inline-two">
               <div class="pv-field"><label>VersionCode</label><input id="pvQuickVersionCodeValue" class="pv-input" placeholder="20260611"></div>
-              <div class="pv-field"><label>状态</label><select id="pvQuickVersionCodeStatus" class="pv-select"><option value="active">active</option><option value="testing">testing</option><option value="draft">draft</option><option value="disabled">disabled</option></select></div>
+              <div class="pv-field"><label>状态</label><select id="pvQuickVersionCodeStatus" class="pv-select"><option value="active">有效</option><option value="testing">测试中</option><option value="draft">草稿</option><option value="disabled">失效</option></select></div>
             </div>
             <div class="pv-field"><label>变更摘要</label><input id="pvQuickVersionCodeChangelog" class="pv-input" placeholder="热修复 / 灰度版本"></div>
           </div>
@@ -1373,7 +1382,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
                 <span>环境、渠道、平台与候选版本必须对齐</span>
               </div>
               <div class="pv-gm-filter-grid">
-                <div class="pv-field"><label>环境</label><select id="pvGmEnv" class="pv-select"><option value="prod">prod（生产环境）</option><option value="test">test（测试环境）</option><option value="dev">dev（开发环境）</option></select></div>
+                <div class="pv-field"><label>环境</label><select id="pvGmEnv" class="pv-select"><option value="prod">生产环境</option><option value="test">测试环境</option><option value="dev">开发环境</option></select></div>
                 <div class="pv-field"><label>渠道</label><select id="pvGmChannel" class="pv-select">%s</select></div>
                 <div class="pv-field"><label>平台</label><select id="pvGmPlatform" class="pv-select"><option value="android">Android</option><option value="ios">iOS</option></select></div>
                 <div class="pv-field"><label>发布版本</label><input id="pvGmSelectedVersionInput" class="pv-input" placeholder="请选择下方候选版本" readonly></div>
@@ -1574,7 +1583,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       if(modalTitle){ modalTitle.textContent = '编辑版本组'; }
       if(row){
         if(nameEl){ nameEl.value = row.version_name || ''; }
-        if(channelEl){ channelEl.value = row.channel || ''; }
+        if(channelEl){ channelEl.value = row.channel_key || row.channel || ''; }
         if(stageEl){ stageEl.value = row.stage || 'production'; }
         pvSyncVersionModeRadio(row.version_mode || 'general');
         if(statusEl){ statusEl.value = row.version_status || 'active'; }
@@ -1821,7 +1830,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       window.__PV_GM_SELECTED = selected;
       document.getElementById('pvGmSelectedVersion').textContent = selected ? (selected.version_name || '--') : '--';
       document.getElementById('pvGmSelectedCode').textContent = selected ? (selected.version_code || '--') : '--';
-      document.getElementById('pvGmSelectedChannelPlatform').textContent = selected ? ((selected.channel_label || selected.channel || '--') + ' / ' + (selected.platform_label || '--')) : '--';
+      document.getElementById('pvGmSelectedChannelPlatform').textContent = selected ? ((selected.channel_key || selected.channel || '--') + ' / ' + (selected.platform_label || '--')) : '--';
       document.getElementById('pvGmSelectedScope').textContent = selected ? (selected.scope_id || '--') : '--';
       var selectedVersionInput = document.getElementById('pvGmSelectedVersionInput');
       if(selectedVersionInput){ selectedVersionInput.value = selected ? (selected.version_name || '') : ''; }
@@ -1856,7 +1865,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         return ''
           + '<button type="button" class="pv-gm-candidate-row' + selectedClass + '" data-gm-version-id="' + String(row.id || '') + '">'
           + '<div class="pv-gm-candidate-radio"></div>'
-          + '<div class="pv-gm-candidate-title"><strong>' + String(row.version_name || '-') + '</strong><div class="pv-gm-candidate-meta"><span class="pv-gm-dot-tag">' + String(row.channel_label || row.channel || '-') + '</span><span>' + String(row.scope_id || '--') + '</span></div></div>'
+          + '<div class="pv-gm-candidate-title"><strong>' + String(row.version_name || '-') + '</strong><div class="pv-gm-candidate-meta"><span class="pv-gm-dot-tag">' + String(row.channel_key || row.channel || '-') + '</span><span>' + String(row.scope_id || '--') + '</span></div></div>'
           + '<div>' + String(row.version_code || '--') + '</div>'
           + '<div>' + String(row.updated_at || '--') + '</div>'
           + '<div>' + String(statusLabelMap[row.publish_status] || row.publish_status || '--') + '</div>'
