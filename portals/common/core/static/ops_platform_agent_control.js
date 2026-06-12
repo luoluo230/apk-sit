@@ -282,7 +282,7 @@
   }
 
   function cardHref(row, extra) {
-    let href = "/admin/ops-platform/agent-detail?project_id=" + encodeURIComponent(state.projectId) +
+    let href = "/admin/projects/" + encodeURIComponent(state.projectId) + "/agent-detail?" +
       "&env_key=" + encodeURIComponent(state.envKey) +
       "&agent_id=" + encodeURIComponent(row.agentId || row.rowId);
     if (row.deviceId) href += "&preview=" + encodeURIComponent(row.deviceId);
@@ -296,7 +296,7 @@
   }
 
   function queueHref(status) {
-    let href = "/admin/ops-platform/actions?project_id=" + encodeURIComponent(state.projectId) +
+    let href = "/admin/projects/" + encodeURIComponent(state.projectId) + "/actions?" +
       "&env_key=" + encodeURIComponent(state.envKey);
     if (status) href += "&job_status=" + encodeURIComponent(status);
     href += "#queue";

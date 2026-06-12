@@ -3,9 +3,8 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -13,17 +12,12 @@ from urllib.request import Request, urlopen
 from services.release.env_registry import normalize_release_env_key
 from services.release.scope_ids import resolve_channel_id
 from services.release.scope_resolver import resolve_network_profile, resolve_topology_binding_for_scope, resolve_topology_id
-from services.release.storage import load_bundles, mutate_bundles
+from services.release.storage import load_bundles
 from services.commercial_release_plan import build_runtime_resolve_paths, normalize_release_channel, normalize_release_platform
 
 
 def _now_iso() -> str:
     return datetime.now().isoformat()
-
-
-def _gen_bundle_id(scope_id: str) -> str:
-    slug = str(scope_id or "scope").replace(":", "-")[:48]
-    return f"rb-{datetime.now().strftime('%Y%m%d')}-{slug}-{uuid.uuid4().hex[:6]}"
 
 
 def list_bundles(
@@ -53,22 +47,6 @@ def get_bundle(bundle_id: str) -> Dict[str, Any]:
         if isinstance(row, dict) and str(row.get("bundle_id") or "").strip() == bid:
             return row
     return {}
-
-
-def _latest_bundle(rows: List[Dict[str, Any]], scope_id: str, status: str = "") -> Dict[str, Any]:
-    hits: List[Dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if str(row.get("scope_id") or "").strip() != scope_id:
-            continue
-        if status and str(row.get("publish_status") or "").strip() != status:
-            continue
-        hits.append(row)
-    if not hits:
-        return {}
-    hits.sort(key=lambda x: str(x.get("published_at") or x.get("created_at") or ""), reverse=True)
-    return hits[0]
 
 
 def _check_remote_artifact(url: str, *, timeout: float = 5.0) -> Dict[str, Any]:
@@ -134,149 +112,6 @@ def find_active_bundle(scope_id: str) -> Dict[str, Any]:
     for row in list_bundles(scope_id=sid, status="published"):
         return row
     return {}
-
-
-def _supersede_published_rows(rows: List[Dict[str, Any]], scope_id: str, except_bundle_id: str = "") -> Dict[str, Any]:
-    previous = _latest_bundle(rows, scope_id, "published")
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if str(row.get("scope_id") or "").strip() != scope_id:
-            continue
-        if str(row.get("publish_status") or "") != "published":
-            continue
-        if except_bundle_id and str(row.get("bundle_id") or "") == except_bundle_id:
-            continue
-        row["publish_status"] = "superseded"
-        row["updated_at"] = _now_iso()
-    return previous
-
-
-def create_bundle_from_publish(
-    scope: Dict[str, Any],
-    version_row: Dict[str, Any],
-    *,
-    published_by: str = "",
-    gateway_probe: Optional[Dict[str, Any]] = None,
-    runtime_run_id: str = "",
-    topology_version_label: str = "cluster-v1",
-) -> Dict[str, Any]:
-    scope_id = str(scope.get("scope_id") or "")
-    if not scope_id:
-        return {}
-    version_name = str(version_row.get("version_name") or "").strip()
-    network_profile, profile_source = resolve_network_profile(scope, version_name=version_name)
-    topology_binding = resolve_topology_binding_for_scope(scope, version_name=version_name)
-    topology_id = str(topology_binding.get("topology_id") or resolve_topology_id(scope, version_name=version_name) or "")
-    effective_runtime_run_id = str(runtime_run_id or "").strip()
-    if not effective_runtime_run_id:
-        try:
-            from services.ops.helpers import _runtime_active_for_scope
-
-            active_runtime = _runtime_active_for_scope(
-                str(scope.get("project_id") or ""),
-                str(scope.get("env_key") or ""),
-                topology_id,
-            )
-            if bool(active_runtime.get("active")):
-                effective_runtime_run_id = str(active_runtime.get("run_id") or "")
-        except Exception:
-            effective_runtime_run_id = ""
-
-    def _mutate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-        prev = _supersede_published_rows(rows, scope_id)
-        bundle = {
-            "bundle_id": _gen_bundle_id(scope_id),
-            "project_id": str(scope.get("project_id") or ""),
-            "scope_id": scope_id,
-            "env_key": str(scope.get("env_key") or ""),
-            "channel_id": str(scope.get("channel_id") or ""),
-            "client": {
-                "version_id": str(version_row.get("id") or ""),
-                "version_name": str(version_row.get("version_name") or ""),
-                "version_code": str(version_row.get("version_code") or ""),
-                "platform": str(version_row.get("platform") or "android"),
-                "apk_path": str(version_row.get("apk_path") or ""),
-                "resource_version": str(version_row.get("resource_version") or version_row.get("apk_version") or ""),
-                "config_version": str(version_row.get("config_version") or ""),
-            },
-            "server": {
-                "topology_id": topology_id,
-                "topology_version_label": topology_version_label,
-                "runtime_run_id": effective_runtime_run_id,
-                "cluster_sync_at": _now_iso(),
-                "network_profile_snapshot": dict(network_profile or {}),
-                "profile_source": profile_source,
-                "binding_source": str(topology_binding.get("binding_source") or ""),
-                "gateway_probe": gateway_probe or {},
-            },
-            "publish_status": "published",
-            "published_at": _now_iso(),
-            "published_by": published_by,
-            "supersedes_bundle_id": str(prev.get("bundle_id") or ""),
-            "rollback_of_bundle_id": "",
-            "created_at": _now_iso(),
-            "updated_at": _now_iso(),
-        }
-        rows.append(bundle)
-        return bundle
-
-    return mutate_bundles(_mutate)
-
-
-def rollback_bundle(scope_id: str, target_bundle_id: str, *, rolled_by: str = "") -> Dict[str, Any]:
-    sid = str(scope_id or "").strip()
-    if not sid or not target_bundle_id:
-        return {}
-
-    def _mutate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-        current_active = _latest_bundle(rows, sid, "published")
-        target_index = -1
-        target_row: Dict[str, Any] = {}
-        for i, row in enumerate(rows):
-            if isinstance(row, dict) and str(row.get("bundle_id") or "").strip() == target_bundle_id:
-                target_index = i
-                target_row = dict(row)
-                break
-        if target_index < 0 or str(target_row.get("scope_id") or "").strip() != sid:
-            return {}
-        rollback_of_bundle_id = ""
-        current_active_id = str(current_active.get("bundle_id") or "")
-        if current_active_id and current_active_id != target_bundle_id:
-            rollback_of_bundle_id = current_active_id
-        _supersede_published_rows(rows, sid)
-        target_row["publish_status"] = "published"
-        target_row["published_at"] = _now_iso()
-        target_row["published_by"] = rolled_by
-        target_row["rollback_of_bundle_id"] = rollback_of_bundle_id
-        target_row["updated_at"] = _now_iso()
-        rows[target_index] = target_row
-        return target_row
-
-    return mutate_bundles(_mutate)
-
-
-def bind_active_bundle_on_step4_activate(project_id: str, version_row: Dict[str, Any]) -> Dict[str, Any]:
-    """Link VersionRow to ReleaseBundle after commercial Step4 / OSS activate."""
-    from services.release.release_context import apply_scope_fields_to_version_row
-    from services.release.scope_resolver import resolve_scope_by_inputs
-
-    row = apply_scope_fields_to_version_row(dict(version_row or {}), project_id)
-    scope_id = str(row.get("scope_id") or "").strip()
-    if str(row.get("active_bundle_id") or "").strip():
-        return row
-    active = find_active_bundle(scope_id)
-    if active.get("bundle_id"):
-        row["active_bundle_id"] = str(active.get("bundle_id") or "")
-        return row
-    env = str(row.get("env_key") or row.get("env") or row.get("stage") or "")
-    channel = str(row.get("channel") or "")
-    scope = resolve_scope_by_inputs(project_id, env, channel)
-    if not scope:
-        return row
-    bundle = create_bundle_from_publish(scope, row, published_by="step4-activate")
-    row["active_bundle_id"] = str(bundle.get("bundle_id") or "")
-    return row
 
 
 def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, validate_artifacts: bool = False) -> Dict[str, Any]:

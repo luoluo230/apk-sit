@@ -507,9 +507,9 @@ def _diagnostics_fix_actions(row: Dict[str, Any]) -> List[Dict[str, Any]]:
     if status in ("OFFLINE", "UNKNOWN"):
         actions.append({"label": "启动", "action_type": "start", "target_key": target_key, "risk": "high"})
     if any("Agent" in str(x) or "绑定" in str(x) for x in issues):
-        actions.append({"label": "绑定 Agent", "href": f"/admin/ops-platform/agent-control?project_id={row.get('project_id') or ''}", "risk": "low"})
+        actions.append({"label": "绑定 Agent", "href": f"/admin/projects/{row.get('project_id') or ''}/agents", "risk": "low"})
     if any("ops_base_url" in str(x) for x in issues):
-        actions.append({"label": "拓扑编排", "href": f"/admin/ops-platform/topology?project_id={row.get('project_id') or ''}", "risk": "low"})
+        actions.append({"label": "拓扑编排", "href": f"/admin/projects/{row.get('project_id') or ''}/topologies", "risk": "low"})
     return actions
 
 

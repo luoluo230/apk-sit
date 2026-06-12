@@ -1,0 +1,14 @@
+<section class="delivery-page" data-delivery-page="overview" data-project-id="{{ project_id }}">
+  <header class="delivery-heading">
+    <div>
+      <p class="delivery-eyebrow">PROJECT DELIVERY</p>
+      <h1>{{ project.get('name') or project_id }} 项目总览</h1>
+      <p>从环境健康、构建产物、拓扑运行态到发布验证的一体化交付入口。</p>
+    </div>
+    <a class="delivery-primary" href="/admin/projects/{{ project_id }}/release-orders">进入发布单中心</a>
+  </header>
+  <div class="delivery-summary" id="deliverySummary"></div>
+  <div class="environment-grid" id="environmentCards">
+    <div class="delivery-loading">正在汇总项目交付状态...</div>
+  </div>
+</section>

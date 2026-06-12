@@ -32,7 +32,7 @@
     $('govApprovals').innerHTML=''
       +'<div style="font-size:12px;color:#334155;margin-bottom:8px">审批中心：<a href="/admin/approval" style="color:#1d4ed8">/admin/approval</a></div>'
       +'<div style="font-size:12px;color:#64748b;margin-bottom:8px">高危动作在动作执行中心发起 → 创建审批 → 审批通过后执行。</div>'
-      +'<a class="btn" href="/admin/ops-platform/actions?project_id='+encodeURIComponent(state.projectId)+'">打开动作执行中心</a>';
+      +'<a class="btn" href="/admin/projects/'+encodeURIComponent(state.projectId)+'/actions">打开动作执行中心</a>';
 
     const frozen=!!(state.window&&state.window.freeze_active);
     const runtimeActive=!!(state.window&&state.window.runtime_active);
@@ -51,7 +51,7 @@
       +'<button id="btnFreezeOff" class="btn">解除冻结</button>'
       +'<button id="btnFlowStart" class="btn success">拓扑启动</button>'
       +'<button id="btnFlowStop" class="btn">拓扑停止</button>'
-      +'<a class="btn" href="/admin/ops-platform/topology?project_id='+encodeURIComponent(state.projectId)+'&env_key='+encodeURIComponent(state.scope.env_key||'production')+'&topology_id='+encodeURIComponent(state.scope.topology_id||'')+'">进入拓扑编排</a>'
+      +'<a class="btn" href="/admin/projects/'+encodeURIComponent(state.projectId)+'/topologies?env_key='+encodeURIComponent(state.scope.env_key||'production')+'&topology_id='+encodeURIComponent(state.scope.topology_id||'')+'">进入拓扑编排</a>'
       +'</div>'
       +'<div id="govFlowMeta" class="ops-note" style="margin-top:8px"></div>';
 

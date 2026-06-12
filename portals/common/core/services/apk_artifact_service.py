@@ -337,11 +337,6 @@ def persist_archive_to_version(
         "updated_at": datetime.now().isoformat(),
     }
     row["updated_at"] = datetime.now().isoformat()
-    release_activate = os.environ.get("RELEASE_ACTIVATE", "").strip().lower() in ("1", "true", "yes")
-    if release_activate:
-        from services.release.bundle_service import bind_active_bundle_on_step4_activate
-
-        row = bind_active_bundle_on_step4_activate(pid, row)
     versions[idx] = row
     project_versions_db[pid] = versions
     save_project_versions()

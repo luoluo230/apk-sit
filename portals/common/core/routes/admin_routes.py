@@ -9,7 +9,7 @@ import re
 import uuid
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
-from flask import Blueprint, request, jsonify, render_template, render_template_string, session, abort
+from flask import Blueprint, request, jsonify, render_template, render_template_string, session, abort, redirect
 from services.authz import login_required, admin_required, admin_required_any, get_visible_modules, ADMIN_MODULES, ALL_MODULES_EXCEPT_USER_MANAGEMENT, is_super_admin_or_admin
 from models.data import (
     users_db, projects_db, products_db, audit_log_db, project_tasks_db, project_versions_db,
@@ -111,7 +111,6 @@ MODULE_LINKS = {
     'audit_log': ('/admin/audit-log', 'fa-history', 'text-gray-500'),
     'notifications': ('/admin/notifications', 'fa-bell', 'text-amber-500'),
     'approval': ('/admin/approval', 'fa-check-double', 'text-emerald-500'),
-    'gm_ops': ('/admin/ops-platform', 'fa-sitemap', 'text-cyan-500'),
     'reports': ('/admin/reports', 'fa-file-alt', 'text-cyan-500'),
     'system_settings': ('/admin/settings', 'fa-cog', 'text-slate-500'),
 }
@@ -803,7 +802,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             '<a href="/download-center?project={project_id}" class="pv-icon-btn" title="前往下载中心"><i class="fas fa-up-right-from-square"></i></a>'
             '<button type="button" class="pv-icon-btn" title="编辑版本组" data-edit-version-group="{edit_id}"><i class="fas fa-pen"></i></button>'
             '{delete_button}'
-            '<button type="button" class="pv-icon-btn" title="打开发版工作台" data-pv-modal-open="gm-wizard"><i class="fas fa-rocket"></i></button>'
+            '<a class="pv-icon-btn" title="创建发布单" href="/admin/projects/' + html.escape(project_id) + '/release-orders?create=1&amp;env_key=' + html.escape(row['env_key']) + '&amp;version_code=' + html.escape(row['version_code']) + '&amp;channel_id=' + html.escape(row['channel']) + '&amp;platform=' + html.escape(row['platform']) + '"><i class="fas fa-rocket"></i></a>'
             '</div>'
             '</div>'
             '</summary>'
@@ -1167,7 +1166,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         <a href="/admin/projects/%s" class="pv-nav-item"><i class="fas fa-grid-2"></i><span>项目工作台</span></a>
         <a href="/admin/projects/%s/versions" class="pv-nav-item is-active"><i class="fas fa-layer-group"></i><span>项目版本管理</span></a>
         <a href="/admin/projects/%s/build-history" class="pv-nav-item"><i class="fas fa-clock-rotate-left"></i><span>构建历史</span></a>
-        <a href="/admin/gm-ops?project_id=%s" class="pv-nav-item"><i class="fas fa-wand-magic-sparkles"></i><span>GM 发版工作台</span></a>
+        <a href="/admin/projects/%s/release-orders" class="pv-nav-item"><i class="fas fa-wand-magic-sparkles"></i><span>发布单中心</span></a>
         <a href="/download-center?project=%s" class="pv-nav-item"><i class="fas fa-download"></i><span>下载中心</span></a>
       </div>
       <div class="pv-nav-group">
@@ -1413,7 +1412,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
             <div class="pv-quick-grid">
               <button type="button" class="pv-quick-link" id="pvQuickOpenVersionGroup"><i class="fas fa-boxes-stacked"></i><span>构建版本</span></button>
               <button type="button" class="pv-quick-link" data-pv-modal-open="compare"><i class="fas fa-code-compare"></i><span>版本对比</span></button>
-              <button type="button" class="pv-quick-link" data-pv-modal-open="gm-wizard"><i class="fas fa-rocket"></i><span>发版工作台</span></button>
+              <a class="pv-quick-link" href="javascript:location.href='/admin/projects/'+location.pathname.split('/')[3]+'/release-orders'"><i class="fas fa-rocket"></i><span>发布单中心</span></a>
               <a href="/admin/projects/%s/topologies?env_key=%s" class="pv-quick-link"><i class="fas fa-sitemap"></i><span>拓扑管理</span></a>
               <a href="/download-center?project=%s" class="pv-quick-link"><i class="fas fa-download"></i><span>下载中心</span></a>
               <button type="button" class="pv-quick-link" id="pvQuickOpenDevices"><i class="fas fa-mobile-screen-button"></i><span>测试设备</span></button>
@@ -1545,102 +1544,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           </div>
     </div>
   </div>
-  <div class="pv-modal-overlay" data-pv-modal="gm-wizard" onclick="if(event.target===this){ pvCloseModal('gm-wizard'); }">
-    <div class="pv-panel pv-modal-card pv-modal-gm" onclick="event.stopPropagation()">
-      <button type="button" class="pv-modal-close" onclick="pvCloseModal('gm-wizard')"><i class="fas fa-times"></i></button>
-          <div class="pv-modal-heading">
-            <div>
-              <h4>GM 发版工作台</h4>
-              <p>按五步发布向导筛选真实版本、执行预检，再进入完整审批与发布链路。</p>
-            </div>
-          </div>
-          <div class="pv-step-line">
-            <div class="pv-step is-active"><div class="pv-step-no">1</div><span>选择版本</span></div>
-            <div class="pv-step"><div class="pv-step-no">2</div><span>预检检查</span></div>
-            <div class="pv-step"><div class="pv-step-no">3</div><span>审批确认</span></div>
-            <div class="pv-step"><div class="pv-step-no">4</div><span>执行发布</span></div>
-            <div class="pv-step"><div class="pv-step-no">5</div><span>结果对账</span></div>
-          </div>
-          <div class="pv-gm-shell">
-            <section class="pv-gm-section">
-              <div class="pv-gm-section-title">
-                <strong>选择版本</strong>
-                <span>环境、渠道、平台与候选版本必须对齐</span>
-              </div>
-              <div class="pv-gm-filter-grid">
-                <div class="pv-field"><label>环境</label><select id="pvGmEnv" class="pv-select"><option value="prod">生产环境</option><option value="test">测试环境</option><option value="dev">开发环境</option></select></div>
-                <div class="pv-field"><label>渠道</label><select id="pvGmChannel" class="pv-select">%s</select></div>
-                <div class="pv-field"><label>平台</label><select id="pvGmPlatform" class="pv-select"><option value="android">Android</option><option value="ios">iOS</option></select></div>
-                <div class="pv-field"><label>发布版本</label><input id="pvGmSelectedVersionInput" class="pv-input" placeholder="请选择下方候选版本" readonly></div>
-                <div class="pv-field"><label>VersionCode</label><input id="pvGmSelectedCodeInput" class="pv-input" placeholder="自动带入" readonly></div>
-                <div class="pv-field"><label>操作原因</label><input id="pvGmReason" class="pv-input" value="追热修"></div>
-              </div>
-            </section>
-            <section class="pv-gm-section">
-              <div class="pv-gm-section-title">
-                <strong>可发布版本</strong>
-                <span id="pvGmSummary">加载中…</span>
-              </div>
-              <div class="pv-gm-candidate-wrap">
-                <div class="pv-gm-candidate-head">
-                  <div></div>
-                  <div>版本组 / 渠道</div>
-                  <div>VersionCode</div>
-                  <div>构建时间</div>
-                  <div>发布状态</div>
-                  <div>Bundle</div>
-                </div>
-                <div class="pv-gm-candidate-list" id="pvGmCandidateList"></div>
-              </div>
-            </section>
-            <div class="pv-gm-selection-strip">
-              <section class="pv-gm-summary-card">
-                <h5>版本组</h5>
-                <strong id="pvGmSelectedVersion">--</strong>
-              </section>
-              <section class="pv-gm-summary-card">
-                <h5>VersionCode</h5>
-                <strong id="pvGmSelectedCode">--</strong>
-              </section>
-              <section class="pv-gm-summary-card">
-                <h5>渠道 / 平台</h5>
-                <strong id="pvGmSelectedChannelPlatform">--</strong>
-              </section>
-              <section class="pv-gm-summary-card">
-                <h5>作用域</h5>
-                <strong id="pvGmSelectedScope">--</strong>
-              </section>
-            </div>
-            <section class="pv-gm-section">
-              <div class="pv-gm-section-title">
-                <strong>预检检查</strong>
-                <span>直接对当前选中版本执行 Scope / 拓扑 / 产物预检</span>
-              </div>
-              <div class="pv-gm-status-line">
-                <span class="pv-gm-status-pill warn" id="pvGmPrecheckStatus">待执行</span>
-                <span id="pvGmPrecheckTime">尚未运行预检</span>
-              </div>
-              <div class="pv-gm-precheck-grid">
-                <div class="pv-gm-info-chip"><label>scope_id</label><div id="pvGmScopeId">--</div></div>
-                <div class="pv-gm-info-chip"><label>topology_id</label><div id="pvGmTopologyId">--</div></div>
-                <div class="pv-gm-info-chip"><label>runtime_topology_id</label><div id="pvGmRuntimeTopologyId">--</div></div>
-                <div class="pv-gm-info-chip"><label>active_bundle_id</label><div id="pvGmBundleId">--</div></div>
-              </div>
-              <div class="pv-gm-alert-list" id="pvGmPrecheckAlerts">
-                <div class="pv-gm-alert-item warn">请先从上方列表选择一个真实版本，再执行预检检查。</div>
-              </div>
-            </section>
-            <div class="pv-gm-footer">
-              <div class="pv-gm-footer-note">预检通过后再进入完整流程页做审批、发布和结果对账。</div>
-              <div class="pv-dock-actions">
-                <a href="/admin/gm-ops?project_id=%s" class="pv-secondary inline-flex items-center justify-center">完整流程</a>
-                <button type="button" class="pv-secondary" id="pvRunGmPrecheck">预检检查</button>
-                <button type="button" class="pv-primary" id="pvGotoGmWizard" disabled>下一步</button>
-              </div>
-            </div>
-          </div>
-    </div>
-  </div>
   <div class="pv-modal-overlay" data-pv-modal="qr-download" onclick="if(event.target===this){ pvCloseModal('qr-download'); }">
     <div class="pv-panel pv-modal-card pv-modal-narrow" onclick="event.stopPropagation()">
       <button type="button" class="pv-modal-close" onclick="pvCloseModal('qr-download')"><i class="fas fa-times"></i></button>
@@ -1732,15 +1635,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         if(versionGroups.length > 1){
           compareRight.value = versionGroups[1];
         }
-      }
-      var summaryEl = document.getElementById('pvGmSummary');
-      if(summaryEl){
-        summaryEl.textContent = versionGroups.length
-          ? ('版本组 ' + versionGroups.length + ' 个，VersionCode ' + window.__PV_VERSION_ROWS.length + ' 个，可直接进入发版向导。')
-          : '暂无可发布版本，请先创建版本组与 VersionCode。';
-      }
-      if(typeof pvRenderGmCandidates === 'function'){
-        pvRenderGmCandidates();
       }
     }
     function pvSyncVersionModeRadio(value){
@@ -2182,171 +2076,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         body: JSON.stringify({version_name: versionName})
       }).then(function(r){ return r.json(); }).then(function(d){ if(d.error){ alert(d.error); return; } location.reload(); });
     }
-    function pvStageKeyFromGmEnv(env){
-      var normalized = String(env || '').trim().toLowerCase();
-      if(normalized === 'prod' || normalized === 'production'){ return 'production'; }
-      if(normalized === 'test' || normalized === 'testing'){ return 'test'; }
-      return 'dev';
-    }
-    function pvGmEnvFromStageKey(stage){
-      var normalized = String(stage || '').trim().toLowerCase();
-      if(normalized === 'production' || normalized === 'prod'){ return 'prod'; }
-      if(normalized === 'test' || normalized === 'testing'){ return 'test'; }
-      return 'dev';
-    }
-    function pvCurrentGmCandidates(){
-      var env = document.getElementById('pvGmEnv').value || 'prod';
-      var channel = document.getElementById('pvGmChannel').value || '';
-      var platform = document.getElementById('pvGmPlatform').value || 'android';
-      var stageKey = pvStageKeyFromGmEnv(env);
-      return (window.__PV_ALL_VERSION_ROWS || []).filter(function(row){
-        return String(row.stage || '') === stageKey
-          && (!channel || String(row.channel || '') === channel)
-          && String(row.platform || 'android').toLowerCase() === platform.toLowerCase();
-      }).sort(function(a, b){
-        return String(b.updated_at || b.version_code || '').localeCompare(String(a.updated_at || a.version_code || ''));
-      });
-    }
-    function pvRenderGmSelection(row){
-      var selected = row || null;
-      window.__PV_GM_SELECTED = selected;
-      document.getElementById('pvGmSelectedVersion').textContent = selected ? (selected.version_name || '--') : '--';
-      document.getElementById('pvGmSelectedCode').textContent = selected ? (selected.version_code || '--') : '--';
-      document.getElementById('pvGmSelectedChannelPlatform').textContent = selected ? ((selected.channel_key || selected.channel || '--') + ' / ' + (selected.platform_label || '--')) : '--';
-      document.getElementById('pvGmSelectedScope').textContent = selected ? (selected.scope_id || '--') : '--';
-      var selectedVersionInput = document.getElementById('pvGmSelectedVersionInput');
-      if(selectedVersionInput){ selectedVersionInput.value = selected ? (selected.version_name || '') : ''; }
-      var selectedCodeInput = document.getElementById('pvGmSelectedCodeInput');
-      if(selectedCodeInput){ selectedCodeInput.value = selected ? (selected.version_code || '') : ''; }
-      document.getElementById('pvGmBundleId').textContent = selected ? (selected.active_bundle_id || '--') : '--';
-      document.getElementById('pvGotoGmWizard').disabled = !selected;
-    }
-    function pvRenderGmCandidates(){
-      var wrap = document.getElementById('pvGmCandidateList');
-      var summary = document.getElementById('pvGmSummary');
-      if(!wrap || !summary){ return; }
-      var rows = pvCurrentGmCandidates();
-      var versionGroupCount = {};
-      rows.forEach(function(row){ versionGroupCount[row.version_name || ''] = true; });
-      summary.textContent = rows.length
-        ? ('版本组 ' + Object.keys(versionGroupCount).length + ' 个，VersionCode ' + rows.length + ' 个，点击一条记录后可直接跑预检。')
-        : '当前筛选条件下没有可发布版本，请先补齐版本信息。';
-      if(!rows.length){
-        wrap.innerHTML = '<div class="pv-gm-empty">当前环境 / 渠道 / 平台下没有可选版本。</div>';
-        pvRenderGmSelection(null);
-        return;
-      }
-      var selectedId = window.__PV_GM_SELECTED ? String(window.__PV_GM_SELECTED.id || '') : '';
-      if(!selectedId || !rows.some(function(row){ return String(row.id || '') === selectedId; })){
-        window.__PV_GM_SELECTED = rows[0];
-        selectedId = String(rows[0].id || '');
-      }
-      wrap.innerHTML = rows.map(function(row){
-        var statusLabelMap = { published:'已发布', draft:'草稿', testing:'测试中', active:'可用', disabled:'停用' };
-        var selectedClass = String(row.id || '') === selectedId ? ' is-selected' : '';
-        return ''
-          + '<button type="button" class="pv-gm-candidate-row' + selectedClass + '" data-gm-version-id="' + String(row.id || '') + '">'
-          + '<div class="pv-gm-candidate-radio"></div>'
-          + '<div class="pv-gm-candidate-title"><strong>' + String(row.version_name || '-') + '</strong><div class="pv-gm-candidate-meta"><span class="pv-gm-dot-tag">' + String(row.channel_key || row.channel || '-') + '</span><span>' + String(row.scope_id || '--') + '</span></div></div>'
-          + '<div>' + String(row.version_code || '--') + '</div>'
-          + '<div>' + String(row.updated_at || '--') + '</div>'
-          + '<div>' + String(statusLabelMap[row.publish_status] || row.publish_status || '--') + '</div>'
-          + '<div>' + String(row.active_bundle_id || '--') + '</div>'
-          + '</button>';
-      }).join('');
-      pvRenderGmSelection(rows.find(function(row){ return String(row.id || '') === selectedId; }) || rows[0]);
-    }
-    function pvGmCurrentPayload(){
-      var row = window.__PV_GM_SELECTED || null;
-      if(!row){ return null; }
-      return {
-        project_id: %s,
-        env: document.getElementById('pvGmEnv').value || pvGmEnvFromStageKey(row.stage),
-        channel: row.channel || (document.getElementById('pvGmChannel').value || ''),
-        platform: row.platform || (document.getElementById('pvGmPlatform').value || 'android'),
-        version_name: row.version_name || '',
-        version_code: row.version_code || '',
-        bundle_id: row.active_bundle_id || '',
-        reason: (document.getElementById('pvGmReason').value || '').trim()
-      };
-    }
-    function pvRenderGmPrecheckResult(payload, ok){
-      var status = document.getElementById('pvGmPrecheckStatus');
-      var time = document.getElementById('pvGmPrecheckTime');
-      var alerts = document.getElementById('pvGmPrecheckAlerts');
-      if(status){
-        status.className = 'pv-gm-status-pill ' + (ok ? 'success' : 'error');
-        status.textContent = ok ? '预检通过' : '预检失败';
-      }
-      if(time){ time.textContent = payload && payload.checked_at ? ('检查时间：' + payload.checked_at) : '预检已完成'; }
-      document.getElementById('pvGmScopeId').textContent = payload && payload.scope_id ? payload.scope_id : '--';
-      document.getElementById('pvGmTopologyId').textContent = payload && payload.topology_id ? payload.topology_id : '--';
-      document.getElementById('pvGmRuntimeTopologyId').textContent = payload && payload.runtime_topology_id ? payload.runtime_topology_id : '--';
-      if(alerts){
-        var items = [];
-        if(ok){
-          items.push('<div class="pv-gm-alert-item success">Scope、拓扑运行态和产物字段已经通过预检，可以继续进入审批与发布。</div>');
-        }
-        [['missing_release_fields','缺少版本字段'], ['missing_profile_fields','缺少网络配置'], ['missing_artifact_fields','缺少产物字段']].forEach(function(entry){
-          var rows = payload && Array.isArray(payload[entry[0]]) ? payload[entry[0]] : [];
-          if(rows.length){
-            items.push('<div class="pv-gm-alert-item error"><strong>' + entry[1] + '：</strong>' + rows.join('、') + '</div>');
-          }
-        });
-        if(payload && Array.isArray(payload.artifact_checks) && payload.artifact_checks.length){
-          var failed = payload.artifact_checks.filter(function(item){ return !item.ok; });
-          if(failed.length){
-            items.push('<div class="pv-gm-alert-item warn"><strong>OSS 可达性：</strong>' + failed.map(function(item){ return (item.field || item.url || 'unknown') + ' 未通过'; }).join('；') + '</div>');
-          } else {
-            items.push('<div class="pv-gm-alert-item success">OSS 产物可达性检查通过，APK / 资源 / 配置地址可访问。</div>');
-          }
-        }
-        if(payload && payload.topology_runtime_aligned === false){
-          items.push('<div class="pv-gm-alert-item warn">拓扑与运行态未对齐，请先完成 topology/runtime 切换后再发布。</div>');
-        }
-        if(!items.length){
-          items.push('<div class="pv-gm-alert-item warn">预检已返回，但没有额外摘要，请进入完整流程页继续核对。</div>');
-        }
-        alerts.innerHTML = items.join('');
-      }
-    }
-    function pvRunGmPrecheck(){
-      var payload = pvGmCurrentPayload();
-      if(!payload){ alert('请先选择一个真实版本'); return; }
-      var status = document.getElementById('pvGmPrecheckStatus');
-      var time = document.getElementById('pvGmPrecheckTime');
-      var alerts = document.getElementById('pvGmPrecheckAlerts');
-      if(status){ status.className = 'pv-gm-status-pill warn'; status.textContent = '检查中'; }
-      if(time){ time.textContent = '正在调用 /api/gm-ops/release/precheck …'; }
-      if(alerts){ alerts.innerHTML = '<div class="pv-gm-alert-item warn">正在执行 Scope、拓扑和产物预检，请稍候。</div>'; }
-      fetch('/api/gm-ops/release/precheck', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify(payload)
-      }).then(function(r){
-        return r.json().then(function(data){ return { ok: r.ok, status: r.status, data: data }; });
-      }).then(function(result){
-        pvRenderGmPrecheckResult(result.data || {}, !!result.ok);
-      }).catch(function(){
-        pvRenderGmPrecheckResult({ error: 'precheck_failed' }, false);
-        if(alerts){
-          alerts.innerHTML = '<div class="pv-gm-alert-item error">预检请求失败，请检查登录态、后端服务或接口异常。</div>';
-        }
-      });
-    }
-    function pvGotoGmWizard(){
-      var payload = pvGmCurrentPayload();
-      if(!payload){ alert('请先选择一个真实版本'); return; }
-      var params = new URLSearchParams({
-        project_id: %s,
-        env: payload.env || 'prod',
-        channel: payload.channel || '',
-        platform: payload.platform || 'android',
-        version_name: payload.version_name || ''
-      });
-      location.href = '/admin/gm-ops?' + params.toString();
-    }
     (function(){
       document.querySelectorAll('.pv-main-tab').forEach(function(tab){
         tab.addEventListener('click', function(){ switchPvPanel(tab.getAttribute('data-target')); });
@@ -2368,8 +2097,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
       document.getElementById('pvTopologyBindingSaveBtn').addEventListener('click', pvSaveTopologyBinding);
       document.getElementById('pvTopologyBindingResetBtn').addEventListener('click', pvResetTopologyBindingForm);
       document.getElementById('pvTopologyBindingLevel').addEventListener('change', pvApplyTopologyBindingLevel);
-      document.getElementById('pvGotoGmWizard').addEventListener('click', pvGotoGmWizard);
-      document.getElementById('pvRunGmPrecheck').addEventListener('click', pvRunGmPrecheck);
       document.getElementById('pvCompareRunBtn').addEventListener('click', pvRenderCompare);
       document.getElementById('pvDeviceResetBtn').addEventListener('click', pvResetDeviceForm);
       document.getElementById('pvDeviceSaveBtn').addEventListener('click', pvSaveTestDevice);
@@ -2485,12 +2212,7 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
           if(typeof pvResetTopologyBindingForm === 'function'){ pvResetTopologyBindingForm(); }
           var desiredStage = document.querySelector('.project-version-design-app').getAttribute('data-default-stage') || 'production';
           document.getElementById('pvQuickVersionStage').value = desiredStage;
-          document.getElementById('pvGmEnv').value = pvGmEnvFromStageKey(desiredStage);
           document.getElementById('pvStageFilter').value = 'all';
-          document.getElementById('pvGmEnv').addEventListener('change', pvRenderGmCandidates);
-          document.getElementById('pvGmChannel').addEventListener('change', pvRenderGmCandidates);
-          document.getElementById('pvGmPlatform').addEventListener('change', pvRenderGmCandidates);
-          pvRenderGmCandidates();
         }catch(e){ console.warn(e); }
       }, 30);
     })();
@@ -2563,8 +2285,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         html.escape(selected_ops_env_key),
         project_channels_modal_rows_html,
         channel_options_html,
-        channel_options_html,
-        project_id_url,
         html.escape(qr_filename or (project_name + '.apk')),
         html.escape(qr_size),
         ('onclick="pvOpenQrPreview()"' if qr_filename else 'disabled'),
@@ -2579,8 +2299,6 @@ def _project_versions_redesign_html(project_id, proj, can_edit, task_stats, rece
         project_id_js,
         project_id_js,
         available_channels_js,
-        project_id_js,
-        project_id_js,
         project_id_js,
         project_id_js,
         project_id_js,
@@ -4753,38 +4471,12 @@ def project_test_device_delete(project_id, record_id):
 @bp.route('/admin/projects/<project_id>')
 @admin_required('projects')
 def project_detail_page(project_id):
-    """项目详情页：直接进入新版项目版本管理工作台。"""
+    """项目详情页：进入统一项目交付总览。"""
     if project_id not in projects_db:
         abort(404)
     if not can_view_project(project_id, _current_username()):
         abort(403)
-    proj = projects_db[project_id]
-    can_edit = can_edit_project(project_id, _current_username())
-    is_admin_logged_in = can_edit  # 有编辑权限即可管理模块
-    # 任务统计
-    tasks = (project_tasks_db.get(project_id) or [])
-    task_stats = {'total': len(tasks), 'in_progress': 0, 'pending_review': 0, 'done': 0}
-    for t in tasks:
-        s = t.get('status', '')
-        if s == 'in_progress':
-            task_stats['in_progress'] += 1
-        elif s == 'pending_review':
-            task_stats['pending_review'] += 1
-        elif s == 'done' or s == 'review_passed':
-            task_stats['done'] += 1
-    # 最近任务（按 updated_at 或 created_at 排序）
-    recent_tasks = sorted(tasks, key=lambda x: (x.get('updated_at') or x.get('created_at') or ''), reverse=True)[:8]
-    apk_count = get_project_apk_count(project_id)
-    project_apk_files = []
-    if os.path.exists(Config.APK_DIR):
-        for fn, path in iter_package_files():
-            if extract_project_name(fn) == project_id:
-                info = extract_package_info(fn, path)
-                info['download_count'] = download_stats.get(fn, download_stats.get(os.path.basename(fn), 0))
-                project_apk_files.append(info)
-    project_apk_files.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
-    content = _project_versions_redesign_html(project_id, proj, can_edit, task_stats, recent_tasks, apk_count, project_apk_files, is_admin_logged_in)
-    return _admin_layout(content, '项目版本管理', back_href='/admin/projects')
+    return redirect(f'/admin/projects/{project_id}/overview')
 
 
 @bp.route('/api/admin/unity-versions/detect')
@@ -4840,7 +4532,7 @@ def project_build_history_page(project_id):
     if not can_view_project(project_id, _current_username()):
         abort(403)
     proj = projects_db[project_id]
-    from routes.gm_ops import _gm_console_shell
+    from services.ops.helpers import _render_ops_page
 
     content = render_template(
         'project_build_history_content.html',
@@ -4848,9 +4540,7 @@ def project_build_history_page(project_id):
         project_name=proj.get('name') or project_id,
         can_edit=can_edit_project(project_id, _current_username()),
     )
-    return render_template_string(
-        _gm_console_shell(content, '构建历史', project_id=project_id, active_nav='builds')
-    )
+    return _render_ops_page(content, '构建历史', active_page='builds', project_id=project_id, env_key=request.args.get('env_key') or 'production')
 
 
 def _user_project_role(project_id, username):

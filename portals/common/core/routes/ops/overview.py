@@ -70,13 +70,13 @@ def ops_platform_module_map():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     pid = ops_helpers._resolve_ops_project_id(request.args.get("project_id", ""))
     modules = [
-        {"id": "overview", "name": "全局总览", "href": f"/admin/ops-platform?project_id={pid}", "children": ["kpi", "risk", "todo"]},
-        {"id": "topology", "name": "拓扑与配置编排", "href": f"/admin/ops-platform/topology?project_id={pid}", "children": ["node_library", "canvas", "inspector"]},
-        {"id": "action_center", "name": "动作执行中心", "href": f"/admin/ops-platform/actions?project_id={pid}", "children": ["catalog", "approval", "execute", "history"]},
-        {"id": "diagnostics", "name": "诊断与体检", "href": f"/admin/ops-platform/diagnostics?project_id={pid}", "children": ["rules", "filter", "export"]},
-        {"id": "events_trace", "name": "事件与追踪", "href": f"/admin/ops-platform?project_id={pid}", "children": ["timeline", "trace", "audit"]},
-        {"id": "agent_control", "name": "Agent 管控", "href": f"/admin/ops-platform/agent-control?project_id={pid}", "children": ["registry", "policy", "queue"]},
-        {"id": "change_governance", "name": "发布与变更治理", "href": f"/admin/ops-platform/change-governance?project_id={pid}", "children": ["change_window", "freeze"]},
+        {"id": "overview", "name": "项目运维总览", "href": f"/admin/projects/{pid}/ops", "children": ["kpi", "risk", "todo"]},
+        {"id": "topology", "name": "拓扑与配置编排", "href": f"/admin/projects/{pid}/topologies", "children": ["node_library", "canvas", "inspector"]},
+        {"id": "action_center", "name": "动作执行中心", "href": f"/admin/projects/{pid}/actions", "children": ["catalog", "approval", "execute", "history"]},
+        {"id": "diagnostics", "name": "诊断与体检", "href": f"/admin/projects/{pid}/diagnostics", "children": ["rules", "filter", "export"]},
+        {"id": "events_trace", "name": "事件与追踪", "href": f"/admin/projects/{pid}/ops", "children": ["timeline", "trace", "audit"]},
+        {"id": "agent_control", "name": "Agent 管控", "href": f"/admin/projects/{pid}/agents", "children": ["registry", "policy", "queue"]},
+        {"id": "change_governance", "name": "发布与变更治理", "href": f"/admin/projects/{pid}/change-governance", "children": ["change_window", "freeze"]},
         {"id": "governance", "name": "权限与合规", "href": "/admin/approval", "children": ["rbac", "approval", "audit"]},
     ]
     return jsonify({"ok": True, "modules": modules})

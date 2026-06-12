@@ -3,9 +3,9 @@
   <div class="top">
     <div><div class="title title-row"><span class="ops-ico ico-title ico-action">A</span>动作执行中心</div><div class="sub">审批、预校验、执行回执、任务队列与历史流水</div></div>
     <div class="ops-header-actions">
-      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回工作台</a>
-      <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 控制面</a>
-      <a class="btn" href="/admin/ops-platform/change-governance?project_id={{ project_id }}">变更治理</a>
+      <a class="btn" href="/admin/projects/{{ project_id }}/ops?env_key={{ env_key }}">返回工作台</a>
+      <a class="btn" href="/admin/projects/{{ project_id }}/agents?env_key={{ env_key }}">Agent 控制面</a>
+      <a class="btn" href="/admin/projects/{{ project_id }}/change-governance?env_key={{ env_key }}">变更治理</a>
     </div>
   </div>
 

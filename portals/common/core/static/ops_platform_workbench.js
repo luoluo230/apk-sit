@@ -3046,7 +3046,7 @@
     if (!agentId) return "";
     const nid = String(nodeId || "").trim();
     const boundService = nid ? String((state.serviceBindings || {})[nid] || "").trim() : "";
-    let href = "/admin/ops-platform/agent-detail?project_id=" + encodeURIComponent(state.projectId)
+    let href = "/admin/projects/" + encodeURIComponent(state.projectId) + "/agent-detail?"
       + "&agent_id=" + encodeURIComponent(agentId)
       + "&tab=overview";
     if (boundService) href += "&service_id=" + encodeURIComponent(boundService);

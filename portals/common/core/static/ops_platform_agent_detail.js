@@ -1526,7 +1526,7 @@
     });
 
     document.getElementById("detailOpenControl").onclick = function () {
-      window.location.href = "/admin/ops-platform/agent-control?project_id=" + encodeURIComponent(state.projectId);
+      window.location.href = "/admin/projects/" + encodeURIComponent(state.projectId) + "/agents";
     };
     document.getElementById("detailEditBtn").onclick = openAgentEdit;
     document.getElementById("detailRestartBtn").onclick = restartAgent;

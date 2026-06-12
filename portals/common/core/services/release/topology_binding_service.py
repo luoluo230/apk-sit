@@ -1,35 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Project-owned topology binding matrix for release/runtime resolution."""
+"""Project-owned topology binding matrix backed by SQLite."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from models.data import get_system_config, set_system_config
+from models.db import _db_lock, _get_conn, get_cursor, init_db
 from services.release.env_registry import normalize_release_env_key
-
-TOPOLOGY_BINDINGS_KEY = "RELEASE_TOPOLOGY_BINDINGS_V1"
 
 
 def _now_iso() -> str:
     return datetime.now().isoformat()
-
-
-def _load_rows() -> List[Dict[str, Any]]:
-    raw = get_system_config(TOPOLOGY_BINDINGS_KEY, [])
-    return raw if isinstance(raw, list) else []
-
-
-def _save_rows(rows: List[Dict[str, Any]], *, actor: str = "") -> None:
-    set_system_config(
-        TOPOLOGY_BINDINGS_KEY,
-        rows if isinstance(rows, list) else [],
-        value_type="json",
-        description="项目拓扑绑定矩阵",
-        username=str(actor or "system").strip() or "system",
-    )
 
 
 def _binding_level(env_key: str, channel_id: str, version_name: str) -> str:
@@ -41,12 +25,11 @@ def _binding_level(env_key: str, channel_id: str, version_name: str) -> str:
 
 
 def _level_label(level: str) -> str:
-    mapping = {
+    return {
         "project_default": "项目默认",
-        "env_channel": "环境/渠道",
+        "env_channel": "环境 / 渠道",
         "version": "大版本覆盖",
-    }
-    return mapping.get(str(level or "").strip(), "未定义")
+    }.get(str(level or "").strip(), "未定义")
 
 
 def normalize_binding_row(payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
@@ -72,27 +55,38 @@ def normalize_binding_row(payload: Dict[str, Any], *, actor: str = "") -> Dict[s
     }
 
 
+def _row_from_db(row) -> Dict[str, Any]:
+    return {
+        "binding_id": row["binding_id"],
+        "project_id": row["project_id"],
+        "env_key": row["env_key"],
+        "channel_id": row["channel_id"],
+        "version_name": row["version_name"],
+        "topology_id": row["topology_id"],
+        "level": row["level"],
+        "level_label": _level_label(row["level"]),
+        "status": row["status"],
+        "note": row["note"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "updated_by": row["updated_by"],
+    }
+
+
 def list_topology_bindings(project_id: str = "") -> List[Dict[str, Any]]:
-    pid = str(project_id or "").strip()
-    rows = []
-    for item in _load_rows():
-        if not isinstance(item, dict):
-            continue
-        row = normalize_binding_row(item, actor=str(item.get("updated_by") or "system"))
-        if pid and row["project_id"] != pid:
-            continue
-        rows.append(row)
-    order = {"project_default": 0, "env_channel": 1, "version": 2}
-    rows.sort(
-        key=lambda row: (
-            order.get(str(row.get("level") or ""), 9),
-            str(row.get("env_key") or ""),
-            str(row.get("channel_id") or ""),
-            str(row.get("version_name") or ""),
-            str(row.get("updated_at") or ""),
-        )
-    )
-    return rows
+    init_db()
+    sql = "SELECT * FROM topology_bindings"
+    params: List[str] = []
+    if project_id:
+        sql += " WHERE project_id=?"
+        params.append(str(project_id).strip())
+    sql += """
+        ORDER BY CASE level WHEN 'project_default' THEN 0 WHEN 'env_channel' THEN 1 ELSE 2 END,
+        env_key, channel_id, version_name, updated_at DESC
+    """
+    with _db_lock:
+        rows = _get_conn().execute(sql, params).fetchall()
+    return [_row_from_db(row) for row in rows]
 
 
 def upsert_topology_binding(payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
@@ -105,42 +99,45 @@ def upsert_topology_binding(payload: Dict[str, Any], *, actor: str = "") -> Dict
         raise ValueError("env_channel binding requires env_key and channel_id")
     if row["level"] == "version" and (not row["env_key"] or not row["channel_id"] or not row["version_name"]):
         raise ValueError("version binding requires env_key, channel_id and version_name")
-
-    rows = _load_rows()
-    hit = -1
-    for index, item in enumerate(rows):
-        if not isinstance(item, dict):
-            continue
-        current = normalize_binding_row(item, actor=str(item.get("updated_by") or "system"))
-        same_key = (
-            current["project_id"] == row["project_id"]
-            and current["env_key"] == row["env_key"]
-            and current["channel_id"] == row["channel_id"]
-            and current["version_name"] == row["version_name"]
+    init_db()
+    with get_cursor() as cur:
+        existing = cur.execute(
+            """
+            SELECT binding_id, created_at FROM topology_bindings
+            WHERE project_id=? AND env_key=? AND channel_id=? AND version_name=?
+            """,
+            (row["project_id"], row["env_key"], row["channel_id"], row["version_name"]),
+        ).fetchone()
+        if existing:
+            row["binding_id"] = existing["binding_id"]
+            row["created_at"] = existing["created_at"]
+        cur.execute(
+            """
+            INSERT INTO topology_bindings (
+                binding_id, project_id, env_key, channel_id, version_name, topology_id,
+                level, status, note, payload, created_at, updated_at, updated_by
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(binding_id) DO UPDATE SET
+                topology_id=excluded.topology_id, level=excluded.level, status=excluded.status,
+                note=excluded.note, payload=excluded.payload, updated_at=excluded.updated_at,
+                updated_by=excluded.updated_by
+            """,
+            (
+                row["binding_id"], row["project_id"], row["env_key"], row["channel_id"],
+                row["version_name"], row["topology_id"], row["level"], row["status"],
+                row["note"], json.dumps(row, ensure_ascii=False), row["created_at"],
+                row["updated_at"], row["updated_by"],
+            ),
         )
-        if current["binding_id"] == row["binding_id"] or same_key:
-            hit = index
-            row["binding_id"] = current["binding_id"]
-            row["created_at"] = str(current.get("created_at") or row["created_at"])
-            break
-    if hit >= 0:
-        rows[hit] = row
-    else:
-        rows.append(row)
-    _save_rows(rows, actor=actor)
     return row
 
 
 def delete_topology_binding(binding_id: str, *, actor: str = "") -> bool:
-    bid = str(binding_id or "").strip()
-    if not bid:
-        return False
-    rows = _load_rows()
-    next_rows = [row for row in rows if not (isinstance(row, dict) and str(row.get("binding_id") or "").strip() == bid)]
-    if len(next_rows) == len(rows):
-        return False
-    _save_rows(next_rows, actor=actor)
-    return True
+    del actor
+    init_db()
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM topology_bindings WHERE binding_id=?", (str(binding_id or "").strip(),))
+        return cur.rowcount > 0
 
 
 def resolve_topology_binding(
@@ -155,7 +152,7 @@ def resolve_topology_binding(
     ek = normalize_release_env_key(env_key) if env_key else ""
     cid = str(channel_id or "").strip()
     vname = str(version_name or "").strip()
-    rows = [row for row in list_topology_bindings(pid) if str(row.get("status") or "active") == "active"]
+    rows = [row for row in list_topology_bindings(pid) if row.get("status") == "active"]
 
     def _match(level: str) -> Optional[Dict[str, Any]]:
         for row in rows:
@@ -169,23 +166,17 @@ def resolve_topology_binding(
                 return row
         return None
 
-    matched = _match("version") if vname else None
-    if not matched:
-        matched = _match("env_channel")
-    if not matched:
-        matched = _match("project_default")
+    matched = (_match("version") if vname else None) or _match("env_channel") or _match("project_default")
     if matched:
         return {
-            "topology_id": str(matched.get("topology_id") or "").strip(),
-            "binding_source": str(matched.get("level") or ""),
-            "binding_source_label": str(matched.get("level_label") or _level_label(str(matched.get("level") or ""))),
+            "topology_id": matched["topology_id"],
+            "binding_source": matched["level"],
+            "binding_source_label": matched["level_label"],
             "binding": matched,
         }
-
-    fallback = str(fallback_topology_id or "").strip()
-    if fallback:
+    if fallback_topology_id:
         return {
-            "topology_id": fallback,
+            "topology_id": str(fallback_topology_id).strip(),
             "binding_source": "scope_default",
             "binding_source_label": "Scope 默认",
             "binding": {},

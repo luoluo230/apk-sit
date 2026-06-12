@@ -11,7 +11,7 @@
     q.set('env_key', state.envKey||'production');
     if(act.target_key) q.set('target_key', act.target_key);
     if(act.action_type) q.set('action_type', act.action_type);
-    return '/admin/ops-platform/actions?'+q.toString();
+    return '/admin/projects/'+encodeURIComponent(state.projectId)+'/actions?'+q.toString();
   }
 
   function renderMetrics(summary){

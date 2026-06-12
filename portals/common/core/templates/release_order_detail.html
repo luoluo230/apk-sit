@@ -1,0 +1,19 @@
+<section class="delivery-page" data-delivery-page="order-detail" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
+  <header class="delivery-heading">
+    <div>
+      <p class="delivery-eyebrow">RELEASE ORDER</p>
+      <h1 id="orderTitle">发布单详情</h1>
+      <p id="orderSubtitle">正在加载发布单完整交付上下文...</p>
+    </div>
+    <a class="delivery-secondary" href="/admin/projects/{{ project_id }}/release-orders">返回发布单中心</a>
+  </header>
+  <div class="delivery-steps" id="orderSteps"></div>
+  <div class="order-kpis" id="orderKpis"></div>
+  <div class="order-detail-grid">
+    <section class="delivery-panel"><h2>构建与产物</h2><div id="orderArtifacts"></div></section>
+    <section class="delivery-panel"><h2>拓扑与运行态</h2><div id="orderRuntime"></div></section>
+    <section class="delivery-panel wide"><h2>预检结果</h2><div id="orderPrecheck"></div></section>
+    <section class="delivery-panel wide"><h2>执行记录</h2><div id="orderEvents"></div></section>
+  </div>
+  <div class="delivery-actionbar" id="orderActions"></div>
+</section>

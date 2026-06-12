@@ -7,8 +7,8 @@
     </div>
     <div class="top-right" style="min-width:580px">
       <div class="top-nav-row">
-        <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">返回 Agent 控制面</a>
-        <a class="btn" href="/admin/ops-platform/topology?project_id={{ project_id }}">返回拓扑编排</a>
+        <a class="btn" href="/admin/projects/{{ project_id }}/agents?env_key={{ env_key }}">返回 Agent 控制面</a>
+        <a class="btn" href="/admin/projects/{{ project_id }}/topologies?env_key={{ env_key }}">返回拓扑管理</a>
       </div>
       <div class="top-tool-row">
         <input id="deviceIdInput" class="inp top-project" value="{{ device_id }}" placeholder="device_id">
@@ -89,7 +89,6 @@
   load();
 })();
 </script>
-
 
 
 

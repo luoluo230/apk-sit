@@ -21,7 +21,6 @@ def _page_scope(project_id_override: str = ""):
     return project_id, env_key, None, None
 
 @bp.route("/admin/projects/<project_id>/ops")
-@bp.route("/admin/ops-platform")
 @admin_required("gm_ops")
 def ops_platform_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -40,7 +39,6 @@ def ops_platform_page(project_id: str = ""):
         )
 
 @bp.route("/admin/projects/<project_id>/actions")
-@bp.route("/admin/ops-platform/actions")
 @admin_required("gm_ops")
 def ops_platform_actions_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -51,7 +49,6 @@ def ops_platform_actions_page(project_id: str = ""):
 
 
 @bp.route("/admin/projects/<project_id>/topologies")
-@bp.route("/admin/ops-platform/topology")
 @admin_required("gm_ops")
 def ops_platform_topology_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -99,7 +96,6 @@ def ops_platform_topology_canvas_page(project_id: str = ""):
 
 
 @bp.route("/admin/projects/<project_id>/diagnostics")
-@bp.route("/admin/ops-platform/diagnostics")
 @admin_required("gm_ops")
 def ops_platform_diagnostics_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -110,7 +106,6 @@ def ops_platform_diagnostics_page(project_id: str = ""):
 
 
 @bp.route("/admin/projects/<project_id>/agents")
-@bp.route("/admin/ops-platform/agent-control")
 @admin_required("gm_ops")
 def ops_platform_agent_control_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -122,7 +117,6 @@ def ops_platform_agent_control_page(project_id: str = ""):
 
 
 @bp.route("/admin/projects/<project_id>/agent-device-local")
-@bp.route("/admin/ops-platform/agent-device-local")
 @admin_required("gm_ops")
 def ops_platform_agent_device_local_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -135,7 +129,6 @@ def ops_platform_agent_device_local_page(project_id: str = ""):
 
 
 @bp.route("/admin/projects/<project_id>/agent-detail")
-@bp.route("/admin/ops-platform/agent-detail")
 @admin_required("gm_ops")
 def ops_platform_agent_detail_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
@@ -148,7 +141,6 @@ def ops_platform_agent_detail_page(project_id: str = ""):
 
 
 @bp.route("/admin/projects/<project_id>/change-governance")
-@bp.route("/admin/ops-platform/change-governance")
 @admin_required("gm_ops")
 def ops_platform_change_governance_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)

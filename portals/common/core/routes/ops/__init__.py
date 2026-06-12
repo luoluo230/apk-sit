@@ -7,7 +7,6 @@ bp = Blueprint("gm_legacy", __name__)
 # Load shared helpers before route modules (avoid partial import NameError)
 import services.ops.helpers  # noqa: F401, E402
 
-from routes.ops import legacy_gm  # noqa: F401, E402
 from routes.ops import pages  # noqa: F401, E402
 from routes.ops import overview  # noqa: F401, E402
 from routes.ops import cluster  # noqa: F401, E402

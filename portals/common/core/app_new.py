@@ -179,10 +179,9 @@ def _register_blueprints():
         from routes.jenkins_manage_routes import bp as jenkins_manage_bp
         from routes.versions_routes import bp as versions_routes_bp
         from routes.workspace_routes import bp as workspace_bp
-        from routes.gm_ops import bp as gm_ops_bp
         from routes.gm_legacy import bp as gm_legacy_bp
         from routes.commercial_release_routes import bp as commercial_release_bp
-        from routes.release import release_bp
+        from routes.project_delivery import bp as project_delivery_bp
         if mode == "all":
             from routes.player_community import bp as player_community_bp
             from routes.products_public import bp as products_public_bp
@@ -205,13 +204,13 @@ def _register_blueprints():
         app.register_blueprint(dashboard_routes_bp)
         app.register_blueprint(versions_routes_bp)
         app.register_blueprint(jenkins_manage_bp)
-        app.register_blueprint(gm_ops_bp)
         app.register_blueprint(gm_legacy_bp)
         app.register_blueprint(commercial_release_bp)
-        app.register_blueprint(release_bp)
+        app.register_blueprint(project_delivery_bp)
         if _csrf_enabled and csrf is not None:
-            # Ops/Gm legacy frontend uses JSON fetch API; exempt this blueprint to avoid CSRF 400 on internal ops calls.
+            # Project delivery and ops pages use authenticated JSON fetch calls.
             csrf.exempt(gm_legacy_bp)
+            csrf.exempt(project_delivery_bp)
 
 
 _register_blueprints()
@@ -346,12 +345,9 @@ def runtime_entrypoint():
     payload = _runtime_entrypoint_signature()
     payload["runtime_route_map"] = {
         "admin": "/admin",
-        "project_workspace": "/admin/projects/{id}",
-        "gm_ops": "/admin/gm-ops",
-        "gm_center": "/admin/gm-center",
-        "ops_center": "/admin/ops-center",
-        "gm_classic": "/admin/gm-classic",
-        "ops_platform": "/admin/ops-platform",
+        "project_workspace": "/admin/projects/{id}/overview",
+        "release_orders": "/admin/projects/{id}/release-orders",
+        "project_ops": "/admin/projects/{id}/ops",
     }
     return jsonify(payload), 200
 

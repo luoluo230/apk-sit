@@ -1,0 +1,31 @@
+<section class="delivery-page" data-delivery-page="orders" data-project-id="{{ project_id }}">
+  <header class="delivery-heading">
+    <div>
+      <p class="delivery-eyebrow">RELEASE ORDERS</p>
+      <h1>发布单中心</h1>
+      <p>每张发布单精确关联一个环境、渠道、平台和 VersionCode。</p>
+    </div>
+    <button class="delivery-primary" type="button" data-open-create-order>创建发布单</button>
+  </header>
+  <div class="delivery-toolbar">
+    <select data-filter="env_key"><option value="">全部环境</option></select>
+    <select data-filter="channel_id"><option value="">全部渠道</option></select>
+    <select data-filter="platform"><option value="">全部平台</option></select>
+    <select data-filter="status"><option value="">全部状态</option></select>
+    <button class="delivery-secondary" type="button" data-refresh-orders>刷新</button>
+  </div>
+  <div class="order-list" id="releaseOrderList"><div class="delivery-loading">正在加载发布单...</div></div>
+  <dialog class="delivery-dialog" id="createOrderDialog">
+    <form method="dialog" id="createOrderForm">
+      <header><div><h2>创建发布单</h2><p>确定唯一交付目标，后续构建、预检、审批与发布都在此单内完成。</p></div><button value="cancel" type="submit">×</button></header>
+      <div class="delivery-form-grid">
+        <label>环境<select name="env_key" required></select></label>
+        <label>渠道<select name="channel_id" required></select></label>
+        <label>平台<select name="platform" required></select></label>
+        <label>VersionCode<select name="version_id" required></select></label>
+        <label class="wide">操作原因<input name="reason" placeholder="例如：测试环境联调、生产版本发布"></label>
+      </div>
+      <footer><button value="cancel" type="submit" class="delivery-secondary">取消</button><button value="default" type="submit" class="delivery-primary">创建并进入发布单</button></footer>
+    </form>
+  </dialog>
+</section>

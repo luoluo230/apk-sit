@@ -26,7 +26,7 @@
         <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm2 2h8v2H8V9zm0 4h6v2H8v-2z"/></svg>
         <span>项目列表</span>
       </a>
-      <a {% if active_page == 'project-home' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}{% else %}/admin/projects{% endif %}">
+      <a {% if active_page == 'project-home' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/overview{% else %}/admin/projects{% endif %}">
         <svg class="nav-ico" viewBox="0 0 24 24"><path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z"/></svg>
         <span>项目工作台</span>
       </a>
@@ -38,9 +38,9 @@
         <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v5l4 2-.9 1.5L11 13V7h2z"/></svg>
         <span>构建历史</span>
       </a>
-      <a {% if active_page == 'gm' %}class="active"{% endif %} href="{% if project_id %}/admin/gm-ops?project_id={{ project_id }}{% else %}/admin/projects{% endif %}">
+      <a {% if active_page == 'release-orders' %}class="active"{% endif %} href="{% if project_id %}/admin/projects/{{ project_id }}/release-orders{% else %}/admin/projects{% endif %}">
         <svg class="nav-ico" viewBox="0 0 24 24"><path d="M5 12l7-7 7 7-7 7-7-7zm7-3l-3 3 3 3 3-3-3-3z"/></svg>
-        <span>GM 发版工作台</span>
+        <span>发布单中心</span>
       </a>
       <a href="{% if project_id %}/download-center?project={{ project_id }}{% else %}/download-center{% endif %}">
         <svg class="nav-ico" viewBox="0 0 24 24"><path d="M12 3v11m0 0l4-4m-4 4l-4-4M4 19h16"/></svg>

@@ -3,9 +3,9 @@
   <div class="top">
     <div><div class="title title-row"><span class="ops-ico ico-title ico-diagnostic">D</span>节点诊断中心</div><div class="sub">体检筛选、排序、导出；主页仅展示关键告警</div></div>
     <div class="ops-header-actions">
-      <a class="btn" href="/admin/ops-platform?project_id={{ project_id }}">返回工作台</a>
-      <a class="btn" href="/admin/ops-platform/actions?project_id={{ project_id }}">动作执行</a>
-      <a class="btn" href="/admin/ops-platform/agent-control?project_id={{ project_id }}">Agent 控制面</a>
+      <a class="btn" href="/admin/projects/{{ project_id }}/ops?env_key={{ env_key }}">返回工作台</a>
+      <a class="btn" href="/admin/projects/{{ project_id }}/actions?env_key={{ env_key }}">动作执行</a>
+      <a class="btn" href="/admin/projects/{{ project_id }}/agents?env_key={{ env_key }}">Agent 控制面</a>
     </div>
   </div>
   <section class="panel ops-section"><div class="hd"><b class="h-row"><span class="ops-ico ico-diagnostic">O</span>诊断概览</b><button id="btnRefreshDiag" class="btn">刷新</button></div><div class="bd"><div id="diagMetrics" class="metric"></div></div></section>

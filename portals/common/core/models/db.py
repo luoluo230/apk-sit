@@ -160,8 +160,148 @@ def init_db():
             updated_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_ops_topo_project ON ops_topologies(project_id, env_key);
+
+        -- Unified project delivery domain
+        CREATE TABLE IF NOT EXISTS release_scopes (
+            scope_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            env_key TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            channel_key TEXT DEFAULT '',
+            default_topology_id TEXT DEFAULT '',
+            active_bundle_id TEXT DEFAULT '',
+            status TEXT DEFAULT 'active',
+            payload TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_release_scope_target
+            ON release_scopes(project_id, env_key, channel_id);
+
+        CREATE TABLE IF NOT EXISTS release_bundles (
+            bundle_id TEXT PRIMARY KEY,
+            release_order_id TEXT DEFAULT '',
+            project_id TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            env_key TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            publish_status TEXT NOT NULL,
+            topology_id TEXT DEFAULT '',
+            runtime_run_id TEXT DEFAULT '',
+            version_name TEXT DEFAULT '',
+            version_code TEXT DEFAULT '',
+            platform TEXT DEFAULT '',
+            payload TEXT NOT NULL,
+            published_at TEXT DEFAULT '',
+            published_by TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_bundle_scope
+            ON release_bundles(scope_id, publish_status, published_at);
+        CREATE INDEX IF NOT EXISTS idx_release_bundle_order
+            ON release_bundles(release_order_id);
+
+        CREATE TABLE IF NOT EXISTS topology_bindings (
+            binding_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            env_key TEXT DEFAULT '',
+            channel_id TEXT DEFAULT '',
+            version_name TEXT DEFAULT '',
+            topology_id TEXT NOT NULL,
+            level TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            note TEXT DEFAULT '',
+            payload TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            updated_by TEXT DEFAULT ''
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_binding_target
+            ON topology_bindings(project_id, env_key, channel_id, version_name);
+
+        CREATE TABLE IF NOT EXISTS release_orders (
+            release_order_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            env_key TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            version_id TEXT NOT NULL,
+            version_name TEXT NOT NULL,
+            version_code TEXT NOT NULL,
+            scope_id TEXT DEFAULT '',
+            topology_id TEXT DEFAULT '',
+            topology_binding_source TEXT DEFAULT '',
+            runtime_run_id TEXT DEFAULT '',
+            bundle_id TEXT DEFAULT '',
+            status TEXT NOT NULL,
+            reason TEXT DEFAULT '',
+            payload TEXT DEFAULT '{}',
+            created_by TEXT DEFAULT '',
+            approved_by TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            published_at TEXT DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_order_project
+            ON release_orders(project_id, env_key, channel_id, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_release_order_version
+            ON release_orders(project_id, version_id);
+
+        CREATE TABLE IF NOT EXISTS release_order_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            release_order_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            from_status TEXT DEFAULT '',
+            to_status TEXT DEFAULT '',
+            actor TEXT DEFAULT '',
+            payload TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_order_events_order
+            ON release_order_events(release_order_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS release_order_artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            release_order_id TEXT NOT NULL,
+            artifact_type TEXT NOT NULL,
+            artifact_url TEXT DEFAULT '',
+            artifact_path TEXT DEFAULT '',
+            status TEXT DEFAULT 'registered',
+            payload TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_order_artifacts_order
+            ON release_order_artifacts(release_order_id);
+
+        CREATE TABLE IF NOT EXISTS release_order_prechecks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            release_order_id TEXT NOT NULL,
+            ok INTEGER NOT NULL DEFAULT 0,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_order_prechecks_order
+            ON release_order_prechecks(release_order_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS release_approvals (
+            approval_id TEXT PRIMARY KEY,
+            release_order_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            requested_by TEXT DEFAULT '',
+            approved_by TEXT DEFAULT '',
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_release_approvals_order
+            ON release_approvals(release_order_id, created_at);
         '''
         )
+        scope_columns = {row["name"] for row in conn.execute("PRAGMA table_info(release_scopes)").fetchall()}
+        if "active_bundle_id" not in scope_columns:
+            conn.execute("ALTER TABLE release_scopes ADD COLUMN active_bundle_id TEXT DEFAULT ''")
         conn.commit()
 
 
