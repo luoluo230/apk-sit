@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 from flask import request, session
 
 from config import DATA_DIR
-from models.data import products_db, resolve_project_id, resolve_project_id_for_product, users_db
+from models.data import products_db, resolve_project_id, resolve_project_id_for_product
+from repositories.admin import users_repo
 from services.media_library import normalize_local_media_url, normalize_local_media_urls
 from utils import load_json, save_json
 
@@ -75,13 +76,14 @@ def is_internal_creator(username=None):
     name = username or session.get('user') or ''
     if not name:
         return False
-    return name in users_db and not (users_db.get(name) or {}).get('disabled')
+    row = users_repo.get_user(name)
+    return bool(row) and not row.get('disabled')
 
 
 def current_public_author():
     username = session.get('user') or ''
     if is_internal_creator(username):
-        info = users_db.get(username) or {}
+        info = users_repo.get_user(username) or {}
         role = (info.get('role') or 'user').strip()
         return {
             'display_name': username,

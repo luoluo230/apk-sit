@@ -151,6 +151,16 @@ def ops_platform_agents_list():
     resolved_bindings = ops_helpers._resolve_scope_agent_bindings_for_scope(topology_id, project_id, env_key)
     resolved_service_bindings = ops_helpers._resolve_scope_service_bindings_for_scope(topology_id, project_id, env_key)
     rows = ops_helpers._logical_agents_for_project(project_id, env_key)
+    # Agent is a project-owned infrastructure asset. When the selected
+    # environment has no dedicated registration, still expose project agents
+    # so operators can bind them instead of presenting a contradictory empty
+    # inventory while topology actions can already use the same Agent.
+    if project_id and not rows:
+        rows = ops_helpers._logical_agents_for_project(project_id)
+        for row in rows:
+            if isinstance(row, dict):
+                row["scope_status"] = "available_for_binding"
+                row["selected_env_key"] = env_key
     rows = [r for r in rows if not r.get("stale")]
     cluster_status_map: Dict[str, str] = {}
     if project_id and ops_helpers._project_uses_runtime_topology(project_id):

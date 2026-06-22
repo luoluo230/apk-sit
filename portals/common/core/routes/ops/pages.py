@@ -70,6 +70,26 @@ def ops_platform_topology_page(project_id: str = ""):
     )
 
 
+@bp.route("/admin/projects/<project_id>/topology-bindings")
+@admin_required("gm_ops")
+def project_topology_bindings_page(project_id: str = ""):
+    project_id, env_key, _, redirect_resp = _page_scope(project_id)
+    if redirect_resp is not None:
+        return redirect_resp
+    content = ops_helpers._render_local_template(
+        "ops_topology_bindings_page.html",
+        project_id=project_id,
+        env_key=env_key,
+    )
+    return ops_helpers._render_ops_page(
+        content,
+        "拓扑绑定矩阵",
+        active_page="topology-bindings",
+        project_id=project_id,
+        env_key=env_key,
+    )
+
+
 @bp.route("/admin/projects/<project_id>/topologies/canvas")
 @admin_required("gm_ops")
 def ops_platform_topology_canvas_page(project_id: str = ""):

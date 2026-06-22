@@ -1,0 +1,782 @@
+[
+  {
+    "name": "logo_mark",
+    "title_zh": "品牌主 Logo 图标",
+    "category": "brand",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "品牌主 Logo 图标"
+  },
+  {
+    "name": "nav_workbench",
+    "title_zh": "工作台",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "工作台"
+  },
+  {
+    "name": "nav_message_center",
+    "title_zh": "消息中心",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "消息中心"
+  },
+  {
+    "name": "nav_project_list",
+    "title_zh": "项目列表",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "项目列表"
+  },
+  {
+    "name": "nav_project_overview",
+    "title_zh": "项目总览",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "项目总览"
+  },
+  {
+    "name": "nav_environment",
+    "title_zh": "环境概览",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "环境概览"
+  },
+  {
+    "name": "nav_version_code",
+    "title_zh": "版本与VersionCode",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "版本与VersionCode"
+  },
+  {
+    "name": "nav_release_order",
+    "title_zh": "发布单",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "发布单"
+  },
+  {
+    "name": "nav_build_artifact",
+    "title_zh": "构建与产物",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "构建与产物"
+  },
+  {
+    "name": "nav_download_center",
+    "title_zh": "下载中心",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "下载中心"
+  },
+  {
+    "name": "nav_test_device",
+    "title_zh": "测试设备",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "测试设备"
+  },
+  {
+    "name": "nav_topology",
+    "title_zh": "拓扑视图",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "拓扑视图"
+  },
+  {
+    "name": "nav_binding",
+    "title_zh": "拓扑绑定",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "拓扑绑定"
+  },
+  {
+    "name": "nav_agent_server",
+    "title_zh": "Agent 与服务器",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "Agent 与服务器"
+  },
+  {
+    "name": "nav_execute",
+    "title_zh": "运行执行",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "运行执行"
+  },
+  {
+    "name": "nav_performance",
+    "title_zh": "性能指标",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "性能指标"
+  },
+  {
+    "name": "nav_approval_center",
+    "title_zh": "审批中心",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "审批中心"
+  },
+  {
+    "name": "nav_change_governance",
+    "title_zh": "变更治理",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "变更治理"
+  },
+  {
+    "name": "nav_audit_log",
+    "title_zh": "审计日志",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "审计日志"
+  },
+  {
+    "name": "nav_task",
+    "title_zh": "项目任务",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "项目任务"
+  },
+  {
+    "name": "nav_doc",
+    "title_zh": "项目文档",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "项目文档"
+  },
+  {
+    "name": "nav_project_setting",
+    "title_zh": "项目设置",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "项目设置"
+  },
+  {
+    "name": "nav_roles_member",
+    "title_zh": "角色与成员",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "角色与成员"
+  },
+  {
+    "name": "nav_notification",
+    "title_zh": "通知与回调",
+    "category": "navigation",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "通知与回调"
+  },
+  {
+    "name": "global_search",
+    "title_zh": "搜索",
+    "category": "global",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "搜索"
+  },
+  {
+    "name": "global_help",
+    "title_zh": "帮助",
+    "category": "global",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "帮助"
+  },
+  {
+    "name": "global_bell",
+    "title_zh": "通知铃铛",
+    "category": "global",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "通知铃铛"
+  },
+  {
+    "name": "global_user",
+    "title_zh": "用户头像占位",
+    "category": "global",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "用户头像占位"
+  },
+  {
+    "name": "action_add",
+    "title_zh": "新增",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "新增"
+  },
+  {
+    "name": "action_edit",
+    "title_zh": "编辑",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "编辑"
+  },
+  {
+    "name": "action_delete",
+    "title_zh": "删除",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "删除"
+  },
+  {
+    "name": "action_copy",
+    "title_zh": "复制",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "复制"
+  },
+  {
+    "name": "action_upload",
+    "title_zh": "上传",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "上传"
+  },
+  {
+    "name": "action_download",
+    "title_zh": "下载",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "下载"
+  },
+  {
+    "name": "action_export",
+    "title_zh": "导出",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "导出"
+  },
+  {
+    "name": "action_refresh",
+    "title_zh": "刷新",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "刷新"
+  },
+  {
+    "name": "action_filter",
+    "title_zh": "筛选",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "筛选"
+  },
+  {
+    "name": "action_more",
+    "title_zh": "更多",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "更多"
+  },
+  {
+    "name": "action_close",
+    "title_zh": "关闭",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "关闭"
+  },
+  {
+    "name": "action_back",
+    "title_zh": "返回",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "返回"
+  },
+  {
+    "name": "action_next",
+    "title_zh": "下一步/进入",
+    "category": "action",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "下一步/进入"
+  },
+  {
+    "name": "status_success",
+    "title_zh": "成功",
+    "category": "status",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "成功"
+  },
+  {
+    "name": "status_warning",
+    "title_zh": "警告",
+    "category": "status",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "警告"
+  },
+  {
+    "name": "status_error",
+    "title_zh": "错误",
+    "category": "status",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "错误"
+  },
+  {
+    "name": "status_info",
+    "title_zh": "信息",
+    "category": "status",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "信息"
+  },
+  {
+    "name": "status_pending",
+    "title_zh": "待处理",
+    "category": "status",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "待处理"
+  },
+  {
+    "name": "status_running",
+    "title_zh": "运行中",
+    "category": "status",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "运行中"
+  },
+  {
+    "name": "topology_gateway",
+    "title_zh": "API 网关",
+    "category": "topology",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "API 网关"
+  },
+  {
+    "name": "topology_service",
+    "title_zh": "服务节点",
+    "category": "topology",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "服务节点"
+  },
+  {
+    "name": "topology_database",
+    "title_zh": "数据库",
+    "category": "topology",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "数据库"
+  },
+  {
+    "name": "topology_cache",
+    "title_zh": "缓存",
+    "category": "topology",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "缓存"
+  },
+  {
+    "name": "topology_queue",
+    "title_zh": "消息队列",
+    "category": "topology",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "消息队列"
+  },
+  {
+    "name": "topology_external_user",
+    "title_zh": "外部用户",
+    "category": "topology",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "外部用户"
+  },
+  {
+    "name": "file_android",
+    "title_zh": "Android",
+    "category": "platform",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "Android"
+  },
+  {
+    "name": "file_ios",
+    "title_zh": "iOS",
+    "category": "platform",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "iOS"
+  },
+  {
+    "name": "file_windows",
+    "title_zh": "Windows",
+    "category": "platform",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "Windows"
+  },
+  {
+    "name": "file_bundle",
+    "title_zh": "Bundle/安装包",
+    "category": "platform",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "Bundle/安装包"
+  },
+  {
+    "name": "support_doc",
+    "title_zh": "使用文档",
+    "category": "support",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "使用文档"
+  },
+  {
+    "name": "support_faq",
+    "title_zh": "常见问题",
+    "category": "support",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "常见问题"
+  },
+  {
+    "name": "support_ticket",
+    "title_zh": "提交工单",
+    "category": "support",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "提交工单"
+  },
+  {
+    "name": "support_contact",
+    "title_zh": "联系我们",
+    "category": "support",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "联系我们"
+  },
+  {
+    "name": "kpi_member",
+    "title_zh": "项目成员",
+    "category": "kpi",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "项目成员"
+  },
+  {
+    "name": "kpi_change",
+    "title_zh": "待处理变更",
+    "category": "kpi",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "待处理变更"
+  },
+  {
+    "name": "kpi_health",
+    "title_zh": "服务健康度",
+    "category": "kpi",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "服务健康度"
+  },
+  {
+    "name": "kpi_build",
+    "title_zh": "今日构建数",
+    "category": "kpi",
+    "sizes": [
+      "svg",
+      "24png",
+      "48png"
+    ],
+    "stroke_style": "outline-1.8",
+    "usage": "今日构建数"
+  }
+]

@@ -20,6 +20,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_OUT = ROOT / "release_bundles"
+JENKINS_OVERLAY_CANDIDATES = [
+    ROOT / "jenkins-clone-overlay",
+    ROOT.parent / "archives" / "jenkins-clone-overlay",
+    REPO_ROOT / "jenkins-clone-overlay",
+]
 
 ADMIN_AGENT_TOOLS = [
     "canonical_local_agent_daemon.py",
@@ -50,6 +55,7 @@ COMMON_DIRS = [
     "models",
     "routes",
     "services",
+    "repositories",
     "scripts",
     "templates",
     "static",
@@ -72,6 +78,18 @@ COMMON_FILES = [
 IGNORE_NAMES = {"__pycache__", "node_modules", "venv", ".venv", ".git", ".DS_Store", "release_bundles"}
 IGNORE_SUFFIXES = (".pyc", ".pyo", ".rdb")
 
+BUNDLE_REQUIREMENTS = """Flask==2.3.3
+Flask-WTF==1.2.1
+Flask-Session==0.8.0
+redis==5.0.8
+gunicorn==23.0.0
+waitress>=3.0.0
+cryptography>=41.0.0
+psutil>=5.9.0
+qrcode==7.4.2
+requests>=2.31.0
+"""
+
 
 def _ignore_filter(_src, names):
     ignored = set()
@@ -86,6 +104,13 @@ def _ignore_filter(_src, names):
             ignored.add(name)
             continue
     return ignored
+
+
+def _resolve_jenkins_overlay() -> Path | None:
+    for candidate in JENKINS_OVERLAY_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _safe_copy_tree(src: Path, dst: Path):
@@ -312,14 +337,23 @@ def _runtime_ps1(mode: str, default_port: int, entry: str):
             Write-Host "[STEP] $Text" -ForegroundColor Cyan
         }}
 
-        function Find-PythonCommand {{
-            $python = Get-Command python -ErrorAction SilentlyContinue
-            if ($python) {{
-                return @{{ Cmd = $python.Source; Args = @() }}
+        function Test-PythonCommand([string]$Cmd, [string[]]$Args) {{
+            try {{
+                $out = (& $Cmd @Args --version 2>&1 | Out-String).Trim()
+                return ($LASTEXITCODE -eq 0 -and $out -match 'Python\\s+\\d')
+            }} catch {{
+                return $false
             }}
+        }}
+
+        function Find-PythonCommand {{
             $py = Get-Command py -ErrorAction SilentlyContinue
-            if ($py) {{
+            if ($py -and (Test-PythonCommand $py.Source @('-3'))) {{
                 return @{{ Cmd = $py.Source; Args = @('-3') }}
+            }}
+            $python = Get-Command python -ErrorAction SilentlyContinue
+            if ($python -and (Test-PythonCommand $python.Source @())) {{
+                return @{{ Cmd = $python.Source; Args = @() }}
             }}
             return $null
         }}
@@ -420,11 +454,13 @@ def _runtime_ps1(mode: str, default_port: int, entry: str):
             if ($LASTEXITCODE -ne 0) {{
                 throw "Failed to upgrade pip/setuptools/wheel"
             }}
+            $reqBundle = Join-Path $PSScriptRoot "requirements-bundle.txt"
             $reqMain = Join-Path $PSScriptRoot "requirements.txt"
-            if (Test-Path $reqMain) {{
-                & $venvPy -m pip install -r $reqMain
+            $reqFile = if (Test-Path $reqBundle) {{ $reqBundle }} elseif (Test-Path $reqMain) {{ $reqMain }} else {{ $null }}
+            if ($reqFile) {{
+                & $venvPy -m pip install -r $reqFile
                 if ($LASTEXITCODE -ne 0) {{
-                    throw "Failed to install requirements.txt"
+                    throw "Failed to install $(Split-Path $reqFile -Leaf)"
                 }}
             }}
             $reqProd = Join-Path $PSScriptRoot "requirements-prod.txt"
@@ -434,7 +470,7 @@ def _runtime_ps1(mode: str, default_port: int, entry: str):
                     throw "Failed to install requirements-prod.txt"
                 }}
             }}
-            if (!(Test-Path $reqMain) -and !(Test-Path $reqProd)) {{
+            if (-not $reqFile -and !(Test-Path $reqProd)) {{
                 throw "No requirements file found."
             }}
             Write-Host "[OK] dependency install finished" -ForegroundColor Green
@@ -745,9 +781,13 @@ def _build_runtime_bundle(target_dir: Path, mode: str, default_port: int):
     for rel in COMMON_DIRS:
         _safe_copy_tree(ROOT / rel, target_dir / rel)
     if mode == "admin":
-        _safe_copy_tree(ROOT / "jenkins-clone-overlay", target_dir / "jenkins-clone-overlay")
+        overlay = _resolve_jenkins_overlay()
+        if overlay is None:
+            raise FileNotFoundError("jenkins-clone-overlay not found for admin bundle")
+        _safe_copy_tree(overlay, target_dir / "jenkins-clone-overlay")
     for rel in COMMON_FILES:
         _safe_copy_file(ROOT / rel, target_dir / rel)
+    _write_text(target_dir / "requirements-bundle.txt", BUNDLE_REQUIREMENTS.strip() + "\n")
     _sanitize_settings_file(target_dir / "config" / "settings.json", mode=mode, default_port=default_port)
     _sanitize_settings_file(target_dir / "config" / "settings.example.json", mode=mode, default_port=default_port)
     _rewrite_env_example(target_dir / ".env.example", mode=mode, default_port=default_port)
@@ -786,11 +826,24 @@ def _player_static_ps1():
         $ErrorActionPreference = 'Stop'
         Set-Location $PSScriptRoot
 
+        function Test-PythonCommand([string]$Cmd, [string[]]$Args) {
+            try {
+                $out = (& $Cmd @Args --version 2>&1 | Out-String).Trim()
+                return ($LASTEXITCODE -eq 0 -and $out -match 'Python\\s+\\d')
+            } catch {
+                return $false
+            }
+        }
+
         function Find-PythonCommand {
-            $python = Get-Command python -ErrorAction SilentlyContinue
-            if ($python) { return @($python.Source, @()) }
             $py = Get-Command py -ErrorAction SilentlyContinue
-            if ($py) { return @($py.Source, @('-3')) }
+            if ($py -and (Test-PythonCommand $py.Source @('-3'))) {
+                return @($py.Source, @('-3'))
+            }
+            $python = Get-Command python -ErrorAction SilentlyContinue
+            if ($python -and (Test-PythonCommand $python.Source @())) {
+                return @($python.Source, @())
+            }
             return $null
         }
 

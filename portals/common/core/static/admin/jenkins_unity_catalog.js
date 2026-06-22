@@ -178,13 +178,22 @@
     var root = document.getElementById('unity-catalog');
     if (!root) return;
 
-    document.getElementById('uvBtnReload').onclick = loadCatalog;
+    function bindClick(id, fn) {
+      var el = document.getElementById(id);
+      if (el) el.onclick = fn;
+    }
+    function bindChange(id, fn) {
+      var el = document.getElementById(id);
+      if (el) el.onchange = fn;
+    }
 
-    document.getElementById('uvBtnAdd').onclick = function () {
+    bindClick('uvBtnReload', loadCatalog);
+
+    bindClick('uvBtnAdd', function () {
       openForm(null);
-    };
+    });
 
-    document.getElementById('uvBtnImportDetect').onclick = function () {
+    bindClick('uvBtnImportDetect', function () {
       var btn = document.getElementById('uvBtnImportDetect');
       var st = document.getElementById('uvCatalogListStatus');
       if (btn) btn.disabled = true;
@@ -214,19 +223,19 @@
         .finally(function () {
           if (btn) btn.disabled = false;
         });
-    };
+    });
 
-    document.getElementById('uvFilterStatus').onchange = function () {
+    bindChange('uvFilterStatus', function () {
       state.filterStatus = this.value || 'all';
       renderTable();
-    };
-    document.getElementById('uvFilterCategory').onchange = function () {
+    });
+    bindChange('uvFilterCategory', function () {
       state.filterCategory = this.value || '';
       renderTable();
-    };
+    });
 
-    document.getElementById('uvFormCancel').onclick = closeForm;
-    document.getElementById('uvFormSave').onclick = function () {
+    bindClick('uvFormCancel', closeForm);
+    bindClick('uvFormSave', function () {
       var id = document.getElementById('uvFormEntryId').value.trim();
       var payload = {
         version: document.getElementById('uvFormVersion').value.trim(),
@@ -250,7 +259,7 @@
         .catch(function (e) {
           setStatus(st, e.message || '保存失败', true);
         });
-    };
+    });
 
     root.addEventListener('click', function (ev) {
       var editBtn = ev.target.closest('.uv-edit');

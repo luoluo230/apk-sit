@@ -47,6 +47,12 @@ class GameOpsClient:
     def get_storage_metrics(self, operator: str, role: str = "Viewer") -> Dict[str, Any]:
         return self._request("GET", "/ops/storage-metrics", operator=operator, role=role, write=False)
 
+    def get_ready(self, operator: str, role: str = "Viewer") -> Dict[str, Any]:
+        return self._request("GET", "/ops/ready", operator=operator, role=role, write=False)
+
+    def get_metrics(self, operator: str, role: str = "Viewer") -> Dict[str, Any]:
+        return self._request("GET", "/ops/metrics", operator=operator, role=role, write=False)
+
     def execute_action(self, action: Dict[str, Any], operator: str, role: str, reason: str, ticket_id: str) -> Dict[str, Any]:
         return self._request(
             "POST",

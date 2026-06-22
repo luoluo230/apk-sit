@@ -4,7 +4,7 @@ from __future__ import annotations
 from routes.ops.common import *  # noqa: F403
 from flask import jsonify, redirect, render_template_string, request, session
 
-from models.data import log_audit
+from models.data import create_approval, log_audit
 from services.authz import admin_required
 import services.ops.helpers as ops_helpers
 from routes.ops import bp

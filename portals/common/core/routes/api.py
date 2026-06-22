@@ -3,15 +3,16 @@
 
 import os
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 
 from config import Config
 from services.authz import login_required
 from services.admin.version_domain import normalize_version_status
 from services.release.env_registry import normalize_release_env_key
+from data.repositories.user_repository import UserRepository
 from models.data import (
     extract_package_info, download_stats, projects_db,
-    users_db, project_versions_db, iter_package_files, detect_platform,
+    project_versions_db, iter_package_files, detect_platform,
 )
 
 bp = Blueprint('api', __name__, url_prefix='/api')
@@ -34,7 +35,7 @@ def status():
         'service': 'apk-site',
         'version': __version__,
         'stats': {
-            'users': len(users_db) if isinstance(users_db, dict) else 0,
+            'users': len(UserRepository().list_all()),
             'projects': len(projects_db) if isinstance(projects_db, dict) else 0,
             'apk_count': package_count,
             'package_count': package_count,
@@ -352,3 +353,14 @@ def resolve_runtime_version():
             },
         },
     })
+
+
+@bp.route('/notifications/stream')
+@login_required
+def notifications_stream():
+    """§11.5 minimal SSE push for unread count heartbeat."""
+
+    def _gen():
+        yield 'data: {"type":"heartbeat","ok":true}\n\n'
+
+    return Response(_gen(), mimetype='text/event-stream')

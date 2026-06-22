@@ -1,35 +1,20 @@
 <link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260609-unified-v1">
 <div class="agent-screen agent-screen--control agent-screen--embedded" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-page="agent-control">
   <section class="agent-shell-main">
-    <header class="agent-shell-topbar">
-      <div class="agent-shell-breadcrumb">
-        <span>工作台</span>
-        <span>/</span>
-        <strong>Agent 与服务器</strong>
-      </div>
-      <div class="agent-shell-topbar-right">
-        <button class="agent-shell-icon-btn" type="button" aria-label="通知">◔</button>
-        <button class="agent-shell-icon-btn" type="button" aria-label="帮助">?</button>
-        <span class="agent-shell-avatar">A</span>
-        <span class="agent-shell-user">Admin</span>
-        <span class="agent-shell-user-arrow">▾</span>
-      </div>
-    </header>
-
     <main class="agent-shell-content">
       <section class="agent-page-hero">
         <div class="agent-page-hero-copy">
           <div class="agent-page-title-line">
             <span class="agent-page-title-badge">G</span>
-            <h1>Agent 管控中心</h1>
+            <h1>Agent 与服务器</h1>
           </div>
           <p>按设备分组管理 Agent，支持批量操作、状态监控与策略配置</p>
           <div class="agent-page-scope-badge">当前项目：<strong>{{ project_id }}</strong> · 环境：<strong>{{ env_key }}</strong> · 单 Agent 管理本环境服务节点</div>
         </div>
         <div class="agent-page-hero-actions">
-          <button id="btnCreateAgent" class="agent-btn agent-btn--primary" type="button">新建设备 Agent</button>
-          <button id="btnProbeAllAgent" class="agent-btn agent-btn--ghost" type="button">一键探测测试</button>
-          <button id="btnProbeRepairAllAgent" class="agent-btn agent-btn--ghost" type="button">批量修复并探测</button>
+          <button id="btnCreateAgent" class="agent-btn agent-btn--primary" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建设备 Agent</button>
+          <button id="btnProbeAllAgent" class="agent-btn agent-btn--ghost" type="button"><img src="/static/project_ui/svg/kpi_health.svg" alt="">一键探测测试</button>
+          <button id="btnProbeRepairAllAgent" class="agent-btn agent-btn--ghost" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">批量修复并探测</button>
         </div>
       </section>
 
@@ -45,7 +30,7 @@
           </select>
           <label class="agent-field agent-field--search">
             <input id="filterQuery" type="text" placeholder="按设备 / IP / 备注">
-            <span>⌕</span>
+            <span><img src="/static/project_ui/svg/global_search.svg" alt=""></span>
           </label>
           <select id="filterServiceStatus" class="agent-field agent-field--select">
             <option value="">全部服务状态</option>
@@ -77,7 +62,7 @@
           <button id="btnBatchRestart" class="agent-btn agent-btn--outline agent-btn--small" type="button">批量重启</button>
           <button id="btnBatchBind" class="agent-btn agent-btn--outline agent-btn--small" type="button">批量绑定服务</button>
           <div class="agent-dropdown">
-            <button id="btnBatchMore" class="agent-btn agent-btn--outline agent-btn--small" type="button">更多操作 ▾</button>
+            <button id="btnBatchMore" class="agent-btn agent-btn--outline agent-btn--small" type="button">更多操作 <img src="/static/project_ui/svg/global_chevron_down.svg" alt=""></button>
             <div id="batchMoreMenu" class="agent-dropdown-menu is-hidden">
               <button id="btnClearSelection" type="button">清空选择</button>
               <button id="btnRefreshNow" type="button">立即刷新</button>
@@ -97,9 +82,9 @@
         <div class="agent-pagination">
           <div id="agentPaginationMeta" class="agent-pagination-total">共 0 条</div>
           <div class="agent-pagination-center">
-            <button id="btnPrevPage" class="agent-pagination-btn" type="button">‹</button>
+            <button id="btnPrevPage" class="agent-pagination-btn" type="button" aria-label="上一页"><img src="/static/project_ui/svg/action_back.svg" alt=""></button>
             <span id="pageIndicator" class="agent-pagination-current">1</span>
-            <button id="btnNextPage" class="agent-pagination-btn" type="button">›</button>
+            <button id="btnNextPage" class="agent-pagination-btn" type="button" aria-label="下一页"><img src="/static/project_ui/svg/action_next.svg" alt=""></button>
           </div>
           <select id="pageSizeSelect" class="agent-page-size">
             <option value="6" selected>每页 6 条</option>
@@ -115,7 +100,7 @@
     <div class="agent-modal-card">
       <div class="agent-modal-head">
         <h3 id="agentEditTitle">编辑 Agent</h3>
-        <button id="btnCloseAgentEdit" class="agent-btn agent-btn--outline agent-btn--small" type="button">关闭</button>
+        <button id="btnCloseAgentEdit" class="agent-btn agent-btn--outline agent-btn--small" type="button"><img src="/static/project_ui/svg/action_close.svg" alt="">关闭</button>
       </div>
       <p class="agent-modal-sub">保存后会同步更新当前列表与详情页展示。</p>
       <div class="agent-form-grid">
@@ -144,4 +129,4 @@
   </div>
 </div>
 <script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>
-<script src="/static/ops_platform_agent_control.js?v=20260609-unified-v1"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260613-project-v2"></script>

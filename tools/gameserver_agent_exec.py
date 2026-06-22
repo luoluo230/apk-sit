@@ -23,6 +23,10 @@ _RELAY_PORTS = {
     "auth-cn-1": 15501,
     "game-cn-1": 15502,
 }
+_INFRA_PORTS = {
+    "redis-cache-cn-1": 6379,
+    "mongo-db-cn-1": 27017,
+}
 
 
 def _resolve_repo() -> Path:
@@ -138,9 +142,12 @@ def _service_live(service_id: str, host: str = "127.0.0.1") -> bool:
     sid = str(service_id or "").strip().lower()
     port = int(_TCP_PORTS.get(sid) or 0)
     relay = int(_RELAY_PORTS.get(sid) or 0)
+    infra = int(_INFRA_PORTS.get(sid) or 0)
     if port > 0 and _probe_tcp(host, port):
         return True
     if relay > 0 and _probe_tcp(host, relay):
+        return True
+    if infra > 0 and _probe_tcp(host, infra):
         return True
     pid = _find_pid(sid)
     return pid > 0
@@ -206,6 +213,30 @@ def execute_ops_job(job: Dict[str, Any], repo: Optional[Path] = None) -> Dict[st
         or ""
     ).strip().lower()
     reason = str(job.get("reason") or payload.get("reason") or "agent-job").strip()
+    if desired in _INFRA_PORTS:
+        if action in ("start", "start_all", "smoke_test", "stress_test", "restart"):
+            if _service_live(desired):
+                return {
+                    "ok": True,
+                    "message": f"{desired} already running port={_INFRA_PORTS[desired]}",
+                    "already_running": True,
+                }
+            return {
+                "ok": False,
+                "message": f"{desired} is not listening on port {_INFRA_PORTS[desired]}; start the managed infrastructure service first",
+            }
+        if action in ("status", "health_check", "ready_check", "runtime_snapshot"):
+            live = _service_live(desired)
+            return {
+                "ok": live,
+                "message": f"{desired} {'ready' if live else 'offline'} port={_INFRA_PORTS[desired]}",
+                "services": {desired: live},
+            }
+        if action in ("stop", "stop_all"):
+            return {
+                "ok": False,
+                "message": f"{desired} is externally managed; stop it from the infrastructure service manager",
+            }
     if action in ("start", "start_all", "smoke_test", "stress_test", "restart"):
         if action == "restart":
             stop = _stop_service(desired)

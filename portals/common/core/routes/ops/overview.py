@@ -16,7 +16,10 @@ def ops_platform_overview():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = ops_helpers._resolve_ops_project_id(request.args.get("project_id") or "")
     env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
-    return jsonify(ops_helpers._build_overview(project_id=project_id, env_key=env_key))
+    from services.ops.cluster_health_bridge import enrich_overview
+    payload = ops_helpers._build_overview(project_id=project_id, env_key=env_key)
+    operator = str(session.get("user") or "intranet-ops")
+    return jsonify(enrich_overview(payload, operator=operator))
 
 
 
@@ -97,45 +100,8 @@ def ops_platform_module_map():
 def ops_platform_control_plane_summary():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
-    ops_helpers._ensure_probe_bg_started()
-    # 走缓存，不再每次请求都同步+探活
-    with ops_helpers._probe_cache_lock:
-        cached_probe = dict(ops_helpers._probe_cache)
-        cached_agents = list(ops_helpers._probe_cache_agents)
-    agents = [ops_helpers._normalize_agent_descriptor_v2(x) for x in cached_agents if isinstance(x, dict)]
-    agents = [a for a in agents if not a.get("stale")]
-    for a in agents:
-        aid = str(a.get("agent_id") or "")
-        pr = cached_probe.get(aid)
-        if pr:
-            a["effective_status"] = pr.get("effective_status", "UNKNOWN")
-            a["probe_status"] = "PASS" if pr.get("ok") else "FAIL"
-            a["probe_rtt_ms"] = pr.get("rtt_ms", 0.0)
-            a["probe_source"] = "bg-engine"
-        else:
-            a["effective_status"] = "UNKNOWN"
-            a["probe_source"] = "missing"
-    jobs = ops_helpers._load_agent_jobs()
-    queue: Dict[str, int] = {"PENDING": 0, "RUNNING": 0, "SUCCESS": 0, "FAILED": 0, "CANCELED": 0, "TIMEOUT": 0}
-    for item in jobs:
-        if not isinstance(item, dict):
-            continue
-        st = str(item.get("status") or "").upper()
-        if st in queue:
-            queue[st] += 1
-    online = 0
-    for a in agents:
-        es = str(a.get("effective_status") or a.get("status") or "").upper()
-        if es in ("ONLINE", "READY", "RUNNING"):
-            online += 1
-    metrics = {
-        "agents_total": len(agents),
-        "agents_online": online,
-        "jobs_pending": queue.get("PENDING") or 0,
-        "jobs_running": queue.get("RUNNING") or 0,
-        "probe_cache_age_sec": round(max(0, ops_helpers._time_mod.time() - ops_helpers._probe_cache_ts), 1),
-    }
-    return jsonify({"ok": True, "metrics": metrics, "queue": queue, "agents": agents, "policy": ops_helpers._load_agent_policy()})
+    from services.ops.modules import agent_control
+    return jsonify(agent_control.build_control_plane_summary())
 
 
 
@@ -144,77 +110,10 @@ def ops_platform_control_plane_summary():
 def ops_platform_change_governance_summary():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
+    from services.ops.modules import change_governance
     project_id = str(request.args.get("project_id") or "").strip()
-    events = ops_helpers._load_json_config(OPS_EVENT_LOG_KEY, [])
-    if not isinstance(events, list):
-        events = []
-    recent = [x for x in events if isinstance(x, dict)][:200]
-    if project_id:
-        recent = [
-            x for x in recent
-            if not str(x.get("project_id") or "").strip() or str(x.get("project_id") or "") == project_id
-        ]
-    high_risk = 0
-    failed = 0
-    change_evt = 0
-    for item in recent:
-        level = str(item.get("level") or item.get("risk") or "").lower()
-        action = str(item.get("action") or "").lower()
-        ok = bool(item.get("ok", True))
-        if level in ("high", "critical"):
-            high_risk += 1
-        if not ok:
-            failed += 1
-        if ("deploy" in action) or ("migration" in action) or ("release" in action) or ("rollback" in action):
-            change_evt += 1
-    pending_approvals = 0
-    for item in approvals_db:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("status") or "").lower() in ("pending", "open"):
-            if project_id and str(item.get("project_id") or "") not in ("", project_id):
-                continue
-            pending_approvals += 1
-    metrics = {
-        "pending_approvals": pending_approvals,
-        "high_risk_actions_24h": high_risk,
-        "failed_actions_24h": failed,
-        "change_events_24h": change_evt,
-    }
-    freeze = ops_helpers._change_freeze_for_project(project_id)
-    ctx = ops_helpers._resolve_topology_context(project_id, "production", "") if project_id else {}
-    row = ctx.get("row") if isinstance(ctx.get("row"), dict) else {}
-    tid = str(row.get("topology_id") or "")
-    env_key = str(row.get("env_key") or "production")
-    runtime_active = ops_helpers._runtime_active_for_scope(project_id, env_key, tid) if project_id and tid else {"active": False}
-    live_verified = False
-    live_count = 0
-    live_total = 0
-    if project_id and tid and ops_helpers._project_uses_runtime_topology(project_id):
-        try:
-            topo = ops_helpers._load_topology_scoped(project_id, env_key, tid)
-            topo_nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
-            bindings = ops_helpers._load_scope_service_bindings(tid)
-            probe_stat = ops_helpers._refresh_runtime_service_probes_from_topology(project_id, env_key, tid, topo_nodes, bindings)
-            live_count = int(probe_stat.get("live_count") or 0)
-            live_total = int(probe_stat.get("total") or 0)
-            live_verified = bool(live_total > 0 and live_count >= live_total and probe_stat.get("gateway_live"))
-        except Exception:
-            live_verified = False
-    window = {
-        "freeze_active": bool(freeze.get("active")),
-        "freeze_reason": str(freeze.get("reason") or ""),
-        "freeze_updated_at": str(freeze.get("updated_at") or ""),
-        "topology_id": tid,
-        "env_key": env_key,
-        "runtime_active": bool(runtime_active.get("active")),
-        "runtime_run_id": str(runtime_active.get("run_id") or ""),
-        "runtime_status": str(runtime_active.get("status") or ""),
-        "runtime_live_verified": live_verified,
-        "runtime_live_count": live_count,
-        "runtime_live_total": live_total,
-    }
-    return jsonify({"ok": True, "project_id": project_id, "metrics": metrics, "events": recent[:20], "window": window})
+    env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
+    return jsonify(change_governance.build_summary(project_id=project_id, env_key=env_key))
 
 
 
@@ -223,16 +122,17 @@ def ops_platform_change_governance_summary():
 def ops_platform_change_governance_freeze():
     if not ops_helpers._allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
+    from services.ops.modules import change_governance
     payload = request.get_json(silent=True) or {}
     project_id = str(payload.get("project_id") or "").strip()
-    if not project_id:
-        return jsonify({"ok": False, "error": "missing_project_id"}), 400
     active = bool(payload.get("active"))
     reason = str(payload.get("reason") or ("变更冻结" if active else "解除冻结"))
     actor = str(session.get("user") or "admin")
-    saved = ops_helpers._save_change_freeze(project_id, active, reason, actor)
+    result = change_governance.set_freeze(project_id, active, reason, actor)
+    if not result.get("ok"):
+        return jsonify(result), 400
     log_audit("ops_platform_change_freeze", f"project={project_id}; active={active}")
-    return jsonify({"ok": True, "project_id": project_id, "window": saved})
+    return jsonify(result)
 
 
 
@@ -253,9 +153,10 @@ def ops_platform_action_targets():
 def ops_platform_diagnostics_summary():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden"}), 403
+    from services.ops.modules import diagnostics
     project_id = ops_helpers._resolve_ops_project_id(request.args.get("project_id") or "")
     env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
-    return jsonify(ops_helpers._build_diagnostics_summary(project_id=project_id, env_key=env_key))
+    return jsonify(diagnostics.build_summary(project_id=project_id, env_key=env_key))
 
 
 
@@ -264,19 +165,8 @@ def ops_platform_diagnostics_summary():
 def ops_platform_action_catalog():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
-    rows = [
-        {"groupId": "observe", "group": "Observe", "value": "health_check", "label": "健康检查", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "ready_check", "label": "就绪检查", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "status", "label": "运行快照", "risk": "low"},
-        {"groupId": "observe", "group": "Observe", "value": "runtime_snapshot", "label": "运行态详情", "risk": "low"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start", "label": "启动节点", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop", "label": "停止节点", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "restart", "label": "重启节点", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "start_all", "label": "启动全节点", "risk": "high"},
-        {"groupId": "lifecycle", "group": "Lifecycle", "value": "stop_all", "label": "停止全节点", "risk": "high"},
-        {"groupId": "special", "group": "Special Job", "value": "smoke_test", "label": "冒烟测试", "risk": "medium"},
-        {"groupId": "special", "group": "Special Job", "value": "stress_test", "label": "压力测试", "risk": "high"},
-    ]
+    from services.ops.modules import action_center
+    rows = action_center.list_catalog()
     return jsonify({"ok": True, "actions": rows, "data": rows, "catalog": rows})
 
 
@@ -568,7 +458,12 @@ def ops_platform_summary():
     if not ops_helpers._allow_ops_view():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维查看权限 (ops.platform.view)"}), 403
     project_id = str(request.args.get("project_id") or "").strip()
-    overview = ops_helpers._build_overview(project_id=project_id)
+    env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
+    from services.ops.cluster_health_bridge import enrich_overview
+
+    overview = ops_helpers._build_overview(project_id=project_id, env_key=env_key)
+    operator = str(session.get("user") or "intranet-ops")
+    overview = enrich_overview(overview, operator=operator)
     nodes = overview.get("nodes") if isinstance(overview.get("nodes"), list) else []
     legacy_rows: List[Dict[str, Any]] = []
     for n in nodes:
@@ -597,7 +492,13 @@ def ops_platform_summary():
                 },
             }
         )
-    return jsonify({"ok": True, "count": len(legacy_rows), "nodes": legacy_rows, "summary": overview.get("summary")})
+    return jsonify({
+        "ok": True,
+        "count": len(legacy_rows),
+        "nodes": legacy_rows,
+        "summary": overview.get("summary"),
+        "cluster_health": overview.get("cluster_health"),
+    })
 
 
 

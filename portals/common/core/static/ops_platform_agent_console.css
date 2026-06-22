@@ -398,6 +398,13 @@ button {
   font-size: 28px;
   font-weight: 700;
 }
+.agent-page-title-badge{font-size:0;background:#e8f1ff url("/static/project_ui/svg/nav_agent_server.svg") center/18px 18px no-repeat;box-shadow:none}
+.agent-summary-icon img{width:20px;height:20px}
+.agent-screen--embedded .agent-shell-topbar{display:none}
+.agent-btn img{width:15px;height:15px;display:block}
+.agent-field--search span img{width:15px;height:15px;display:block}
+.agent-card-device img,.agent-card-more img{width:16px;height:16px;display:block}
+.agent-screen--embedded .agent-shell-content{padding-top:20px}
 
 .agent-summary-card[data-tone="blue"] .agent-summary-icon {
   background: #eef4ff;

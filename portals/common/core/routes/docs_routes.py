@@ -510,11 +510,11 @@ def docs_permissions_page(doc_id):
         return '文档不存在', 404
     if not _can_manage(doc, _current_username()):
         return '无权限管理', 403
-    from models.data import users_db
+    from repositories.admin import users_repo
     perms = doc.get('permissions') or {}
     editors = perms.get('editors') or []
     viewers = perms.get('viewers') or []
-    user_opts = ''.join('<option value="%s">%s</option>' % (html.escape(u), html.escape(u)) for u in sorted(users_db.keys()) if u != doc.get('created_by'))
+    user_opts = ''.join('<option value="%s">%s</option>' % (html.escape(u), html.escape(u)) for u in sorted(users_repo.list_users().keys()) if u != doc.get('created_by'))
     content = '''
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-2xl">
         <h2 class="text-lg font-semibold text-gray-800 mb-4">文档权限</h2>

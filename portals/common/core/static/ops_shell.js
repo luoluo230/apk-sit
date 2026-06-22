@@ -1,30 +1,63 @@
 (() => {
-  const storageKey = "project_workspace_sidebar_collapsed";
   const app = document.querySelector(".ops-shell-app");
-  const button = document.querySelector(".ops-shell-collapse-btn");
   if (!app) return;
-
+  const projectId = app.dataset.projectId || "";
+  const envKey = app.dataset.envKey || "production";
+  const contextKeys = ["env_key", "channel_id", "platform", "version_name", "version_code", "release_order_id"];
+  const current = new URLSearchParams(location.search);
+  const storageKey = "project_workspace_sidebar_collapsed";
+  const collapse = document.querySelector(".ops-shell-collapse-btn");
   if (localStorage.getItem(storageKey) === "1") app.classList.add("sidebar-collapsed");
-
-  const syncLabel = () => {
-    const label = button?.querySelector("span");
-    if (label) label.textContent = app.classList.contains("sidebar-collapsed") ? "展开菜单" : "收起菜单";
-  };
-  syncLabel();
-  button?.addEventListener("click", () => {
+  collapse?.addEventListener("click", () => {
     const collapsed = app.classList.toggle("sidebar-collapsed");
     localStorage.setItem(storageKey, collapsed ? "1" : "0");
-    syncLabel();
   });
-
-  // Project context is URL-owned so links remain shareable and every module reads the same target.
-  const current = new URLSearchParams(location.search);
-  const keys = ["env_key", "channel_id", "platform", "version_name", "version_code", "release_order_id"];
   document.querySelectorAll('a[href^="/admin/projects/"]').forEach((link) => {
     const url = new URL(link.href, location.origin);
-    keys.forEach((key) => {
+    contextKeys.forEach((key) => {
       if (!url.searchParams.has(key) && current.get(key)) url.searchParams.set(key, current.get(key));
     });
     link.href = `${url.pathname}${url.search}${url.hash}`;
+  });
+  const trigger = document.querySelector("[data-context-trigger]");
+  const menu = document.querySelector("[data-context-menu]");
+  const projectsHost = document.querySelector("[data-context-projects]");
+  const envHost = document.querySelector("[data-context-environments]");
+  const envLabels = {development:"开发环境",testing:"测试环境",staging:"预发环境",production:"生产环境"};
+  const switchContext = (nextProject, nextEnv) => {
+    const parts = location.pathname.split("/");
+    const projectIndex = parts.indexOf("projects") + 1;
+    if (projectIndex > 0 && nextProject) parts[projectIndex] = nextProject;
+    const params = new URLSearchParams(location.search);
+    if (nextEnv) params.set("env_key", nextEnv);
+    location.href = `${parts.join("/")}?${params}`;
+  };
+  const loadContextMenu = async () => {
+    if (!projectsHost || projectsHost.dataset.loaded) return;
+    projectsHost.dataset.loaded = "1";
+    try {
+      const response = await fetch("/api/projects/context-catalog");
+      const payload = await response.json();
+      const projects = payload.data || [];
+      projectsHost.innerHTML = projects.map((item) => `<button class="ops-context-option ${item.project_id===projectId?"active":""}" data-project="${item.project_id}">${item.project_name}</button>`).join("");
+      projectsHost.querySelectorAll("[data-project]").forEach((button) => button.addEventListener("click", () => switchContext(button.dataset.project, envKey)));
+    } catch (_) {
+      projectsHost.innerHTML = '<span class="ops-context-option">项目列表加载失败</span>';
+    }
+    envHost.innerHTML = Object.entries(envLabels).map(([key,label]) => `<button class="ops-context-option ${key===envKey?"active":""}" data-env="${key}">${label}</button>`).join("");
+    envHost.querySelectorAll("[data-env]").forEach((button) => button.addEventListener("click", () => switchContext(projectId, button.dataset.env)));
+  };
+  trigger?.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    const open = menu.hidden;
+    menu.hidden = !open;
+    trigger.setAttribute("aria-expanded", String(open));
+    if (open) await loadContextMenu();
+  });
+  document.addEventListener("click", (event) => {
+    if (menu && !menu.hidden && !menu.contains(event.target) && !trigger.contains(event.target)) {
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    }
   });
 })();

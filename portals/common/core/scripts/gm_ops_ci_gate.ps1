@@ -31,6 +31,7 @@ Write-Output "质量门禁通过。"
 
 $coreRoot = Join-Path (Split-Path $PSScriptRoot -Parent) "."
 $releaseGate = Join-Path $coreRoot "scripts\release_platform_ci_gate.py"
+$commercialGate = Join-Path $coreRoot "scripts\commercial_startup_sequence_gate.py"
 if (Test-Path $releaseGate) {
     $env:RELEASE_CI_BASE_URL = $BaseUrl
     $env:RELEASE_CI_SCOPE_ID = $ScopeId
@@ -38,6 +39,15 @@ if (Test-Path $releaseGate) {
     & py -3 $releaseGate --base-url $BaseUrl --scope-id $ScopeId --ci-token $CiToken
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Release platform CI gate failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+}
+if (Test-Path $commercialGate) {
+    $env:RELEASE_GATE_BASE_URL = $BaseUrl
+    $env:RELEASE_GATE_SCOPE_ID = $ScopeId
+    & py -3 $commercialGate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Commercial startup sequence gate failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }

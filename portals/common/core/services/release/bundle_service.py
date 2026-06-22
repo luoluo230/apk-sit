@@ -81,7 +81,9 @@ def _artifact_probe_targets(scope: Dict[str, Any], version_row: Dict[str, Any]) 
         "staging": "Staging",
         "production": "Production",
     }.get(normalize_release_env_key(scope.get("env_key") or version_row.get("env_key") or version_row.get("stage")), "Development")
-    release_channel = normalize_release_channel(str(version_row.get("channel") or scope.get("channel_id") or "common"))
+    release_channel = normalize_release_channel(
+        str(version_row.get("channel_id") or version_row.get("channel") or scope.get("channel_id") or "common")
+    )
     release_platform = normalize_release_platform(str(version_row.get("platform") or "android"))
     runtime_paths = build_runtime_resolve_paths(
         resource_server_url=str(version_row.get("resource_server_url") or ""),
@@ -136,7 +138,10 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
     missing_profile = [k for k in profile_keys if not str((network_profile or {}).get(k) or "").strip()]
     row_scope_id = str(version_row.get("scope_id") or "").strip()
     row_env_key = str(version_row.get("env_key") or version_row.get("stage") or version_row.get("env") or "").strip()
-    row_channel_id = resolve_channel_id(str(scope.get("project_id") or ""), str(version_row.get("channel") or ""))
+    row_channel_id = resolve_channel_id(
+        str(scope.get("project_id") or ""),
+        str(version_row.get("channel_id") or version_row.get("channel") or ""),
+    )
     scope_aligned = not row_scope_id or row_scope_id == scope_id
     env_aligned = not row_env_key or str(scope.get("env_key") or "") == normalize_release_env_key(row_env_key)
     channel_aligned = not row_channel_id or row_channel_id == str(scope.get("channel_id") or "")

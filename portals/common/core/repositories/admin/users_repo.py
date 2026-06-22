@@ -1,32 +1,68 @@
-"""User data access wrappers."""
+"""User data access wrappers backed by UserRepository."""
 
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
 
-from models.data import users_db, save_users, log_audit
+from data.repositories.user_repository import UserRepository
+from data.audit import log_audit
+
+_repo = UserRepository()
 
 
 def list_users() -> Dict[str, Dict[str, Any]]:
-    return users_db
+    _repo.reload()
+    return dict(_repo.list_all())
 
 
 def get_user(username: str) -> Dict[str, Any] | None:
-    return users_db.get(username)
+    row = _repo.find(username)
+    return dict(row) if row else None
 
 
 def upsert_user(username: str, record: Dict[str, Any]) -> None:
-    users_db[username] = record
-    save_users()
+    if _repo.exists(username):
+        _repo.update(username, record)
+    else:
+        _repo.create(username, record)
 
 
 def remove_user(username: str) -> None:
-    users_db.pop(username, None)
-    save_users()
+    _repo.delete(username)
+
+
+def verify_password(username: str, password: str) -> bool:
+    import hashlib
+
+    row = get_user(username)
+    if not row or row.get("disabled"):
+        return False
+    digest = hashlib.sha256(password.encode()).hexdigest()
+    return str(row.get("password") or "") == digest
+
+
+def update_password(username: str, new_password: str) -> None:
+    import hashlib
+
+    row = get_user(username)
+    if not row:
+        raise KeyError(username)
+    row = dict(row)
+    row["password"] = hashlib.sha256(new_password.encode()).hexdigest()
+    upsert_user(username, row)
+
+
+def record_last_login(username: str, iso_timestamp: str) -> None:
+    row = get_user(username)
+    if not row:
+        return
+    row = dict(row)
+    row["last_login"] = iso_timestamp
+    upsert_user(username, row)
 
 
 def save() -> None:
-    save_users()
+    _repo.save()
 
 
 def audit(action: str, target: str) -> None:

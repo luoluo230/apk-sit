@@ -544,13 +544,16 @@ def _build_page_html(project_context=False, version_lock_params=False):
     function loadJenkinsOptions(){
         return fetch(listAvailableUrl(), {credentials:'same-origin'}).then(r=>r.json()).then(d=>{
             var sel=document.getElementById('jenkinsInstance');
+            var statusEl=document.getElementById('buildStatus');
             if(!sel) return;
             while(sel.options.length>1) sel.remove(1);
-            (d.instances||[]).forEach(function(i){
-                INSTANCE_META[i.id]={port:i.port,task_name:(i.task_name||'').trim()};
+            var items=d.instances||[];
+            items.forEach(function(i){
+                INSTANCE_META[i.id]={port:i.port,task_name:(i.task_name||'').trim(),reachable:i.reachable!==false};
                 var opt=document.createElement('option');
                 opt.value=i.id;
-                var label=i.port + ((i.task_name&&i.task_name.trim()) ? ' '+i.task_name.trim() : '') + ' - ' + (i.status==='running'?'运行中':'已停止');
+                var suffix = i.reachable===false ? '不可达' : (i.status==='running'?'运行中':'已停止');
+                var label=i.port + ((i.task_name&&i.task_name.trim()) ? ' '+i.task_name.trim() : '') + ' - ' + suffix;
                 opt.textContent=label;
                 sel.appendChild(opt);
             });
@@ -566,6 +569,13 @@ def _build_page_html(project_context=False, version_lock_params=False):
                         if(sel.options[j].value===remembered){ sel.value=remembered; break; }
                     }
                 }
+            }
+            if(!items.length && statusEl){
+                statusEl.textContent='当前无可用 '+modeLabel(VERSION_MODE)+' Jenkins 实例。请先在 Jenkins 管理中启动对应类型实例；版本类型（通用/商业）须与实例类型一致。';
+                statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
+            } else if(items.length && items.every(function(x){ return x.reachable===false; }) && statusEl){
+                statusEl.textContent='已发现实例但 Jenkins 未响应，请在 Jenkins 管理页对该实例点击「启动」后刷新本页。';
+                statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
             }
         });
     }

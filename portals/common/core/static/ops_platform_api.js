@@ -258,7 +258,12 @@
     return api.getJSON('/api/ops-platform/agent/audit' + (q.length ? ('?' + q.join('&')) : ''));
   };
   api.controlPlaneSummary = () => api.getJSON('/api/ops-platform/control-plane/summary');
-  api.changeGovernanceSummary = (projectId) => api.getJSON('/api/ops-platform/change-governance/summary' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : ''));
+  api.changeGovernanceSummary = (projectId, envKey) => {
+    const q = [];
+    if (projectId) q.push('project_id=' + encodeURIComponent(projectId));
+    if (envKey) q.push('env_key=' + encodeURIComponent(envKey));
+    return api.getJSON('/api/ops-platform/change-governance/summary' + (q.length ? ('?' + q.join('&')) : ''));
+  };
   api.setChangeFreeze = (payload) => api.postJSON('/api/ops-platform/change-governance/freeze', payload || {});
   api.moduleMap = () => api.getJSON('/api/ops-platform/module-map');
   api.runtimeFlowControl = (payload) => api.postJSON('/api/ops-platform/runtime/flow-control', payload || {});

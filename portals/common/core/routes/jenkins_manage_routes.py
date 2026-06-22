@@ -3,6 +3,7 @@
 
 import os
 import json
+import html
 from flask import Blueprint, request, jsonify, render_template_string
 from services.authz import admin_required, admin_required_any, has_scope
 from models.data import log_audit
@@ -92,12 +93,12 @@ def _unity_catalog_module_html():
             </div>
         </div>
     </div>
-    <script src="/static/admin/jenkins_unity_catalog.js"></script>
+    <script src="/static/admin/jenkins_unity_catalog.js?v=20260609"></script>
     '''
 
 
 def _jenkins_manage_html(env, script_mac, script_win):
-    return '''<!-- apk-site-page: jenkins-manage-unity-catalog-v2 -->
+    return '''<!-- apk-site-page: jenkins-manage-v20260609 -->
 <div class="space-y-6">
 <nav id="jmQuickNav" class="sticky top-0 z-10 flex flex-wrap gap-2 p-3 rounded-lg border border-violet-200 bg-violet-50 shadow-sm">
     <a href="#unity-catalog" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">Unity 版本库</a>
@@ -106,8 +107,6 @@ def _jenkins_manage_html(env, script_mac, script_win):
     <a href="#jm-list" class="inline-flex items-center px-3 py-2 rounded-md bg-white border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">实例列表</a>
 </nav>
 ''' + _unity_catalog_module_html() + '''
-    <meta name="csrf-token" content="''' + generate_csrf() + '''">
-    <meta name="csrf-token" content="''' + generate_csrf() + '''">
     <div id="jm-env" class="bg-white rounded-lg shadow p-6 scroll-mt-20">
         <h2 class="text-lg font-semibold mb-4">环境检查</h2>
         <ul class="space-y-2 text-sm">
@@ -166,160 +165,14 @@ def _jenkins_manage_html(env, script_mac, script_win):
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
-                <thead><tr class="border-b"><th class="text-left py-2">端口</th><th class="text-left py-2">任务名</th><th class="text-left py-2">状态</th><th class="text-left py-2">添加时间</th><th class="text-left py-2">添加人</th><th class="text-left py-2">启动时间</th><th class="text-left py-2">启动人</th><th class="text-left py-2">操作</th></tr></thead>
+                <thead><tr class="border-b"><th class="text-left py-2">类型</th><th class="text-left py-2">端口</th><th class="text-left py-2">任务名</th><th class="text-left py-2">状态</th><th class="text-left py-2">添加时间</th><th class="text-left py-2">添加人</th><th class="text-left py-2">启动时间</th><th class="text-left py-2">启动人</th><th class="text-left py-2">操作</th></tr></thead>
                 <tbody id="jenkinsInstanceList"></tbody>
             </table>
         </div>
         <p id="instanceListMsg" class="text-gray-500 text-sm mt-2">加载中…</p>
     </div>
 </div>
-<script>
-function _jmHeaders(isJson){
-    var t=document.querySelector('meta[name="csrf-token"]');
-    var h={};
-    if(isJson) h['Content-Type']='application/json';
-    if(t&&t.content) h['X-CSRFToken']=t.content;
-    return h;
-}
-var _listFilter = 'all';
-var _allInstances = [];
-function filterList(type){
-    _listFilter = type;
-    document.querySelectorAll('#listFilterTabs [data-filter]').forEach(function(btn){
-        var on = btn.getAttribute('data-filter') === type;
-        btn.className = 'px-3 py-1 rounded text-xs font-medium ' + (on ? 'bg-white shadow-sm' : (btn.getAttribute('data-filter')==='commercial' ? 'text-violet-700' : 'text-slate-600'));
-    });
-    renderList();
-}
-function _typeBadge(t){
-    return t==='commercial'
-        ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-100 text-violet-700">商业</span>'
-        : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">通用</span>';
-}
-function renderList(){
-    var tbody=document.getElementById('jenkinsInstanceList');
-    var msg=document.getElementById('instanceListMsg');
-    var filtered = _listFilter==='all' ? _allInstances : _allInstances.filter(function(i){ return (i.instance_type||'general')===_listFilter; });
-    if(!filtered.length){ tbody.innerHTML=''; msg.textContent='暂无实例'; return; }
-    var rows=filtered.map(function(i){
-        var t=(i.instance_type||'general');
-        var status=i.status==='running' ? '<span class="text-green-600">运行中</span>' : '<span class="text-gray-500">已停止</span>';
-        var stopBtn=i.status==='running' ? `<button type="button" onclick="stopInstance('${i.id}')" class="text-red-600 hover:underline">停止</button>` : '';
-        var startBtn=i.status!=='running' ? `<button type="button" onclick="startInstance('${i.id}')" class="text-green-600 hover:underline">启动</button>` : '';
-        var delBtn=`<button type="button" onclick="deleteInstance('${i.id}')" class="text-gray-600 hover:underline ml-2">删除</button>`;
-        var consoleUrl='http://' + window.location.hostname + ':' + i.port + '/';
-        var consoleBtn = i.status==='running' ? '<a href="'+consoleUrl+'" target="_blank" class="text-blue-600 hover:underline">控制台</a>' : '<span class="text-gray-400">控制台</span>';
-        var logBtn='<a href="/admin/jenkins/instance-log?instance_id='+encodeURIComponent(i.id)+'" target="_blank" class="text-blue-600 hover:underline">日志</a>';
-        var editBtn='<a href="/admin/jenkins/edit?instance_id='+encodeURIComponent(i.id)+'" class="text-blue-600 hover:underline ml-1">编辑</a>';
-        var taskName=(i.task_name||'').trim()||'-';
-        return '<tr class="border-b"><td class="py-2">'+_typeBadge(t)+'</td><td class="py-2">'+i.port+'</td><td>'+taskName+'</td><td>'+status+'</td><td>'+ (i.added_at||'') +'</td><td>'+ (i.added_by||'') +'</td><td>'+ (i.started_at||'') +'</td><td>'+ (i.started_by||'') +'</td><td>'+consoleBtn+' '+logBtn+' '+editBtn+' '+startBtn+stopBtn+delBtn+'</td></tr>';
-    }).join('');
-    tbody.innerHTML=rows;
-    msg.textContent='共 '+filtered.length+' 个实例';
-}
-function loadList(){
-    fetch('/api/jenkins-manage/list', {credentials:'same-origin'}).then(r=>r.json()).then(d=>{
-        _allInstances = (d && d.instances) ? d.instances : [];
-        renderList();
-    }).catch(function(){ document.getElementById('instanceListMsg').textContent='加载失败'; });
-}
-document.getElementById('instanceTypeGeneral').onclick=function(){
-    document.getElementById('newInstanceType').value='general';
-    this.className='px-3 py-1 rounded text-xs font-medium bg-white shadow-sm';
-    var c=document.getElementById('instanceTypeCommercial');
-    c.className='px-3 py-1 rounded text-xs font-medium text-violet-700';
-};
-document.getElementById('instanceTypeCommercial').onclick=function(){
-    document.getElementById('newInstanceType').value='commercial';
-    this.className='px-3 py-1 rounded text-xs font-medium bg-violet-600 text-white';
-    var g=document.getElementById('instanceTypeGeneral');
-    g.className='px-3 py-1 rounded text-xs font-medium text-slate-600';
-};
-document.getElementById('btnCheckPort').onclick=function(){
-    var port=document.getElementById('newPort').value.trim();
-    document.getElementById('portCheckResult').textContent='检测中…';
-    fetch('/api/jenkins-manage/check-port?port='+encodeURIComponent(port), {credentials:'same-origin'}).then(r=>r.json()).then(d=>{
-        document.getElementById('portCheckResult').textContent=d.ok ? d.message : d.message;
-        document.getElementById('portCheckResult').className='text-sm ' + (d.ok ? 'text-green-600' : 'text-red-600');
-    });
-};
-document.getElementById('btnValidateGit').onclick=function(){
-    var gitUrl=document.getElementById('newGitUrl')&&document.getElementById('newGitUrl').value?document.getElementById('newGitUrl').value.trim():'';
-    var gitWorkspace=document.getElementById('newGitWorkspace')&&document.getElementById('newGitWorkspace').value?document.getElementById('newGitWorkspace').value.trim():'';
-    var gitSshKeyPath=document.getElementById('newGitSshKeyPath')&&document.getElementById('newGitSshKeyPath').value?document.getElementById('newGitSshKeyPath').value.trim():'';
-    var el=document.getElementById('gitValidateResult');
-    el.textContent='验证中…'; el.className='text-sm text-gray-500';
-    fetch('/api/jenkins-manage/validate-git', {method:'POST', headers:_jmHeaders(true), credentials:'same-origin', body: JSON.stringify({git_url:gitUrl, git_workspace:gitWorkspace, git_ssh_key_path:gitSshKeyPath})})
-    .then(r=>r.json()).then(d=>{
-        if(d.ok){ el.textContent='Git 配置有效'; el.className='text-sm text-green-600'; }
-        else{ el.textContent=(d.errors&&d.errors.length)?d.errors.join('；'):'配置有误'; el.className='text-sm text-red-600'; }
-    }).catch(function(){ el.textContent='验证请求失败'; el.className='text-sm text-red-600'; });
-};
-function collectBuildDefaults(){
-    var appName=document.getElementById('newAppName')&&document.getElementById('newAppName').value?document.getElementById('newAppName').value.trim():'';
-    var versionName=document.getElementById('newVersionName')&&document.getElementById('newVersionName').value?document.getElementById('newVersionName').value.trim():'';
-    var versionCode=document.getElementById('newVersionCode')&&document.getElementById('newVersionCode').value?document.getElementById('newVersionCode').value.trim():'';
-    var outputBaseDir=document.getElementById('newOutputBaseDir')&&document.getElementById('newOutputBaseDir').value?document.getElementById('newOutputBaseDir').value.trim():'';
-    var gitUrl=document.getElementById('newGitUrl')&&document.getElementById('newGitUrl').value?document.getElementById('newGitUrl').value.trim():'';
-    var gitWorkspace=document.getElementById('newGitWorkspace')&&document.getElementById('newGitWorkspace').value?document.getElementById('newGitWorkspace').value.trim():'';
-    var gitSshKeyPath=document.getElementById('newGitSshKeyPath')&&document.getElementById('newGitSshKeyPath').value?document.getElementById('newGitSshKeyPath').value.trim():'';
-    var defaultGitBranch=document.getElementById('newDefaultGitBranch')&&document.getElementById('newDefaultGitBranch').value?document.getElementById('newDefaultGitBranch').value.trim():'';
-    var branchesText=document.getElementById('newGitBranches')&&document.getElementById('newGitBranches').value?document.getElementById('newGitBranches').value.trim():'';
-    var gitBranches=branchesText?branchesText.split(/\\n/).map(function(s){ return s.trim(); }).filter(Boolean):[];
-    var o={};
-    if(appName) o.app_name=appName;
-    if(versionName) o.version_name=versionName;
-    if(versionCode) o.version_code=versionCode;
-    if(outputBaseDir) o.output_base_dir=outputBaseDir;
-    if(gitUrl) o.git_url=gitUrl;
-    if(gitWorkspace) o.git_workspace=gitWorkspace;
-    if(gitSshKeyPath) o.git_ssh_key_path=gitSshKeyPath;
-    if(defaultGitBranch) o.default_git_branch=defaultGitBranch;
-    if(gitBranches.length) o.git_branches=gitBranches;
-    return Object.keys(o).length?o:null;
-}
-document.getElementById('btnStartJenkins').onclick=function(){
-    var port=document.getElementById('newPort').value.trim();
-    var taskName=(document.getElementById('newTaskName')&&document.getElementById('newTaskName').value) ? document.getElementById('newTaskName').value.trim() : '';
-    var feishuWebhook=(document.getElementById('newFeishuWebhook')&&document.getElementById('newFeishuWebhook').value) ? document.getElementById('newFeishuWebhook').value.trim() : '';
-    var el=document.getElementById('startResult');
-    el.textContent='启动中…';
-    var body={port: parseInt(port,10)};
-    var instanceType=(document.getElementById('newInstanceType')&&document.getElementById('newInstanceType').value)||'general';
-    body.instance_type = instanceType;
-    if(taskName) body.task_name=taskName;
-    if(feishuWebhook) body.feishu_webhook=feishuWebhook;
-    fetch('/api/jenkins-manage/start', {method:'POST', headers:_jmHeaders(true), credentials:'same-origin', body: JSON.stringify(body)})
-    .then(r=>r.json()).then(d=>{
-        if(d.success){ el.textContent='已启动，实例 ID: '+d.instance_id; el.className='mt-2 text-sm text-green-600'; loadList(); }
-        else{ el.textContent=d.error||'启动失败'; el.className='mt-2 text-sm text-red-600'; }
-    }).catch(function(){ document.getElementById('startResult').textContent='请求失败'; });
-};
-function startInstance(id){
-    fetch('/api/jenkins-manage/start-instance', {method:'POST', headers:_jmHeaders(true), credentials:'same-origin', body: JSON.stringify({instance_id: id})})
-    .then(r=>r.json()).then(d=>{ if(d.success){ loadList(); } else{ alert(d.error||'启动失败'); } });
-}
-function stopInstance(id){
-    if(!confirm('确定停止该 Jenkins？')) return;
-    fetch('/api/jenkins-manage/stop', {method:'POST', headers:_jmHeaders(true), credentials:'same-origin', body: JSON.stringify({instance_id: id})})
-    .then(r=>r.json()).then(d=>{ if(d.success) loadList(); else alert(d.error||'停止失败'); });
-}
-function deleteInstance(id){
-    if(!confirm('确定从列表删除该实例？（不会删除 JENKINS_HOME 数据）')) return;
-    fetch('/api/jenkins-manage/delete', {method:'POST', headers:_jmHeaders(true), credentials:'same-origin', body: JSON.stringify({instance_id: id})})
-    .then(r=>r.json()).then(d=>{ if(d.success) loadList(); else alert(d.error||'删除失败'); });
-}
-document.getElementById('btnDeployEnv').onclick=function(){
-    var logEl=document.getElementById('deployLog');
-    logEl.classList.remove('hidden');
-    logEl.textContent='部署已开始，请稍候…';
-    fetch('/api/jenkins-manage/deploy-env', {method:'POST', headers:_jmHeaders(false), credentials:'same-origin'}).then(r=>r.json()).then(d=>{
-        if(d.log_path) fetch('/api/jenkins-manage/deploy-log?path='+encodeURIComponent(d.log_path), {credentials:'same-origin'}).then(r=>r.text()).then(t=>{ logEl.textContent=t||'无输出'; setInterval(function(){ fetch('/api/jenkins-manage/deploy-log?path='+encodeURIComponent(d.log_path), {credentials:'same-origin'}).then(r=>r.text()).then(t=>{ logEl.textContent=t||'无输出'; logEl.scrollTop=logEl.scrollHeight; }); }, 2000); });
-        else logEl.textContent=d.error||'执行失败';
-    }).catch(function(){ logEl.textContent='请求失败'; });
-};
-loadList();
-</script>
+<script src="/static/admin/jenkins_manage.js?v=20260622-status"></script>
 '''
 
 
@@ -668,9 +521,13 @@ def instance_log_page():
     inst = jm.get_instance_by_id(instance_id)
     if not inst:
         return '<p>未找到该实例</p>', 404
-    jenkins_home = inst.get('jenkins_home') or ''
+    jenkins_home = jm.resolve_jenkins_home(inst)
     if not jenkins_home or not os.path.isdir(jenkins_home):
-        return '<p>实例目录不存在</p>', 404
+        return _admin_layout(
+            '<p class="text-red-600">实例目录不存在：%s</p>' % html.escape(jenkins_home or '(空)'),
+            'Jenkins 运行日志',
+            back_href='/admin/jenkins',
+        )
     # 顺带刷新该实例的 .apk-site-env（含当前局域网 APKSITE_BASE_URL）与通知脚本，并修复可执行权限
     jm.refresh_instance_env_and_scripts(instance_id)
     scripts_dir = os.path.join(jenkins_home, 'scripts')
@@ -718,6 +575,9 @@ def api_list_available_instances():
             part = part.strip()
             if part:
                 include_ids.add(part)
+    instance_type_filter = (request.args.get('instance_type') or '').strip().lower()
+    if instance_type_filter not in ('general', 'commercial'):
+        instance_type_filter = ''
     instances = jm.list_instances()
     available = []
     seen = set()
@@ -725,24 +585,37 @@ def api_list_available_instances():
         if inst.get('status') != 'running':
             continue
         iid = inst.get('id') or ''
+        itype = (inst.get('instance_type') or 'general').strip().lower()
+        if instance_type_filter and itype != instance_type_filter:
+            continue
         url = jm.get_jenkins_url_for_instance(instance_id=iid)
         bdir = jm.get_builds_dir_for_instance(instance_id=iid)
         if not url or not bdir:
             continue
+        reachable = False
+        health_message = ''
+        building = False
         try:
             st = jenkins_svc.fetch_jenkins_status(base_url=url, builds_dir=bdir, instance_id=iid)
-            if not st.get('ok'):
+            reachable = bool(st.get('ok'))
+            health_message = st.get('message') or ''
+            building = bool(st.get('building'))
+            if reachable and building and iid not in include_ids:
                 continue
-            if st.get('building') and iid not in include_ids:
-                continue
-            available.append(inst)
-            seen.add(iid)
-        except Exception:
-            pass
+        except Exception as exc:
+            health_message = str(exc)
+        row = dict(inst)
+        row['reachable'] = reachable
+        row['health_message'] = health_message
+        available.append(row)
+        seen.add(iid)
     for inst in instances:
         iid = inst.get('id') or ''
         if iid in include_ids and iid not in seen and inst.get('status') == 'running':
-            available.append(inst)
+            row = dict(inst)
+            row['reachable'] = False
+            row['health_message'] = '强制包含（健康检查未通过）'
+            available.append(row)
             seen.add(iid)
     return jsonify({'instances': available})
 

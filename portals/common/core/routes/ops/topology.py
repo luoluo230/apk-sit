@@ -4,7 +4,7 @@ from __future__ import annotations
 from routes.ops.common import *  # noqa: F403
 from flask import jsonify, redirect, render_template_string, request, session
 
-from models.data import get_channels_for_project, log_audit, project_versions_db
+from models.data import create_approval, get_channels_for_project, log_audit, project_versions_db
 from services.authz import admin_required
 from services.release.topology_binding_service import (
     delete_topology_binding,
@@ -14,6 +14,119 @@ from services.release.topology_binding_service import (
 )
 import services.ops.helpers as ops_helpers
 from routes.ops import bp
+
+
+def _project_topology_catalog(project_id: str):
+    rows = ops_helpers._list_topologies(project_id, None)
+    env_values = []
+    seen_env = set()
+    for item in ops_helpers._default_env_options() + [
+        {"env_key": str(x.get("env_key") or ""), "label": str(x.get("env_label") or ops_helpers._env_label(x.get("env_key") or ""))}
+        for x in rows
+    ]:
+        key = ops_helpers._normalize_env_key(item.get("env_key") or "")
+        if key and key not in seen_env:
+            seen_env.add(key)
+            env_values.append({"env_key": key, "label": str(item.get("label") or ops_helpers._env_label(key))})
+    return {"project_id": project_id, "count": len(rows), "topologies": rows, "environments": env_values}
+
+
+def _project_binding_catalog(project_id: str):
+    return {
+        "project_id": project_id,
+        "bindings": list_topology_bindings(project_id),
+        "topologies": ops_helpers._list_topologies(project_id, None),
+        "channels": [
+            {
+                "channel_id": str(item.get("id") or "").strip(),
+                "channel_name": str(item.get("name") or item.get("id") or "").strip(),
+            }
+            for item in (get_channels_for_project(project_id) or [])
+            if str(item.get("id") or "").strip()
+        ],
+        "version_names": sorted(
+            {
+                str(item.get("version_name") or "").strip()
+                for item in (project_versions_db.get(project_id) or [])
+                if isinstance(item, dict) and str(item.get("version_name") or "").strip()
+            }
+        ),
+    }
+
+
+@bp.route("/api/projects/<project_id>/topologies", methods=["GET", "POST"])
+@admin_required("gm_ops")
+def project_topologies(project_id: str):
+    if request.method == "GET":
+        return jsonify({"ok": True, "data": _project_topology_catalog(project_id)})
+    if not ops_helpers._allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    env_key = ops_helpers._normalize_env_key(payload.get("env_key") or "")
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "拓扑名称不能为空"}), 400
+    topology_id = "topology-" + uuid.uuid4().hex[:10]
+    rows = ops_helpers._load_topology_registry()
+    row = ops_helpers._normalize_topology_registry_row(
+        {
+            "topology_id": topology_id,
+            "project_id": project_id,
+            "env_key": env_key,
+            "name": name,
+            "version_label": "v1.0.0",
+            "owner": str(session.get("user") or "admin"),
+            "description": str(payload.get("description") or "").strip(),
+            "is_default": not any(
+                isinstance(item, dict)
+                and str(item.get("project_id") or "") == project_id
+                and ops_helpers._normalize_env_key(item.get("env_key") or "") == env_key
+                for item in rows
+            ),
+            "status": "draft",
+            "created_at": ops_helpers._now_iso(),
+            "updated_at": ops_helpers._now_iso(),
+        }
+    )
+    rows.append(row)
+    ops_helpers._save_topology_registry(rows)
+    contents = ops_helpers._load_topology_contents()
+    contents[topology_id] = {
+        "nodes": [],
+        "edges": [],
+        "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}, "version": 1, "updated_at": ops_helpers._now_iso(), "layout_mode": "structured"},
+    }
+    ops_helpers._save_topology_contents(contents)
+    log_audit("project_topology_create", f"project={project_id}; env={env_key}; topology={topology_id}")
+    return jsonify({"ok": True, "data": {"topology_id": topology_id, "registry": row}})
+
+
+@bp.route("/api/projects/<project_id>/topology-bindings", methods=["GET", "POST"])
+@admin_required("gm_ops")
+def project_topology_bindings(project_id: str):
+    if request.method == "GET":
+        return jsonify({"ok": True, "data": _project_binding_catalog(project_id)})
+    if not ops_helpers._allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = dict(request.get_json(silent=True) or {})
+    payload["project_id"] = project_id
+    try:
+        row = upsert_topology_binding(payload, actor=str(session.get("user") or "admin"))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    log_audit("project_topology_binding_upsert", f"project={project_id}; binding={row.get('binding_id')}")
+    return jsonify({"ok": True, "data": {"binding": row, **_project_binding_catalog(project_id)}})
+
+
+@bp.route("/api/projects/<project_id>/topology-bindings/<binding_id>", methods=["DELETE"])
+@admin_required("gm_ops")
+def project_topology_binding_delete(project_id: str, binding_id: str):
+    if not ops_helpers._allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    if not delete_topology_binding(binding_id, actor=str(session.get("user") or "admin")):
+        return jsonify({"ok": False, "error": "绑定规则不存在"}), 404
+    log_audit("project_topology_binding_delete", f"project={project_id}; binding={binding_id}")
+    return jsonify({"ok": True, "data": _project_binding_catalog(project_id)})
 
 @bp.route("/api/ops-platform/topologies")
 @admin_required("gm_ops")

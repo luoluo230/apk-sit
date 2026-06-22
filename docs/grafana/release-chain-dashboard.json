@@ -1,0 +1,89 @@
+{
+  "annotations": { "list": [] },
+  "title": "三项目发布链监控",
+  "uid": "apk-site-release-chain",
+  "panels": [
+    {
+      "title": "Web gate passes (apk-site)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(apk_site_gate_pass_total{result=\"pass\"})",
+          "legendFormat": "pass"
+        }
+      ]
+    },
+    {
+      "title": "Web gate failures (apk-site)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(apk_site_gate_pass_total{result=\"fail\"})",
+          "legendFormat": "fail"
+        }
+      ]
+    },
+    {
+      "title": "Bootstrap gate by result",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "apk_site_gate_pass_total{gate=\"bootstrap_gate_e2e\"}",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "title": "Cluster health (game-server, federated)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "apk_site_cluster_health_passing",
+          "legendFormat": "passing"
+        }
+      ]
+    },
+    {
+      "title": "Client FPS p50 (future)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "maclient_fps_p50",
+          "legendFormat": "fps"
+        }
+      ]
+    },
+    {
+      "title": "Gateway RTT ms (future)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "maclient_gateway_rtt_ms",
+          "legendFormat": "rtt"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 3,
+  "alerting": {
+    "rules": [
+      {
+        "uid": "cluster-health-lt-9",
+        "title": "Cluster health below 9/9",
+        "condition": "C",
+        "data": [
+          {
+            "refId": "A",
+            "expr": "apk_site_cluster_health_passing",
+            "intervalMs": 60000
+          }
+        ],
+        "for": "5m",
+        "annotations": {
+          "summary": "Cluster health checks passing < 9"
+        }
+      }
+    ]
+  }
+}

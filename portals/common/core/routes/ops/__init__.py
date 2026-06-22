@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Ops platform blueprint (modular)."""
+"""Project-owned operations blueprint."""
 from flask import Blueprint
 
-bp = Blueprint("gm_legacy", __name__)
+bp = Blueprint("project_ops", __name__)
 
 # Load shared helpers before route modules (avoid partial import NameError)
 import services.ops.helpers  # noqa: F401, E402

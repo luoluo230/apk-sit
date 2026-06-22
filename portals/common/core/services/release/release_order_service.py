@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,6 +17,30 @@ from services.release.scope_resolver import resolve_network_profile, resolve_sco
 
 TERMINAL_STATUSES = {"verified", "rolled_back", "cancelled"}
 PUBLISHABLE_STATUSES = {"ready", "approved"}
+EDITABLE_PLAN_FIELDS = (
+    "owner",
+    "release_window",
+    "change_order",
+    "related_requirements",
+    "related_tasks",
+    "release_description",
+    "jenkins_instance_id",
+    "jenkins_job",
+    "jenkins_params",
+    "target_topology_id",
+    "release_strategy",
+    "gray_ratio",
+    "gray_duration",
+    "gray_success_action",
+    "target_audience",
+    "validation_plan",
+    "validation_task",
+    "rollback_plan",
+    "rollback_target",
+    "rollback_condition",
+    "rollback_method",
+    "rollback_timeout_minutes",
+)
 
 
 def _now_iso() -> str:
@@ -205,6 +230,9 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
         "topology_binding_snapshot": binding,
         "build_job_id": str(version.get("jenkins_job_id") or ""),
     }
+    for key in EDITABLE_PLAN_FIELDS:
+        if key in payload:
+            record_payload[key] = payload.get(key)
     init_db()
     with get_cursor() as cur:
         cur.execute(
@@ -255,6 +283,32 @@ def _transition(project_id: str, order_id: str, actor: str, to_status: str, even
     return get_release_order(project_id, order_id)
 
 
+def update_release_order(project_id: str, order_id: str, payload: Dict[str, Any], actor: str) -> Dict[str, Any]:
+    order = get_release_order(project_id, order_id, include_details=False)
+    if not order:
+        raise ValueError("发布单不存在")
+    if order["status"] not in {"draft", "artifacts_ready", "precheck_failed"}:
+        raise ValueError("发布单进入预检或执行阶段后不可编辑")
+    reason = str(payload.get("reason") if "reason" in payload else order.get("reason") or "").strip()
+    record_payload = dict(order.get("payload") or {})
+    for key in EDITABLE_PLAN_FIELDS:
+        if key in payload:
+            record_payload[key] = payload.get(key)
+    now = _now_iso()
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE release_orders SET reason=?, payload=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+            (reason, _json(record_payload), now, project_id, order_id),
+        )
+        cur.execute("DELETE FROM release_order_prechecks WHERE release_order_id=?", (order_id,))
+        cur.execute(
+            "UPDATE release_approvals SET status='invalidated', updated_at=? WHERE release_order_id=? AND status='pending'",
+            (now, order_id),
+        )
+        _event(cur, order_id, "draft_updated", actor, order["status"], order["status"], {"changed_fields": sorted(payload.keys())})
+    return get_release_order(project_id, order_id)
+
+
 def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     order = get_release_order(project_id, order_id, include_details=False)
     if not order:
@@ -262,8 +316,15 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     if order.get("status") in TERMINAL_STATUSES:
         raise ValueError("当前发布单不可重新构建")
     version = _find_version(project_id, order["version_id"], order["version_code"])
-    params = dict(version.get("jenkins_params") or {})
-    instance_id = str(version.get("jenkins_instance_id") or "").strip()
+    plan = dict(order.get("payload") or {})
+    configured_params = plan.get("jenkins_params")
+    if isinstance(configured_params, str) and configured_params.strip():
+        try:
+            configured_params = json.loads(configured_params)
+        except json.JSONDecodeError as exc:
+            raise ValueError("发布单中的 Jenkins 构建参数不是有效 JSON") from exc
+    params = dict(configured_params or version.get("jenkins_params") or {})
+    instance_id = str(plan.get("jenkins_instance_id") or version.get("jenkins_instance_id") or "").strip()
     if not instance_id or not params:
         raise ValueError("当前 VersionCode 未配置 Jenkins 实例或构建参数，请先在版本管理中完成构建配置")
     params["VERSION_NAME"] = str(order["version_name"])
@@ -420,8 +481,19 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
             "apk_url": str(version.get("apk_url") or ""),
             "resource_url": str(version.get("resource_url") or ""),
             "config_url": str(version.get("config_url") or ""),
+            "code_url": str(version.get("code_url") or ""),
             "resource_path": str(version.get("resource_path") or ""),
             "config_path": str(version.get("config_path") or ""),
+            "code_path": str(version.get("code_path") or ""),
+            "artifacts": [
+                {
+                    "artifact_type": str(item.get("artifact_type") or ""),
+                    "artifact_url": str(item.get("artifact_url") or ""),
+                    "artifact_path": str(item.get("artifact_path") or ""),
+                    "status": str(item.get("status") or ""),
+                }
+                for item in order.get("artifacts") or []
+            ],
         },
         "server": {
             "topology_id": topology_id,
@@ -479,7 +551,25 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
             (bundle_id, now, order["scope_id"]),
         )
         _event(cur, order_id, "published", actor, order["status"], "published", {"bundle_id": bundle_id, "topology_id": topology_id, "runtime_run_id": runtime_run_id})
-    return get_release_order(project_id, order_id)
+    published = get_release_order(project_id, order_id)
+    if str(os.getenv("RELEASE_FEISHU_NOTIFY", "true")).lower() in ("true", "1", "yes"):
+        try:
+            from services.webhook import fire_feishu
+
+            fire_feishu(
+                "发布单已发布",
+                (
+                    f"project={project_id}\n"
+                    f"order={order_id}\n"
+                    f"version={published.get('version_name')}\n"
+                    f"env={published.get('env_key')}\n"
+                    f"actor={actor}\n"
+                    f"bundle={published.get('bundle_id')}"
+                ),
+            )
+        except Exception:
+            pass
+    return published
 
 
 def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = True) -> Dict[str, Any]:
@@ -536,7 +626,18 @@ def rollback_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
             (target["bundle_id"], now, target["scope_id"]),
         )
         _event(cur, order_id, "rollback_restored", actor, target["status"], "published", {"bundle_id": target["bundle_id"]})
-    return get_release_order(project_id, order_id)
+    result = get_release_order(project_id, order_id)
+    if os.environ.get("RELEASE_FEISHU_NOTIFY", "1").strip().lower() not in ("0", "false", "no"):
+        try:
+            from services.webhook import fire_feishu
+
+            fire_feishu(
+                "发布回滚",
+                f"项目 {project_id} 订单 {order_id} 已回滚至 bundle {target.get('bundle_id')}（操作人 {actor}）",
+            )
+        except Exception:
+            pass
+    return result
 
 
 def cancel_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:

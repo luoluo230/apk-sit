@@ -30,9 +30,9 @@ def _extract_scripts(html: str) -> str:
 
 def main() -> int:
     from app_new import app
-    from models.data import load_jenkins_instances, users_db
+    from repositories.admin import users_repo
 
-    username = next(iter(users_db.keys()), "admin")
+    username = next(iter(users_repo.list_users().keys()), "admin")
     instances = load_jenkins_instances() or []
     inst_id = ""
     for inst in instances:

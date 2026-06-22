@@ -1,0 +1,6 @@
+{
+  "manifestFileName": "config_patch_manifest.json",
+  "algorithm": "HMACSHA256",
+  "signature": "8bd69807ddc7030846dbafa930d8399b53e411df7496455d33eb6553ee4c4fcb",
+  "generatedAtUtc": "2026-06-22T07:50:43.0000000Z"
+}

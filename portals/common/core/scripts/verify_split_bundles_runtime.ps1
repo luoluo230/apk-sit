@@ -3,7 +3,7 @@ param(
     [int]$AdminPort = 5503,
     [int]$ForumPort = 5505,
     [int]$PlayerStaticPort = 58080,
-    [bool]$SkipInstall = $true
+    [switch]$SkipInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -108,9 +108,6 @@ function Assert-UrlClosed([string]$Url) {
 
 function Run-CheckOnly([string]$ScriptPath, [bool]$CanSkipInstall) {
     $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ScriptPath, "-CheckOnly")
-    if ($CanSkipInstall -and $SkipInstall) {
-        $args += "-SkipInstall"
-    }
     & powershell @args
     Assert-ExitCodeZero -ExitCode $LASTEXITCODE -Message "CheckOnly failed: $ScriptPath"
 }

@@ -1,0 +1,35 @@
+<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260613-1">
+<section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+  <header class="version-head">
+    <div class="version-head-copy"><span class="version-head-icon"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""></span><div><h1>版本与 VersionCode</h1><p>统一管理版本组、精确构建号、构建产物、发布单与运行拓扑关系。</p></div></div>
+    <div class="version-head-actions"><a class="version-btn" href="/admin/projects/{{ project_id }}/build-history?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>{% if can_edit %}<button id="btnCreateVersion" class="version-btn primary" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建 VersionCode</button>{% endif %}</div>
+  </header>
+  <div id="versionKpis" class="version-kpis"></div>
+  <section class="version-panel">
+    <div class="version-toolbar">
+      <label class="version-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="versionSearch" type="search" placeholder="搜索版本号 / VersionCode / 渠道"></label>
+      <select id="versionEnv"><option value="">全部环境</option><option value="development">开发环境</option><option value="testing">测试环境</option><option value="production">生产环境</option></select>
+      <select id="versionPlatform"><option value="">全部平台</option><option value="android">Android</option><option value="ios">iOS</option></select>
+      <select id="versionStatus"><option value="">全部状态</option><option value="active">有效</option><option value="testing">测试中</option><option value="draft">草稿</option><option value="disabled">失效</option><option value="archived">归档</option></select>
+      <button id="btnRefreshVersions" class="version-btn" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+    </div>
+    <div class="version-table-head"><span>版本组 / VersionCode</span><span>目标范围</span><span>状态</span><span>产物与构建</span><span>关联发布单</span><span>操作</span></div>
+    <div id="versionGroups"><div class="version-empty">正在加载版本数据...</div></div>
+  </section>
+</section>
+<div id="versionDialog" class="version-dialog is-hidden" aria-hidden="true">
+  <form id="versionForm" class="version-dialog-card">
+    <div class="version-dialog-head"><div><h2>新建 VersionCode</h2><p>创建后可进入发布单与构建流程。</p></div><button id="btnCloseVersionDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
+    <div class="version-form-grid">
+      <label><span>版本号</span><input name="version_name" placeholder="例如 v1.2.4" required></label>
+      <label><span>VersionCode</span><input name="version_code" placeholder="例如 20260613" required></label>
+      <label><span>环境</span><select name="env_key"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
+      <label><span>渠道</span><select name="channel_id" required></select></label>
+      <label><span>平台</span><select name="platform"><option value="android">Android</option><option value="ios">iOS</option></select></label>
+      <label><span>状态</span><select name="version_status"><option value="draft">草稿</option><option value="testing">测试中</option><option value="active">有效</option></select></label>
+      <label class="wide"><span>说明</span><textarea name="notes" rows="3" placeholder="本次 VersionCode 的变更说明"></textarea></label>
+    </div>
+    <div class="version-dialog-actions"><button id="btnCancelVersionDialog" class="version-btn" type="button">取消</button><button class="version-btn primary" type="submit">创建 VersionCode</button></div>
+  </form>
+</div>
+<script src="/static/project_versions_workspace.js?v=20260622-workflow"></script>

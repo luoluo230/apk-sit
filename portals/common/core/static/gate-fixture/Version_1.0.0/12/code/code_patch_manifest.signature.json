@@ -1,0 +1,6 @@
+{
+  "manifestFileName": "code_patch_manifest.json",
+  "algorithm": "HMACSHA256",
+  "signature": "6c91f8874e45c5171d8a8663b8f3f519eb98b887284acff8a14f17f386f6f202",
+  "generatedAtUtc": "2026-06-22T07:50:43.0000000Z"
+}

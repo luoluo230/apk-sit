@@ -38,9 +38,9 @@ def check_py_compile():
 
 def check_rendered_js():
     from app_new import app
-    from models.data import users_db
+    from repositories.admin import users_repo
 
-    username = next(iter(users_db.keys()), "admin")
+    username = next(iter(users_repo.list_users().keys()), "admin")
     with app.test_client() as c:
         with c.session_transaction() as sess:
             sess["user"] = username

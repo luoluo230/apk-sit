@@ -12,8 +12,6 @@ from models.data import (
     log_audit,
     login_attempts,
     record_login_attempt,
-    save_users,
-    users_db,
 )
 from services import authz as authz_service
 from services.company_profile import get_company_profile
@@ -281,19 +279,18 @@ def login():
 
         username = request.form.get("username")
         password = request.form.get("password")
-        if username in users_db:
-            user = users_db[username]
-            if user.get("disabled"):
-                error_msg = '<div class="mb-4 rounded bg-red-100 p-3 text-red-700">账号已被禁用</div>'
-                return _login_page(error_msg=error_msg, locked_msg="")
-            password_hash = hashlib.sha256(password.encode()).hexdigest()
-            if user["password"] == password_hash:
-                session["user"] = username
-                users_db[username]["last_login"] = datetime.now().isoformat()
-                save_users()
-                record_login_attempt(client_ip, True)
-                logger.info("用户 %s 登录成功 (IP: %s)", username, client_ip)
-                return redirect("/")
+        from repositories.admin import users_repo
+
+        user = users_repo.get_user(username) if username else None
+        if user and user.get("disabled"):
+            error_msg = '<div class="mb-4 rounded bg-red-100 p-3 text-red-700">账号已被禁用</div>'
+            return _login_page(error_msg=error_msg, locked_msg="")
+        if users_repo.verify_password(username, password):
+            session["user"] = username
+            users_repo.record_last_login(username, datetime.now().isoformat())
+            record_login_attempt(client_ip, True)
+            logger.info("用户 %s 登录成功 (IP: %s)", username, client_ip)
+            return redirect("/")
 
         record_login_attempt(client_ip, False)
         logger.warning("登录失败：%s (IP: %s)", username, client_ip)
@@ -335,17 +332,17 @@ def profile_page():
 @login_required
 def profile_change_password():
     username = session.get("user")
-    if not username or username not in users_db:
+    from repositories.admin import users_repo
+
+    if not username or not users_repo.get_user(username):
         return jsonify({"error": "未登录或用户不存在"}), 401
     data = request.get_json(silent=True) or {}
     current = (data.get("current") or "").strip()
     new_password = (data.get("new_password") or "").strip()
     if not current or not new_password:
         return jsonify({"error": "当前密码和新密码不能为空"})
-    current_hash = hashlib.sha256(current.encode()).hexdigest()
-    if users_db[username]["password"] != current_hash:
+    if not users_repo.verify_password(username, current):
         return jsonify({"error": "当前密码错误"})
-    users_db[username]["password"] = hashlib.sha256(new_password.encode()).hexdigest()
-    save_users()
+    users_repo.update_password(username, new_password)
     log_audit("change_password", username)
     return jsonify({"success": True})

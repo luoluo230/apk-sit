@@ -5,7 +5,15 @@ from functools import wraps
 
 from flask import abort, redirect, session, url_for
 
-from models.data import users_db
+from data.repositories.user_repository import UserRepository
+
+_user_repo = UserRepository()
+
+
+def _user_record(username: str):
+    if not username:
+        return None
+    return _user_repo.find(username)
 
 ADMIN_MODULES = [
     ('user_management', '用户与权限', True),
@@ -29,9 +37,9 @@ ALL_MODULES_EXCEPT_USER_MANAGEMENT = [m[0] for m in ADMIN_MODULES if m[0] != 'us
 
 def current_user_info():
     username = session.get('user')
-    if not username or username not in users_db:
+    if not username:
         return None
-    return users_db[username]
+    return _user_record(username)
 
 
 def is_super_admin_or_admin():
@@ -86,7 +94,7 @@ def get_visible_modules():
 def _ensure_logged_in():
     if 'user' not in session:
         return False
-    info = users_db.get(session['user'])
+    info = _user_record(session['user'])
     if not info:
         return False
     if info.get('disabled'):
@@ -114,7 +122,7 @@ def admin_required(module_id=None):
         def decorated_function(*args, **kwargs):
             if not _ensure_logged_in():
                 return redirect(url_for('auth.login'))
-            info = users_db.get(session['user']) or {}
+            info = _user_record(session['user']) or {}
             if info.get('role') in ('super_admin', 'admin'):
                 return f(*args, **kwargs)
             if module_id == 'user_management':
@@ -138,7 +146,7 @@ def admin_required_any(*module_ids):
         def decorated_function(*args, **kwargs):
             if not _ensure_logged_in():
                 return redirect(url_for('auth.login'))
-            info = users_db.get(session['user']) or {}
+            info = _user_record(session['user']) or {}
             if info.get('role') in ('super_admin', 'admin'):
                 return f(*args, **kwargs)
             for module_id in module_ids:
@@ -152,6 +160,6 @@ def admin_required_any(*module_ids):
 
 
 def is_admin():
-    if not session.get('user') or session['user'] not in users_db:
+    if not session.get('user') or not _user_record(session['user']):
         return False
     return len(get_visible_modules()) > 0

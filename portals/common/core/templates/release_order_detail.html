@@ -1,19 +1,26 @@
-<section class="delivery-page" data-delivery-page="order-detail" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
-  <header class="delivery-heading">
-    <div>
-      <p class="delivery-eyebrow">RELEASE ORDER</p>
-      <h1 id="orderTitle">发布单详情</h1>
-      <p id="orderSubtitle">正在加载发布单完整交付上下文...</p>
-    </div>
-    <a class="delivery-secondary" href="/admin/projects/{{ project_id }}/release-orders">返回发布单中心</a>
-  </header>
+<section class="delivery-app order-detail-app" data-delivery-page="order-detail" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
+  <div class="order-detail-heading"><div><h1 id="orderTitle">发布单详情</h1><p id="orderSubtitle">正在加载完整交付上下文...</p></div><div id="orderActions"></div></div>
+  <div class="order-meta-strip" id="orderMeta"></div>
   <div class="delivery-steps" id="orderSteps"></div>
-  <div class="order-kpis" id="orderKpis"></div>
-  <div class="order-detail-grid">
-    <section class="delivery-panel"><h2>构建与产物</h2><div id="orderArtifacts"></div></section>
-    <section class="delivery-panel"><h2>拓扑与运行态</h2><div id="orderRuntime"></div></section>
-    <section class="delivery-panel wide"><h2>预检结果</h2><div id="orderPrecheck"></div></section>
-    <section class="delivery-panel wide"><h2>执行记录</h2><div id="orderEvents"></div></section>
+  <div class="order-detail-layout">
+    <main>
+      <section class="order-alerts" id="orderAlerts"></section>
+      <div class="order-detail-grid">
+        <section class="ui-panel"><div class="ui-panel-head"><h2>构建与产物</h2></div><div id="orderArtifacts"></div></section>
+        <section class="ui-panel"><div class="ui-panel-head"><h2>拓扑与运行态</h2></div><div id="orderRuntime"></div></section>
+        <section class="ui-panel"><div class="ui-panel-head"><h2>预检结果</h2></div><div id="orderPrecheck"></div></section>
+        <section class="ui-panel"><div class="ui-panel-head"><h2>审批信息</h2></div><div id="orderApprovals"></div></section>
+        <section class="ui-panel"><div class="ui-panel-head"><h2>发布与验证</h2></div><div id="orderExecution"></div></section>
+        <section class="ui-panel"><div class="ui-panel-head"><h2>Bundle 与回滚</h2></div><div id="orderBundle"></div></section>
+      </div>
+    </main>
+    <aside class="ui-panel timeline-panel"><div class="ui-panel-head"><h2>事件时间线</h2></div><div id="orderEvents"></div></aside>
   </div>
-  <div class="delivery-actionbar" id="orderActions"></div>
 </section>
+<div id="orderActionDialog" class="delivery-dialog is-hidden" aria-hidden="true">
+  <div class="delivery-dialog-card" role="dialog" aria-modal="true" aria-labelledby="orderActionDialogTitle">
+    <div class="delivery-dialog-head"><div><h3 id="orderActionDialogTitle">确认操作</h3><p id="orderActionDialogHint">请确认本次操作影响范围。</p></div><button id="orderActionDialogClose" class="icon-button" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
+    <label class="block-label"><span>操作原因</span><textarea id="orderActionReason" rows="3" placeholder="说明执行原因、影响范围和回退方式"></textarea></label>
+    <div class="delivery-dialog-actions"><button id="orderActionDialogCancel" class="ui-secondary" type="button">取消</button><button id="orderActionDialogConfirm" class="ui-primary" type="button">确认执行</button></div>
+  </div>
+</div>

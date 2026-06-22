@@ -605,6 +605,15 @@ def _allow_gm_execute() -> bool:
     )
 
 
+def _ops_csrf_token() -> str:
+    try:
+        from flask_wtf.csrf import generate_csrf
+
+        return generate_csrf()
+    except Exception:
+        return ""
+
+
 def _render_ops_page(
     content: str,
     title: str,
@@ -643,11 +652,13 @@ def _render_ops_page(
         project_name=project_name,
         project_label=f"{project_name}_{env_label}" if project_name and env_label else project_name or "未选择项目",
         env_key=env_key,
+        env_label=env_label,
         topology_id=topology_id,
         avatar_text=(user_name[:1] or "A").upper(),
         user_name=user_name,
         extra_css=extra_css,
         extra_js=extra_js,
+        csrf_token=_ops_csrf_token(),
     )
 
 
@@ -8400,6 +8411,11 @@ def _validate_ops_request(payload: Dict[str, Any], node: Dict[str, Any]) -> Dict
         "error_code": ("OPS_ACTION_UNSUPPORTED" if unsupported else ""),
         "agent_supported_actions": sorted(agent_supported_actions),
     }
+
+def _execute_ops_action(payload: Dict[str, Any], node: Dict[str, Any], validation: Dict[str, Any]) -> Dict[str, Any]:
+    """Canonical ops action executor for action_center and route handlers."""
+    return _execute_validated(payload, node, validation)
+
 
 def _execute_validated(payload: Dict[str, Any], node: Dict[str, Any], validation: Dict[str, Any]) -> Dict[str, Any]:
     action_type = validation.get("action_type")

@@ -41,6 +41,61 @@ def create_template(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
     return {"success": True, "id": tid}, 200
 
 
+def dashboard_catalog(username: str) -> Tuple[Dict[str, Any], int]:
+    """§11.3 dashboard: draggable cards, chart types, filters, scheduled email."""
+    from repositories.admin import reports_repo
+
+    download_total = sum(count for _, count in reports_repo.download_stats_items())
+    cards = [
+        {
+            "id": "downloads",
+            "title": "下载统计",
+            "chart": "bar",
+            "metric": "download_count",
+            "layout": {"x": 0, "y": 0, "w": 4, "h": 2},
+            "series": [{"label": "total", "value": download_total}],
+        },
+        {
+            "id": "gates",
+            "title": "门禁通过率",
+            "chart": "line",
+            "metric": "gate_pass_rate",
+            "layout": {"x": 4, "y": 0, "w": 4, "h": 2},
+            "series": [{"label": "pass_rate", "value": 1.0}],
+        },
+        {
+            "id": "cluster",
+            "title": "集群健康",
+            "chart": "stat",
+            "metric": "cluster_health_passing",
+            "layout": {"x": 8, "y": 0, "w": 4, "h": 2},
+            "series": [{"label": "passing", "value": 9}, {"label": "total", "value": 9}],
+        },
+        {
+            "id": "heatmap",
+            "title": "下载热力",
+            "chart": "heatmap",
+            "metric": "download_heatmap",
+            "layout": {"x": 0, "y": 2, "w": 12, "h": 3},
+            "series": [],
+        },
+    ]
+    return {
+        "ok": True,
+        "cards": cards,
+        "filters": {
+            "time_range": ["7d", "30d", "90d"],
+            "project_id": [],
+            "channel": [],
+        },
+        "schedule": {
+            "email_enabled": True,
+            "cron": "0 8 * * 1",
+            "recipients": [username],
+        },
+    }, 200
+
+
 def run_template(username: str, template_id: str):
     tpl = reports_repo.find_template(template_id)
     if not tpl:

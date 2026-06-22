@@ -6,7 +6,6 @@ from typing import Dict, Any, List
 
 from models.data import (
     projects_db,
-    users_db,
     channels_db,
     project_versions_db,
     save_projects,
@@ -48,7 +47,9 @@ def delete_project_versions(project_id: str) -> None:
 
 
 def list_users() -> Dict[str, Dict[str, Any]]:
-    return users_db
+    from repositories.admin import users_repo
+
+    return users_repo.list_users()
 
 
 def list_channels() -> List[Dict[str, Any]]:

@@ -1009,7 +1009,7 @@ def refresh_instance_env_and_scripts(instance_id):
     inst = get_instance_by_id(instance_id)
     if not inst:
         return False
-    jenkins_home = inst.get('jenkins_home') or ''
+    jenkins_home = resolve_jenkins_home(inst)
     if not jenkins_home or not os.path.isdir(jenkins_home):
         return False
     output_base = get_instance_output_base(inst)
@@ -1438,12 +1438,12 @@ def start_existing_jenkins(instance_id, started_by=''):
     if not target:
         return (False, "未找到该实例")
     idx, inst = target
-    if inst.get('status') == 'running' and _is_process_alive(inst.get('pid')):
-        return (False, "该实例已在运行中")
     port = inst.get('port')
     if port is None:
         return (False, "实例缺少端口信息")
     port = int(port)
+    if inst.get('status') == 'running' and _get_pid_by_port(port):
+        return (False, "该实例已在运行中")
     ok, msg = check_port(port)
     if not ok:
         return (False, msg)
@@ -1479,6 +1479,7 @@ def start_existing_jenkins(instance_id, started_by=''):
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     inst['status'] = 'running'
     inst['pid'] = proc.pid
+    inst['jenkins_home'] = jenkins_home
     inst['started_at'] = now
     inst['started_by'] = started_by
     instances[idx] = inst
@@ -1522,23 +1523,24 @@ def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_w
 
 
 def list_instances():
-    """返回实例列表，并刷新运行状态。"""
+    """返回实例列表，并刷新运行状态（以端口 LISTENING 为准，避免僵尸 PID）。"""
     instances = load_jenkins_instances()
+    changed = False
     for inst in instances:
-        pid = inst.get('pid')
-        if pid and _is_process_alive(pid):
+        local_home = resolve_jenkins_home(inst)
+        if local_home and inst.get('jenkins_home') != local_home:
+            inst['jenkins_home'] = local_home
+            changed = True
+        port = inst.get('port')
+        pid_on_port = _get_pid_by_port(port) if port is not None else None
+        if pid_on_port:
+            inst['pid'] = pid_on_port
             inst['status'] = 'running'
         else:
-            # 可能被外部杀掉，再按端口检查
-            p = inst.get('port')
-            found_pid = _get_pid_by_port(p) if p else None
-            if found_pid:
-                inst['pid'] = found_pid
-                inst['status'] = 'running'
-            else:
-                inst['status'] = 'stopped'
-                inst['pid'] = None
-    save_jenkins_instances(instances)
+            inst['status'] = 'stopped'
+            inst['pid'] = None
+    if changed:
+        save_jenkins_instances(instances)
     return instances
 
 

@@ -41,6 +41,34 @@ except ImportError:
 configure_session_cookies(app)
 
 
+def _configure_redis_session(flask_app: Flask) -> None:
+    session_type = (os.getenv("SESSION_TYPE") or "").strip().lower()
+    if session_type != "redis":
+        return
+    try:
+        import redis
+        from flask_session import Session
+    except ImportError as exc:
+        raise RuntimeError(
+            "SESSION_TYPE=redis requires flask-session and redis packages"
+        ) from exc
+    flask_app.config["SESSION_TYPE"] = "redis"
+    flask_app.config["SESSION_REDIS"] = redis.from_url(os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"))
+    flask_app.config["SESSION_PERMANENT"] = False
+    flask_app.config["SESSION_USE_SIGNER"] = True
+    flask_app.config["SESSION_KEY_PREFIX"] = os.getenv("SESSION_KEY_PREFIX", "apk_site:sess:")
+    Session(flask_app)
+    logger.info("Flask session backend: redis (%s)", os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"))
+
+
+_configure_redis_session(app)
+
+
+def create_app() -> Flask:
+    """Factory for gunicorn / tests (returns module singleton)."""
+    return app
+
+
 @app.after_request
 def _security_headers(response):
     return apply_security_headers(response)
@@ -144,6 +172,16 @@ def health():
     return jsonify({"status": "ok", "service": "apk-site"}), 200
 
 
+@app.route("/metrics")
+def metrics():
+    from services.metrics import render_prometheus
+
+    body, content_type = render_prometheus()
+    from flask import Response
+
+    return Response(body, mimetype=content_type)
+
+
 def _register_blueprints():
     """Register only required modules for each deployment target."""
     mode = current_portal_mode()
@@ -179,9 +217,10 @@ def _register_blueprints():
         from routes.jenkins_manage_routes import bp as jenkins_manage_bp
         from routes.versions_routes import bp as versions_routes_bp
         from routes.workspace_routes import bp as workspace_bp
-        from routes.gm_legacy import bp as gm_legacy_bp
         from routes.commercial_release_routes import bp as commercial_release_bp
         from routes.project_delivery import bp as project_delivery_bp
+        from routes.release import bp as release_scopes_bp
+        from routes.ops import bp as project_ops_bp
         if mode == "all":
             from routes.player_community import bp as player_community_bp
             from routes.products_public import bp as products_public_bp
@@ -204,16 +243,23 @@ def _register_blueprints():
         app.register_blueprint(dashboard_routes_bp)
         app.register_blueprint(versions_routes_bp)
         app.register_blueprint(jenkins_manage_bp)
-        app.register_blueprint(gm_legacy_bp)
         app.register_blueprint(commercial_release_bp)
         app.register_blueprint(project_delivery_bp)
+        app.register_blueprint(release_scopes_bp)
+        app.register_blueprint(project_ops_bp)
         if _csrf_enabled and csrf is not None:
             # Project delivery and ops pages use authenticated JSON fetch calls.
-            csrf.exempt(gm_legacy_bp)
             csrf.exempt(project_delivery_bp)
+            csrf.exempt(project_ops_bp)
 
 
 _register_blueprints()
+
+from routes.telemetry import bp as _telemetry_bp
+
+app.register_blueprint(_telemetry_bp)
+if _csrf_enabled and csrf is not None:
+    csrf.exempt(_telemetry_bp)
 
 
 if current_portal_mode() in ("admin", "forum"):

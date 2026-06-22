@@ -1,43 +1,9 @@
-<link rel="stylesheet" href="/static/ops_platform.css?v=20260609-unified-v1">
-<section class="ops-page" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
-  <div class="top">
-    <div><div class="title title-row"><span class="ops-ico ico-title ico-change">C</span>发布与变更治理</div><div class="sub">变更计划、审批冻结窗口、灰度与回滚、复盘治理</div></div>
-    <div class="ops-header-actions">
-      <a class="btn" href="/admin/projects/{{ project_id }}/ops?env_key={{ env_key }}">返回工作台</a>
-      <a class="btn" href="/admin/projects/{{ project_id }}/actions?env_key={{ env_key }}">动作执行</a>
-      <a class="btn" href="/admin/projects/{{ project_id }}/diagnostics?env_key={{ env_key }}">节点诊断</a>
-    </div>
-  </div>
-
-  <section class="panel ops-section">
-    <div class="hd"><b class="h-row"><span class="ops-ico ico-change">O</span>治理总览</b><button id="btnRefreshGov" class="btn">刷新</button></div>
-    <div class="bd"><div id="govMetrics" class="metric"></div></div>
-  </section>
-
-  <div class="grid ops-section">
-    <section class="panel">
-      <div class="hd"><b class="h-row"><span class="ops-ico ico-govern">A</span>审批与高危动作</b></div>
-      <div class="bd"><div id="govApprovals"></div></div>
-    </section>
-    <section class="panel">
-      <div class="hd"><b class="h-row"><span class="ops-ico ico-change">W</span>变更窗口与建议</b></div>
-      <div class="bd"><div id="govWindow"></div></div>
-    </section>
-  </div>
-
-  <section class="panel ops-section">
-    <div class="hd"><b class="h-row"><span class="ops-ico ico-event">E</span>最近治理事件</b></div>
-    <div class="bd"><div id="govEvents"></div></div>
-  </section>
-  <input type="hidden" id="govTopologyId" value="">
-  <input type="hidden" id="govEnvKey" value="production">
+<link rel="stylesheet" href="/static/project_ops_workspace.css?v=20260613-1">
+<section class="project-ops-page project-ops-mount ops-page" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
+  <header class="project-ops-head"><div class="project-ops-head-copy"><span class="project-ops-head-icon"><img src="/static/project_ui/svg/nav_change_governance.svg" alt=""></span><div><h1>变更治理</h1><p>统一管理高风险动作审批、变更窗口、冻结策略与治理事件。</p></div></div><div class="project-ops-actions"><a class="project-ops-btn" href="/admin/projects/{{ project_id }}/actions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_execute.svg" alt="">运行执行</a><a class="project-ops-btn" href="/admin/projects/{{ project_id }}/diagnostics?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_performance.svg" alt="">节点诊断</a><button id="btnRefreshGov" class="project-ops-btn primary" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button></div></header>
+  <section class="project-ops-panel"><div class="project-ops-panel-head"><div><h2>治理概览</h2><p>当前环境审批、冻结与高风险动作状态。</p></div></div><div class="project-ops-panel-body"><div id="govMetrics" class="metric"></div></div></section>
+  <div class="project-ops-grid"><section class="project-ops-panel"><div class="project-ops-panel-head"><div><h2>审批与高风险动作</h2><p>所有高风险操作必须有明确审批记录。</p></div></div><div class="project-ops-panel-body"><div id="govApprovals"></div></div></section><section class="project-ops-panel"><div class="project-ops-panel-head"><div><h2>变更窗口与建议</h2><p>查看并设置当前环境的变更约束。</p></div></div><div class="project-ops-panel-body"><div id="govWindow"></div></div></section></div>
+  <section class="project-ops-panel"><div class="project-ops-panel-head"><div><h2>最近治理事件</h2><p>审批、冻结、发布与运维动作审计记录。</p></div></div><div class="project-ops-panel-body"><div id="govEvents"></div></div></section>
+  <input type="hidden" id="govTopologyId" value=""><input type="hidden" id="govEnvKey" value="{{ env_key }}">
 </section>
-<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>
-<script src="/static/ops_platform_change_governance.js?v=20260609-unified-v1"></script>
-
-
-
-
-
-
-
+<script src="/static/ops_platform_api.js?v=20260613-project-v2"></script><script src="/static/ops_platform_change_governance.js?v=20260613-project-v2"></script>

@@ -1,14 +1,30 @@
-<section class="delivery-page" data-delivery-page="overview" data-project-id="{{ project_id }}">
-  <header class="delivery-heading">
-    <div>
-      <p class="delivery-eyebrow">PROJECT DELIVERY</p>
-      <h1>{{ project.get('name') or project_id }} 项目总览</h1>
-      <p>从环境健康、构建产物、拓扑运行态到发布验证的一体化交付入口。</p>
-    </div>
-    <a class="delivery-primary" href="/admin/projects/{{ project_id }}/release-orders">进入发布单中心</a>
-  </header>
-  <div class="delivery-summary" id="deliverySummary"></div>
-  <div class="environment-grid" id="environmentCards">
-    <div class="delivery-loading">正在汇总项目交付状态...</div>
+<section class="delivery-app" data-delivery-page="overview" data-project-id="{{ project_id }}">
+  <div class="delivery-titlebar">
+    <div><span class="delivery-kicker">PROJECT DELIVERY</span><h1>项目总览 <button class="icon-star" aria-label="收藏"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button></h1></div>
+    <div class="delivery-title-actions"><span>数据更新时间：<b id="overviewUpdatedAt">--</b></span><button class="ui-icon-btn" data-refresh-overview><img src="/static/project_ui/svg/action_refresh.svg" alt="刷新"></button></div>
+  </div>
+  <div class="overview-filterbar">
+    <span>项目</span><strong>{{ project.get('name') or project_id }}</strong>
+    <span>环境</span><strong>全部环境</strong>
+    <span>渠道</span><strong>全部渠道</strong>
+    <span>平台</span><strong>多平台</strong>
+  </div>
+  <div class="overview-layout">
+    <main>
+      <div class="overview-kpis" id="overviewKpis"></div>
+      <section class="ui-panel">
+        <div class="ui-panel-head"><h2>环境运行概览</h2><span>版本、Bundle、拓扑与运行态统一对账</span></div>
+        <div class="environment-grid" id="environmentCards"><div class="ui-skeleton">正在汇总项目交付状态...</div></div>
+      </section>
+      <section class="ui-panel recent-panel">
+        <div class="ui-panel-head"><h2>最近动态</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/release-orders">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+        <div id="overviewActivity"><div class="ui-empty">暂无最近动态</div></div>
+      </section>
+    </main>
+    <aside class="overview-rail">
+      <section class="ui-panel"><div class="ui-panel-head"><h2>项目成员</h2></div><div class="member-list"><span><b><img src="/static/project_ui/svg/global_user.svg" alt=""></b> admin <em>项目负责人</em></span><span><b><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></b> 运维团队 <em>运维工程师</em></span><span><b><img src="/static/project_ui/svg/status_success.svg" alt=""></b> 测试团队 <em>测试工程师</em></span></div></section>
+      <section class="ui-panel support-list"><div class="ui-panel-head"><h2>帮助与支持</h2></div><a href="/docs"><img src="/static/project_ui/svg/support_doc.svg" alt="">使用文档</a><a href="/docs"><img src="/static/project_ui/svg/support_faq.svg" alt="">常见问题</a><a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/support_ticket.svg" alt="">提交工单</a></section>
+      <section class="ui-panel"><div class="ui-panel-head"><h2>快速入口</h2></div><div class="quick-grid"><a href="/admin/projects/{{ project_id }}/release-orders/new"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">发布单</a><a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a><a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a><a href="/admin/projects/{{ project_id }}/topology-bindings"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a></div></section>
+    </aside>
   </div>
 </section>

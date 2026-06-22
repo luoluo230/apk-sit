@@ -119,10 +119,3 @@ def register_routes(bp, current_username_getter):
         view_func=_versions_delete_group,
         methods=["POST", "DELETE"],
     )
-    # 兼容旧前端删除地址，避免缓存旧脚本时出现 404。
-    bp.add_url_rule(
-        "/admin/projects/<project_id>/versions/<version_id>/delete",
-        endpoint="project_versions_delete_legacy",
-        view_func=_versions_delete,
-        methods=["POST", "DELETE"],
-    )

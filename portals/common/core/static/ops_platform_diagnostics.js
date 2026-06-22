@@ -3,6 +3,9 @@
   const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
   const state={projectId:'',envKey:'production',rows:[],filtered:[]};
   const statusCls=(s)=>s==='ONLINE'||s==='PASS'?'ok':(s==='DEGRADED'?'warn':'err');
+  const STATUS_ZH={ONLINE:'在线',OFFLINE:'离线',DEGRADED:'异常',UNKNOWN:'未知',PASS:'通过',FAILED:'失败',SUCCESS:'成功'};
+  const ROLE_ZH={gateway:'网关',auth:'认证',game:'游戏服务',ops:'运维服务',redis:'Redis',mongodb:'MongoDB'};
+  const zhStatus=(s)=>STATUS_ZH[String(s||'').toUpperCase()]||String(s||'-');
 
   function actionHref(act){
     if(act.href) return act.href;
@@ -45,10 +48,10 @@
       const fixes=(r.fix_actions||[]).map(act=>'<a class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px" href="'+esc(actionHref(act))+'">'+esc(act.label||act.action_type||'修复')+'</a>').join('');
       html+='<tr>'
         +'<td>'+esc(r.id||r.node_id||r.name||'-')+'</td>'
-        +'<td>'+esc(r.role||'-')+'</td>'
+        +'<td>'+esc(ROLE_ZH[r.role]||r.role||'-')+'</td>'
         +'<td>'+esc(r.agent_id||'-')+'</td>'
-        +'<td><span class="badge '+statusCls(probe)+'">'+esc(probe)+'</span></td>'
-        +'<td><span class="badge '+statusCls(s)+'">'+esc(s)+'</span></td>'
+        +'<td><span class="badge '+statusCls(probe)+'">'+esc(zhStatus(probe))+'</span></td>'
+        +'<td><span class="badge '+statusCls(s)+'">'+esc(zhStatus(s))+'</span></td>'
         +'<td>'+esc(r.message||r.onboarding_check||'')+'</td>'
         +'<td>'+(fixes||'-')+'</td>'
         +'</tr>';

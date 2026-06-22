@@ -74,14 +74,9 @@ def bootstrap_scopes_for_project(project_id: str) -> List[Dict[str, Any]]:
                 "channel_id": ch["channel_id"],
                 "channel_key": ch.get("channel_key") or ch["channel_id"],
                 "default_topology_id": topology_id,
-                "override": {
-                    "topology_id": "",
-                    "server_profile_id": "",
-                    "use_auto_profile": True,
-                },
+                "override": {"topology_id": ""},
                 "status": "active",
                 "updated_at": now,
             }
             created.append(upsert_scope(row))
     return created
-

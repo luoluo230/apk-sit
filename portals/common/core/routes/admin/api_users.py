@@ -1,4 +1,4 @@
-"""Admin user route adapters."""
+"""Admin user route adapters (CRUD via user_service -> users_repo -> UserRepository)."""
 
 from __future__ import annotations
 
@@ -74,3 +74,18 @@ def register_routes(bp, password_min_getter):
         methods=["POST"],
     )
     bp.add_url_rule("/admin/users/delete/<username>", endpoint="admin_users_delete", view_func=_users_delete, methods=["DELETE"])
+
+    @admin_required("user_management")
+    def _rbac_get(username: str):
+        return users_get_response(username)
+
+    @admin_required("user_management")
+    def _rbac_update(username: str):
+        data = request.get_json(silent=True) or {}
+        if "allowed_modules" not in data:
+            return jsonify({"error": "allowed_modules required"}), 400
+        payload, status = user_service.update_user({"username": username, "allowed_modules": data["allowed_modules"]})
+        return jsonify(payload), status
+
+    bp.add_url_rule("/admin/rbac/users/<username>", endpoint="admin_rbac_get", view_func=_rbac_get, methods=["GET"])
+    bp.add_url_rule("/admin/rbac/users/<username>", endpoint="admin_rbac_update", view_func=_rbac_update, methods=["PUT"])

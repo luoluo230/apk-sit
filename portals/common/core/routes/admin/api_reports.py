@@ -17,6 +17,11 @@ def reports_run_response(username: str, template_id: str):
     return report_service.run_template(username, template_id)
 
 
+def reports_dashboard_response(username: str):
+    payload, status = report_service.dashboard_catalog(username)
+    return jsonify(payload), status
+
+
 def register_routes(bp, current_username_getter):
     @admin_required("reports")
     def _reports_create_template():
@@ -25,6 +30,10 @@ def register_routes(bp, current_username_getter):
     @admin_required("reports")
     def _reports_run(template_id: str):
         return reports_run_response(current_username_getter(), template_id)
+
+    @admin_required("reports")
+    def _reports_dashboard():
+        return reports_dashboard_response(current_username_getter())
 
     bp.add_url_rule(
         "/admin/reports/templates",
@@ -36,4 +45,10 @@ def register_routes(bp, current_username_getter):
         "/admin/reports/run/<template_id>",
         endpoint="admin_reports_run",
         view_func=_reports_run,
+    )
+    bp.add_url_rule(
+        "/admin/reports/dashboard",
+        endpoint="admin_reports_dashboard",
+        view_func=_reports_dashboard,
+        methods=["GET"],
     )

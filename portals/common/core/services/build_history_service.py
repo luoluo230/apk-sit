@@ -8,9 +8,10 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from models.data import BUILD_VERSION_RECORDS_FILE, load_json, project_versions_db, save_json
+from models.data import BUILD_VERSION_RECORDS_FILE, get_channel_by_id, load_json, project_versions_db, save_json
 from services import jenkins as jenkins_svc
 from services import jenkins_manager as jm
+from services.release.env_registry import stage_to_env_key
 
 MAX_RECORDS = 2000
 DEFAULT_VERSION_LIMIT = 50
@@ -60,6 +61,15 @@ def record_build(
     }
     records.append(entry)
     _save_records(records)
+    try:
+        from services.webhook import fire_feishu
+
+        fire_feishu(
+            "build_complete",
+            f"项目={project_id} 构建=#{build_number} 版本={entry.get('version_name') or version_id}",
+        )
+    except Exception:
+        pass
 
 
 def mark_build_stopped(instance_id: str, build_number: int, username: str) -> None:
@@ -143,7 +153,7 @@ def list_records_for_version(version_id: str, instance_id: str = "", limit: int 
     return out[:limit]
 
 
-def list_records_for_project(project_id: str, limit: int = 500) -> list:
+def list_records_for_project(project_id: str, limit: int = MAX_RECORDS) -> list:
     pid = (project_id or "").strip()
     if not pid:
         return []
@@ -378,14 +388,17 @@ def builds_grouped_by_project(project_id: str) -> dict:
         vc = str(meta.get("version_code") or (builds[0].get("version_code") if builds else "") or "").strip()
         if not vc and vid:
             vc = vid[:8]
-        ch = (meta.get("channel") or "").strip()
-        st = (meta.get("stage") or "dev").strip()
+        channel_id = (meta.get("channel") or "").strip()
+        channel = get_channel_by_id(channel_id) or {}
+        channel_name = str(channel.get("name") or channel_id or "未配置渠道")
+        env_key = stage_to_env_key(meta.get("env_key") or meta.get("stage") or "development")
         g = groups.setdefault(vn, {"version_name": vn, "version_codes": []})
         g["version_codes"].append({
             "version_id": vid,
             "version_code": vc,
-            "channel": ch,
-            "stage": st,
+            "channel_id": channel_id,
+            "channel_name": channel_name,
+            "env_key": env_key,
             "platform": meta.get("platform") or "",
             "builds": sorted(builds, key=lambda x: int(x.get("build_number") or 0), reverse=True),
         })

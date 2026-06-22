@@ -306,15 +306,15 @@
   function renderSummary() {
     const online = state.rows.filter(function (row) { return row.status === "ONLINE"; }).length;
     const cards = [
-      { tone: "blue", icon: "⌘", title: "在线 Agent", value: online, desc: "实时在线设备数", href: "" },
-      { tone: "green", icon: "◌", title: "注册 Agent", value: state.rows.length, desc: "已注册设备总数", href: "" },
-      { tone: "orange", icon: "◔", title: "待执行任务", value: state.summaryExtra.pending, desc: "等待执行的任务数", href: queueHref("PENDING") },
-      { tone: "purple", icon: "▶", title: "运行任务", value: state.summaryExtra.running, desc: "正在运行的任务数", href: queueHref("RUNNING") },
+      { tone: "blue", icon: "nav_agent_server", title: "在线 Agent", value: online, desc: "实时在线设备数", href: "" },
+      { tone: "green", icon: "kpi_member", title: "注册 Agent", value: state.rows.length, desc: "已注册设备总数", href: "" },
+      { tone: "orange", icon: "status_pending", title: "待执行任务", value: state.summaryExtra.pending, desc: "等待执行的任务数", href: queueHref("PENDING") },
+      { tone: "purple", icon: "nav_execute", title: "运行任务", value: state.summaryExtra.running, desc: "正在运行的任务数", href: queueHref("RUNNING") },
     ];
     nodes.summary.innerHTML = cards.map(function (card) {
       return "" +
         '<article class="agent-summary-card' + (card.href ? " is-clickable" : "") + '" data-tone="' + esc(card.tone) + '"' + (card.href ? (' data-summary-href="' + esc(card.href) + '"') : "") + '>' +
-          '<div class="agent-summary-icon">' + esc(card.icon) + "</div>" +
+          '<div class="agent-summary-icon"><img src="/static/project_ui/svg/' + esc(card.icon) + '.svg" alt=""></div>' +
           "<div>" +
             '<div class="agent-summary-label">' + esc(card.title) + "</div>" +
             '<div class="agent-summary-value">' + esc(card.value) + "</div>" +
@@ -376,12 +376,12 @@
           '<div class="agent-card-main">' +
             '<div class="agent-card-row">' +
               '<div class="agent-card-title-wrap">' +
-                '<span class="agent-card-device">▣</span>' +
+                '<span class="agent-card-device"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span>' +
                 '<div class="agent-card-title">' + esc(row.title) + "</div>" +
                 '<span class="agent-state-pill ' + stateClass(row.status) + '">' + esc(row.statusText) + "</span>" +
               "</div>" +
               '<div class="agent-card-menu-wrap">' +
-                '<button class="agent-card-more" type="button" data-open-menu="' + esc(row.rowId) + '">⋮</button>' +
+                '<button class="agent-card-more" type="button" aria-label="更多操作" data-open-menu="' + esc(row.rowId) + '"><img src="/static/project_ui/svg/action_more.svg" alt=""></button>' +
                 '<div class="agent-dropdown-menu agent-card-menu' + (state.menuRowId === row.rowId ? "" : " is-hidden") + '">' +
                   '<button type="button" data-menu-action="detail" data-row-id="' + esc(row.rowId) + '">查看详情</button>' +
                   '<button type="button" data-menu-action="probe" data-row-id="' + esc(row.rowId) + '">立即探测</button>' +

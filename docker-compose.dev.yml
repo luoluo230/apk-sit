@@ -1,0 +1,54 @@
+# apk-site local dev stack (Wave 4 P1 / Wave F)
+# game-server remains on host; apk-site reaches it via host.docker.internal
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  mongo:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  apk-site:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app/portals/common/core
+    volumes:
+      - .:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SESSION_TYPE: redis
+      REDIS_URL: redis://redis:6379/0
+      USE_SQLITE: "true"
+      APP_PORTAL_MODE: admin
+      RELEASE_GATE_BASE_URL: http://127.0.0.1:5003
+      GAME_OPS_BASE_URL: http://host.docker.internal:5054
+      GAME_OPS_TIMEOUT_SECONDS: "5"
+    command: >
+      sh -c "python scripts/seed_unified_project_delivery.py &&
+             python scripts/seed_release_gate_fixture.py &&
+             python -m waitress --listen=0.0.0.0:5003 app_new:app"
+    ports:
+      - "5003:5003"
+    depends_on:
+      - redis
+      - mongo
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5003/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
+
+volumes:
+  redis_data:
+  mongo_data:

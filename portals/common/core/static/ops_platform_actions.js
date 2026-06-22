@@ -23,11 +23,25 @@
     smoke_test:'冒烟测试',
     stress_test:'压力测试'
   };
+  const STATUS_ZH={
+    ONLINE:'在线',
+    OFFLINE:'离线',
+    DEGRADED:'异常',
+    UNKNOWN:'未知',
+    PENDING:'待执行',
+    RUNNING:'运行中',
+    SUCCESS:'成功',
+    FAILED:'失败',
+    CANCELED:'已取消',
+    TIMEOUT:'超时',
+    PASS:'通过'
+  };
+  const TARGET_TYPE_ZH={service:'服务实例',topology:'拓扑节点',agent:'Agent',node:'配置节点'};
 
   function statusBadge(status){
     const s=String(status||'').toUpperCase();
     const cls=(s==='ONLINE'||s==='SUCCESS'||s==='PASS')?'state-ok':((s==='RUNNING'||s==='PENDING'||s==='DEGRADED')?'state-warn':'state-err');
-    return '<span class="state-pill '+cls+'">'+esc(s||'-')+'</span>';
+    return '<span class="state-pill '+cls+'">'+esc(STATUS_ZH[s]||s||'-')+'</span>';
   }
 
   function selectedTarget(){
@@ -51,9 +65,9 @@
     const t=selectedTarget();
     const meta=$('actTargetMeta');
     if(!meta) return;
-    if(!t){ meta.textContent='未选择目标'; return; }
-    meta.innerHTML='类型='+esc(t.target_type)+' | node='+esc(t.node_id||'-')+' | agent='+esc(t.agent_id||'-')+' | probe='+statusBadge(t.probe_status||'-');
-    if($('actTarget') && !$('actTarget').value) $('actTarget').value=String(t.service_id||t.node_id||'');
+    if(!t){ meta.textContent='当前筛选条件下没有可执行目标，请切换目标类型或先完成拓扑与 Agent 配置。'; return; }
+    meta.innerHTML='类型='+esc(TARGET_TYPE_ZH[t.target_type]||t.target_type)+' | 节点='+esc(t.node_id||'-')+' | Agent='+esc(t.agent_id||'-')+' | 探活='+statusBadge(t.probe_status||'-');
+    if($('actTarget')) $('actTarget').value=String(t.service_id||t.node_id||'');
   }
 
   function renderCatalog(){
@@ -206,14 +220,14 @@
     const c={PENDING:0,RUNNING:0,SUCCESS:0,FAILED:0,CANCELED:0,TIMEOUT:0};
     jobs.forEach(j=>{const s=String(j.status||'').toUpperCase(); if(c[s]!==undefined)c[s]++;});
     $('queueSummary').innerHTML=''
-      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">Pending: <b>'+c.PENDING+'</b></div>'
-      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">Running: <b>'+c.RUNNING+'</b></div>'
-      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">Terminal: <b>'+(c.SUCCESS+c.FAILED+c.CANCELED+c.TIMEOUT)+'</b></div>';
+      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">待执行：<b>'+c.PENDING+'</b></div>'
+      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">运行中：<b>'+c.RUNNING+'</b></div>'
+      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">已结束：<b>'+(c.SUCCESS+c.FAILED+c.CANCELED+c.TIMEOUT)+'</b></div>';
 
     if(!jobs.length){$('queueTableWrap').innerHTML='<div class="preset-empty">暂无队列任务</div>'; return;}
-    let table='<table style="width:100%;border-collapse:separate;border-spacing:0 8px"><thead><tr><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">Job</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">Node</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">Action</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">Status</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">Attempt</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">Updated</th></tr></thead><tbody>';
+    let table='<table style="width:100%;border-collapse:separate;border-spacing:0 8px"><thead><tr><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">任务</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">节点</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">动作</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">状态</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">尝试次数</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">更新时间</th></tr></thead><tbody>';
     jobs.forEach(j=>{
-      table+='<tr style="background:#fff"><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.job_id||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.node_id||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.action_type||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+statusBadge(j.status||'')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.attempt??0)+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.updated_at||'-')+'</td></tr>';
+      table+='<tr style="background:#fff"><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.job_id||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.node_id||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(ACTION_ZH[j.action_type]||j.action_type||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+statusBadge(j.status||'')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.attempt??0)+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.updated_at||'-')+'</td></tr>';
     });
     table+='</tbody></table>';
     $('queueTableWrap').innerHTML=table;

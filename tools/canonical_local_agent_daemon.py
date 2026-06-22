@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
 from gameserver_agent_exec import execute_ops_job  # noqa: E402
-from tools.ops_ecosystem_chain import (  # noqa: E402
+from dev.tools.ops_ecosystem_chain import (  # noqa: E402
     AGENT_TOKEN,
     _cluster_agents,
     _load_cluster,

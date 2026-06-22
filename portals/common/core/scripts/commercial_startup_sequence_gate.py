@@ -44,7 +44,7 @@ def _fetch_bootstrap(base_url: str) -> dict:
             "game_id": DEFAULT_GAME_ID,
             "game_key": DEFAULT_GAME_KEY,
             "env_key": "development",
-            "channel": "1001",
+            "channel": "wechat",
             "platform": "android",
             "version_name": DEFAULT_VERSION,
         }

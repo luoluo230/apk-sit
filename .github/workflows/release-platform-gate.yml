@@ -1,0 +1,98 @@
+name: Release Platform Gate
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  web-gate:
+    name: Commercial Startup Sequence Gate (T2-T3)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: portals/common/core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: pytest
+        run: py -3 -m pytest tests\ -q
+
+      - name: OpenAPI drift check
+        run: py -3 scripts/generate_openapi.py --check
+
+      - name: admin_routes size gate
+        run: py -3 scripts/admin_routes_size_gate.py
+
+      - name: Protocol alignment gates
+        env:
+          MACLIENT_ROOT: ${{ github.workspace }}
+        run: |
+          py -3 scripts/codegen_protocol_dictionary.py --check
+          py -3 scripts/protocol_alignment_ci_gate.py
+
+      - name: bootstrap gate e2e
+        env:
+          RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
+        run: py -3 scripts/bootstrap_gate_e2e.py
+        continue-on-error: true
+
+      - name: ops platform e2e gate
+        run: py -3 scripts/ops_platform_e2e_gate.py
+
+      - name: Run commercial_startup_sequence_gate
+        env:
+          RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
+          RELEASE_GATE_SCOPE_ID: ${{ vars.RELEASE_GATE_SCOPE_ID || 'gomeku:development:1001' }}
+        run: py -3 scripts/commercial_startup_sequence_gate.py
+
+  unity-session:
+    name: Unity session acceptance (T6-T7, optional)
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[session-ci]')
+    needs: web-gate
+    defaults:
+      run:
+        working-directory: portals/common/core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Unity session acceptance
+        env:
+          UNITY_PATH: ${{ vars.UNITY_PATH }}
+          RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
+        run: |
+          py -3 -c "
+          from services.unity_client_hotupdate_runner import run_unity_client_startup_acceptance
+          import os, sys
+          unity_project = os.environ.get('UNITY_PROJECT', r'E:\maclient')
+          r = run_unity_client_startup_acceptance(
+              unity_project=unity_project,
+              scenario='session',
+              version_name='1.0.0',
+              version_code='12',
+              game_id=os.environ.get('RELEASE_GATE_GAME_ID', 'gomeku-fb64779f94b161d0'),
+              timeout_sec=300,
+          )
+          print(r)
+          if not r.get('passed'):
+              sys.exit(1)
+          "

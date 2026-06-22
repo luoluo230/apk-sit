@@ -17,7 +17,7 @@ from services.commercial_release_plan import (
     normalize_release_platform,
 )
 from services.release.release_context import apply_scope_fields_to_version_row
-from services.release.env_registry import normalize_release_env_key, env_key_to_gm_env, stage_to_env_key
+from services.release.env_registry import normalize_release_env_key, env_key_to_gm_env, env_key_to_stage, stage_to_env_key
 from services.release.scope_ids import resolve_channel_id
 
 VERSION_STAGES = [("dev", "开发"), ("test", "测试"), ("production", "线上")]
@@ -254,7 +254,20 @@ def project_download_stats(project_id: str, username: str) -> Tuple[Dict[str, An
 def list_versions(project_id: str, username: str) -> Tuple[Dict[str, Any], int]:
     if not versions_repo.has_project(project_id) or not versions_repo.can_view(project_id, username):
         return {"error": "无权限"}, 403
-    return {"versions": versions_repo.list_versions(project_id)}, 200
+    rows = []
+    for source in versions_repo.list_versions(project_id):
+        row = copy.deepcopy(source)
+        labels = _version_row_labels(row.get("channel"), row.get("stage"))
+        row.update(_enrich_version_scope_fields(project_id, row))
+        row.update(labels)
+        row["channel_id"] = str(row.get("channel_id") or source.get("channel") or "")
+        row["channel_name"] = labels["channel_label"]
+        row["platform_label"] = versions_repo.platform_label(str(row.get("platform") or ""))
+        row["version_status"] = _normalize_version_status(row.get("version_status") or "active")
+        row["version_status_label"] = VERSION_STATUS_MAP.get(row["version_status"], row["version_status"])
+        row["apk_status"] = "found" if versions_repo.has_apk(project_id, source) else "not_found"
+        rows.append(row)
+    return {"versions": rows}, 200
 
 
 def get_version_downloads(project_id: str, version_id: str, username: str) -> Tuple[Dict[str, Any], int]:
@@ -314,7 +327,8 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
         return {"error": "无权限"}, 403
 
     vid = str(uuid.uuid4())[:8]
-    stage = (data.get("stage") or "dev").strip() or "dev"
+    env_key = normalize_release_env_key(data.get("env_key") or "development")
+    stage = env_key_to_stage(env_key)
     platform = (data.get("platform") or "").strip().lower()
     if platform not in ("android", "ios"):
         platform = "ios" if str(data.get("apk_path") or "").lower().endswith(".ipa") else "android"
@@ -323,7 +337,7 @@ def create_version(project_id: str, username: str, data: Dict[str, Any]) -> Tupl
 
     v = {
         "id": vid,
-        "channel": _normalize_channel_storage_value(project_id, data.get("channel") or "dev") or "dev",
+        "channel": _normalize_channel_storage_value(project_id, data.get("channel_id")) or "default",
         "stage": stage,
         "platform": platform,
         "version_status": _normalize_version_status(data.get("version_status") or "active"),

@@ -15,8 +15,8 @@ from models.data import (
     normalize_public_url,
     project_tasks_db,
     projects_db,
-    users_db,
 )
+from repositories.admin import users_repo
 
 
 PROJECT_PHASES = [
@@ -98,7 +98,7 @@ def validate_task_file(project_id: str, filename: str, username: str) -> Tuple[D
 
 def project_user_options() -> Dict[str, Any]:
     users = []
-    for uid, user in users_db.items():
+    for uid, user in users_repo.list_users().items():
         if user.get("role") in ("super_admin", "admin"):
             continue
         if user.get("disabled"):
@@ -111,9 +111,10 @@ def validate_username(username: str) -> Dict[str, Any]:
     user = (username or "").strip()
     if not user:
         return {"exists": False}
-    if user not in users_db:
+    known = users_repo.list_users()
+    if user not in known:
         return {"exists": False}
-    if users_db[user].get("disabled"):
+    if known[user].get("disabled"):
         return {"exists": False, "disabled": True}
     return {"exists": True, "username": user}
 
