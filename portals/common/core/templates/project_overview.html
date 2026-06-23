@@ -1,25 +1,69 @@
 <section class="delivery-app" data-delivery-page="overview" data-project-id="{{ project_id }}">
-  <div class="delivery-titlebar">
-    <div><span class="delivery-kicker">PROJECT DELIVERY</span><h1>项目总览 <button class="icon-star" aria-label="收藏"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button></h1></div>
-    <div class="delivery-title-actions"><span>数据更新时间：<b id="overviewUpdatedAt">--</b></span><button class="ui-icon-btn" data-refresh-overview><img src="/static/project_ui/svg/action_refresh.svg" alt="刷新"></button></div>
-  </div>
-  <div class="overview-filterbar">
-    <span>项目</span><strong>{{ project.get('name') or project_id }}</strong>
-    <span>环境</span><strong>全部环境</strong>
-    <span>渠道</span><strong>全部渠道</strong>
-    <span>平台</span><strong>多平台</strong>
-  </div>
+  <header class="overview-page-header">
+    <div class="overview-page-title">
+      <h1>项目总览 <button class="icon-star" aria-label="收藏"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button></h1>
+      <nav class="overview-tabs" aria-label="项目总览页签">
+        <button type="button" class="overview-tab active" data-overview-tab="overview">运行概览</button>
+        <button type="button" class="overview-tab" data-overview-tab="channels">渠道管理</button>
+      </nav>
+    </div>
+    <div class="overview-page-meta">
+      <span>更新：<b id="overviewUpdatedAt">--</b></span>
+      <button class="ui-icon-btn" data-refresh-overview type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="刷新"></button>
+    </div>
+  </header>
   <div class="overview-layout">
     <main>
-      <div class="overview-kpis" id="overviewKpis"></div>
-      <section class="ui-panel">
-        <div class="ui-panel-head"><h2>环境运行概览</h2><span>版本、Bundle、拓扑与运行态统一对账</span></div>
-        <div class="environment-grid" id="environmentCards"><div class="ui-skeleton">正在汇总项目交付状态...</div></div>
-      </section>
-      <section class="ui-panel recent-panel">
-        <div class="ui-panel-head"><h2>最近动态</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/release-orders">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
-        <div id="overviewActivity"><div class="ui-empty">暂无最近动态</div></div>
-      </section>
+      <div class="overview-tab-panel" data-overview-panel="overview">
+        <div class="overview-channel-chips" id="overviewChannelChips">
+          <span class="overview-chips-label">项目渠道</span>
+          <div id="overviewChannelChipsList" class="channel-chips-row"></div>
+          <button type="button" class="ui-secondary overview-tab-jump" data-overview-tab-jump="channels">管理渠道</button>
+        </div>
+        <div class="overview-kpis" id="overviewKpis"></div>
+        <section class="ui-panel">
+          <div class="ui-panel-head"><h2>环境运行概览</h2><span>版本、Bundle、拓扑与运行态统一对账</span></div>
+          <div class="overview-env-toolbar">
+            <div class="overview-env-filters" id="overviewEnvFilters">
+              <label>环境<select id="filterEnvKey"><option value="">全部环境</option></select></label>
+              <label>渠道<select id="filterChannelId"><option value="">全部渠道</option></select></label>
+              <label>平台<select id="filterPlatform"><option value="">全部平台</option></select></label>
+              <label>状态<select id="filterHealth"><option value="">全部状态</option></select></label>
+              <button type="button" class="ui-secondary" id="btnResetOverviewFilters">重置</button>
+            </div>
+            <button type="button" class="ui-secondary" id="btnManageEnvironments">管理环境</button>
+          </div>
+          <div class="environment-grid" id="environmentCards"><div class="ui-skeleton">正在汇总项目交付状态...</div></div>
+        </section>
+        <section class="ui-panel recent-panel">
+          <div class="ui-panel-head"><h2>最近动态</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/release-orders">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+          <div id="overviewActivity"><div class="ui-empty">暂无最近动态</div></div>
+        </section>
+      </div>
+      <div class="overview-tab-panel is-hidden" data-overview-panel="channels" hidden>
+        <section class="ui-panel channel-panel" id="project-channels">
+          <div class="ui-panel-head"><h2>项目渠道白名单</h2><a class="icon-link" href="/admin/projects" target="_blank" rel="noopener">全局渠道库<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+          <div id="projectChannelList" class="channel-list"></div>
+          <div class="channel-add-row">
+            <select id="projectChannelAddSelect"><option value="">选择要添加的渠道</option>{% for ch in channel_catalog %}{% if ch.channel_id not in assigned_channel_ids %}<option value="{{ ch.channel_id }}">{{ ch.channel_name }} ({{ ch.channel_id }})</option>{% endif %}{% endfor %}</select>
+            <button class="ui-primary" id="btnProjectChannelAdd" type="button">添加</button>
+          </div>
+          <p class="channel-hint">禁用后渠道仍保留在白名单，但不会出现在交付线矩阵、版本筛选与新建发布单；移除会从白名单删除。变更后请点击下方「初始化交付线 Scope」同步矩阵。</p>
+          <div class="manifest-panel manifest-panel-inline">
+            <p id="overviewManifestStatus">检查 Manifest...</p>
+            <button class="ui-primary" id="btnOverviewBootstrapScopes" type="button">初始化交付线 Scope</button>
+          </div>
+        </section>
+        <section class="ui-panel env-config-panel" id="project-env-config">
+          <div class="ui-panel-head"><h2>项目环境配置</h2><span>内置环境可禁用，自定义环境可删除</span></div>
+          <div id="projectEnvList" class="env-config-list"></div>
+          <div class="env-add-row">
+            <input id="projectEnvKeyInput" type="text" placeholder="环境 key（如 canary）" maxlength="32">
+            <input id="projectEnvLabelInput" type="text" placeholder="显示名称（如 灰度环境）">
+            <button class="ui-primary" id="btnProjectEnvAdd" type="button">添加环境</button>
+          </div>
+        </section>
+      </div>
     </main>
     <aside class="overview-rail">
       <section class="ui-panel"><div class="ui-panel-head"><h2>项目成员</h2></div><div class="member-list"><span><b><img src="/static/project_ui/svg/global_user.svg" alt=""></b> admin <em>项目负责人</em></span><span><b><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></b> 运维团队 <em>运维工程师</em></span><span><b><img src="/static/project_ui/svg/status_success.svg" alt=""></b> 测试团队 <em>测试工程师</em></span></div></section>

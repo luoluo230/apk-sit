@@ -11,9 +11,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from models.data import get_channel_by_id, get_channels_for_project, project_versions_db, projects_db
 from models.db import _db_lock, _get_conn, get_cursor, init_db
-from services.release.bundle_service import run_scope_precheck
-from services.release.env_registry import CANONICAL_ENV_KEYS, normalize_release_env_key
+from services.release.bundle_service import find_active_bundle, run_scope_precheck
+from services.release.env_registry import list_project_env_keys, normalize_release_env_key, project_env_label
+from services.release.scope_ids import build_scope_id, project_slug
 from services.release.scope_resolver import resolve_network_profile, resolve_scope, resolve_topology_binding_for_scope
+from services.release.topology_binding_service import resolve_topology_binding, upsert_topology_binding
+from services.release.storage import find_manifest
 
 TERMINAL_STATUSES = {"verified", "rolled_back", "cancelled"}
 PUBLISHABLE_STATUSES = {"ready", "approved"}
@@ -222,7 +225,7 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
     artifacts = _artifact_rows(version)
     has_artifacts = all(url or path for _, url, path in artifacts[:3])
     status = "artifacts_ready" if has_artifacts else "draft"
-    scope = resolve_scope(project_id, env_key, channel_id, auto_create=True)
+    scope = resolve_scope(project_id, env_key, channel_id, platform=platform, auto_create=True)
     binding = resolve_topology_binding_for_scope(scope, str(version.get("version_name") or ""))
     record_payload = {
         "reason": str(payload.get("reason") or ""),
@@ -376,10 +379,24 @@ def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
     if not order:
         raise ValueError("发布单不存在")
     version = _find_version(project_id, order["version_id"], order["version_code"])
-    scope = resolve_scope(project_id, order["env_key"], order["channel_id"], auto_create=False)
+    scope = resolve_scope(project_id, order["env_key"], order["channel_id"], platform=order["platform"], auto_create=False)
     if not scope:
         raise ValueError("发布作用域不存在")
-    result = run_scope_precheck(scope, version, validate_artifacts=True)
+    plan = dict(order.get("payload") or {})
+    target_topology_id = str(plan.get("target_topology_id") or "").strip()
+    if target_topology_id:
+        binding = {
+            "topology_id": target_topology_id,
+            "binding_source": "release_order_override",
+            "binding_source_label": "发布单指定拓扑",
+            "binding": {},
+        }
+        result = run_scope_precheck(scope, version, validate_artifacts=True)
+        result["topology_id"] = target_topology_id
+        result["binding_source"] = binding["binding_source"]
+    else:
+        binding = resolve_topology_binding_for_scope(scope, str(version.get("version_name") or ""))
+        result = run_scope_precheck(scope, version, validate_artifacts=True)
     runtime_run_id = ""
     try:
         from services.ops.helpers import _runtime_active_for_scope
@@ -448,9 +465,32 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
     if order["env_key"] == "production" and order.get("status") != "approved":
         raise ValueError("生产环境发布必须审批")
     version = _find_version(project_id, order["version_id"], order["version_code"])
-    scope = resolve_scope(project_id, order["env_key"], order["channel_id"], auto_create=False)
-    binding = resolve_topology_binding_for_scope(scope, order["version_name"])
-    topology_id = str(binding.get("topology_id") or "")
+    scope = resolve_scope(project_id, order["env_key"], order["channel_id"], platform=order["platform"], auto_create=False)
+    if not scope:
+        raise ValueError("发布作用域不存在")
+    plan = dict(order.get("payload") or {})
+    target_topology_id = str(plan.get("target_topology_id") or "").strip()
+    if target_topology_id:
+        topology_id = target_topology_id
+        binding = {
+            "topology_id": topology_id,
+            "binding_source": "release_order_override",
+            "binding_source_label": "发布单指定拓扑",
+            "binding": {},
+        }
+        upsert_topology_binding(
+            {
+                "project_id": project_id,
+                "env_key": order["env_key"],
+                "channel_id": order["channel_id"],
+                "version_name": order["version_name"],
+                "topology_id": topology_id,
+            },
+            actor=actor,
+        )
+    else:
+        binding = resolve_topology_binding_for_scope(scope, order["version_name"])
+        topology_id = str(binding.get("topology_id") or "")
     if not topology_id:
         raise ValueError("未命中拓扑绑定")
     profile, profile_source = resolve_network_profile(scope, order["version_name"])
@@ -511,8 +551,8 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
     init_db()
     with get_cursor() as cur:
         active = cur.execute(
-            "SELECT bundle_id, payload FROM release_bundles WHERE scope_id=? AND publish_status='published' ORDER BY published_at DESC LIMIT 1",
-            (order["scope_id"],),
+            "SELECT bundle_id, payload FROM release_bundles WHERE scope_id=? AND publish_status='published' AND platform=? ORDER BY published_at DESC LIMIT 1",
+            (order["scope_id"], order["platform"]),
         ).fetchone()
         if active:
             previous = _decode(active["payload"], {}) or {}
@@ -675,8 +715,8 @@ def context_options(project_id: str) -> Dict[str, Any]:
     return {
         "project_id": project_id,
         "environments": [
-            {"env_key": key, "label": {"development": "开发环境", "testing": "测试环境", "staging": "预发环境", "production": "生产环境"}[key]}
-            for key in CANONICAL_ENV_KEYS
+            {"env_key": key, "label": project_env_label(project_id, key)}
+        for key in list_project_env_keys(project_id)
         ],
         "channels": channels,
         "platforms": [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}],
@@ -684,38 +724,175 @@ def context_options(project_id: str) -> Dict[str, Any]:
     }
 
 
-def project_overview(project_id: str) -> Dict[str, Any]:
+def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any]]:
+    channels = [
+        {"channel_id": str(row.get("id") or ""), "channel_name": str(row.get("name") or row.get("id") or "")}
+        for row in get_channels_for_project(project_id)
+    ]
+    platforms = [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}]
+    lines: List[Dict[str, Any]] = []
+    for channel in channels:
+        cid = str(channel.get("channel_id") or "").strip()
+        if not cid:
+            continue
+        for plat in platforms:
+            plat_value = str(plat["value"])
+            scope = resolve_scope(project_id, env_key, cid, platform=plat_value, auto_create=False)
+            scope_id = str(scope.get("scope_id") or build_scope_id(project_slug(project_id), env_key, cid, plat_value))
+            bundle = find_active_bundle(scope_id) if scope else {}
+            client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
+            server = bundle.get("server") if isinstance(bundle.get("server"), dict) else {}
+            version_name = str(client.get("version_name") or bundle.get("version_name") or "")
+            binding = resolve_topology_binding(
+                project_id,
+                env_key,
+                cid,
+                version_name=version_name,
+                fallback_topology_id=str(scope.get("default_topology_id") or "") if scope else "",
+            )
+            configured = bool(scope and (bundle or version_name))
+            lines.append(
+                {
+                    "channel_id": cid,
+                    "channel_name": channel.get("channel_name") or cid,
+                    "platform": plat_value,
+                    "platform_label": plat["label"],
+                    "scope_id": scope_id,
+                    "configured": configured,
+                    "version_name": version_name,
+                    "version_code": str(client.get("version_code") or bundle.get("version_code") or ""),
+                    "topology_id": str(binding.get("topology_id") or server.get("topology_id") or ""),
+                    "binding_source": str(binding.get("binding_source") or ""),
+                    "bundle_id": str(bundle.get("bundle_id") or ""),
+                    "runtime_run_id": str(server.get("runtime_run_id") or ""),
+                }
+            )
+    return lines
+
+
+def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     init_db()
-    cards = []
-    for env_key in CANONICAL_ENV_KEYS:
+    filters = filters or {}
+    cards: List[Dict[str, Any]] = []
+    for env_key in list_project_env_keys(project_id):
         orders = list_release_orders(project_id, {"env_key": env_key})
-        with _db_lock:
-            bundles = _get_conn().execute(
-                "SELECT * FROM release_bundles WHERE project_id=? AND env_key=? AND publish_status='published' ORDER BY published_at DESC",
-                (project_id, env_key),
-            ).fetchall()
-        active = dict(bundles[0]) if bundles else {}
+        delivery_lines = _delivery_lines_for_env(project_id, env_key)
+        configured_lines = [line for line in delivery_lines if line.get("configured")]
+        unconfigured_count = sum(1 for line in delivery_lines if not line.get("configured"))
         pending = sum(1 for row in orders if row["status"] == "awaiting_approval")
         failed = sum(1 for row in orders if row["status"] in {"precheck_failed", "publish_failed", "verify_failed"})
         processing = sum(1 for row in orders if row["status"] in {"building", "prechecking", "publishing", "verifying"})
-        health = "blocked" if failed else ("warning" if pending else ("processing" if processing else ("healthy" if active else "unconfigured")))
+        blocker = next((line for line in delivery_lines if not line.get("configured")), None)
+        health = "blocked" if failed else (
+            "warning" if pending else (
+                "processing" if processing else (
+                    "healthy" if configured_lines else "unconfigured"
+                )
+            )
+        )
+        channel_ids = sorted({str(line.get("channel_id") or "").strip() for line in delivery_lines if str(line.get("channel_id") or "").strip()})
+        platforms = sorted({str(line.get("platform") or "").strip().lower() for line in delivery_lines if str(line.get("platform") or "").strip()})
         cards.append(
             {
                 "env_key": env_key,
-                "env_label": {"development": "开发环境", "testing": "测试环境", "staging": "预发环境", "production": "生产环境"}[env_key],
+                "env_label": project_env_label(project_id, env_key),
                 "health": health,
-                "active_bundle_id": str(active.get("bundle_id") or ""),
-                "version_name": str(active.get("version_name") or ""),
-                "version_code": str(active.get("version_code") or ""),
-                "topology_id": str(active.get("topology_id") or ""),
-                "runtime_run_id": str(active.get("runtime_run_id") or ""),
+                "delivery_line_count": len(delivery_lines),
+                "configured_line_count": len(configured_lines),
+                "unconfigured_line_count": unconfigured_count,
+                "channel_ids": channel_ids,
+                "platforms": platforms,
+                "blocker_hint": (
+                    f"{blocker.get('channel_name')} / {blocker.get('platform_label')} 未配置"
+                    if blocker else ""
+                ),
                 "release_order_count": len(orders),
                 "pending_approval_count": pending,
                 "failed_count": failed,
                 "processing_count": processing,
-                "channels": sorted({row["channel_name"] for row in orders}),
-                "platforms": sorted({row["platform"] for row in orders}),
                 "latest_orders": orders[:4],
             }
         )
-    return {"project_id": project_id, "project": projects_db.get(project_id) or {}, "environments": cards}
+    filter_env = str(filters.get("env_key") or "").strip().lower()
+    filter_channel = str(filters.get("channel_id") or "").strip()
+    filter_platform = str(filters.get("platform") or "").strip().lower()
+    filter_health = str(filters.get("health") or "").strip().lower()
+    if filter_env:
+        cards = [row for row in cards if row["env_key"] == filter_env]
+    if filter_channel:
+        cards = [row for row in cards if filter_channel in row.get("channel_ids") or []]
+    if filter_platform:
+        cards = [row for row in cards if filter_platform in row.get("platforms") or []]
+    if filter_health:
+        cards = [row for row in cards if row.get("health") == filter_health]
+    enabled_channels = [
+        {"channel_id": str(row.get("id") or ""), "channel_name": str(row.get("name") or row.get("id") or "")}
+        for row in get_channels_for_project(project_id)
+    ]
+    return {
+        "project_id": project_id,
+        "project": projects_db.get(project_id) or {},
+        "environments": cards,
+        "environment_options": [
+            {"env_key": key, "env_label": project_env_label(project_id, key)}
+            for key in list_project_env_keys(project_id)
+        ],
+        "channel_options": enabled_channels,
+        "platform_options": [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}],
+        "health_options": [
+            {"value": "healthy", "label": "运行中"},
+            {"value": "blocked", "label": "存在阻断"},
+            {"value": "warning", "label": "待处理"},
+            {"value": "processing", "label": "处理中"},
+            {"value": "unconfigured", "label": "未配置"},
+        ],
+    }
+
+
+def environment_detail(project_id: str, env_key: str) -> Dict[str, Any]:
+    ek = normalize_release_env_key(env_key, project_id=project_id)
+    delivery_lines = _delivery_lines_for_env(project_id, ek)
+    orders = list_release_orders(project_id, {"env_key": ek})
+    versions = []
+    seen = set()
+    for source in project_versions_db.get(project_id) or []:
+        if not isinstance(source, dict):
+            continue
+        row = dict(source)
+        row_env = normalize_release_env_key(row.get("env_key") or row.get("stage") or row.get("env"))
+        if row_env != ek:
+            continue
+        row["env_key"] = row_env
+        row["channel_id"] = str(row.get("channel_id") or row.get("channel") or "").strip()
+        row["platform"] = str(row.get("platform") or "android").strip().lower()
+        identity = (row["channel_id"], row["platform"], str(row.get("version_name") or ""), str(row.get("version_code") or ""))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        channel_row = get_channel_by_id(row["channel_id"]) or {}
+        row["channel_name"] = str(channel_row.get("name") or row["channel_id"])
+        versions.append(row)
+    pending = sum(1 for row in orders if row["status"] == "awaiting_approval")
+    failed = sum(1 for row in orders if row["status"] in {"precheck_failed", "publish_failed", "verify_failed"})
+    processing = sum(1 for row in orders if row["status"] in {"building", "prechecking", "publishing", "verifying"})
+    unconfigured = sum(1 for line in delivery_lines if not line.get("configured"))
+    manifest = find_manifest(project_id)
+    return {
+        "project_id": project_id,
+        "project": projects_db.get(project_id) or {},
+        "env_key": ek,
+        "env_label": project_env_label(project_id, ek),
+        "delivery_lines": delivery_lines,
+        "versions": versions,
+        "release_orders": orders[:20],
+        "summary": {
+            "delivery_line_count": len(delivery_lines),
+            "configured_line_count": sum(1 for line in delivery_lines if line.get("configured")),
+            "unconfigured_line_count": unconfigured,
+            "pending_approval_count": pending,
+            "failed_count": failed,
+            "processing_count": processing,
+            "release_order_count": len(orders),
+        },
+        "manifest": manifest,
+    }

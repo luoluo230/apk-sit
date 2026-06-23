@@ -16,6 +16,7 @@
     </div>
     <div class="ops-shell-nav-group"><b>项目工作区</b>
       {{ nav_item('project-home', '/admin/projects/' ~ project_id ~ '/overview', 'nav_project_overview', '项目总览') }}
+      {{ nav_item('project-channels', '/admin/projects/' ~ project_id ~ '/overview?tab=channels', 'nav_binding', '项目渠道') }}
     </div>
     <div class="ops-shell-nav-group"><b>交付管理</b>
       {{ nav_item('versions', '/admin/projects/' ~ project_id ~ '/versions', 'nav_version_code', '版本与 VersionCode') }}

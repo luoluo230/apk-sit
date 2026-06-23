@@ -6,7 +6,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List
 
-from services.release.env_registry import CANONICAL_ENV_KEYS
+from data.channels import get_channels_for_project
+from services.release.env_registry import list_project_env_keys
 from services.release.scope_ids import build_scope_id, list_channel_defs, project_slug
 from services.release.storage import find_manifest, load_manifests, save_manifests, upsert_scope
 
@@ -61,22 +62,31 @@ def bootstrap_scopes_for_project(project_id: str) -> List[Dict[str, Any]]:
     slug = str(manifest.get("project_slug") or project_slug(project_id)).strip()
     pattern = str(manifest.get("topology_pattern") or "topology-{project_slug}-{env_key}-default").strip()
     channels = _channel_defs(manifest, project_id)
+    enabled_ids = {str(c.get("id") or "").strip() for c in get_channels_for_project(project_id)}
+    if enabled_ids:
+        channels = [ch for ch in channels if str(ch.get("channel_id") or "").strip() in enabled_ids]
     created: List[Dict[str, Any]] = []
     now = datetime.now().isoformat()
-    for env_key in CANONICAL_ENV_KEYS:
+    for env_key in list_project_env_keys(project_id):
         for ch in channels:
-            scope_id = build_scope_id(slug, env_key, ch["channel_id"])
-            topology_id = pattern.format(project_slug=slug, env_key=env_key, project_id=project_id)
-            row = {
-                "scope_id": scope_id,
-                "project_id": project_id,
-                "env_key": env_key,
-                "channel_id": ch["channel_id"],
-                "channel_key": ch.get("channel_key") or ch["channel_id"],
-                "default_topology_id": topology_id,
-                "override": {"topology_id": ""},
-                "status": "active",
-                "updated_at": now,
-            }
-            created.append(upsert_scope(row))
+            channel_platforms = ch.get("platforms") if isinstance(ch.get("platforms"), list) else []
+            platforms = [str(p).strip().lower() for p in channel_platforms if str(p).strip().lower() in {"android", "ios"}]
+            if not platforms:
+                platforms = ["android", "ios"]
+            for plat in platforms:
+                scope_id = build_scope_id(slug, env_key, ch["channel_id"], plat)
+                topology_id = pattern.format(project_slug=slug, env_key=env_key, project_id=project_id)
+                row = {
+                    "scope_id": scope_id,
+                    "project_id": project_id,
+                    "env_key": env_key,
+                    "channel_id": ch["channel_id"],
+                    "channel_key": ch.get("channel_key") or ch["channel_id"],
+                    "platform": plat,
+                    "default_topology_id": topology_id,
+                    "override": {"topology_id": ""},
+                    "status": "active",
+                    "updated_at": now,
+                }
+                created.append(upsert_scope(row))
     return created

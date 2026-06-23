@@ -43,6 +43,20 @@ def projects_channels_remove_response(project_id: str):
     return jsonify(payload), status
 
 
+def projects_channels_disable_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    cid = (data.get("channel_id") or data.get("channel") or "").strip()
+    payload, status = project_service.disable_channel(project_id, cid)
+    return jsonify(payload), status
+
+
+def projects_channels_enable_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    cid = (data.get("channel_id") or data.get("channel") or "").strip()
+    payload, status = project_service.enable_channel(project_id, cid)
+    return jsonify(payload), status
+
+
 def projects_archive_response(project_id: str):
     data = request.get_json(silent=True) or {}
     payload, status = project_service.set_archive(project_id, bool(data.get("archive", True)))
@@ -98,6 +112,18 @@ def register_routes(bp, current_username_getter, tenant_id_getter):
         return projects_channels_remove_response(project_id)
 
     @admin_required("projects")
+    def _projects_channels_disable(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_channels_disable_response(project_id)
+
+    @admin_required("projects")
+    def _projects_channels_enable(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_channels_enable_response(project_id)
+
+    @admin_required("projects")
     def _projects_archive(project_id: str):
         if project_id not in projects_db:
             return jsonify({"ok": False, "error": "项目不存在", "error_text": "项目不存在", "error_legacy": "项目不存在"}), 404
@@ -133,6 +159,18 @@ def register_routes(bp, current_username_getter, tenant_id_getter):
         "/admin/projects/<project_id>/channels/remove",
         endpoint="admin_projects_channels_remove",
         view_func=_projects_channels_remove,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/channels/disable",
+        endpoint="admin_projects_channels_disable",
+        view_func=_projects_channels_disable,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/channels/enable",
+        endpoint="admin_projects_channels_enable",
+        view_func=_projects_channels_enable,
         methods=["POST"],
     )
     bp.add_url_rule(

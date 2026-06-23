@@ -7,6 +7,13 @@
   const artifactStatusLabels = {registered:"已登记",available:"可用",reachable:"可达",missing:"缺失",unreachable:"不可达",invalid:"无效"};
   const artifactTypeLabels = {apk:"APK 安装包",resource:"资源包",config:"配置包",code:"代码热更包"};
   const bindingSourceLabels = {project_default:"项目默认",env_channel:"环境与渠道",version:"大版本覆盖",version_override:"大版本覆盖",default:"项目默认"};
+  const parseApiError = (result, fallback) => {
+    if (!result || typeof result !== "object") return fallback;
+    const err = result.error;
+    if (typeof err === "string" && err) return err;
+    if (err && typeof err === "object") return err.message || err.text || fallback;
+    return result.error_text || result.error_legacy || fallback;
+  };
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const api = async (path, options) => {
     const response = await fetch(path, options);
@@ -21,6 +28,411 @@
   };
   const status = (value) => `<span class="status-pill ${esc(value)}">${esc(statusLabels[value] || value || "未配置")}</span>`;
   const row = (label, value, extra="") => `<div class="detail-row"><strong>${esc(label)}</strong><span>${esc(value || "-")}</span><b>${extra}</b></div>`;
+  const csrfHeaders = () => {
+    const token = document.querySelector('meta[name="csrf-token"]');
+    return token && token.content ? { "X-CSRFToken": token.content } : {};
+  };
+  const matrixActions = (line, envKey) => {
+    const query = `env_key=${encodeURIComponent(envKey)}&channel_id=${encodeURIComponent(line.channel_id)}&platform=${encodeURIComponent(line.platform)}`;
+    const primary = line.configured
+      ? `<a class="matrix-btn primary" href="/admin/projects/${projectId}/release-orders/new?${query}">发布</a>`
+      : `<a class="matrix-btn primary" href="/admin/projects/${projectId}/versions?${query}">添加 VC</a>`;
+    return `<div class="matrix-actions">${primary}<a class="matrix-btn" href="/admin/projects/${projectId}/versions?${query}">版本</a><a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?${query}">拓扑</a></div>`;
+  };
+  const renderChannelList = (host, assigned, { manageable = false } = {}) => {
+    if (!host) return;
+    host.innerHTML = assigned.length
+      ? assigned.map((item) => {
+          const enabled = Boolean(item.enabled);
+          const status = enabled ? "" : " is-disabled";
+          const meta = enabled ? "" : " · 已禁用";
+          const toggle = manageable
+            ? (enabled
+              ? `<button class="channel-disable" type="button" data-disable-channel="${esc(item.id)}">禁用</button>`
+              : `<button class="channel-enable" type="button" data-enable-channel="${esc(item.id)}">启用</button>`)
+            : "";
+          const remove = manageable
+            ? `<button class="channel-remove" type="button" data-remove-channel="${esc(item.id)}">移除</button>`
+            : "";
+          return `<div class="channel-item${status}"><div><strong>${esc(item.name)}</strong><small>ID: ${esc(item.id)}${meta}</small></div><div class="channel-actions">${toggle}${remove}</div></div>`;
+        }).join("")
+      : '<div class="ui-empty">尚未配置项目渠道</div>';
+    if (!manageable) return;
+    host.querySelectorAll("[data-disable-channel]").forEach((button) => {
+      button.onclick = async () => {
+        if (!confirm(`确认禁用渠道「${button.dataset.disableChannel}」？禁用后不会出现在交付线与发布流程。`)) return;
+        try {
+          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/channels/disable`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            credentials: "same-origin",
+            body: JSON.stringify({ channel_id: button.dataset.disableChannel }),
+          });
+          const result = await response.json();
+            if (!response.ok || result.error || result.ok === false) throw new Error(parseApiError(result, "禁用失败"));
+          toast("渠道已禁用");
+          await loadProjectChannels();
+          if (page.dataset.deliveryPage === "overview") await loadOverview();
+          if (page.dataset.deliveryPage === "environment") await loadEnvironmentDetail();
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      };
+    });
+    host.querySelectorAll("[data-enable-channel]").forEach((button) => {
+      button.onclick = async () => {
+        try {
+          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/channels/enable`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            credentials: "same-origin",
+            body: JSON.stringify({ channel_id: button.dataset.enableChannel }),
+          });
+          const result = await response.json();
+          if (!response.ok || result.error || result.ok === false) throw new Error(parseApiError(result, "启用失败"));
+          toast("渠道已启用");
+          await loadProjectChannels();
+          if (page.dataset.deliveryPage === "overview") await loadOverview();
+          if (page.dataset.deliveryPage === "environment") await loadEnvironmentDetail();
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      };
+    });
+    host.querySelectorAll("[data-remove-channel]").forEach((button) => {
+      button.onclick = async () => {
+        if (!confirm(`确认从项目中移除渠道「${button.dataset.removeChannel}」？`)) return;
+        try {
+          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/channels/remove`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            credentials: "same-origin",
+            body: JSON.stringify({ channel_id: button.dataset.removeChannel }),
+          });
+          const result = await response.json();
+          if (!response.ok || result.error || result.ok === false) throw new Error(parseApiError(result, "移除失败"));
+          toast("渠道已移除");
+          await loadProjectChannels();
+          if (page.dataset.deliveryPage === "overview") await loadOverview();
+          if (page.dataset.deliveryPage === "environment") await loadEnvironmentDetail();
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      };
+    });
+  };
+  const loadProjectChannels = async () => {
+    const listHost = document.getElementById("projectChannelList") || document.getElementById("envChannelList");
+    const select = document.getElementById("projectChannelAddSelect");
+    if (!listHost) return [];
+    try {
+      const [projectRes, catalogRes] = await Promise.all([
+        fetch(`/admin/projects/get/${encodeURIComponent(projectId)}`, { credentials: "same-origin" }).then((r) => r.json()),
+        fetch("/admin/channels", { credentials: "same-origin" }).then((r) => r.json()),
+      ]);
+      const project = projectRes.project || projectRes.data?.project || {};
+      const catalog = catalogRes.channels || catalogRes.data?.channels || [];
+      const assignedIds = Array.isArray(project.channels) && project.channels.length ? project.channels : catalog.map((item) => item.id);
+      const disabledIds = new Set(
+        Array.isArray(project.disabled_channels) ? project.disabled_channels.map((id) => String(id)) : []
+      );
+      const assigned = assignedIds.map((id) => {
+        const row = catalog.find((item) => String(item.id) === String(id)) || { id, name: id };
+        const cid = String(row.id || id);
+        return {
+          id: cid,
+          name: String(row.name || row.id || id),
+          enabled: !disabledIds.has(cid),
+        };
+      });
+      renderChannelList(listHost, assigned, { manageable: listHost.id === "projectChannelList" });
+      renderChannelChips(assigned);
+      if (listHost.classList.contains("channel-list-inline") && assigned.length) {
+        listHost.classList.add("has-channels");
+      }
+      if (select) {
+        const available = catalog.filter((item) => !assignedIds.includes(String(item.id)));
+        select.innerHTML = '<option value="">选择要添加的渠道</option>' + available.map((item) => `<option value="${esc(item.id)}">${esc(item.name)} (${esc(item.id)})</option>`).join("");
+      }
+      const filterChannel = document.getElementById("overviewChannelCount");
+      if (filterChannel) {
+        const enabledCount = assigned.filter((item) => item.enabled).length;
+        const disabledCount = assigned.length - enabledCount;
+        filterChannel.textContent = disabledCount
+          ? `${enabledCount} 个启用 / ${assigned.length} 总计`
+          : (assigned.length ? `${assigned.length} 个启用` : "未配置渠道");
+      }
+      return assigned;
+    } catch (error) {
+      if (listHost.id === "projectChannelList") {
+        listHost.innerHTML = `<div class="ui-empty">${esc(error.message || "渠道加载失败")}</div>`;
+      }
+      return [];
+    }
+  };
+  const renderChannelChips = (assigned) => {
+    const host = document.getElementById("overviewChannelChipsList");
+    if (!host) return;
+    host.innerHTML = assigned.length
+      ? assigned.map((item) => `<span class="channel-chip${item.enabled ? "" : " is-disabled"}">${esc(item.name)}${item.enabled ? "" : "（已禁用）"}</span>`).join("")
+      : '<span class="channel-chip muted">未配置渠道</span>';
+  };
+  const overviewFilterParams = () => {
+    const params = new URLSearchParams(location.search);
+    return {
+      env_key: params.get("env_key") || "",
+      channel_id: params.get("channel_id") || "",
+      platform: params.get("platform") || "",
+      health: params.get("health") || "",
+    };
+  };
+  const overviewQueryString = (filters) => {
+    const params = new URLSearchParams();
+    if (location.search.includes("tab=channels")) params.set("tab", "channels");
+    Object.entries(filters || overviewFilterParams()).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const text = params.toString();
+    return text ? `?${text}` : "";
+  };
+  const bindManifestBootstrap = () => {
+    const manifestBtn = document.getElementById("btnOverviewBootstrapScopes");
+    const manifestStatus = document.getElementById("overviewManifestStatus");
+    if (!manifestBtn || !manifestStatus || manifestBtn.dataset.bound === "1") return;
+    manifestBtn.dataset.bound = "1";
+    fetch(`/api/release/manifests/${encodeURIComponent(projectId)}`, { credentials: "same-origin" })
+      .then((r) => r.json())
+      .then((d) => {
+        manifestStatus.textContent = d.ok && d.manifest?.project_id ? `Manifest 已注册（${d.manifest.channels?.length || 0} 个渠道）` : "尚未注册 Manifest，初始化前请先配置项目渠道";
+      })
+      .catch(() => {
+        manifestStatus.textContent = "无法读取 Manifest 状态";
+      });
+    manifestBtn.onclick = async () => {
+      try {
+        const result = await fetch(`/api/release/manifests/${encodeURIComponent(projectId)}/bootstrap-scopes`, {
+          method: "POST",
+          headers: { "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || "" },
+          credentials: "same-origin",
+        }).then((r) => r.json());
+        if (!result.ok) throw new Error(result.error || "初始化失败");
+        toast(`已初始化 ${result.count || 0} 条交付线 Scope`);
+        await loadOverview();
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    };
+  };
+  const initOverviewTabs = () => {
+    const params = new URLSearchParams(location.search);
+    const setTab = (name) => {
+      document.querySelectorAll("[data-overview-tab]").forEach((btn) => btn.classList.toggle("active", btn.dataset.overviewTab === name));
+      document.querySelectorAll("[data-overview-panel]").forEach((panel) => {
+        const show = panel.dataset.overviewPanel === name;
+        panel.classList.toggle("is-hidden", !show);
+        panel.hidden = !show;
+      });
+      const url = new URL(location.href);
+      if (name === "channels") url.searchParams.set("tab", "channels");
+      else url.searchParams.delete("tab");
+      history.replaceState(null, "", `${url.pathname}${url.search}`);
+      if (name === "channels") {
+        loadProjectChannels();
+        bindProjectChannelAdd();
+        bindManifestBootstrap();
+        bindProjectEnvAdd();
+        loadProjectEnvironments();
+      }
+    };
+    document.querySelectorAll("[data-overview-tab]").forEach((btn) => {
+      btn.onclick = () => setTab(btn.dataset.overviewTab);
+    });
+    document.querySelectorAll("[data-overview-tab-jump]").forEach((btn) => {
+      btn.onclick = () => setTab(btn.dataset.overviewTabJump);
+    });
+    document.getElementById("btnManageEnvironments")?.addEventListener("click", () => setTab("channels"));
+    setTab(params.get("tab") === "channels" ? "channels" : "overview");
+  };
+  const populateOverviewFilters = (data) => {
+    const envSelect = document.getElementById("filterEnvKey");
+    const channelSelect = document.getElementById("filterChannelId");
+    const platformSelect = document.getElementById("filterPlatform");
+    const healthSelect = document.getElementById("filterHealth");
+    const filters = overviewFilterParams();
+    if (envSelect) {
+      const options = data.environment_options || [];
+      envSelect.innerHTML = '<option value="">全部环境</option>' + options.map((row) => `<option value="${esc(row.env_key)}">${esc(row.env_label)}</option>`).join("");
+      envSelect.value = filters.env_key;
+    }
+    if (channelSelect) {
+      const options = data.channel_options || [];
+      channelSelect.innerHTML = '<option value="">全部渠道</option>' + options.map((row) => `<option value="${esc(row.channel_id)}">${esc(row.channel_name)}</option>`).join("");
+      channelSelect.value = filters.channel_id;
+    }
+    if (platformSelect) {
+      const options = data.platform_options || [];
+      platformSelect.innerHTML = '<option value="">全部平台</option>' + options.map((row) => `<option value="${esc(row.value)}">${esc(row.label)}</option>`).join("");
+      platformSelect.value = filters.platform;
+    }
+    if (healthSelect) {
+      const options = data.health_options || [];
+      healthSelect.innerHTML = '<option value="">全部状态</option>' + options.map((row) => `<option value="${esc(row.value)}">${esc(row.label)}</option>`).join("");
+      healthSelect.value = filters.health;
+    }
+  };
+  const bindOverviewFilters = () => {
+    const apply = () => {
+      const filters = {
+        env_key: document.getElementById("filterEnvKey")?.value || "",
+        channel_id: document.getElementById("filterChannelId")?.value || "",
+        platform: document.getElementById("filterPlatform")?.value || "",
+        health: document.getElementById("filterHealth")?.value || "",
+      };
+      const url = new URL(location.href);
+      ["env_key", "channel_id", "platform", "health"].forEach((key) => {
+        if (filters[key]) url.searchParams.set(key, filters[key]);
+        else url.searchParams.delete(key);
+      });
+      history.replaceState(null, "", `${url.pathname}${url.search}`);
+      loadOverview().catch((error) => toast(error.message, "error"));
+    };
+    ["filterEnvKey", "filterChannelId", "filterPlatform", "filterHealth"].forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) node.onchange = apply;
+    });
+    document.getElementById("btnResetOverviewFilters")?.addEventListener("click", () => {
+      const url = new URL(location.href);
+      ["env_key", "channel_id", "platform", "health"].forEach((key) => url.searchParams.delete(key));
+      history.replaceState(null, "", `${url.pathname}${url.search}`);
+      loadOverview().catch((error) => toast(error.message, "error"));
+    });
+  };
+  const loadProjectEnvironments = async () => {
+    const host = document.getElementById("projectEnvList");
+    if (!host) return;
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/environments`, { credentials: "same-origin" });
+      const result = await response.json();
+      const rows = result.data?.environments || result.environments || [];
+      host.innerHTML = rows.length
+        ? rows.map((row) => {
+            const key = esc(row.env_key);
+            const builtin = Boolean(row.builtin);
+            const enabled = Boolean(row.enabled);
+            const toggle = enabled
+              ? `<button type="button" class="env-disable" data-env-toggle="${key}" data-enabled="0">禁用</button>`
+              : `<button type="button" class="env-enable" data-env-toggle="${key}" data-enabled="1">启用</button>`;
+            const remove = builtin ? "" : `<button type="button" class="env-remove" data-env-remove="${key}">删除</button>`;
+            return `<div class="env-config-item${enabled ? "" : " is-disabled"}"><div><strong>${esc(row.label)}</strong><small>${key}${builtin ? " · 内置" : ""}${enabled ? "" : " · 已禁用"}</small></div><div class="env-config-actions">${toggle}${remove}</div></div>`;
+          }).join("")
+        : '<div class="ui-empty">暂无环境配置</div>';
+      host.querySelectorAll("[data-env-toggle]").forEach((button) => {
+        button.onclick = async () => {
+          try {
+            const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(button.dataset.envToggle)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", ...csrfHeaders() },
+              credentials: "same-origin",
+              body: JSON.stringify({ enabled: button.dataset.enabled === "1" }),
+            });
+            const result = await response.json();
+            if (!response.ok || result.ok === false) throw new Error(parseApiError(result, "更新失败"));
+            toast(button.dataset.enabled === "1" ? "环境已启用" : "环境已禁用");
+            await loadProjectEnvironments();
+            await loadOverview();
+          } catch (error) {
+            toast(error.message, "error");
+          }
+        };
+      });
+      host.querySelectorAll("[data-env-remove]").forEach((button) => {
+        button.onclick = async () => {
+          if (!confirm(`确认删除环境「${button.dataset.envRemove}」？`)) return;
+          try {
+            const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(button.dataset.envRemove)}`, {
+              method: "DELETE",
+              headers: csrfHeaders(),
+              credentials: "same-origin",
+            });
+            const result = await response.json();
+            if (!response.ok || result.ok === false) throw new Error(parseApiError(result, "删除失败"));
+            toast("环境已删除");
+            await loadProjectEnvironments();
+            await loadOverview();
+          } catch (error) {
+            toast(error.message, "error");
+          }
+        };
+      });
+    } catch (error) {
+      host.innerHTML = `<div class="ui-empty">${esc(error.message || "环境加载失败")}</div>`;
+    }
+  };
+  const bindProjectEnvAdd = () => {
+    const button = document.getElementById("btnProjectEnvAdd");
+    if (!button || button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.onclick = async () => {
+      const envKey = document.getElementById("projectEnvKeyInput")?.value?.trim() || "";
+      const label = document.getElementById("projectEnvLabelInput")?.value?.trim() || "";
+      if (!envKey || !label) {
+        toast("请填写环境 key 与名称", "error");
+        return;
+      }
+      try {
+        button.disabled = true;
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/environments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          credentials: "same-origin",
+          body: JSON.stringify({ env_key: envKey, label }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.ok === false) throw new Error(parseApiError(result, "添加失败"));
+        toast("环境已添加");
+        document.getElementById("projectEnvKeyInput").value = "";
+        document.getElementById("projectEnvLabelInput").value = "";
+        await loadProjectEnvironments();
+        await loadOverview();
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    };
+  };
+  const bindProjectChannelAdd = () => {
+    const button = document.getElementById("btnProjectChannelAdd");
+    const select = document.getElementById("projectChannelAddSelect");
+    if (!button || !select || button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.onclick = async () => {
+      const channelId = select.value;
+      if (!channelId) {
+        toast("请先选择渠道", "error");
+        return;
+      }
+      try {
+        button.disabled = true;
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/channels/add`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          credentials: "same-origin",
+          body: JSON.stringify({ channel_id: channelId }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.error || result.ok === false) throw new Error(parseApiError(result, "添加失败"));
+        toast("渠道已添加");
+        select.value = "";
+        await loadProjectChannels();
+        if (page.dataset.deliveryPage === "overview") await loadOverview();
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    };
+  };
   const currentContext = () => {
     const source = new URLSearchParams(location.search);
     const query = new URLSearchParams();
@@ -29,26 +441,98 @@
   };
 
   async function loadOverview() {
-    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/overview`);
+    const assigned = await loadProjectChannels();
+    renderChannelChips(assigned);
+    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/overview${overviewQueryString()}`);
+    populateOverviewFilters(data);
     const cards = data.environments || [];
-    const totalOrders = cards.reduce((sum,item)=>sum+item.release_order_count,0);
+    const totalOrders = cards.reduce((sum, item) => sum + item.release_order_count, 0);
+    const totalLines = cards.reduce((sum, item) => sum + (item.delivery_line_count || 0), 0);
+    const configuredLines = cards.reduce((sum, item) => sum + (item.configured_line_count || 0), 0);
     const kpis = [
-      ["kpi_health.svg","当前版本",cards.find(x=>x.version_name)?.version_name || "-"],
-      ["kpi_health.svg","已生效环境",cards.filter(x=>x.active_bundle_id).length],
-      ["kpi_build.svg","今日构建次数",cards.reduce((s,x)=>s+x.processing_count,0)],
-      ["kpi_change.svg","待处理变更",cards.reduce((s,x)=>s+x.failed_count+x.pending_approval_count,0)],
-      ["kpi_member.svg","发布单总数",totalOrders]
+      ["kpi_health.svg", "交付线总数", totalLines],
+      ["kpi_health.svg", "已配置交付线", configuredLines],
+      ["kpi_build.svg", "处理中任务", cards.reduce((s, x) => s + x.processing_count, 0)],
+      ["kpi_change.svg", "待处理变更", cards.reduce((s, x) => s + x.failed_count + x.pending_approval_count, 0)],
+      ["kpi_member.svg", "发布单总数", totalOrders],
     ];
-    document.getElementById("overviewKpis").innerHTML = kpis.map(([icon,label,value])=>`<article class="kpi-card"><img src="/static/project_ui/svg/${icon}" alt=""><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
-    document.getElementById("environmentCards").innerHTML = cards.map(item=>`<article class="environment-card">
-      <div class="environment-head"><h3>${item.env_label}</h3><span class="environment-status ${item.health}">${item.health==="healthy"?"运行中":item.health==="blocked"?"存在阻断":item.health==="warning"?"待处理":item.health==="processing"?"处理中":"未配置"}</span></div>
-      <div class="environment-fields"><div><span>渠道</span><strong>${esc(item.channels.join(" / ") || "未配置")}</strong></div><div><span>平台</span><strong>${esc(item.platforms.join(" / ") || "未配置")}</strong></div><div><span>当前版本</span><strong>${esc(item.version_name || "-")} ${esc(item.version_code || "")}</strong></div><div><span>当前拓扑</span><strong>${esc(item.topology_id || "-")}</strong></div></div>
-      <div class="health-row"><span>发布单</span><b>${item.release_order_count}</b></div><div class="health-row"><span>待审批</span><b>${item.pending_approval_count}</b></div><div class="health-row"><span>阻断</span><b>${item.failed_count}</b></div>
-      <div class="environment-actions"><a class="icon-link" href="/admin/projects/${projectId}/release-orders?env_key=${item.env_key}">查看发布单<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a class="icon-link" href="/admin/projects/${projectId}/topologies?env_key=${item.env_key}">查看拓扑<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
-    </article>`).join("");
-    const events = cards.flatMap(item => item.latest_orders || []).sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).slice(0,7);
-    document.getElementById("overviewActivity").innerHTML = events.length ? events.map(item=>`<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)} 发布单更新</strong><span>${esc(item.updated_at)}</span></a>`).join("") : '<div class="ui-empty">暂无最近动态</div>';
+    document.getElementById("overviewKpis").innerHTML = kpis.map(([icon, label, value]) => `<article class="kpi-card"><img src="/static/project_ui/svg/${icon}" alt=""><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
+    const healthLabels = { healthy: "运行中", blocked: "存在阻断", warning: "待处理", processing: "处理中", unconfigured: "未配置" };
+    document.getElementById("environmentCards").innerHTML = cards.length
+      ? cards.map((item) => `<article class="environment-card">
+      <div class="environment-head"><h3>${esc(item.env_label)}</h3><span class="environment-status ${item.health}">${healthLabels[item.health] || item.health}</span></div>
+      <div class="environment-summary">
+        <div><span>交付线</span><strong>${item.configured_line_count || 0} / ${item.delivery_line_count || 0}</strong></div>
+        <div><span>阻断</span><strong>${item.failed_count || 0}</strong></div>
+        <div><span>进行中</span><strong>${item.processing_count || 0}</strong></div>
+        <div><span>待审批</span><strong>${item.pending_approval_count || 0}</strong></div>
+      </div>
+      <p class="environment-hint">${esc(item.blocker_hint || (item.unconfigured_line_count ? `还有 ${item.unconfigured_line_count} 条交付线未配置` : "各渠道×平台交付线可在环境详情中查看"))}</p>
+      <div class="environment-action-bar">
+        <a class="matrix-btn primary" href="/admin/projects/${projectId}/environments/${item.env_key}">环境详情</a>
+        <a class="matrix-btn" href="/admin/projects/${projectId}/versions?env_key=${item.env_key}">版本</a>
+        <a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?env_key=${item.env_key}">拓扑</a>
+      </div>
+      <div class="environment-actions"><a class="icon-link" href="/admin/projects/${projectId}/release-orders?env_key=${item.env_key}">查看发布单<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+    </article>`).join("")
+      : '<div class="ui-empty">当前筛选下无匹配环境</div>';
+    const events = cards.flatMap((item) => item.latest_orders || []).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0, 7);
+    document.getElementById("overviewActivity").innerHTML = events.length ? events.map((item) => `<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)} 发布单更新</strong><span>${esc(item.updated_at)}</span></a>`).join("") : '<div class="ui-empty">暂无最近动态</div>';
     document.getElementById("overviewUpdatedAt").textContent = new Date().toLocaleString("zh-CN");
+  }
+
+  async function loadEnvironmentDetail() {
+    const envKey = page.dataset.envKey;
+    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`);
+    const summary = data.summary || {};
+    document.getElementById("envDetailTitle").textContent = data.env_label || envKey;
+    document.getElementById("envDetailSummary").innerHTML = [
+      ["交付线", `${summary.configured_line_count || 0} / ${summary.delivery_line_count || 0}`],
+      ["未配置", summary.unconfigured_line_count || 0],
+      ["阻断发布单", summary.failed_count || 0],
+      ["进行中", summary.processing_count || 0],
+      ["待审批", summary.pending_approval_count || 0],
+    ].map(([label, value]) => `<article class="kpi-card"><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
+    const lines = data.delivery_lines || [];
+    document.getElementById("deliveryMatrix").innerHTML = lines.length
+      ? `<div class="matrix-head"><span>渠道</span><span>平台</span><span>当前版本</span><span>拓扑</span><span>Bundle</span><span>操作</span></div>` +
+        lines.map((line) => {
+          const versionText = line.version_name ? `${line.version_name} / ${line.version_code}` : "未配置";
+          return `<div class="matrix-row ${line.configured ? "" : "unconfigured"}">
+            <div><strong>${esc(line.channel_name)}</strong></div>
+            <div>${esc(line.platform_label || line.platform)}</div>
+            <div>${esc(versionText)}</div>
+            <div>${esc(line.topology_id || "-")}</div>
+            <div>${esc(line.bundle_id || "-")}</div>
+            ${matrixActions(line, envKey)}
+          </div>`;
+        }).join("")
+      : '<div class="ui-empty">当前环境暂无交付线，请先在项目中配置渠道并初始化 Scope。</div>';
+    const versions = data.versions || [];
+    document.getElementById("envVersions").innerHTML = versions.length
+      ? versions.slice(0, 8).map((row) => `<div class="detail-row"><strong>${esc(row.version_name)} / ${esc(row.version_code)}</strong><span>${esc(row.channel_name)} · ${esc(row.platform)}</span><b>${esc(row.version_status || "")}</b></div>`).join("")
+      : '<div class="ui-empty">本环境暂无 VersionCode</div>';
+    const orders = data.release_orders || [];
+    document.getElementById("envOrders").innerHTML = orders.length
+      ? orders.slice(0, 6).map((item) => `<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)}</strong><span>${esc(item.updated_at)}</span></a>`).join("")
+      : '<div class="ui-empty">本环境暂无进行中的发布单</div>';
+    const manifest = data.manifest || {};
+    document.getElementById("manifestStatus").textContent = manifest.project_id ? `Manifest 已注册（${manifest.channels?.length || 0} 个渠道）` : "尚未注册 Manifest";
+    document.getElementById("btnBootstrapScopes").onclick = async () => {
+      try {
+        const result = await fetch(`/api/release/manifests/${encodeURIComponent(projectId)}/bootstrap-scopes`, {
+          method: "POST",
+          headers: { "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || "" },
+          credentials: "same-origin",
+        }).then((r) => r.json());
+        if (!result.ok) throw new Error(result.error || "初始化失败");
+        toast(`已初始化 ${result.count || 0} 条交付线 Scope`);
+        await loadEnvironmentDetail();
+      } catch (error) {
+        toast(error.message, "error");
+      }
+    };
+    await loadProjectChannels();
   }
 
   const renderOrderTable = (items) => {
@@ -81,6 +565,17 @@
     fill(form.env_key,options.environments,"env_key","label");
     fill(form.channel_id,options.channels,"channel_id","channel_name");
     fill(form.platform,options.platforms,"value","label");
+    const topologySelect = form.target_topology_id;
+    if (topologySelect) {
+      try {
+        const topoResponse = await fetch(`/api/projects/${encodeURIComponent(projectId)}/topologies`, { credentials: "same-origin" });
+        const topoData = await topoResponse.json();
+        const topologies = topoData.data?.topologies || [];
+        topologySelect.innerHTML = '<option value="">按绑定规则自动解析</option>' + topologies.map((item) => `<option value="${esc(item.topology_id)}">${esc(item.name || item.topology_id)}</option>`).join("");
+      } catch (_error) {
+        topologySelect.innerHTML = '<option value="">按绑定规则自动解析</option>';
+      }
+    }
 
     const selectedVersion=()=>options.versions.find(item=>String(item.id)===String(form.version_id.value))||{};
     const previewCard=(icon,label,value,detail="")=>`<div class="preview-card"><img src="/static/project_ui/svg/${icon}.svg" alt=""><div><span>${esc(label)}</span><strong>${esc(value||"未配置")}</strong>${detail?`<small>${esc(detail)}</small>`:""}</div></div>`;
@@ -129,7 +624,8 @@
       renderVersions();
       form.version_id.value=order.version_id;
       form.reason.value=order.reason||"";
-      Object.entries(order.payload||{}).forEach(([key,value])=>form[key]&&(form[key].value=valueText(value)));
+      Object.entries(order.payload||{}).forEach(([key,value])=>{if(form[key])form[key].value=valueText(value);});
+      if(form.target_topology_id&&order.payload?.target_topology_id)form.target_topology_id.value=order.payload.target_topology_id;
       document.getElementById("resolvedTopology").textContent=order.topology_id||"尚未解析";
       document.getElementById("resolvedRuntime").textContent=order.runtime_run_id||"预检后确认";
       [form.env_key,form.channel_id,form.platform,form.version_id].forEach(x=>x.disabled=true);
@@ -182,7 +678,14 @@
     document.querySelectorAll("[data-action]").forEach(button=>button.addEventListener("click",async()=>{const action=button.dataset.action;if(["build","precheck","verify"].includes(action)){await executeAction(action);return;}pendingAction=action;document.getElementById("orderActionDialogTitle").textContent=`确认${button.textContent}`;document.getElementById("orderActionDialogHint").textContent=["publish","rollback","cancel"].includes(action)?"该操作会改变发布状态，请填写原因后确认。":"请确认本次操作影响范围。";dialog.classList.remove("is-hidden");dialog.setAttribute("aria-hidden","false");}));
   }
   const type=page.dataset.deliveryPage;
-  if(type==="overview"){loadOverview().catch(error=>toast(error.message,"error"));page.querySelector("[data-refresh-overview]")?.addEventListener("click",loadOverview);}
+  if(type==="overview"){
+    initOverviewTabs();
+    bindOverviewFilters();
+    bindProjectEnvAdd();
+    loadOverview().catch(error=>toast(error.message,"error"));
+    page.querySelector("[data-refresh-overview]")?.addEventListener("click",()=>loadOverview().catch(error=>toast(error.message,"error")));
+  }
+  if(type==="environment"){loadEnvironmentDetail().catch(error=>toast(error.message,"error"));page.querySelector("[data-refresh-env]")?.addEventListener("click",loadEnvironmentDetail);}
   if(type==="orders")setupOrders().catch(error=>toast(error.message,"error"));
   if(type==="order-form")setupOrderForm().catch(error=>toast(error.message,"error"));
   if(type==="order-detail")loadOrderDetail().catch(error=>toast(error.message,"error"));

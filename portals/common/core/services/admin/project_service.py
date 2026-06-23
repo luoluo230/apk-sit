@@ -6,7 +6,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 from models.data import get_approved_approval
 from repositories.admin import projects_repo
@@ -174,6 +174,7 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
         "status": v.get("status", "active"),
         "is_template": bool(v.get("is_template")),
         "channels": v.get("channels") or [],
+        "disabled_channels": v.get("disabled_channels") or [],
     }
     bc = build_config_for_api({**v, "id": project_id})
     project.update(bc)
@@ -260,6 +261,9 @@ def add_channel(project_id: str, channel_id: str) -> Tuple[Dict[str, Any], int]:
         return attach_legacy_error(fail("该渠道已在项目中", code="conflict", legacy={"error": "该渠道已在项目中"})), 409
     channels = channels + [cid]
     proj["channels"] = channels
+    disabled = proj.get("disabled_channels")
+    if isinstance(disabled, list):
+        proj["disabled_channels"] = [x for x in disabled if str(x).strip() != cid]
     projects_repo.save_projects_repo()
     projects_repo.audit("project_add_channel", f"{project_id} {cid}")
     return ok({"channels": channels}, legacy={"success": True, "channels": channels}), 200
@@ -285,9 +289,62 @@ def remove_channel(project_id: str, channel_id: str) -> Tuple[Dict[str, Any], in
     else:
         channels = [c for c in channels if str(c).strip() != cid]
     proj["channels"] = channels
+    disabled = proj.get("disabled_channels")
+    if isinstance(disabled, list):
+        proj["disabled_channels"] = [x for x in disabled if str(x).strip() != cid]
     projects_repo.save_projects_repo()
     projects_repo.audit("project_remove_channel", f"{project_id} {cid}")
-    return ok({"channels": channels}, legacy={"success": True, "channels": channels}), 200
+    return ok({"channels": channels, "disabled_channels": proj.get("disabled_channels") or []}, legacy={"success": True, "channels": channels}), 200
+
+
+def _project_channel_whitelist(project_id: str, proj: Dict[str, Any]) -> List[str]:
+    channels = proj.get("channels")
+    if isinstance(channels, list) and channels:
+        return [str(c).strip() for c in channels if str(c).strip()]
+    return [
+        (c.get("id") or "").strip()
+        for c in projects_repo.list_channels()
+        if (c.get("id") or "").strip()
+    ]
+
+
+def disable_channel(project_id: str, channel_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    cid = str(channel_id or "").strip()
+    if not cid:
+        return attach_legacy_error(fail("渠道 ID 不能为空", code="validation_error", legacy={"error": "渠道 ID 不能为空"})), 400
+    whitelist = _project_channel_whitelist(project_id, proj)
+    if cid not in whitelist:
+        return attach_legacy_error(fail("该渠道不在项目白名单中", code="not_found", legacy={"error": "该渠道不在项目白名单中"})), 404
+    disabled = proj.get("disabled_channels")
+    if not isinstance(disabled, list):
+        disabled = []
+    if cid in disabled:
+        return attach_legacy_error(fail("该渠道已禁用", code="conflict", legacy={"error": "该渠道已禁用"})), 409
+    disabled = disabled + [cid]
+    proj["disabled_channels"] = disabled
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_disable_channel", f"{project_id} {cid}")
+    return ok({"disabled_channels": disabled}, legacy={"success": True, "disabled_channels": disabled}), 200
+
+
+def enable_channel(project_id: str, channel_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    cid = str(channel_id or "").strip()
+    if not cid:
+        return attach_legacy_error(fail("渠道 ID 不能为空", code="validation_error", legacy={"error": "渠道 ID 不能为空"})), 400
+    disabled = proj.get("disabled_channels")
+    if not isinstance(disabled, list) or cid not in disabled:
+        return attach_legacy_error(fail("该渠道未处于禁用状态", code="not_found", legacy={"error": "该渠道未处于禁用状态"})), 404
+    disabled = [x for x in disabled if str(x).strip() != cid]
+    proj["disabled_channels"] = disabled
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_enable_channel", f"{project_id} {cid}")
+    return ok({"disabled_channels": disabled}, legacy={"success": True, "disabled_channels": disabled}), 200
 
 
 def set_archive(project_id: str, archive: bool) -> Tuple[Dict[str, Any], int]:

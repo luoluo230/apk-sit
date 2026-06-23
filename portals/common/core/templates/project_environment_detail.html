@@ -1,0 +1,50 @@
+<section class="delivery-app" data-delivery-page="environment" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
+  <div class="delivery-titlebar">
+    <div>
+      <a class="icon-link" href="/admin/projects/{{ project_id }}/overview"><img src="/static/project_ui/svg/action_back.svg" alt="">返回项目总览</a>
+      <h1 id="envDetailTitle">{{ env_key }}</h1>
+      <p>查看本环境下各渠道×平台交付线的版本、拓扑与 Bundle 状态，并进入对应配置入口。</p>
+    </div>
+    <div class="delivery-title-actions">
+      <button class="ui-icon-btn" data-refresh-env type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="刷新"></button>
+    </div>
+  </div>
+  <div class="env-detail-summary" id="envDetailSummary"><div class="ui-skeleton">正在加载环境摘要...</div></div>
+  <div class="overview-layout">
+    <main>
+      <section class="ui-panel">
+        <div class="ui-panel-head"><h2>交付线矩阵</h2><span>env × channel × platform</span></div>
+        <div id="deliveryMatrix"><div class="ui-skeleton">正在加载交付线矩阵...</div></div>
+      </section>
+      <section class="ui-panel recent-panel">
+        <div class="ui-panel-head"><h2>本环境 VersionCode</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}">管理版本<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+        <div id="envVersions"><div class="ui-empty">暂无 VersionCode</div></div>
+      </section>
+      <section class="ui-panel recent-panel">
+        <div class="ui-panel-head"><h2>进行中发布单</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/release-orders?env_key={{ env_key }}">发布单中心<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+        <div id="envOrders"><div class="ui-empty">暂无发布单</div></div>
+      </section>
+    </main>
+    <aside class="overview-rail">
+      <section class="ui-panel channel-panel compact">
+        <div class="ui-panel-head"><h2>项目渠道</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/overview?tab=channels">管理渠道<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+        <div id="envChannelList" class="channel-list"><div class="ui-skeleton">加载中...</div></div>
+      </section>
+      <section class="ui-panel manifest-panel">
+        <div class="ui-panel-head"><h2>交付线初始化</h2></div>
+        <p id="manifestStatus">检查 Manifest 状态中...</p>
+        <button class="ui-primary" id="btnBootstrapScopes" type="button">初始化交付线 Scope</button>
+        <p>根据项目 Manifest 与渠道白名单，为各环境×渠道×平台生成 ReleaseScope。</p>
+      </section>
+      <section class="ui-panel">
+        <div class="ui-panel-head"><h2>配置入口</h2></div>
+        <div class="quick-grid">
+          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本与 VersionCode</a>
+          <a href="/admin/projects/{{ project_id }}/topology-bindings?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a>
+          <a href="/admin/projects/{{ project_id }}/topologies?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a>
+          <a href="/admin/projects/{{ project_id }}/release-orders/new?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">新建发布单</a>
+        </div>
+      </section>
+    </aside>
+  </div>
+</section>

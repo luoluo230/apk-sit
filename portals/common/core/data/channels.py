@@ -16,17 +16,54 @@ def save_channels():
     save_document(CHANNELS_FILE, channels_db)
 
 
-def get_channels_for_project(project_id):
-    """返回项目可用渠道列表。若项目配置了 channels 则只返回这些；否则返回全部。"""
+def get_project_assigned_channel_ids(project_id: str) -> list:
+    """返回项目白名单渠道 ID；未配置白名单时视为全局渠道库全部可用。"""
     from data.projects import projects_db
 
-    raw = channels_db if isinstance(channels_db, list) else []
-    out = [c for c in raw if (c.get('id') or '').strip()]
     proj = projects_db.get(project_id) or {}
-    allowed = proj.get('channels')
-    if isinstance(allowed, list) and allowed:
-        allowed_set = {str(a).strip() for a in allowed if str(a).strip()}
-        out = [c for c in out if (c.get('id') or '').strip() in allowed_set]
+    raw = proj.get('channels')
+    if isinstance(raw, list) and raw:
+        return [str(x).strip() for x in raw if str(x).strip()]
+    return [
+        str(c.get('id') or '').strip()
+        for c in (channels_db if isinstance(channels_db, list) else [])
+        if str(c.get('id') or '').strip()
+    ]
+
+
+def get_disabled_channel_ids(project_id: str) -> list:
+    """返回项目内已禁用的渠道 ID（仍在白名单，不参与交付线/发布）。"""
+    from data.projects import projects_db
+
+    proj = projects_db.get(project_id) or {}
+    raw = proj.get('disabled_channels')
+    if not isinstance(raw, list):
+        return []
+    assigned = set(get_project_assigned_channel_ids(project_id))
+    return [str(x).strip() for x in raw if str(x).strip() and str(x).strip() in assigned]
+
+
+def is_channel_enabled_for_project(project_id: str, channel_id: str) -> bool:
+    cid = str(channel_id or '').strip()
+    if not cid:
+        return False
+    return cid not in set(get_disabled_channel_ids(project_id))
+
+
+def get_channels_for_project(project_id, enabled_only=True):
+    """返回项目可用渠道列表。若项目配置了 channels 则只返回这些；否则返回全部。
+    enabled_only=True 时排除项目内已禁用的渠道。"""
+    out = []
+    allowed_ids = set(get_project_assigned_channel_ids(project_id))
+    disabled_ids = set(get_disabled_channel_ids(project_id)) if enabled_only else set()
+    raw = channels_db if isinstance(channels_db, list) else []
+    for c in raw:
+        cid = (c.get('id') or '').strip()
+        if not cid or cid not in allowed_ids:
+            continue
+        if enabled_only and cid in disabled_ids:
+            continue
+        out.append(c)
     out.sort(key=lambda x: (int(x.get('order') or 0), x.get('id', '')))
     return out
 
