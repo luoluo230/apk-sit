@@ -2,7 +2,6 @@
   const app = document.querySelector(".ops-shell-app");
   if (!app) return;
   const projectId = app.dataset.projectId || "";
-  const envKey = app.dataset.envKey || "production";
   const contextKeys = ["env_key", "channel_id", "platform", "version_name", "version_code", "release_order_id"];
   const current = new URLSearchParams(location.search);
   const storageKey = "project_workspace_sidebar_collapsed";
@@ -22,15 +21,15 @@
   const trigger = document.querySelector("[data-context-trigger]");
   const menu = document.querySelector("[data-context-menu]");
   const projectsHost = document.querySelector("[data-context-projects]");
-  const envHost = document.querySelector("[data-context-environments]");
-  const envLabels = {development:"开发环境",testing:"测试环境",staging:"预发环境",production:"生产环境"};
-  const switchContext = (nextProject, nextEnv) => {
+  const switchProject = (nextProject) => {
     const parts = location.pathname.split("/");
     const projectIndex = parts.indexOf("projects") + 1;
-    if (projectIndex > 0 && nextProject) parts[projectIndex] = nextProject;
+    if (projectIndex <= 0 || !nextProject) return;
+    parts[projectIndex] = nextProject;
     const params = new URLSearchParams(location.search);
-    if (nextEnv) params.set("env_key", nextEnv);
-    location.href = `${parts.join("/")}?${params}`;
+    params.delete("env_key");
+    const query = params.toString();
+    location.href = `${parts.join("/")}${query ? `?${query}` : ""}`;
   };
   const loadContextMenu = async () => {
     if (!projectsHost || projectsHost.dataset.loaded) return;
@@ -40,12 +39,10 @@
       const payload = await response.json();
       const projects = payload.data || [];
       projectsHost.innerHTML = projects.map((item) => `<button class="ops-context-option ${item.project_id===projectId?"active":""}" data-project="${item.project_id}">${item.project_name}</button>`).join("");
-      projectsHost.querySelectorAll("[data-project]").forEach((button) => button.addEventListener("click", () => switchContext(button.dataset.project, envKey)));
+      projectsHost.querySelectorAll("[data-project]").forEach((button) => button.addEventListener("click", () => switchProject(button.dataset.project)));
     } catch (_) {
       projectsHost.innerHTML = '<span class="ops-context-option">项目列表加载失败</span>';
     }
-    envHost.innerHTML = Object.entries(envLabels).map(([key,label]) => `<button class="ops-context-option ${key===envKey?"active":""}" data-env="${key}">${label}</button>`).join("");
-    envHost.querySelectorAll("[data-env]").forEach((button) => button.addEventListener("click", () => switchContext(projectId, button.dataset.env)));
   };
   trigger?.addEventListener("click", async (event) => {
     event.stopPropagation();

@@ -6,7 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{{ title }} - Dev Portal</title>
   <link rel="stylesheet" href="/static/project_ui/design-tokens.css?v=20260613-1">
-  <link rel="stylesheet" href="/static/ops_shell.css?v=20260613-workspace-v1">
+  <link rel="stylesheet" href="/static/ops_shell.css?v=20260623-nav1">
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
 </head>
 <body>
@@ -16,20 +16,18 @@
     <header class="ops-shell-topbar">
       <div class="ops-shell-breadcrumb">
         <button class="ops-shell-menu-button" type="button" aria-label="收起或展开导航"><img src="/static/project_ui/svg/global_menu.svg" alt=""></button>
-        <span>项目管理</span><b>/</b><span>项目工作区</span><b>/</b><strong>{{ title }}</strong>
+        <span>项目管理</span><b>/</b><span>项目空间</span><b>/</b><strong>{{ title }}</strong>
       </div>
       <div class="ops-shell-top-actions">
         <div class="ops-context-picker">
           <button class="ops-context-trigger" type="button" data-context-trigger aria-expanded="false">
             <img src="/static/project_ui/svg/nav_project_overview.svg" alt="">
             <span>{{ project_name or project_id or '选择项目' }}</span>
-            {% if env_key %}<em>{{ env_label }}</em>{% endif %}
             <img class="ops-context-chevron" src="/static/project_ui/svg/global_chevron_down.svg" alt="">
           </button>
           <div class="ops-context-menu" data-context-menu hidden>
-            <div class="ops-context-menu-head"><strong>切换项目与环境</strong><span>保持当前功能页面</span></div>
+            <div class="ops-context-menu-head"><strong>切换项目</strong><span>保持当前功能页面</span></div>
             <div class="ops-context-projects" data-context-projects></div>
-            <div class="ops-context-environments" data-context-environments></div>
           </div>
         </div>
         <label class="ops-shell-search">
@@ -37,14 +35,14 @@
           <input type="search" placeholder="搜索项目、文档、任务、版本、发布单...">
         </label>
         <a class="ops-shell-icon-button" href="/docs?module=projects" title="帮助中心"><img src="/static/project_ui/svg/global_help.svg" alt=""></a>
-        <a class="ops-shell-icon-button" href="/admin/notifications" title="通知中心"><img src="/static/project_ui/svg/global_bell.svg" alt=""><span>12</span></a>
+        <a class="ops-shell-icon-button" href="/admin/notifications" title="通知中心"><img src="/static/project_ui/svg/global_bell.svg" alt="">{% if unread_notification_count %}<span>{{ unread_notification_count }}</span>{% endif %}</a>
         <a class="ops-shell-profile" href="/profile"><span class="ops-shell-avatar"><img src="/static/project_ui/svg/global_user.svg" alt=""></span><span>{{ user_name or '管理员' }}</span><img class="ops-profile-chevron" src="/static/project_ui/svg/global_chevron_down.svg" alt=""></a>
       </div>
     </header>
     <section class="ops-shell-content">{{ content|safe }}</section>
   </main>
 </div>
-<script src="/static/ops_shell.js?v=20260622-csrf"></script>
+<script src="/static/ops_shell.js?v=20260623-nav1"></script>
 <script>
   (function () {
     var tokenEl = document.querySelector('meta[name="csrf-token"]');

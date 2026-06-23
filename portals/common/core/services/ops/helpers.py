@@ -643,6 +643,15 @@ def _render_ops_page(
         project_name = project_id or "未选择项目"
     env_label = _env_label(env_key) if env_key else ""
     user_name = str(session.get("user") or "").strip() or "运维管理员"
+    unread_notification_count = 0
+    try:
+        from data.notifications import get_notifications_for_user
+
+        unread_notification_count = sum(
+            1 for n in get_notifications_for_user(user_name, limit=200) if not n.get("read_at")
+        )
+    except Exception:
+        unread_notification_count = 0
     return render_template(
         "ops_shell.html",
         content=content,
@@ -650,12 +659,13 @@ def _render_ops_page(
         active_page=active_page,
         project_id=project_id,
         project_name=project_name,
-        project_label=f"{project_name}_{env_label}" if project_name and env_label else project_name or "未选择项目",
+        project_label=project_name or "未选择项目",
         env_key=env_key,
         env_label=env_label,
         topology_id=topology_id,
         avatar_text=(user_name[:1] or "A").upper(),
         user_name=user_name,
+        unread_notification_count=unread_notification_count,
         extra_css=extra_css,
         extra_js=extra_js,
         csrf_token=_ops_csrf_token(),
@@ -762,10 +772,10 @@ def _ensure_design_demo_registry(project_id: str) -> None:
     if not isinstance(rows, list):
         rows = []
     demo_specs = [
-        {"env_key": "production", "name": "生产环境拓扑", "version_label": "v2.3.1", "owner": "运维管理员", "is_default": True, "status": "running", "updated_at": "2025-05-20T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
-        {"env_key": "staging", "name": "预发环境拓扑", "version_label": "v2.1.4", "owner": "张三", "status": "running", "updated_at": "2025-05-19T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
+        {"env_key": "production", "name": "生产环境拓扑", "version_label": "v2.3.1", "owner": "运维管理员", "is_default": True, "status": "draft", "updated_at": "2025-05-20T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
+        {"env_key": "staging", "name": "预发环境拓扑", "version_label": "v2.1.4", "owner": "张三", "status": "draft", "updated_at": "2025-05-19T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
         {"env_key": "testing", "name": "测试环境拓扑", "version_label": "v1.8.7", "owner": "李四", "status": "stopped", "updated_at": "2025-05-16T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
-        {"env_key": "development", "name": "开发环境拓扑", "version_label": "v1.5.2", "owner": "王五", "status": "running", "updated_at": "2025-05-12T12:34:00+08:00", "design_demo_node_count": 4, "design_demo_edge_count": 5},
+        {"env_key": "development", "name": "开发环境拓扑", "version_label": "v1.5.2", "owner": "王五", "status": "draft", "updated_at": "2025-05-12T12:34:00+08:00", "design_demo_node_count": 4, "design_demo_edge_count": 5},
     ]
     changed = False
     contents = _load_topology_contents()
