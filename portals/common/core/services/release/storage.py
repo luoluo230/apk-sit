@@ -38,6 +38,11 @@ def save_manifests(rows: List[Dict[str, Any]]) -> None:
 
 def _scope_from_row(row) -> Dict[str, Any]:
     payload = _decode(row["payload"])
+    platform = ""
+    try:
+        platform = str(row["platform"] or "").strip().lower()
+    except (KeyError, IndexError, TypeError):
+        platform = ""
     payload.update(
         {
             "scope_id": row["scope_id"],
@@ -45,6 +50,7 @@ def _scope_from_row(row) -> Dict[str, Any]:
             "env_key": row["env_key"],
             "channel_id": row["channel_id"],
             "channel_key": row["channel_key"],
+            "platform": platform,
             "default_topology_id": row["default_topology_id"],
             "active_bundle_id": row["active_bundle_id"],
             "status": row["status"],
@@ -78,14 +84,15 @@ def _insert_scope(cur, row: Dict[str, Any], now: str = "") -> None:
     cur.execute(
         """
         INSERT INTO release_scopes (
-            scope_id, project_id, env_key, channel_id, channel_key,
+            scope_id, project_id, env_key, channel_id, channel_key, platform,
             default_topology_id, active_bundle_id, status, payload, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(scope_id) DO UPDATE SET
             project_id=excluded.project_id,
             env_key=excluded.env_key,
             channel_id=excluded.channel_id,
             channel_key=excluded.channel_key,
+            platform=excluded.platform,
             default_topology_id=excluded.default_topology_id,
             active_bundle_id=excluded.active_bundle_id,
             status=excluded.status,
@@ -98,6 +105,7 @@ def _insert_scope(cur, row: Dict[str, Any], now: str = "") -> None:
             str(row.get("env_key") or ""),
             str(row.get("channel_id") or ""),
             str(row.get("channel_key") or row.get("channel_id") or ""),
+            str(row.get("platform") or "").strip().lower(),
             str(row.get("default_topology_id") or ""),
             str(row.get("active_bundle_id") or ""),
             str(row.get("status") or "active"),

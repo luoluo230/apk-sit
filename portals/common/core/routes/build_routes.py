@@ -541,43 +541,73 @@ def _build_page_html(project_context=False, version_lock_params=False):
         if(PREFERRED_INSTANCE_ID){ q+='&include_instance_id='+encodeURIComponent(PREFERRED_INSTANCE_ID); }
         return '/api/jenkins-manage/list-available?'+q;
     }
-    function loadJenkinsOptions(){
-        return fetch(listAvailableUrl(), {credentials:'same-origin'}).then(r=>r.json()).then(d=>{
-            var sel=document.getElementById('jenkinsInstance');
-            var statusEl=document.getElementById('buildStatus');
-            if(!sel) return;
-            while(sel.options.length>1) sel.remove(1);
-            var items=d.instances||[];
-            items.forEach(function(i){
-                INSTANCE_META[i.id]={port:i.port,task_name:(i.task_name||'').trim(),reachable:i.reachable!==false};
-                var opt=document.createElement('option');
-                opt.value=i.id;
-                var suffix = i.reachable===false ? '不可达' : (i.status==='running'?'运行中':'已停止');
-                var label=i.port + ((i.task_name&&i.task_name.trim()) ? ' '+i.task_name.trim() : '') + ' - ' + suffix;
-                opt.textContent=label;
-                sel.appendChild(opt);
-            });
-            if(PREFERRED_INSTANCE_ID){
-                for(var k=0;k<sel.options.length;k++){
-                    if(sel.options[k].value===PREFERRED_INSTANCE_ID){ sel.value=PREFERRED_INSTANCE_ID; break; }
-                }
-            }
-            if(!sel.value){
-                var remembered=loadInstanceChoice();
-                if(remembered){
-                    for(var j=0;j<sel.options.length;j++){
-                        if(sel.options[j].value===remembered){ sel.value=remembered; break; }
-                    }
-                }
-            }
-            if(!items.length && statusEl){
-                statusEl.textContent='当前无可用 '+modeLabel(VERSION_MODE)+' Jenkins 实例。请先在 Jenkins 管理中启动对应类型实例；版本类型（通用/商业）须与实例类型一致。';
-                statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
-            } else if(items.length && items.every(function(x){ return x.reachable===false; }) && statusEl){
-                statusEl.textContent='已发现实例但 Jenkins 未响应，请在 Jenkins 管理页对该实例点击「启动」后刷新本页。';
-                statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
-            }
+    function renderJenkinsInstanceOptions(items){
+        var sel=document.getElementById('jenkinsInstance');
+        var statusEl=document.getElementById('buildStatus');
+        if(!sel) return;
+        while(sel.options.length>1) sel.remove(1);
+        items=(items||[]).filter(function(i){
+            return normalizedType(i.instance_type||'general')===normalizedType(VERSION_MODE);
         });
+        items.forEach(function(i){
+            INSTANCE_META[i.id]={port:i.port,task_name:(i.task_name||'').trim(),reachable:i.reachable!==false};
+            var opt=document.createElement('option');
+            opt.value=i.id;
+            var suffix = i.status==='running' ? (i.reachable===false ? '不可达' : '运行中') : '已停止';
+            var label=i.port + ((i.task_name&&i.task_name.trim()) ? ' '+i.task_name.trim() : '') + ' - ' + suffix;
+            opt.textContent=label;
+            sel.appendChild(opt);
+        });
+        if(PREFERRED_INSTANCE_ID){
+            for(var k=0;k<sel.options.length;k++){
+                if(sel.options[k].value===PREFERRED_INSTANCE_ID){ sel.value=PREFERRED_INSTANCE_ID; break; }
+            }
+        }
+        if(!sel.value && items.length===1){
+            sel.value=items[0].id;
+        }
+        if(!sel.value){
+            var remembered=loadInstanceChoice();
+            if(remembered){
+                for(var j=0;j<sel.options.length;j++){
+                    if(sel.options[j].value===remembered){ sel.value=remembered; break; }
+                }
+            }
+        }
+        if(!items.length && statusEl){
+            statusEl.textContent='当前无已登记的 '+modeLabel(VERSION_MODE)+' Jenkins 实例。请先在 Jenkins 管理中创建/启动对应类型实例；版本类型（通用/商业）须与实例类型一致。';
+            statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
+        } else if(items.length && items.every(function(x){ return x.status!=='running'; }) && statusEl){
+            statusEl.textContent='实例当前已停止，已列出可选；点击「执行商业发布/开始构建」将尝试自动启动 Jenkins。';
+            statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
+        } else if(items.length && items.every(function(x){ return x.reachable===false; }) && statusEl){
+            statusEl.textContent='已发现实例但 Jenkins 未响应，请在 Jenkins 管理页对该实例点击「启动」后刷新本页。';
+            statusEl.className='mt-3 text-sm text-amber-600 min-h-[1.5rem]';
+        }
+    }
+    function _parseJsonResponse(r){
+        var ct=(r.headers&&r.headers.get)?(r.headers.get('content-type')||''):'';
+        if(!r.ok || ct.indexOf('application/json')<0){
+            return Promise.reject(new Error('HTTP '+r.status));
+        }
+        return r.json();
+    }
+    function loadJenkinsOptions(){
+        return fetch(listAvailableUrl(), {credentials:'same-origin'})
+            .then(_parseJsonResponse)
+            .then(function(d){ renderJenkinsInstanceOptions((d&&d.instances)||[]); })
+            .catch(function(){
+                return fetch('/api/jenkins-manage/list', {credentials:'same-origin'})
+                    .then(_parseJsonResponse)
+                    .then(function(d){ renderJenkinsInstanceOptions((d&&d.instances)||[]); })
+                    .catch(function(){
+                        var statusEl=document.getElementById('buildStatus');
+                        if(statusEl){
+                            statusEl.textContent='加载 Jenkins 实例失败，请刷新页面或到 Jenkins 管理页确认实例已登记。';
+                            statusEl.className='mt-3 text-sm text-red-600 min-h-[1.5rem]';
+                        }
+                    });
+            });
     }
     function applyVersionLockParams(){
         if(!VERSION_LOCK_PARAMS) return;
@@ -908,7 +938,8 @@ def _build_page_html(project_context=False, version_lock_params=False):
     var btnTextInit=document.getElementById('btnTriggerText');
     if(btnTextInit && normalizedType(VERSION_MODE)==='commercial') btnTextInit.textContent='执行商业发布';
     loadJenkinsOptions().then(function(){ refreshForInstance(); });
-    document.getElementById('jenkinsInstance').addEventListener('change', function(){
+    var jenkinsInstanceEl=document.getElementById('jenkinsInstance');
+    if(jenkinsInstanceEl) jenkinsInstanceEl.addEventListener('change', function(){
         if(document.getElementById('jenkinsInstance').disabled) return;
         persistInstanceChoice();
         updateJenkinsConsoleLink(selectedInstanceId(), '');
@@ -1207,8 +1238,34 @@ def project_stage_build(project_id, channel_id, stage_id):
 @bp.route('/admin/build/trigger', methods=['POST'])
 @admin_required_any('projects', 'build')
 def trigger_build():
+    from flask import session
+
     data = request.get_json() or {}
+    project_id_top = (data.get('_project_id') or '').strip()
+    version_id_top = (data.get('_version_id') or '').strip()
+    if project_id_top and version_id_top and not has_scope('build.trigger'):
+        return jsonify({'success': False, 'error': '无权限触发构建'}), 403
+    if project_id_top and version_id_top:
+        try:
+            from services.release.release_order_service import ensure_draft_release_order, request_build as ro_request_build
+            actor = session.get('user') or ''
+            draft = ensure_draft_release_order(project_id_top, version_id_top, actor)
+            updated = ro_request_build(project_id_top, draft.get('release_order_id') or '', actor)
+            build_number = ((updated.get('payload') or {}).get('build_job_id')) or ''
+            log_audit('trigger_build', f"Jenkins 构建 (release_order) - {draft.get('version_name', '')} #{build_number}")
+            return jsonify({'success': True, 'build_number': build_number, 'release_order_id': draft.get('release_order_id')})
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+        except Exception as exc:
+            return jsonify({'success': False, 'error': f'通过发布单触发构建失败：{exc}'}), 500
+
     base_url, builds_dir, instance_id = _jenkins_context()
+    if instance_id:
+        ok_run, run_err = jm.ensure_instance_running(instance_id, started_by=session.get('user') or '')
+        if not ok_run:
+            return jsonify({'success': False, 'error': run_err or 'Jenkins 实例未运行且自动启动失败'})
+        base_url = jm.get_jenkins_url_for_instance(instance_id=instance_id)
+        builds_dir = jm.get_builds_dir_for_instance(instance_id=instance_id)
     unity_version = (data.get('UNITY_VERSION') or '6000.3.8f1').strip()
     version_name = (data.get('VERSION_NAME') or '1.0.15').strip()
     version_code_raw = (data.get('VERSION_CODE') or '1015').strip()

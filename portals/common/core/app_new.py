@@ -15,7 +15,7 @@ from utils import setup_logging
 load_dotenv()
 logger = setup_logging()
 
-from flask import Flask, jsonify, redirect, request, session
+from flask import Flask, jsonify, redirect, request, send_file, session
 
 from services.monitor import record_request_end, record_request_start
 from services.portal import current_portal_mode, enforce_portal_access
@@ -170,6 +170,12 @@ def _monitor_end(response):
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "service": "apk-site"}), 200
+
+
+@app.route("/favicon.ico")
+def favicon():
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "project_ui", "svg", "logo_mark.svg")
+    return send_file(icon_path, mimetype="image/svg+xml")
 
 
 @app.route("/metrics")

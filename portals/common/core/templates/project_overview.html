@@ -1,10 +1,12 @@
 <section class="delivery-app" data-delivery-page="overview" data-project-id="{{ project_id }}">
   <header class="overview-page-header">
     <div class="overview-page-title">
-      <h1>项目总览 <button class="icon-star" aria-label="收藏"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button></h1>
+      <h1>项目总览</h1>
       <nav class="overview-tabs" aria-label="项目总览页签">
         <button type="button" class="overview-tab active" data-overview-tab="overview">运行概览</button>
+        <button type="button" class="overview-tab" data-overview-tab="environments">环境管理</button>
         <button type="button" class="overview-tab" data-overview-tab="channels">渠道管理</button>
+        <button type="button" class="overview-tab" data-overview-tab="platforms">平台管理</button>
       </nav>
     </div>
     <div class="overview-page-meta">
@@ -20,13 +22,20 @@
           <div id="overviewChannelChipsList" class="channel-chips-row"></div>
           <button type="button" class="ui-secondary overview-tab-jump" data-overview-tab-jump="channels">管理渠道</button>
         </div>
+        <div class="overview-channel-chips overview-platform-chips" id="overviewPlatformChips">
+          <span class="overview-chips-label">项目平台</span>
+          <div id="overviewPlatformChipsList" class="channel-chips-row"></div>
+          <button type="button" class="ui-secondary overview-tab-jump" data-overview-tab-jump="platforms">管理平台</button>
+        </div>
+        <p class="overview-scope-hint">项目渠道/平台为全局上限；各环境在「环境管理」Tab 中配置交付范围；新建 VersionCode 仅能选择已配置组合。</p>
+        <p class="overview-scope-sync" id="overviewScopeSyncStatus">交付线 Scope：检查中...</p>
+        <nav class="overview-channel-tabs" id="overviewChannelTabs" aria-label="按渠道查看环境"></nav>
         <div class="overview-kpis" id="overviewKpis"></div>
         <section class="ui-panel">
           <div class="ui-panel-head"><h2>环境运行概览</h2><span>版本、Bundle、拓扑与运行态统一对账</span></div>
           <div class="overview-env-toolbar">
             <div class="overview-env-filters" id="overviewEnvFilters">
               <label>环境<select id="filterEnvKey"><option value="">全部环境</option></select></label>
-              <label>渠道<select id="filterChannelId"><option value="">全部渠道</option></select></label>
               <label>平台<select id="filterPlatform"><option value="">全部平台</option></select></label>
               <label>状态<select id="filterHealth"><option value="">全部状态</option></select></label>
               <button type="button" class="ui-secondary" id="btnResetOverviewFilters">重置</button>
@@ -54,8 +63,11 @@
             <button class="ui-primary" id="btnOverviewBootstrapScopes" type="button">初始化交付线 Scope</button>
           </div>
         </section>
+      </div>
+      <div class="overview-tab-panel is-hidden" data-overview-panel="environments" hidden>
         <section class="ui-panel env-config-panel" id="project-env-config">
-          <div class="ui-panel-head"><h2>项目环境配置</h2><span>内置环境可禁用，自定义环境可删除</span></div>
+          <div class="ui-panel-head"><h2>项目环境</h2><span>内置环境可禁用，自定义环境可删除</span></div>
+          <p class="channel-hint scope-layer-hint">为每个环境配置交付范围（渠道×平台子集），须在项目渠道/平台白名单内；不必通过新建 VersionCode 完成。保存后请在渠道管理页「初始化交付线 Scope」同步矩阵。</p>
           <div id="projectEnvList" class="env-config-list"></div>
           <div class="env-add-row">
             <input id="projectEnvKeyInput" type="text" placeholder="环境 key（如 canary）" maxlength="32">
@@ -64,11 +76,47 @@
           </div>
         </section>
       </div>
+      <div class="overview-tab-panel is-hidden" data-overview-panel="platforms" hidden>
+        <section class="ui-panel channel-panel" id="project-platforms">
+          <div class="ui-panel-head"><h2>项目平台白名单</h2><span>Unity BuildTarget 对齐 · Android / iOS / Windows / WebGL 等</span></div>
+          <div id="projectPlatformList" class="channel-list"></div>
+          <div class="channel-add-row">
+            <select id="projectPlatformAddSelect"><option value="">选择要添加的平台</option>{% for row in platform_catalog %}{% if row.platform_id not in assigned_platform_ids %}<option value="{{ row.platform_id }}">{{ row.platform_name }} ({{ row.platform_id }})</option>{% endif %}{% endfor %}</select>
+            <button class="ui-primary" id="btnProjectPlatformAdd" type="button">添加</button>
+          </div>
+          <p class="channel-hint">禁用后平台仍保留在白名单，但不会出现在交付线矩阵、版本筛选与新建发布单；移除会从白名单删除。变更后请在渠道管理页点击「初始化交付线 Scope」同步矩阵。</p>
+        </section>
+      </div>
     </main>
     <aside class="overview-rail">
-      <section class="ui-panel"><div class="ui-panel-head"><h2>项目成员</h2></div><div class="member-list"><span><b><img src="/static/project_ui/svg/global_user.svg" alt=""></b> admin <em>项目负责人</em></span><span><b><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></b> 运维团队 <em>运维工程师</em></span><span><b><img src="/static/project_ui/svg/status_success.svg" alt=""></b> 测试团队 <em>测试工程师</em></span></div></section>
-      <section class="ui-panel support-list"><div class="ui-panel-head"><h2>帮助与支持</h2></div><a href="/docs"><img src="/static/project_ui/svg/support_doc.svg" alt="">使用文档</a><a href="/docs"><img src="/static/project_ui/svg/support_faq.svg" alt="">常见问题</a><a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/support_ticket.svg" alt="">提交工单</a></section>
+      <section class="ui-panel"><div class="ui-panel-head"><h2>项目成员</h2></div><div class="member-list">{% if project_members %}{% for member in project_members %}<span><b><img src="/static/project_ui/svg/{{ 'global_user.svg' if member.kind == 'owner' else 'nav_agent_server.svg' if member.kind == 'editor' else 'status_success.svg' }}" alt=""></b> {{ member.username }} <em>{{ member.role_label }}</em></span>{% endfor %}{% else %}<div class="ui-empty">暂无项目成员</div>{% endif %}</div></section>
+      <section class="ui-panel overview-help-panel" id="overview-help">
+        <div class="ui-panel-head"><h2>配置说明</h2></div>
+        <ul class="overview-help-list">
+          <li><strong>渠道 / 平台白名单</strong>：渠道管理、平台管理 Tab</li>
+          <li><strong>环境交付范围</strong>：环境管理 Tab → 各环境「配置」</li>
+          <li><strong>同步交付线矩阵</strong>：渠道管理 → 初始化交付线 Scope</li>
+          <li><strong>新建 VersionCode</strong>：版本页（仅能选已配置组合）</li>
+        </ul>
+      </section>
+      <section class="ui-panel support-list"><div class="ui-panel-head"><h2>帮助与支持</h2></div><a href="#overview-help"><img src="/static/project_ui/svg/support_doc.svg" alt="">本页配置说明</a><a href="/docs"><img src="/static/project_ui/svg/support_faq.svg" alt="">文档知识库</a><a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/support_ticket.svg" alt="">提交工单</a></section>
       <section class="ui-panel"><div class="ui-panel-head"><h2>快速入口</h2></div><div class="quick-grid"><a href="/admin/projects/{{ project_id }}/release-orders/new"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">发布中心</a><a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建产物</a><a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a><a href="/admin/projects/{{ project_id }}/topology-bindings"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a></div></section>
     </aside>
+  </div>
+  <div id="deliveryScopeDialog" class="delivery-dialog is-hidden" aria-hidden="true">
+    <div class="delivery-dialog-card delivery-scope-card">
+      <div class="delivery-dialog-head">
+        <div><h3>配置环境交付范围</h3><p>仅在项目渠道/平台白名单内勾选本环境支持的组合。</p></div>
+        <button type="button" class="icon-button" id="btnCloseDeliveryScope" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+      </div>
+      <div class="scope-editor-grid">
+        <div><strong>渠道</strong><div id="deliveryScopeChannels" class="scope-check-list"></div></div>
+        <div><strong>平台</strong><div id="deliveryScopePlatforms" class="scope-check-list"></div></div>
+      </div>
+      <div class="delivery-dialog-actions">
+        <button type="button" class="ui-secondary" id="btnCancelDeliveryScope">取消</button>
+        <button type="button" class="ui-primary" id="btnSaveDeliveryScope">保存</button>
+      </div>
+    </div>
   </div>
 </section>

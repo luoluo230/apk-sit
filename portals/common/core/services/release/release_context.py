@@ -31,8 +31,10 @@ def apply_scope_fields_to_version_row(row: Dict[str, Any], project_id: str) -> D
     env_key = normalize_release_env_key(row.get("env_key") or stage)
     channel_id = str(row.get("channel") or "").strip()
 
+    platform = str(row.get("platform") or "android").strip().lower()
+
     out["env_key"] = env_key
-    out["scope_id"] = str(row.get("scope_id") or build_scope_id(project_slug(project_id), env_key, channel_id))
+    out["scope_id"] = str(row.get("scope_id") or build_scope_id(project_slug(project_id), env_key, channel_id, platform))
     out["env"] = str(row.get("env") or env_key_to_gm_env(env_key))
     return out
 
@@ -54,12 +56,15 @@ def resolve_release_context(
         env_key = normalize_release_env_key(scope_probe.get("env_key") or env_raw)
         channel_id = str(scope_probe.get("channel_id") or resolve_channel_id(pid, channel_raw) or channel_raw).strip()
 
-    scope = resolve_scope(pid, env_key, channel_id, auto_create=auto_create_scope)
+    platform = ""
+    if version_row and isinstance(version_row, dict):
+        platform = str(version_row.get("platform") or "android").strip().lower()
+    scope = resolve_scope(pid, env_key, channel_id, platform=platform, auto_create=auto_create_scope)
     version_name = str((version_row or {}).get("version_name") or "").strip() if isinstance(version_row, dict) else ""
     network_profile, profile_source = resolve_network_profile(scope, version_name=version_name) if scope else ({}, "legacy")
     topology_binding = resolve_topology_binding_for_scope(scope, version_name=version_name) if scope else {}
     topology_id = str(topology_binding.get("topology_id") or resolve_topology_id(scope, version_name=version_name) or "")
-    active_bundle = find_active_bundle(str(scope.get("scope_id") or "")) if scope else {}
+    active_bundle = find_active_bundle(str(scope.get("scope_id") or ""), platform=platform) if scope else {}
 
     server_snapshot = {
         "topology_id": topology_id,

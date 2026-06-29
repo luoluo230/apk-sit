@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from data.repositories.user_repository import UserRepository
+from data.repositories.user_repository import get_user_repository
 from data.audit import log_audit
 
-_repo = UserRepository()
+_repo = get_user_repository()
 
 
 def list_users() -> Dict[str, Dict[str, Any]]:

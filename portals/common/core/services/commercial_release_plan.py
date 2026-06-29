@@ -237,9 +237,7 @@ def plan_to_jenkins_params(
         "HOT_RELEASE_ENABLED": "true" if plan.get("hotReleaseEnabled", True) else "false",
         "APK_BUILD_ENABLED": "true" if plan.get("apkBuildEnabled") else "false",
         "RUN_BASE_APK_BUILD_FIRST": (
-            "true"
-            if plan.get("runBaseApkBuildFirst", plan.get("apkBuildEnabled", False))
-            else "false"
+            "true" if plan.get("runBaseApkBuildFirst") else "false"
         ),
         "RELEASE_UPLOAD": "true" if plan.get("releaseUpload", True) else "false",
     }
@@ -263,6 +261,13 @@ def plan_to_jenkins_params(
         params["GIT_BRANCH"] = str(plan.get("gitBranch"))
     if plan.get("outputBaseDir"):
         params["OUTPUT_BASE_DIR"] = str(plan.get("outputBaseDir"))
+    resource_server_url = str(
+        plan.get("resourceServerUrl")
+        or version_obj.get("resource_server_url")
+        or ""
+    ).strip()
+    if resource_server_url:
+        params["RESOURCE_SERVER_URL"] = resource_server_url.rstrip("/")
 
     version_channel = str(version_obj.get("channel") or "").strip()
     if version_channel and not params.get("CHANNEL"):
@@ -304,3 +309,75 @@ def plan_to_jenkins_params(
         "releaseEnvironment": release_env,
     }
     return params, plan_patch
+
+
+def plan_defaults_from_pipeline(version_obj: dict[str, Any] | None, project_id: str = "") -> dict[str, Any]:
+    """Build commercial release plan defaults from version.pipeline (no release-order payload)."""
+    version_obj = version_obj or {}
+    pipeline = version_obj.get("pipeline") if isinstance(version_obj.get("pipeline"), dict) else {}
+    config_export = pipeline.get("config_export") or {}
+    resource_build = pipeline.get("resource_build") or {}
+    hot_release = pipeline.get("hot_release") or {}
+    apk_build = pipeline.get("apk_build") or {}
+    if not isinstance(config_export, dict):
+        config_export = {}
+    if not isinstance(resource_build, dict):
+        resource_build = {}
+    if not isinstance(hot_release, dict):
+        hot_release = {}
+    if not isinstance(apk_build, dict):
+        apk_build = {}
+    plan: dict[str, Any] = {
+        "configEnabled": config_export.get("enabled"),
+        "configRemotePrefix": config_export.get("remote_prefix"),
+        "configIncludeCode": config_export.get("include_code"),
+        "resourceEnabled": resource_build.get("enabled"),
+        "resourceProvider": resource_build.get("provider"),
+        "resourceScenario": resource_build.get("scenario"),
+        "hotReleaseEnabled": hot_release.get("enabled"),
+        "apkBuildEnabled": apk_build.get("enabled"),
+        "releaseMode": hot_release.get("release_mode"),
+        "releaseEnvironment": hot_release.get("release_environment"),
+        "releaseChannel": hot_release.get("release_channel"),
+        "releaseTargets": hot_release.get("release_targets"),
+        "releaseHotLabels": hot_release.get("release_hot_labels"),
+        "releaseUploadMode": hot_release.get("release_upload_mode"),
+        "releaseRollbackTarget": hot_release.get("release_rollback_target"),
+        "releaseCompressionOverride": hot_release.get("release_compression_override"),
+        "releaseEncryptionOverride": hot_release.get("release_encryption_override"),
+        "releaseSignatureOverride": hot_release.get("release_signature_override"),
+        "codeEnabled": hot_release.get("code_enabled"),
+        "codeCompression": hot_release.get("code_compression"),
+        "codeEncryption": hot_release.get("code_encryption"),
+        "codeSignature": hot_release.get("code_signature"),
+        "codeUnits": hot_release.get("code_units"),
+        "resourceCompression": hot_release.get("resource_compression"),
+        "resourceEncryption": hot_release.get("resource_encryption"),
+        "resourceSignature": hot_release.get("resource_signature"),
+        "resourceUnits": hot_release.get("resource_units"),
+        "appName": apk_build.get("app_name"),
+        "unityVersion": apk_build.get("unity_version"),
+        "gitBranch": apk_build.get("git_branch") or pipeline.get("git_branch"),
+        "outputBaseDir": apk_build.get("output_base_dir"),
+        "unityProjectPath": apk_build.get("unity_project_path"),
+        "versionCode": version_obj.get("version_code"),
+        "releaseVersion": version_obj.get("version_name"),
+        "releasePlatform": config_export.get("platform") or version_obj.get("platform"),
+    }
+    pid = str(project_id or "").strip()
+    if pid:
+        try:
+            from services.admin.project_build_config_service import get_project_build_config
+
+            pbc = get_project_build_config(pid)
+            if not str(plan.get("appName") or "").strip():
+                plan["appName"] = (pbc.get("app_name") or pid).strip()
+            if not str(plan.get("unityProjectPath") or "").strip():
+                plan["unityProjectPath"] = (pbc.get("unity_project_path") or "").strip()
+            if not str(plan.get("outputBaseDir") or "").strip():
+                plan["outputBaseDir"] = (pbc.get("output_base_dir") or "").strip()
+            if not str(plan.get("gitBranch") or "").strip() and (pbc.get("default_git_branch") or "").strip():
+                plan["gitBranch"] = (pbc.get("default_git_branch") or "").strip()
+        except Exception:
+            pass
+    return {k: v for k, v in plan.items() if v is not None and str(v).strip() != ""}

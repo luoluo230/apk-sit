@@ -17,24 +17,26 @@
         <div id="deliveryMatrix"><div class="ui-skeleton">正在加载交付线矩阵...</div></div>
       </section>
       <section class="ui-panel recent-panel">
-        <div class="ui-panel-head"><h2>本环境 VersionCode</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}">管理版本<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
-        <div id="envVersions"><div class="ui-empty">暂无 VersionCode</div></div>
-      </section>
-      <section class="ui-panel recent-panel">
         <div class="ui-panel-head"><h2>进行中发布单</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/release-orders?env_key={{ env_key }}">发布单中心<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
         <div id="envOrders"><div class="ui-empty">暂无发布单</div></div>
       </section>
     </main>
     <aside class="overview-rail">
+      <section class="ui-panel channel-panel compact" id="envDeliveryScopePanel">
+        <div class="ui-panel-head"><h2>本环境交付范围</h2><button type="button" class="ui-secondary scope-edit-btn" id="btnEditDeliveryScope">配置范围</button></div>
+        <p class="scope-hint scope-layer-hint">项目渠道/平台为全局上限；此处配置本环境实际支持的组合。新建 VersionCode 仅能选择已配置项。</p>
+        <p class="scope-hint" id="envDeliveryScopeHint">加载中...</p>
+        <div id="envDeliveryScopeChips" class="scope-chip-grid"></div>
+      </section>
       <section class="ui-panel channel-panel compact">
-        <div class="ui-panel-head"><h2>项目渠道</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/overview?tab=channels">管理渠道<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
-        <div id="envChannelList" class="channel-list"><div class="ui-skeleton">加载中...</div></div>
+        <div class="ui-panel-head"><h2>项目平台</h2><a class="icon-link" href="/admin/projects/{{ project_id }}/overview?tab=platforms">管理平台<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+        <div id="envPlatformList" class="channel-list"><div class="ui-skeleton">加载中...</div></div>
       </section>
       <section class="ui-panel manifest-panel">
         <div class="ui-panel-head"><h2>交付线初始化</h2></div>
         <p id="manifestStatus">检查 Manifest 状态中...</p>
         <button class="ui-primary" id="btnBootstrapScopes" type="button">初始化交付线 Scope</button>
-        <p>根据项目 Manifest 与渠道白名单，为各环境×渠道×平台生成 ReleaseScope。</p>
+        <p>根据项目 Manifest、渠道与平台白名单，为各环境×渠道×平台生成 ReleaseScope。</p>
       </section>
       <section class="ui-panel">
         <div class="ui-panel-head"><h2>配置入口</h2></div>
@@ -46,5 +48,21 @@
         </div>
       </section>
     </aside>
+  </div>
+  <div id="deliveryScopeDialog" class="delivery-dialog is-hidden" aria-hidden="true">
+    <div class="delivery-dialog-card delivery-scope-card">
+      <div class="delivery-dialog-head">
+        <div><h3>配置环境交付范围</h3><p>仅在项目渠道/平台白名单内勾选本环境支持的组合。</p></div>
+        <button type="button" class="icon-button" id="btnCloseDeliveryScope" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+      </div>
+      <div class="scope-editor-grid">
+        <div><strong>渠道</strong><div id="deliveryScopeChannels" class="scope-check-list"></div></div>
+        <div><strong>平台</strong><div id="deliveryScopePlatforms" class="scope-check-list"></div></div>
+      </div>
+      <div class="delivery-dialog-actions">
+        <button type="button" class="ui-secondary" id="btnCancelDeliveryScope">取消</button>
+        <button type="button" class="ui-primary" id="btnSaveDeliveryScope">保存</button>
+      </div>
+    </div>
   </div>
 </section>

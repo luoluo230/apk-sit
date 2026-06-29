@@ -10,10 +10,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from models.data import get_channel_by_id, get_channels_for_project, project_versions_db, projects_db
+from data.delivery_scope import get_channels_for_env, get_platform_defs_for_env, is_channel_allowed_for_env
+from data.platforms import get_platform_defs_for_project, is_platform_enabled_for_project, is_valid_platform_id
 from models.db import _db_lock, _get_conn, get_cursor, init_db
 from services.release.bundle_service import find_active_bundle, run_scope_precheck
 from services.release.env_registry import list_project_env_keys, normalize_release_env_key, project_env_label
-from services.release.scope_ids import build_scope_id, project_slug
+from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.scope_resolver import resolve_network_profile, resolve_scope, resolve_topology_binding_for_scope
 from services.release.topology_binding_service import resolve_topology_binding, upsert_topology_binding
 from services.release.storage import find_manifest
@@ -82,13 +84,22 @@ def _event(cur, order_id: str, event_type: str, actor: str, from_status: str = "
 
 
 def _find_version(project_id: str, version_id: str = "", version_code: str = "") -> Dict[str, Any]:
-    for row in project_versions_db.get(project_id) or []:
-        if not isinstance(row, dict):
-            continue
-        if version_id and str(row.get("id") or "") == version_id:
-            return dict(row)
-        if version_code and str(row.get("version_code") or "") == version_code:
-            return dict(row)
+    rows = project_versions_db.get(project_id) or []
+    vid = str(version_id or "").strip()
+    vcode = str(version_code or "").strip()
+    if vid:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("id") or "") == vid:
+                return dict(row)
+        return {}
+    if vcode:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("version_code") or "") == vcode:
+                return dict(row)
     return {}
 
 
@@ -201,25 +212,81 @@ def get_release_order(project_id: str, order_id: str, *, include_details: bool =
         return _order_from_row(row, include_details=include_details) if row else {}
 
 
+def find_draft_release_order(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
+    vid = str(version_id or "").strip()
+    if not vid:
+        return None
+    for row in list_release_orders(project_id):
+        if str(row.get("version_id") or "") != vid:
+            continue
+        if str(row.get("status") or "") in {"draft", "artifacts_ready", "precheck_failed"}:
+            return row
+    return None
+
+
+def ensure_draft_release_order(
+    project_id: str,
+    version_id: str,
+    actor: str,
+    reason: str = "",
+) -> Dict[str, Any]:
+    """Return an existing editable draft for `version_id`, or auto-create one.
+
+    Build entry points (workspace, release-order page) use this so users always
+    arrive at a draft order whose build params come from the version group.
+    """
+    existing = find_draft_release_order(project_id, version_id)
+    if existing:
+        return existing
+    vrow = _find_version(project_id, version_id)
+    if not vrow:
+        raise ValueError("VersionCode 不存在")
+    env_key = normalize_release_env_key(
+        vrow.get("env_key") or vrow.get("stage") or "development",
+        project_id=project_id,
+    )
+    channel_id = resolve_channel_id(project_id, str(vrow.get("channel") or vrow.get("channel_id") or "")) or str(
+        vrow.get("channel") or vrow.get("channel_id") or ""
+    )
+    payload = {
+        "env_key": env_key,
+        "channel_id": channel_id,
+        "platform": str(vrow.get("platform") or "android").strip().lower(),
+        "version_id": str(vrow.get("id") or ""),
+        "version_code": str(vrow.get("version_code") or ""),
+        "reason": reason or f"快速构建 - {vrow.get('version_name') or ''} {vrow.get('version_code') or ''}",
+        "owner": actor,
+    }
+    return create_release_order(project_id, payload, actor)
+
+
 def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -> Dict[str, Any]:
     if project_id not in projects_db:
         raise ValueError("项目不存在")
-    env_key = normalize_release_env_key(payload.get("env_key"))
+    env_key = normalize_release_env_key(payload.get("env_key"), project_id=project_id)
     channel_id = str(payload.get("channel_id") or "").strip()
     platform = str(payload.get("platform") or "").strip().lower()
     version_id = str(payload.get("version_id") or "").strip()
     version_code = str(payload.get("version_code") or "").strip()
-    if not channel_id or platform not in {"android", "ios"}:
+    if not channel_id or not is_platform_enabled_for_project(project_id, platform):
         raise ValueError("环境、渠道和平台必须精确选择")
     version = _find_version(project_id, version_id, version_code)
     if not version:
         raise ValueError("VersionCode 不存在")
     if str(version.get("platform") or "android").lower() != platform:
         raise ValueError("平台与 VersionCode 不一致")
-    version_env_key = normalize_release_env_key(version.get("env_key") or version.get("stage") or version.get("env"))
-    version_channel_id = str(version.get("channel_id") or version.get("channel") or "").strip()
-    if version_env_key != env_key or version_channel_id != channel_id:
+    version_env_key = normalize_release_env_key(
+        version.get("env_key") or version.get("stage") or version.get("env"),
+        project_id=project_id,
+    )
+    version_channel_raw = str(version.get("channel_id") or version.get("channel") or "").strip()
+    version_channel_id = resolve_channel_id(project_id, version_channel_raw) or version_channel_raw
+    order_channel_id = resolve_channel_id(project_id, channel_id) or channel_id
+    if version_env_key != env_key or version_channel_id != order_channel_id:
         raise ValueError("VersionCode 与发布单的环境或渠道不一致")
+    from services.release.release_policy_service import apply_release_defaults_to_payload
+
+    payload = apply_release_defaults_to_payload(project_id, env_key, dict(payload or {}))
     order_id = _order_id()
     now = _now_iso()
     artifacts = _artifact_rows(version)
@@ -292,6 +359,10 @@ def update_release_order(project_id: str, order_id: str, payload: Dict[str, Any]
         raise ValueError("发布单不存在")
     if order["status"] not in {"draft", "artifacts_ready", "precheck_failed"}:
         raise ValueError("发布单进入预检或执行阶段后不可编辑")
+    from services.release.release_policy_service import apply_release_defaults_to_payload
+
+    env_key = str(order.get("env_key") or "").strip()
+    payload = apply_release_defaults_to_payload(project_id, env_key, dict(payload or {}))
     reason = str(payload.get("reason") if "reason" in payload else order.get("reason") or "").strip()
     record_payload = dict(order.get("payload") or {})
     for key in EDITABLE_PLAN_FIELDS:
@@ -320,16 +391,28 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
         raise ValueError("当前发布单不可重新构建")
     version = _find_version(project_id, order["version_id"], order["version_code"])
     plan = dict(order.get("payload") or {})
-    configured_params = plan.get("jenkins_params")
-    if isinstance(configured_params, str) and configured_params.strip():
-        try:
-            configured_params = json.loads(configured_params)
-        except json.JSONDecodeError as exc:
-            raise ValueError("发布单中的 Jenkins 构建参数不是有效 JSON") from exc
-    params = dict(configured_params or version.get("jenkins_params") or {})
-    instance_id = str(plan.get("jenkins_instance_id") or version.get("jenkins_instance_id") or "").strip()
-    if not instance_id or not params:
-        raise ValueError("当前 VersionCode 未配置 Jenkins 实例或构建参数，请先在版本管理中完成构建配置")
+    from services.admin.version_service import (
+        resolve_effective_pipeline,
+        resolve_effective_jenkins,
+    )
+
+    effective_pipeline = resolve_effective_pipeline(project_id, version)
+    if not effective_pipeline:
+        raise ValueError("版本组管线模板尚未配置；请前往版本组「配置管线」完成 Jenkins 实例、Job 与四步流水线后再触发构建。")
+    version_for_build = dict(version)
+    version_for_build["pipeline"] = effective_pipeline
+    from services.commercial_release_plan import plan_defaults_from_pipeline, plan_to_jenkins_params
+
+    plan_defaults = plan_defaults_from_pipeline(version_for_build, project_id=project_id)
+    plan_filepath = str(plan.get("release_plan_file") or "release_order_inline.json")
+    params, _ = plan_to_jenkins_params(plan_defaults, plan_filepath, version_for_build, project_id=project_id)
+    if not params:
+        raise ValueError("无法从版本组管线推导 Jenkins 构建参数；请检查管线配置是否完整。")
+    jenkins_binding = resolve_effective_jenkins(project_id, version_for_build)
+    instance_id = jenkins_binding.get("jenkins_instance_id") or ""
+    if not instance_id:
+        raise ValueError("当前版本组未配置 Jenkins 实例。请在「配置管线」选择 Jenkins 实例后再触发构建。")
+    resolved_job = jenkins_binding.get("jenkins_job_id") or ""
     params["VERSION_NAME"] = str(order["version_name"])
     params["VERSION_CODE"] = str(order["version_code"])
     params["CHANNEL"] = str(order["channel_name"])
@@ -355,7 +438,13 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     from models.data import record_build_version
     record_build_version(instance_id, int(build_number), order["version_id"], project_id)
     payload = dict(order.get("payload") or {})
-    payload.update({"build_job_id": str(build_number), "jenkins_instance_id": instance_id, "jenkins_params": params})
+    payload.update({
+        "build_job_id": str(build_number),
+        "jenkins_instance_id": instance_id,
+        "jenkins_job": resolved_job,
+        "jenkins_params": params,
+        "pipeline_source": "version_group",
+    })
     now = _now_iso()
     with get_cursor() as cur:
         cur.execute(
@@ -505,6 +594,18 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
         raise ValueError("目标拓扑没有运行中的 runtime")
     now = _now_iso()
     bundle_id = _bundle_id(order["scope_id"])
+    from services.release.bundle_service import build_client_bootstrap_snapshot
+
+    client_snapshot = build_client_bootstrap_snapshot(version, scope)
+    client_snapshot["artifacts"] = [
+        {
+            "artifact_type": str(item.get("artifact_type") or ""),
+            "artifact_url": str(item.get("artifact_url") or ""),
+            "artifact_path": str(item.get("artifact_path") or ""),
+            "status": str(item.get("status") or ""),
+        }
+        for item in order.get("artifacts") or []
+    ]
     bundle = {
         "bundle_id": bundle_id,
         "release_order_id": order_id,
@@ -512,29 +613,7 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
         "scope_id": order["scope_id"],
         "env_key": order["env_key"],
         "channel_id": order["channel_id"],
-        "client": {
-            "version_id": order["version_id"],
-            "version_name": order["version_name"],
-            "version_code": order["version_code"],
-            "platform": order["platform"],
-            "apk_path": str(version.get("apk_path") or ""),
-            "apk_url": str(version.get("apk_url") or ""),
-            "resource_url": str(version.get("resource_url") or ""),
-            "config_url": str(version.get("config_url") or ""),
-            "code_url": str(version.get("code_url") or ""),
-            "resource_path": str(version.get("resource_path") or ""),
-            "config_path": str(version.get("config_path") or ""),
-            "code_path": str(version.get("code_path") or ""),
-            "artifacts": [
-                {
-                    "artifact_type": str(item.get("artifact_type") or ""),
-                    "artifact_url": str(item.get("artifact_url") or ""),
-                    "artifact_path": str(item.get("artifact_path") or ""),
-                    "status": str(item.get("status") or ""),
-                }
-                for item in order.get("artifacts") or []
-            ],
-        },
+        "client": client_snapshot,
         "server": {
             "topology_id": topology_id,
             "runtime_run_id": runtime_run_id,
@@ -687,7 +766,7 @@ def cancel_release_order(project_id: str, order_id: str, actor: str) -> Dict[str
     return _transition(project_id, order_id, actor, "cancelled", "cancelled")
 
 
-def context_options(project_id: str) -> Dict[str, Any]:
+def context_options(project_id: str, env_key: str = "") -> Dict[str, Any]:
     versions = []
     seen_versions = set()
     for source in project_versions_db.get(project_id) or []:
@@ -708,28 +787,39 @@ def context_options(project_id: str) -> Dict[str, Any]:
             continue
         seen_versions.add(identity)
         versions.append(row)
-    channels = [
-        {"channel_id": str(row.get("id") or ""), "channel_name": str(row.get("name") or row.get("id") or "")}
-        for row in get_channels_for_project(project_id)
-    ]
+    ek = normalize_release_env_key(env_key, project_id=project_id) if env_key else ""
+    if ek:
+        channels = [
+            {"channel_id": str(row.get("id") or ""), "channel_name": str(row.get("name") or row.get("id") or "")}
+            for row in get_channels_for_env(project_id, ek)
+        ]
+        platforms = get_platform_defs_for_env(project_id, ek)
+    else:
+        channels = [
+            {"channel_id": str(row.get("id") or ""), "channel_name": str(row.get("name") or row.get("id") or "")}
+            for row in get_channels_for_project(project_id)
+        ]
+        platforms = get_platform_defs_for_project(project_id)
     return {
         "project_id": project_id,
+        "env_key": ek,
         "environments": [
             {"env_key": key, "label": project_env_label(project_id, key)}
         for key in list_project_env_keys(project_id)
         ],
         "channels": channels,
-        "platforms": [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}],
+        "platforms": platforms,
         "versions": versions,
     }
 
 
 def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any]]:
+    ek = normalize_release_env_key(env_key, project_id=project_id)
     channels = [
         {"channel_id": str(row.get("id") or ""), "channel_name": str(row.get("name") or row.get("id") or "")}
-        for row in get_channels_for_project(project_id)
+        for row in get_channels_for_env(project_id, ek)
     ]
-    platforms = [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}]
+    platforms = get_platform_defs_for_env(project_id, ek)
     lines: List[Dict[str, Any]] = []
     for channel in channels:
         cid = str(channel.get("channel_id") or "").strip()
@@ -773,10 +863,20 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
 def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     init_db()
     filters = filters or {}
+    filter_channel_global = str(filters.get("channel_id") or "").strip()
     cards: List[Dict[str, Any]] = []
     for env_key in list_project_env_keys(project_id):
+        if filter_channel_global and not is_channel_allowed_for_env(project_id, env_key, filter_channel_global):
+            continue
         orders = list_release_orders(project_id, {"env_key": env_key})
-        delivery_lines = _delivery_lines_for_env(project_id, env_key)
+        delivery_lines_all = _delivery_lines_for_env(project_id, env_key)
+        delivery_lines = delivery_lines_all
+        if filter_channel_global:
+            delivery_lines = [
+                line
+                for line in delivery_lines_all
+                if str(line.get("channel_id") or "").strip() == filter_channel_global
+            ]
         configured_lines = [line for line in delivery_lines if line.get("configured")]
         unconfigured_count = sum(1 for line in delivery_lines if not line.get("configured"))
         pending = sum(1 for row in orders if row["status"] == "awaiting_approval")
@@ -790,8 +890,20 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
                 )
             )
         )
-        channel_ids = sorted({str(line.get("channel_id") or "").strip() for line in delivery_lines if str(line.get("channel_id") or "").strip()})
-        platforms = sorted({str(line.get("platform") or "").strip().lower() for line in delivery_lines if str(line.get("platform") or "").strip()})
+        channel_ids = sorted(
+            {str(line.get("channel_id") or "").strip() for line in delivery_lines_all if str(line.get("channel_id") or "").strip()}
+        )
+        platforms = sorted(
+            {str(line.get("platform") or "").strip().lower() for line in delivery_lines_all if str(line.get("platform") or "").strip()}
+        )
+        channel_platform_labels: List[str] = []
+        if filter_channel_global:
+            seen_platform_labels: set[str] = set()
+            for line in delivery_lines:
+                label = str(line.get("platform_label") or line.get("platform") or "").strip()
+                if label and label not in seen_platform_labels:
+                    seen_platform_labels.add(label)
+                    channel_platform_labels.append(label)
         cards.append(
             {
                 "env_key": env_key,
@@ -802,6 +914,7 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
                 "unconfigured_line_count": unconfigured_count,
                 "channel_ids": channel_ids,
                 "platforms": platforms,
+                "channel_platform_labels": channel_platform_labels,
                 "blocker_hint": (
                     f"{blocker.get('channel_name')} / {blocker.get('platform_label')} 未配置"
                     if blocker else ""
@@ -814,13 +927,10 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
             }
         )
     filter_env = str(filters.get("env_key") or "").strip().lower()
-    filter_channel = str(filters.get("channel_id") or "").strip()
     filter_platform = str(filters.get("platform") or "").strip().lower()
     filter_health = str(filters.get("health") or "").strip().lower()
     if filter_env:
         cards = [row for row in cards if row["env_key"] == filter_env]
-    if filter_channel:
-        cards = [row for row in cards if filter_channel in row.get("channel_ids") or []]
     if filter_platform:
         cards = [row for row in cards if filter_platform in row.get("platforms") or []]
     if filter_health:
@@ -838,7 +948,7 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
             for key in list_project_env_keys(project_id)
         ],
         "channel_options": enabled_channels,
-        "platform_options": [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}],
+        "platform_options": get_platform_defs_for_project(project_id),
         "health_options": [
             {"value": "healthy", "label": "运行中"},
             {"value": "blocked", "label": "存在阻断"},

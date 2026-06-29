@@ -564,14 +564,14 @@ def _is_process_alive(pid):
 
 def get_jenkins_war_path():
     """返回可用的 jenkins.war 路径。优先 JENKINS_WAR_PATH，其次 jenkins-clone/jenkins.war，再 data/jenkins_instances/jenkins.war。"""
-    if Config.JENKINS_WAR_PATH and os.path.isfile(Config.JENKINS_WAR_PATH):
-        return Config.JENKINS_WAR_PATH
-    war_in_clone = os.path.join(JENKINS_CLONE_DIR, 'jenkins.war')
-    if os.path.isfile(war_in_clone):
-        return war_in_clone
-    cached = os.path.join(INSTANCES_DIR, 'jenkins.war')
-    if os.path.isfile(cached):
-        return cached
+    candidates = []
+    if Config.JENKINS_WAR_PATH:
+        candidates.append(Config.JENKINS_WAR_PATH)
+    candidates.append(os.path.join(JENKINS_CLONE_DIR, 'jenkins.war'))
+    candidates.append(os.path.join(INSTANCES_DIR, 'jenkins.war'))
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
     return None
 
 
@@ -923,7 +923,10 @@ def _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, 
     base_url = startup.get_canonical_base_url()  # 与启动横幅一致：局域网 IP:PORT
     env_path = os.path.join(jenkins_home, '.apk-site-env')
     job_builds = os.path.join(jenkins_home, 'jobs', 'Android', 'builds')
-    apk_scan_dir = Config.APK_DIR.replace('\\', '\\\\').replace('"', '\\"')
+    from config import APK_SITE_ROOT
+    apk_publish_dir = os.path.join(APK_SITE_ROOT, 'data', 'apk')
+    apk_scan_dir = apk_publish_dir.replace('\\', '\\\\').replace('"', '\\"')
+    apk_publish_esc = apk_publish_dir.replace('\\', '\\\\').replace('"', '\\"')
     def esc(s):
         return (s or '').replace('\\', '\\\\').replace('"', '\\"')
     lines = [
@@ -931,6 +934,7 @@ def _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, 
         'export JENKINS_CLONE="%s"' % esc(jenkins_home),
         'export APK_DIR="%s"' % esc(output_base),
         'export APK_SCAN_DIR="%s"' % apk_scan_dir,
+        'export APK_PUBLISH_DIR="%s"' % apk_publish_esc,
         'export JENKINS_JOB_DIR="%s"' % esc(job_builds),
         'export APKSITE_BASE_URL="%s"' % esc(base_url),
     ]
@@ -1522,9 +1526,107 @@ def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_w
     return (False, "未找到该实例")
 
 
+def sync_instances_from_disk():
+    """将 data/jenkins_instances/{port} 目录中尚未登记的 Jenkins 实例写入注册表。"""
+    instances = load_jenkins_instances()
+    known_ports = {int(i.get('port')) for i in instances if i.get('port') is not None}
+    changed = False
+    if not os.path.isdir(INSTANCES_DIR):
+        return instances
+    for name in sorted(os.listdir(INSTANCES_DIR)):
+        if not str(name).isdigit():
+            continue
+        port = int(name)
+        if port in known_ports:
+            continue
+        jenkins_home = os.path.join(INSTANCES_DIR, name)
+        if not os.path.isdir(os.path.join(jenkins_home, 'jobs')):
+            continue
+        pid_on_port = _get_pid_by_port(port)
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        instances.append({
+            'id': str(uuid.uuid4())[:8],
+            'port': port,
+            'task_name': _read_task_name_from_home(jenkins_home) or ('Port%d' % port),
+            'instance_type': _detect_instance_type_from_home(jenkins_home),
+            'status': 'running' if pid_on_port else 'stopped',
+            'pid': pid_on_port,
+            'jenkins_home': jenkins_home,
+            'added_at': now,
+            'added_by': 'disk-sync',
+            'default_creds': True,
+        })
+        known_ports.add(port)
+        changed = True
+        logger.info('已从磁盘发现 Jenkins 实例 port=%s', port)
+    if changed:
+        save_jenkins_instances(instances)
+    return instances
+
+
+def _detect_instance_type_from_home(jenkins_home):
+    script = os.path.join(jenkins_home, 'scripts', 'commercial_android_pipeline.sh')
+    if os.path.isfile(script):
+        return 'commercial'
+    job_xml = os.path.join(jenkins_home, 'jobs', Config.JENKINS_JOB_NAME, 'config.xml')
+    if os.path.isfile(job_xml):
+        try:
+            with open(job_xml, encoding='utf-8', errors='ignore') as fh:
+                if 'commercial_android_pipeline' in fh.read():
+                    return 'commercial'
+        except OSError:
+            pass
+    return 'general'
+
+
+def _read_task_name_from_home(jenkins_home):
+    env_path = os.path.join(jenkins_home, '.apk-site-env')
+    if os.path.isfile(env_path):
+        try:
+            with open(env_path, encoding='utf-8', errors='ignore') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith('export TASK_NAME='):
+                        return line.split('=', 1)[1].strip().strip('"').strip("'")
+        except OSError:
+            pass
+    return ''
+
+
+def ensure_instance_running(instance_id, started_by='', wait_seconds=20):
+    """实例未运行时自动启动，并等待 Jenkins HTTP 就绪。"""
+    inst = get_instance_by_id(instance_id)
+    if not inst:
+        return False, '所选 Jenkins 实例不存在'
+    port = inst.get('port')
+    if port is not None and _get_pid_by_port(int(port)):
+        return True, None
+    ok, err = start_existing_jenkins(instance_id, started_by=started_by)
+    if not ok:
+        return False, err or 'Jenkins 启动失败'
+    import time
+    from services import jenkins as jenkins_svc
+
+    url = get_jenkins_url_for_instance(instance_id=instance_id)
+    bdir = get_builds_dir_for_instance(instance_id=instance_id)
+    deadline = time.time() + max(5, int(wait_seconds))
+    last_msg = ''
+    while time.time() < deadline:
+        try:
+            st = jenkins_svc.fetch_jenkins_status(base_url=url, builds_dir=bdir, instance_id=instance_id)
+            if st.get('ok'):
+                list_instances()
+                return True, None
+            last_msg = st.get('message') or last_msg
+        except Exception as exc:
+            last_msg = str(exc)
+        time.sleep(1)
+    return False, 'Jenkins 已启动但尚未就绪，请稍后在 Jenkins 管理页确认后再试' + (('：' + last_msg) if last_msg else '')
+
+
 def list_instances():
     """返回实例列表，并刷新运行状态（以端口 LISTENING 为准，避免僵尸 PID）。"""
-    instances = load_jenkins_instances()
+    instances = sync_instances_from_disk()
     changed = False
     for inst in instances:
         local_home = resolve_jenkins_home(inst)

@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from data.platforms import is_valid_platform_id
 from services.release.env_registry import normalize_release_env_key
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.profile_builder import build_network_profile_from_topology
@@ -32,17 +33,29 @@ def resolve_scope(
     env_key: str,
     channel_id: str,
     *,
+    platform: str = "",
     auto_create: bool = True,
 ) -> Dict[str, Any]:
     pid = str(project_id or "").strip()
     ek = normalize_release_env_key(env_key)
     cid = str(channel_id or "").strip()
+    plat = str(platform or "").strip().lower()
     if not pid or not cid:
         return {}
-    sid = build_scope_id(project_slug(pid), ek, cid)
+    sid = build_scope_id(project_slug(pid), ek, cid, plat if is_valid_platform_id(plat) else "")
     scope = find_scope(sid)
     if scope:
         return scope
+    if is_valid_platform_id(plat):
+        legacy_sid = build_scope_id(project_slug(pid), ek, cid)
+        if legacy_sid != sid:
+            legacy = find_scope(legacy_sid)
+            if legacy:
+                legacy["scope_id"] = sid
+                legacy["platform"] = plat
+                if auto_create:
+                    return upsert_scope(legacy)
+                return legacy
     if not auto_create:
         return {}
     slug = project_slug(pid)
@@ -52,6 +65,7 @@ def resolve_scope(
         "env_key": ek,
         "channel_id": cid,
         "channel_key": cid,
+        "platform": plat if is_valid_platform_id(plat) else "",
         "default_topology_id": _default_topology_id(pid, ek),
         "override": {"topology_id": ""},
         "status": "active",

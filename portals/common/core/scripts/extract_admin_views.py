@@ -173,10 +173,10 @@ TASK_STATUSES = [
 ]
 
 PLAN_LABELS = {{
-    "today_todo": "今日代办",
+    "today_todo": "今日待办",
     "today_done": "今日完成",
     "tomorrow_plan": "明日计划",
-    "backlog": "之前代办",
+    "backlog": "之前待办",
 }}
 
 {my_tasks_helpers}

@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from data.channels import get_channels_for_project
+from data.delivery_scope import get_channels_for_env, get_platform_defs_for_env
+from data.platforms import is_valid_platform_id
 from services.release.env_registry import list_project_env_keys
 from services.release.scope_ids import build_scope_id, list_channel_defs, project_slug
 from services.release.storage import find_manifest, load_manifests, save_manifests, upsert_scope
@@ -62,17 +64,25 @@ def bootstrap_scopes_for_project(project_id: str) -> List[Dict[str, Any]]:
     slug = str(manifest.get("project_slug") or project_slug(project_id)).strip()
     pattern = str(manifest.get("topology_pattern") or "topology-{project_slug}-{env_key}-default").strip()
     channels = _channel_defs(manifest, project_id)
-    enabled_ids = {str(c.get("id") or "").strip() for c in get_channels_for_project(project_id)}
-    if enabled_ids:
-        channels = [ch for ch in channels if str(ch.get("channel_id") or "").strip() in enabled_ids]
+    enabled_project_ids = {str(c.get("id") or "").strip() for c in get_channels_for_project(project_id)}
+    if enabled_project_ids:
+        channels = [ch for ch in channels if str(ch.get("channel_id") or "").strip() in enabled_project_ids]
     created: List[Dict[str, Any]] = []
     now = datetime.now().isoformat()
     for env_key in list_project_env_keys(project_id):
-        for ch in channels:
+        env_channel_rows = get_channels_for_env(project_id, env_key)
+        env_enabled_ids = {str(c.get("id") or "").strip() for c in env_channel_rows}
+        env_channels = [ch for ch in channels if str(ch.get("channel_id") or "").strip() in env_enabled_ids]
+        env_platforms = [row["value"] for row in get_platform_defs_for_env(project_id, env_key)]
+        for ch in env_channels:
             channel_platforms = ch.get("platforms") if isinstance(ch.get("platforms"), list) else []
-            platforms = [str(p).strip().lower() for p in channel_platforms if str(p).strip().lower() in {"android", "ios"}]
+            manifest_platforms = [str(p).strip().lower() for p in channel_platforms if is_valid_platform_id(p)]
+            if manifest_platforms:
+                platforms = [p for p in manifest_platforms if p in env_platforms]
+            else:
+                platforms = list(env_platforms)
             if not platforms:
-                platforms = ["android", "ios"]
+                continue
             for plat in platforms:
                 scope_id = build_scope_id(slug, env_key, ch["channel_id"], plat)
                 topology_id = pattern.format(project_slug=slug, env_key=env_key, project_id=project_id)

@@ -57,6 +57,34 @@ def projects_channels_enable_response(project_id: str):
     return jsonify(payload), status
 
 
+def projects_platforms_add_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    pid = (data.get("platform_id") or data.get("platform") or "").strip().lower()
+    payload, status = project_service.add_platform(project_id, pid)
+    return jsonify(payload), status
+
+
+def projects_platforms_remove_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    pid = (data.get("platform_id") or data.get("platform") or "").strip().lower()
+    payload, status = project_service.remove_platform(project_id, pid)
+    return jsonify(payload), status
+
+
+def projects_platforms_disable_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    pid = (data.get("platform_id") or data.get("platform") or "").strip().lower()
+    payload, status = project_service.disable_platform(project_id, pid)
+    return jsonify(payload), status
+
+
+def projects_platforms_enable_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    pid = (data.get("platform_id") or data.get("platform") or "").strip().lower()
+    payload, status = project_service.enable_platform(project_id, pid)
+    return jsonify(payload), status
+
+
 def projects_archive_response(project_id: str):
     data = request.get_json(silent=True) or {}
     payload, status = project_service.set_archive(project_id, bool(data.get("archive", True)))
@@ -65,6 +93,28 @@ def projects_archive_response(project_id: str):
 
 def projects_delete_response(project_id: str, require_approval_for_delete: bool):
     payload, status = project_service.delete_project(project_id, require_approval_for_delete)
+    return jsonify(payload), status
+
+
+def projects_channel_bindings_list_response(project_id: str):
+    payload, status = project_service.list_channel_bindings(project_id)
+    return jsonify(payload), status
+
+
+def projects_channel_bindings_update_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    cid = (data.get("channel_id") or data.get("channel") or "").strip()
+    binding = data.get("binding") if isinstance(data.get("binding"), dict) else {
+        k: data.get(k) for k in ("jenkins_job", "package_suffix", "signing_ref", "notes")
+    }
+    payload, status = project_service.update_channel_binding(project_id, cid, binding or {})
+    return jsonify(payload), status
+
+
+def projects_channel_bindings_delete_response(project_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    cid = (data.get("channel_id") or data.get("channel") or "").strip()
+    payload, status = project_service.delete_channel_binding(project_id, cid)
     return jsonify(payload), status
 
 
@@ -124,12 +174,54 @@ def register_routes(bp, current_username_getter, tenant_id_getter):
         return projects_channels_enable_response(project_id)
 
     @admin_required("projects")
+    def _projects_platforms_add(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_platforms_add_response(project_id)
+
+    @admin_required("projects")
+    def _projects_platforms_remove(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_platforms_remove_response(project_id)
+
+    @admin_required("projects")
+    def _projects_platforms_disable(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_platforms_disable_response(project_id)
+
+    @admin_required("projects")
+    def _projects_platforms_enable(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_platforms_enable_response(project_id)
+
+    @admin_required("projects")
     def _projects_archive(project_id: str):
         if project_id not in projects_db:
             return jsonify({"ok": False, "error": "项目不存在", "error_text": "项目不存在", "error_legacy": "项目不存在"}), 404
         if not can_edit_project(project_id, current_username_getter()):
             return jsonify({"error": "无权限操作"}), 403
         return projects_archive_response(project_id)
+
+    @admin_required("projects")
+    def _projects_channel_bindings_list(project_id: str):
+        if project_id not in projects_db or not can_view_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_channel_bindings_list_response(project_id)
+
+    @admin_required("projects")
+    def _projects_channel_bindings_update(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_channel_bindings_update_response(project_id)
+
+    @admin_required("projects")
+    def _projects_channel_bindings_delete(project_id: str):
+        if project_id not in projects_db or not can_edit_project(project_id, current_username_getter()):
+            return jsonify({"error": "无权限"}), 403
+        return projects_channel_bindings_delete_response(project_id)
 
     @admin_required("projects")
     def _projects_delete(project_id: str):
@@ -174,10 +266,51 @@ def register_routes(bp, current_username_getter, tenant_id_getter):
         methods=["POST"],
     )
     bp.add_url_rule(
+        "/admin/projects/<project_id>/platforms/add",
+        endpoint="admin_projects_platforms_add",
+        view_func=_projects_platforms_add,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/platforms/remove",
+        endpoint="admin_projects_platforms_remove",
+        view_func=_projects_platforms_remove,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/platforms/disable",
+        endpoint="admin_projects_platforms_disable",
+        view_func=_projects_platforms_disable,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/platforms/enable",
+        endpoint="admin_projects_platforms_enable",
+        view_func=_projects_platforms_enable,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
         "/admin/projects/<project_id>/archive",
         endpoint="admin_projects_archive",
         view_func=_projects_archive,
         methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/channel-bindings",
+        endpoint="admin_projects_channel_bindings_list",
+        view_func=_projects_channel_bindings_list,
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/channel-bindings/update",
+        endpoint="admin_projects_channel_bindings_update",
+        view_func=_projects_channel_bindings_update,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/admin/projects/<project_id>/channel-bindings/delete",
+        endpoint="admin_projects_channel_bindings_delete",
+        view_func=_projects_channel_bindings_delete,
+        methods=["POST", "DELETE"],
     )
     bp.add_url_rule(
         "/admin/projects/delete/<project_id>",

@@ -77,13 +77,51 @@ echo ""
 
 echo "步骤 2: 查找 Unity 版本"
 UNITY_PATH=""
-for path in "/Applications/Unity/Unity-$UNITY_VERSION/Unity.app" \
-            "/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app"; do
-    if [ -d "$path" ]; then
-        UNITY_PATH="$path"
+_resolve_unity_exe() {
+  local ver="${UNITY_VERSION:-6000.3.8f1}"
+  local map_file="${UNITY_PATH_MAP_FILE:-${JENKINS_HOME}/unity_paths.json}"
+  local resolved=""
+  local py_cmd=""
+  if command -v python3 >/dev/null 2>&1; then py_cmd="python3"
+  elif command -v python >/dev/null 2>&1; then py_cmd="python"
+  elif command -v py >/dev/null 2>&1; then py_cmd="py -3"
+  fi
+  if [ -f "$map_file" ] && [ -n "$py_cmd" ]; then
+    export UNITY_PATH_MAP_FILE="$map_file"
+    export UNITY_VERSION="$ver"
+    resolved=$($py_cmd -c "import json,os; m=json.load(open(os.environ['UNITY_PATH_MAP_FILE'],encoding='utf-8')); print((m.get(os.environ.get('UNITY_VERSION','')) or '').strip())" 2>/dev/null || echo "")
+  fi
+  if [ -n "$resolved" ] && [ -d "$resolved" ] && [ -f "$resolved/Contents/MacOS/Unity" ]; then
+    resolved="$resolved/Contents/MacOS/Unity"
+  fi
+  if [ -z "$resolved" ] || [ ! -f "$resolved" ]; then
+    for CAND in \
+      "/c/Program Files/Unity/Hub/Editor/${ver}/Editor/Unity.exe" \
+      "/c/Program Files (x86)/Unity/Hub/Editor/${ver}/Editor/Unity.exe" \
+      "/Applications/Unity/Hub/Editor/${ver}/Unity.app/Contents/MacOS/Unity" \
+      "$HOME/Applications/Unity/Hub/Editor/${ver}/Unity.app/Contents/MacOS/Unity"; do
+      if [ -f "$CAND" ]; then
+        resolved="$CAND"
         break
+      fi
+    done
+  fi
+  if [ -n "$resolved" ] && [ -f "$resolved" ]; then
+    echo "$resolved"
+  fi
+}
+UNITY_EXE="$(_resolve_unity_exe)"
+if [ -n "$UNITY_EXE" ] && [ -f "$UNITY_EXE" ]; then
+  UNITY_PATH="$UNITY_EXE"
+else
+  for path in "/Applications/Unity/Unity-$UNITY_VERSION/Unity.app" \
+              "/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app"; do
+    if [ -d "$path" ]; then
+      UNITY_PATH="$path"
+      break
     fi
-done
+  done
+fi
 
 if [ -z "$UNITY_PATH" ]; then
     echo "❌ Unity $UNITY_VERSION 未找到"
@@ -289,10 +327,19 @@ echo ""
 
 UNITY_LOG_FILE="$LOG_DIR/unity_build.log"
 
+if [ -f "$UNITY_PATH" ]; then
+  UNITY_CMD="$UNITY_PATH"
+elif [ -f "$UNITY_PATH/Contents/MacOS/Unity" ]; then
+  UNITY_CMD="$UNITY_PATH/Contents/MacOS/Unity"
+else
+  echo "❌ Unity 可执行文件无效: $UNITY_PATH"
+  exit 1
+fi
+
 VERSION_CODE="$VERSION_CODE" \
 VERSION_NAME="$VERSION_NAME" \
 APP_NAME="$APP_NAME" \
-"$UNITY_PATH/Contents/MacOS/Unity" \
+"$UNITY_CMD" \
     -quit \
     -batchmode \
     -nographics \

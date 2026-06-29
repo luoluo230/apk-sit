@@ -941,11 +941,29 @@ def trigger_commercial_release():
     data = request.get_json(silent=True) or {}
     if not data and request.get_data():
         return jsonify({'success': False, 'error': '请求体不是合法 JSON'}), 400
+    project_id = (data.get('_project_id') or '').strip()
+    version_id = (data.get('_version_id') or '').strip()
+    if project_id and version_id:
+        try:
+            from services.release.release_order_service import ensure_draft_release_order, request_build as ro_request_build
+            from flask import session
+            actor = session.get('user') or ''
+            draft = ensure_draft_release_order(project_id, version_id, actor)
+            updated = ro_request_build(project_id, draft.get('release_order_id') or '', actor)
+            build_number = ((updated.get('payload') or {}).get('build_job_id')) or ''
+            return jsonify({
+                'success': True,
+                'build_number': build_number,
+                'release_order_id': draft.get('release_order_id'),
+                'pipeline_source': 'version_group',
+            })
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc)}), 400
+        except Exception as exc:
+            return jsonify({'success': False, 'error': f'通过发布单触发构建失败：{exc}'}), 500
     instance_id = (data.get('instance_id') or '').strip()
     if not instance_id:
         return jsonify({'success': False, 'error': '请选择 Jenkins 实例（缺少 instance_id）'}), 400
-    project_id = (data.get('_project_id') or '').strip()
-    version_id = (data.get('_version_id') or '').strip()
     version_obj = None
     if project_id and version_id:
         try:
@@ -958,10 +976,18 @@ def trigger_commercial_release():
     # Jenkins context
     base_url, builds_dir, instance_id = _jenkins_context(data)
 
+    if instance_id and (not base_url or not builds_dir):
+        from flask import session
+        ok_run, run_err = jm.ensure_instance_running(instance_id, started_by=session.get('user') or '')
+        if not ok_run:
+            return jsonify({'success': False, 'error': run_err or 'Jenkins 实例未运行且自动启动失败'}), 400
+        base_url = jm.get_jenkins_url_for_instance(instance_id=instance_id)
+        builds_dir = jm.get_builds_dir_for_instance(instance_id=instance_id)
+
     if not base_url or not builds_dir:
         return jsonify({
             'success': False,
-            'error': 'Jenkins 实例未找到或未运行，请在 Jenkins 管理中启动对应实例',
+            'error': 'Jenkins 实例未找到，请在 Jenkins 管理中确认实例已登记',
         }), 400
 
     plan = data.get('plan') or {}

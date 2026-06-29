@@ -3,11 +3,11 @@
 
 from functools import wraps
 
-from flask import abort, redirect, session, url_for
+from flask import abort, jsonify, redirect, request, session, url_for
 
-from data.repositories.user_repository import UserRepository
+from data.repositories.user_repository import get_user_repository
 
-_user_repo = UserRepository()
+_user_repo = get_user_repository()
 
 
 def _user_record(username: str):
@@ -91,24 +91,50 @@ def get_visible_modules():
     return [m for m in ADMIN_MODULES if not m[2] and m[0] in allowed]
 
 
+def _is_api_request():
+    return str(request.path or '').startswith('/api/')
+
+
+def _api_auth_response(status: int, error: str):
+    return jsonify({'ok': False, 'error': error}), status
+
+
 def _ensure_logged_in():
+    """Return 'ok', 'unauth', or 'forbidden' (disabled account)."""
     if 'user' not in session:
-        return False
+        return 'unauth'
     info = _user_record(session['user'])
     if not info:
-        return False
+        return 'unauth'
     if info.get('disabled'):
         session.pop('user', None)
-        abort(403)
-    return True
+        return 'forbidden'
+    return 'ok'
+
+
+def _handle_login_gate(f, args, kwargs):
+    auth_state = _ensure_logged_in()
+    if auth_state == 'ok':
+        return f(*args, **kwargs)
+    if _is_api_request():
+        if auth_state == 'unauth':
+            return _api_auth_response(401, '未登录')
+        return _api_auth_response(403, '无权限')
+    if auth_state == 'unauth':
+        return redirect(url_for('auth.login'))
+    abort(403)
+
+
+def _handle_forbidden():
+    if _is_api_request():
+        return _api_auth_response(403, '无权限')
+    abort(403)
 
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not _ensure_logged_in():
-            return redirect(url_for('auth.login'))
-        return f(*args, **kwargs)
+        return _handle_login_gate(f, args, kwargs)
 
     return decorated_function
 
@@ -120,19 +146,26 @@ def admin_required(module_id=None):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not _ensure_logged_in():
-                return redirect(url_for('auth.login'))
+            auth_state = _ensure_logged_in()
+            if auth_state != 'ok':
+                if _is_api_request():
+                    if auth_state == 'unauth':
+                        return _api_auth_response(401, '未登录')
+                    return _api_auth_response(403, '无权限')
+                if auth_state == 'unauth':
+                    return redirect(url_for('auth.login'))
+                abort(403)
             info = _user_record(session['user']) or {}
             if info.get('role') in ('super_admin', 'admin'):
                 return f(*args, **kwargs)
             if module_id == 'user_management':
-                abort(403)
+                return _handle_forbidden()
             if module_id is None:
                 if not get_visible_modules():
-                    abort(403)
+                    return _handle_forbidden()
                 return f(*args, **kwargs)
             if not can_access_module(module_id):
-                abort(403)
+                return _handle_forbidden()
             return f(*args, **kwargs)
 
         return decorated_function
@@ -144,15 +177,22 @@ def admin_required_any(*module_ids):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if not _ensure_logged_in():
-                return redirect(url_for('auth.login'))
+            auth_state = _ensure_logged_in()
+            if auth_state != 'ok':
+                if _is_api_request():
+                    if auth_state == 'unauth':
+                        return _api_auth_response(401, '未登录')
+                    return _api_auth_response(403, '无权限')
+                if auth_state == 'unauth':
+                    return redirect(url_for('auth.login'))
+                abort(403)
             info = _user_record(session['user']) or {}
             if info.get('role') in ('super_admin', 'admin'):
                 return f(*args, **kwargs)
             for module_id in module_ids:
                 if can_access_module(module_id):
                     return f(*args, **kwargs)
-            abort(403)
+            return _handle_forbidden()
 
         return decorated_function
 

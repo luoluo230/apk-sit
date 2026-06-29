@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
+from data.platforms import is_valid_platform_id
 from models.data import get_channel_by_id, projects_db
 from services.release.env_registry import normalize_release_env_key
 from services.release.storage import find_manifest
@@ -22,7 +23,7 @@ def build_scope_id(slug: str, env_key: str, channel_id: str, platform: str = "")
     slug_norm = project_slug(slug) or str(slug or "").strip().lower()
     base = f"{slug_norm}:{normalize_release_env_key(env_key)}:{str(channel_id or '').strip()}"
     plat = str(platform or "").strip().lower()
-    if plat in {"android", "ios"}:
+    if is_valid_platform_id(plat):
         return f"{base}:{plat}"
     return base
 
@@ -34,7 +35,7 @@ def parse_scope_id(scope_id: str) -> Dict[str, str]:
         out["slug"] = parts[0]
         out["env_key"] = parts[1]
         out["channel_id"] = parts[2]
-    if len(parts) >= 4 and parts[3] in {"android", "ios"}:
+    if len(parts) >= 4 and is_valid_platform_id(parts[3]):
         out["platform"] = parts[3]
     return out
 
@@ -48,7 +49,7 @@ def scope_platform(scope: Dict[str, Any]) -> str:
     if not isinstance(scope, dict):
         return ""
     plat = str(scope.get("platform") or "").strip().lower()
-    if plat in {"android", "ios"}:
+    if is_valid_platform_id(plat):
         return plat
     return str(parse_scope_id(str(scope.get("scope_id") or "")).get("platform") or "").strip().lower()
 
@@ -68,7 +69,15 @@ def _channel_defs(manifest: Dict[str, Any], project_id: str) -> List[Dict[str, A
                 cfg = get_channel_by_id(cid)
                 if isinstance(cfg, dict):
                     ckey = str(cfg.get("apk_subdir") or cfg.get("name") or cid).strip()
-            out.append({"channel_id": cid, "channel_key": ckey or cid})
+            out.append({
+                "channel_id": cid,
+                "channel_key": ckey or cid,
+                "platforms": [
+                    str(p).strip().lower()
+                    for p in (ch.get("platforms") or [])
+                    if is_valid_platform_id(p)
+                ],
+            })
         if out:
             return out
     proj = projects_db.get(project_id) if isinstance(projects_db, dict) else {}

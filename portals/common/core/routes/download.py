@@ -103,7 +103,18 @@ def pub_oss_download(object_key):
     key = _resolve_oss_object_key(object_key)
     if not key:
         abort(403)
-    unity_project = (os.environ.get("UNITY_PROJECT_PATH") or "/Users/wangling/Desktop/MyGame/GameClient").strip()
+    unity_project = (os.environ.get("UNITY_PROJECT_PATH") or os.environ.get("MACLIENT_ROOT") or "").strip()
+    if not unity_project:
+        for candidate in (
+            os.environ.get("MACLIENT_ROOT"),
+            "E:\\maclient",
+            "/Users/wangling/maclient",
+        ):
+            if candidate and os.path.isdir(candidate):
+                unity_project = candidate
+                break
+    if not unity_project:
+        abort(503, description="UNITY_PROJECT_PATH is not configured for OSS download proxy")
     filename = os.path.basename(key)
     stats_key = f"oss:{key}"
     src = (request.args.get("source") or "direct").strip().lower()[:20]

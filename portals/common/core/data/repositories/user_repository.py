@@ -9,6 +9,19 @@ from typing import Any, Dict, Optional
 from data._store import LOGIN_ATTEMPTS_FILE, USERS_FILE, Storage, load_document, save_document
 
 
+_shared_repo: Optional["UserRepository"] = None
+
+
+def get_user_repository(storage: Optional[Storage] = None) -> "UserRepository":
+    """Return the process-wide UserRepository singleton."""
+    global _shared_repo
+    if storage is not None:
+        return UserRepository(storage=storage)
+    if _shared_repo is None:
+        _shared_repo = UserRepository()
+    return _shared_repo
+
+
 class UserRepository:
     """CRUD wrapper for user records persisted via Storage."""
 

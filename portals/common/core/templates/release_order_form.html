@@ -1,7 +1,7 @@
 <section class="delivery-app order-form-app" data-delivery-page="order-form" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
   <div class="workflow-heading">
     <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/action_back.svg" alt="">返回发布单中心</a>
-    <div><h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1><p>完整定义本次交付目标、构建参数、运行拓扑、验证与回滚方案。</p></div>
+    <div><h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1><p id="orderFormSubtitle">开发环境快捷发布：填写原因与负责人即可；管线在版本组模板维护。</p></div>
     <span class="draft-badge">草稿可随时保存</span>
   </div>
   <div class="workflow-layout">
@@ -21,6 +21,7 @@
       <form id="releaseOrderForm">
         <section class="workflow-section" data-section="target">
           <div class="section-title"><div><span>STEP 01</span><h2>交付目标</h2></div><p>一张发布单只对应一个精确环境、渠道、平台和 VersionCode。</p></div>
+          <div id="orderTargetLockBanner" class="target-lock-banner is-hidden">交付目标已从 VersionCode 带入，以下字段不可修改。</div>
           <div class="form-grid">
             <label>项目<input value="{{ project.get('name') or project_id }}" disabled></label>
             <label>环境<select name="env_key" required></select></label>
@@ -28,28 +29,42 @@
             <label>平台<select name="platform" required></select></label>
             <label class="span-2">版本组 / VersionCode<select name="version_id" required></select></label>
             <label>负责人<input name="owner" placeholder="本次发布负责人"></label>
-            <label>发布时间窗口<input name="release_window" placeholder="2026-06-13 20:00 - 22:00"></label>
-            <label>变更单号<input name="change_order" placeholder="例如 CHG-20260613-001"></label>
-            <label>关联需求<input name="related_requirements" placeholder="需求或里程碑编号"></label>
-            <label>关联任务<input name="related_tasks" placeholder="任务或缺陷编号"></label>
+            <label class="order-field-optional">发布时间窗口<input name="release_window" placeholder="2026-06-13 20:00 - 22:00"></label>
+            <label class="order-field-optional">变更单号<input name="change_order" placeholder="例如 CHG-20260613-001"></label>
+            <label class="order-field-optional">关联需求<input name="related_requirements" placeholder="需求或里程碑编号"></label>
+            <label class="order-field-optional">关联任务<input name="related_tasks" placeholder="任务或缺陷编号"></label>
             <label class="span-2">发布原因<textarea name="reason" required placeholder="说明本次发布目的、影响范围与业务价值"></textarea></label>
-            <label class="span-4">发布说明<textarea name="release_description" placeholder="面向审批人与执行人的完整变更说明"></textarea></label>
+            <label class="span-4 order-field-optional">发布说明<textarea name="release_description" placeholder="面向审批人与执行人的完整变更说明"></textarea></label>
+            <div class="span-4 order-minimal-build-summary" id="orderMinimalBuildSummary" hidden></div>
           </div>
         </section>
 
-        <section class="workflow-section" data-section="build">
-          <div class="section-title"><div><span>STEP 02</span><h2>构建与产物</h2></div><p>构建参数默认继承 VersionCode 配置，触发构建后写入真实 Jenkins 任务。</p></div>
-          <div class="form-grid">
-            <label>Jenkins 实例<input name="jenkins_instance_id" placeholder="从 VersionCode 配置继承" readonly title="在版本「配置构建」页选择 Jenkins 实例后自动继承"></label>
-            <label>Jenkins Job<input name="jenkins_job" placeholder="例如 Android"></label>
-            <label class="span-2">构建参数 JSON<textarea name="jenkins_params" placeholder='{"GIT_BRANCH":"main","BUILD_ENV":"testing"}'></textarea></label>
+        <section class="workflow-section order-section-build" data-section="build">
+          <div class="section-title"><div><span>STEP 02</span><h2>构建与产物</h2></div><p>构建管线的唯一来源是「版本组管线模板」，发布单只读引用并触发。需要修改请回到版本组「配置管线」。</p></div>
+          <div class="pipeline-readonly-card" id="orderPipelineSummaryCard" data-pipeline-source="version_group">
+            <div class="pipeline-readonly-head">
+              <strong>当前管线源</strong>
+              <span class="pipeline-source-pill" id="orderPipelineSourcePill">版本组管线模板</span>
+            </div>
+            <ul class="pipeline-readonly-rows" id="orderPipelineSummaryRows">
+              <li><code>Jenkins 实例</code><span data-field="jenkins_instance_id" title="在版本组管线模板中选择 Jenkins 实例">未配置</span></li>
+              <li><code>Jenkins Job</code><span data-field="jenkins_job" title="在版本组管线模板中配置 Job">未配置</span></li>
+              <li><code>4 步管线</code><span data-field="pipeline_summary">-</span></li>
+            </ul>
+            <input type="hidden" name="jenkins_instance_id">
+            <input type="hidden" name="jenkins_job">
+            <input type="hidden" name="jenkins_params">
+            <p class="pipeline-readonly-hint">参数由版本组管线模板推导（Jenkins、Git/Unity、4 步流水线、Bootstrap）。如需调整，请前往版本组「配置管线」。</p>
+            <a class="ui-primary pipeline-cta" id="orderGoConfigurePipelineBtn" href="#">前往版本组管线配置</a>
           </div>
           <div class="workflow-preview-grid" id="buildPlanPreview"><div class="workflow-placeholder">选择 VersionCode 后展示构建与产物摘要。</div></div>
         </section>
 
-        <section class="workflow-section" data-section="runtime">
+        <section class="workflow-section order-section-advanced" data-section="runtime">
           <div class="section-title"><div><span>STEP 03</span><h2>拓扑与运行目标</h2></div><p>按项目默认、环境渠道、大版本三级规则解析，最终结果在发布 Bundle 中冻结。</p></div>
           <div class="form-grid">
+            <label>目标拓扑（可选）<select name="target_topology_id"><option value="">按绑定规则自动解析</option></select></label>
+            <div class="runtime-readonly span-3"><span>说明</span><strong>指定后将覆盖默认绑定，发布时写入大版本级拓扑绑定</strong></div>
             <div class="runtime-readonly span-2"><span>命中拓扑</span><strong id="resolvedTopology">保存后按绑定规则解析</strong></div>
             <div class="runtime-readonly span-2"><span>运行实例</span><strong id="resolvedRuntime">预检后确认</strong></div>
           </div>
@@ -59,7 +74,7 @@
           </div>
         </section>
 
-        <section class="workflow-section" data-section="strategy">
+        <section class="workflow-section order-section-advanced" data-section="strategy">
           <div class="section-title"><div><span>STEP 04</span><h2>发布策略</h2></div><p>选择全量发布或灰度发布，灰度参数会进入审批和审计记录。</p></div>
           <div class="form-grid">
             <label>发布方式<select name="release_strategy"><option value="standard">全量发布</option><option value="gray">灰度发布</option></select></label>
@@ -70,7 +85,7 @@
           </div>
         </section>
 
-        <section class="workflow-section" data-section="verify">
+        <section class="workflow-section order-section-advanced" data-section="verify">
           <div class="section-title"><div><span>STEP 05</span><h2>验证方案</h2></div><p>发布后必须验证客户端启动、热更、登录和玩家数据拉取。</p></div>
           <div class="form-grid">
             <label class="span-2">自动验证任务<input name="validation_task" placeholder="例如 client-e2e-login-player-profile"></label>
@@ -78,7 +93,7 @@
           </div>
         </section>
 
-        <section class="workflow-section" data-section="rollback">
+        <section class="workflow-section order-section-advanced" data-section="rollback">
           <div class="section-title"><div><span>STEP 06</span><h2>回滚方案</h2></div><p>回滚恢复旧 Bundle 的版本、拓扑、网络与服务端快照。</p></div>
           <div class="form-grid">
             <label>回滚目标<input name="rollback_target" placeholder="默认回滚到上一个已发布 Bundle"></label>
@@ -91,7 +106,9 @@
       </form>
     </main>
     <aside class="workflow-rail">
+      <section class="ui-panel"><div class="ui-panel-head"><h2>交付就绪度</h2><strong id="deliveryReadiness">0%</strong></div><div class="completion-track delivery-track"><span id="deliveryReadinessBar"></span></div><p id="deliveryReadinessHint">选择 VersionCode 后评估管线、拓扑与产物。</p></section>
       <section class="ui-panel"><div class="ui-panel-head"><h2>计划完整度</h2><strong id="planCompleteness">0%</strong></div><div class="completion-track"><span id="planCompletenessBar"></span></div><p id="planCompletenessHint">请先选择精确交付目标。</p></section>
+      <section class="ui-panel" id="orderPipelineGatePanel"><div class="ui-panel-head"><h2>管线门禁</h2></div><p id="orderPipelineGateHint" class="panel-hint">管线未就绪时不可触发构建。</p></section>
       <section class="ui-panel"><div class="ui-panel-head"><h2>发布门禁</h2></div><ul class="gate-list"><li><img src="/static/project_ui/svg/status_pending.svg" alt="">四类产物已登记且可达</li><li><img src="/static/project_ui/svg/status_pending.svg" alt="">拓扑绑定与 Runtime 一致</li><li><img src="/static/project_ui/svg/status_pending.svg" alt="">Gateway / Login / Game / Ops 探活</li><li><img src="/static/project_ui/svg/status_pending.svg" alt="">生产环境审批已通过</li></ul></section>
       <section class="ui-panel"><div class="ui-panel-head"><h2>快捷入口</h2></div><div class="rail-actions"><a href="/admin/projects/{{ project_id }}/versions"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本与 VersionCode</a><a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a><a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a></div></section>
     </aside>
@@ -99,7 +116,8 @@
   <div class="workflow-footer">
     <a class="ui-secondary" href="/admin/projects/{{ project_id }}/release-orders">取消</a>
     <button class="ui-secondary" data-save-order type="button">保存草稿</button>
-    <button class="ui-primary" data-save-build type="button">保存并触发构建</button>
+    <a class="ui-primary is-hidden" id="btnConfigurePipeline" href="#">去配置管线</a>
+    <button class="ui-primary" data-save-build type="button" id="btnSaveBuild">保存并触发构建</button>
     <span id="orderSaveStatus"></span>
   </div>
 </section>

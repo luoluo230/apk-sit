@@ -34,6 +34,7 @@ LEGACY_PATTERNS = [
         re.compile(r"inst\.get\(['\"]jenkins_home['\"]\)"),
         "raw jenkins_home; use resolve_jenkins_home(inst)",
     ),
+    (re.compile(r"今日代办|之前代办"), "use 待办 not 代办"),
 ]
 
 ALLOWED_RAW_JENKINS_HOME = {

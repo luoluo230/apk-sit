@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -13,7 +13,12 @@ from services.release.env_registry import normalize_release_env_key
 from services.release.scope_ids import resolve_channel_id
 from services.release.scope_resolver import resolve_network_profile, resolve_topology_binding_for_scope, resolve_topology_id
 from services.release.storage import load_bundles
-from services.commercial_release_plan import build_runtime_resolve_paths, normalize_release_channel, normalize_release_platform
+from services.commercial_release_plan import (
+    DEFAULT_RESOURCE_SERVER,
+    build_runtime_resolve_paths,
+    normalize_release_channel,
+    normalize_release_platform,
+)
 
 
 def _now_iso() -> str:
@@ -24,9 +29,11 @@ def list_bundles(
     project_id: str = "",
     scope_id: str = "",
     status: str = "",
+    platform: str = "",
 ) -> List[Dict[str, Any]]:
     rows = load_bundles()
     out = []
+    plat_filter = str(platform or "").strip().lower()
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -36,6 +43,11 @@ def list_bundles(
             continue
         if status and str(row.get("publish_status") or "").strip() != status:
             continue
+        if plat_filter in {"android", "ios"}:
+            client = row.get("client") if isinstance(row.get("client"), dict) else {}
+            row_plat = str(client.get("platform") or row.get("platform") or "").strip().lower()
+            if row_plat != plat_filter:
+                continue
         out.append(row)
     out.sort(key=lambda x: str(x.get("published_at") or x.get("created_at") or ""), reverse=True)
     return out
@@ -74,6 +86,88 @@ def _check_remote_artifact(url: str, *, timeout: float = 5.0) -> Dict[str, Any]:
     return {"ok": False, "status": 0, "error": "artifact probe failed"}
 
 
+def build_client_bootstrap_snapshot(
+    version_row: Dict[str, Any],
+    scope: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build runtime-bootstrap client payload aligned with commercial_startup_sequence_gate."""
+    scope = scope if isinstance(scope, dict) else {}
+    release_env = {
+        "development": "Development",
+        "testing": "Testing",
+        "staging": "Staging",
+        "production": "Production",
+    }.get(
+        normalize_release_env_key(scope.get("env_key") or version_row.get("env_key") or version_row.get("stage")),
+        "Development",
+    )
+    release_channel = normalize_release_channel(
+        str(version_row.get("channel_id") or version_row.get("channel") or scope.get("channel_id") or "common")
+    )
+    release_platform = normalize_release_platform(str(version_row.get("platform") or "android"))
+    version_name = str(version_row.get("version_name") or "").strip()
+    version_code = str(version_row.get("version_code") or "").strip()
+    platform = str(version_row.get("platform") or "android").strip().lower()
+
+    runtime_paths = build_runtime_resolve_paths(
+        resource_server_url=str(version_row.get("resource_server_url") or ""),
+        release_environment=release_env,
+        release_channel=release_channel,
+        release_platform=release_platform,
+        release_version=version_name,
+        version_code=version_code,
+    )
+    artifact_urls = _artifact_probe_targets(scope, version_row) if scope.get("scope_id") or scope.get("env_key") else {}
+    resource_relative_path = str(runtime_paths.get("resource_relative_path") or "").strip("/")
+    config_relative_path = str(runtime_paths.get("config_relative_path") or "").strip()
+    code_relative_path = str(runtime_paths.get("code_relative_path") or "").strip()
+    catalog_file_name = str(
+        version_row.get("catalog_file_name") or runtime_paths.get("catalog_file_name") or ""
+    ).strip().lstrip("/")
+
+    min_client = str(version_row.get("min_client_version") or version_name).strip()
+    max_client = str(version_row.get("max_client_version") or version_name).strip()
+    rollout_raw = version_row.get("rollout_percentage")
+    try:
+        rollout_percentage = max(0, min(100, int(rollout_raw if rollout_raw is not None else 100)))
+    except (TypeError, ValueError):
+        rollout_percentage = 100
+
+    resource_server = str(version_row.get("resource_server_url") or "").strip().rstrip("/") or DEFAULT_RESOURCE_SERVER
+
+    return {
+        "version_id": version_row.get("id"),
+        "version_name": version_name,
+        "version_code": version_code,
+        "platform": platform,
+        "apk_path": str(version_row.get("apk_path") or ""),
+        "apk_url": str(version_row.get("apk_url") or ""),
+        "resource_url": str(version_row.get("resource_url") or ""),
+        "config_url": str(version_row.get("config_url") or ""),
+        "code_url": str(version_row.get("code_url") or ""),
+        "resource_path": str(version_row.get("resource_path") or resource_relative_path),
+        "config_path": str(version_row.get("config_path") or config_relative_path),
+        "code_path": str(version_row.get("code_path") or code_relative_path),
+        "resource_relative_path": resource_relative_path,
+        "config_relative_path": config_relative_path,
+        "code_relative_path": code_relative_path,
+        "catalog_file_name": catalog_file_name,
+        "catalog_url": str(artifact_urls.get("catalog_url") or "").strip(),
+        "config_manifest_url": str(
+            artifact_urls.get("config_manifest_url") or runtime_paths.get("config_manifest_path") or ""
+        ).strip(),
+        "code_manifest_url": str(
+            artifact_urls.get("code_manifest_url") or runtime_paths.get("code_manifest_path") or ""
+        ).strip(),
+        "min_client_version": min_client,
+        "max_client_version": max_client,
+        "rollout_percentage": rollout_percentage,
+        "force_update": bool(version_row.get("force_update", False)),
+        "is_revoked": bool(version_row.get("is_revoked", False)),
+        "resource_server_url": resource_server,
+    }
+
+
 def _artifact_probe_targets(scope: Dict[str, Any], version_row: Dict[str, Any]) -> Dict[str, str]:
     release_env = {
         "development": "Development",
@@ -109,9 +203,10 @@ def _artifact_probe_targets(scope: Dict[str, Any], version_row: Dict[str, Any]) 
     }
 
 
-def find_active_bundle(scope_id: str) -> Dict[str, Any]:
+def find_active_bundle(scope_id: str, *, platform: str = "") -> Dict[str, Any]:
     sid = str(scope_id or "").strip()
-    for row in list_bundles(scope_id=sid, status="published"):
+    plat = str(platform or "").strip().lower()
+    for row in list_bundles(scope_id=sid, status="published", platform=plat if plat in {"android", "ios"} else ""):
         return row
     return {}
 

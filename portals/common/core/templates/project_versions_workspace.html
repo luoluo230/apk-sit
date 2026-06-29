@@ -1,15 +1,22 @@
-<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260613-1">
-<section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260625-vc-ui6">
+<section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}"{% if request.args.get('env_key') %} data-env-scoped="true"{% endif %}>
   <header class="version-head">
     <div class="version-head-copy"><span class="version-head-icon"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""></span><div><h1>版本与 VersionCode</h1><p>统一管理版本组、精确构建号、构建产物、发布单与运行拓扑关系。</p></div></div>
-    <div class="version-head-actions"><a class="version-btn" href="/admin/projects/{{ project_id }}/build-history?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>{% if can_edit %}<button id="btnCreateVersion" class="version-btn primary" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建 VersionCode</button>{% endif %}</div>
+    <div class="version-head-actions">
+      <a class="version-btn" id="versionBuildHistoryLink" href="/admin/projects/{{ project_id }}/build-history?env_key={{ env_key }}&scoped=1{% if platform_filter %}&platform={{ platform_filter }}{% endif %}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
+      {% if can_edit %}
+      <button id="btnCreateVersionGroup" class="version-btn" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建版本组</button>
+      {% endif %}
+    </div>
   </header>
+  <div id="versionPlatformTabs" class="version-platform-tabs is-hidden" role="tablist" aria-label="平台"></div>
   <div id="versionKpis" class="version-kpis"></div>
   <section class="version-panel">
     <div class="version-toolbar">
       <label class="version-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="versionSearch" type="search" placeholder="搜索版本号 / VersionCode / 渠道"></label>
-      <select id="versionEnv"><option value="">全部环境</option><option value="development">开发环境</option><option value="testing">测试环境</option><option value="production">生产环境</option></select>
-      <select id="versionPlatform"><option value="">全部平台</option><option value="android">Android</option><option value="ios">iOS</option></select>
+      <select id="versionEnv"><option value="">全部环境</option><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select>
+      <select id="versionChannel"><option value="">全部渠道</option></select>
+      <select id="versionPlatform"><option value="">全部平台</option></select>
       <select id="versionStatus"><option value="">全部状态</option><option value="active">有效</option><option value="testing">测试中</option><option value="draft">草稿</option><option value="disabled">失效</option><option value="archived">归档</option></select>
       <button id="btnRefreshVersions" class="version-btn" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
     </div>
@@ -17,19 +24,46 @@
     <div id="versionGroups"><div class="version-empty">正在加载版本数据...</div></div>
   </section>
 </section>
+<div id="versionDownloadDialog" class="version-dialog is-hidden" aria-hidden="true">
+  <div class="version-dialog-card version-download-card" role="dialog" aria-modal="true" aria-labelledby="versionDownloadTitle">
+    <div class="version-dialog-head">
+      <div>
+        <h2 id="versionDownloadTitle">安装包下载</h2>
+        <p id="versionDownloadSubtitle">外网下载链接与二维码（可分享给他人）</p>
+      </div>
+      <button id="btnCloseVersionDownloadDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+    </div>
+    <div class="version-download-body" id="versionDownloadBody"></div>
+    <div class="version-dialog-actions"><button id="btnCancelVersionDownloadDialog" class="version-btn" type="button">关闭</button></div>
+  </div>
+</div>
+<div id="versionGroupDialog" class="version-dialog is-hidden" aria-hidden="true">
+  <form id="versionGroupForm" class="version-dialog-card">
+    <div class="version-dialog-head"><div><h2 id="versionGroupDialogTitle">新建版本组</h2><p id="versionGroupDialogHint">版本组可独立创建，用于组织多个 VersionCode。</p></div><button id="btnCloseVersionGroupDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
+    <div class="version-form-grid">
+      <label><span>版本号</span><input name="version_name" id="versionGroupNameInput" placeholder="例如 1.0.0" required></label>
+      <label><span>版本模式</span><select name="version_mode"><option value="general">通用版本</option><option value="commercial">商业化版本</option></select></label>
+      <label><span>状态</span><select name="status"><option value="active">有效</option><option value="archived">归档</option></select></label>
+      <label class="wide"><span>说明</span><textarea name="notes" rows="3" placeholder="版本组说明（对外大版本说明等）"></textarea></label>
+      <label class="wide checkbox-row"><input type="checkbox" name="recommended" value="1"><span>标记为推荐版本组</span></label>
+    </div>
+    <div class="version-dialog-actions"><button id="btnCancelVersionGroupDialog" class="version-btn" type="button">取消</button><button class="version-btn primary" type="submit" id="btnSubmitVersionGroup">创建版本组</button></div>
+  </form>
+</div>
 <div id="versionDialog" class="version-dialog is-hidden" aria-hidden="true">
   <form id="versionForm" class="version-dialog-card">
-    <div class="version-dialog-head"><div><h2>新建 VersionCode</h2><p>创建后可进入发布单与构建流程。</p></div><button id="btnCloseVersionDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
+    <div class="version-dialog-head"><div><h2>新建 VersionCode</h2><p id="versionDialogHint">选择已有版本组后创建精确构建号。</p></div><button id="btnCloseVersionDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
+    <div id="versionFormScope" class="version-form-scope is-hidden"><span>创建范围</span><strong id="versionFormScopeText"></strong></div>
     <div class="version-form-grid">
-      <label><span>版本号</span><input name="version_name" placeholder="例如 v1.2.4" required></label>
+      <label><span>版本组</span><select name="version_name" id="versionNameSelect" required></select></label>
       <label><span>VersionCode</span><input name="version_code" placeholder="例如 20260613" required></label>
-      <label><span>环境</span><select name="env_key"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
-      <label><span>渠道</span><select name="channel_id" required></select></label>
-      <label><span>平台</span><select name="platform"><option value="android">Android</option><option value="ios">iOS</option></select></label>
+      <label class="js-scope-field"><span>环境</span><select name="env_key" id="versionFormEnv"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
+      <label id="versionFormChannelField"><span>渠道</span><select name="channel_id" id="versionFormChannel" required></select></label>
+      <label class="js-scope-field"><span>平台</span><select name="platform" id="versionFormPlatform" required></select></label>
       <label><span>状态</span><select name="version_status"><option value="draft">草稿</option><option value="testing">测试中</option><option value="active">有效</option></select></label>
       <label class="wide"><span>说明</span><textarea name="notes" rows="3" placeholder="本次 VersionCode 的变更说明"></textarea></label>
     </div>
-    <div class="version-dialog-actions"><button id="btnCancelVersionDialog" class="version-btn" type="button">取消</button><button class="version-btn primary" type="submit">创建 VersionCode</button></div>
+    <div class="version-dialog-actions"><button id="btnCancelVersionDialog" class="version-btn" type="button">取消</button><button id="btnSubmitVersionCode" class="version-btn primary" type="submit">创建 VersionCode</button></div>
   </form>
 </div>
-<script src="/static/project_versions_workspace.js?v=20260622-workflow"></script>
+<script src="/static/project_versions_workspace.js?v=20260625-vc-ui6"></script>

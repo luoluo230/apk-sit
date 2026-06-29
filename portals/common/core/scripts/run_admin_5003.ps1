@@ -4,6 +4,10 @@ $port = 5003
 $env:APK_PORT = "$port"
 $env:APK_HOST = '127.0.0.1'
 $env:APP_PORTAL_MODE = 'admin'
+if (-not $env:UNITY_PROJECT_PATH -and (Test-Path 'E:\maclient')) {
+    $env:UNITY_PROJECT_PATH = 'E:\maclient'
+    $env:MACLIENT_ROOT = 'E:\maclient'
+}
 
 # Avoid stale duplicate listeners (old code without new routes) on the same port.
 $pids = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |

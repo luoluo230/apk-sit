@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Tuple
 
 from models.data import get_approved_approval
 from repositories.admin import projects_repo
+from data.platforms import DEFAULT_PROJECT_PLATFORMS, is_valid_platform_id
 from services.admin.envelope import ok, fail, attach_legacy_error
 from services.admin.project_build_config_service import (
     apply_build_config_to_project_payload,
@@ -175,6 +176,8 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
         "is_template": bool(v.get("is_template")),
         "channels": v.get("channels") or [],
         "disabled_channels": v.get("disabled_channels") or [],
+        "platforms": v.get("platforms") if isinstance(v.get("platforms"), list) else [],
+        "disabled_platforms": v.get("disabled_platforms") if isinstance(v.get("disabled_platforms"), list) else [],
     }
     bc = build_config_for_api({**v, "id": project_id})
     project.update(bc)
@@ -345,6 +348,170 @@ def enable_channel(project_id: str, channel_id: str) -> Tuple[Dict[str, Any], in
     projects_repo.save_projects_repo()
     projects_repo.audit("project_enable_channel", f"{project_id} {cid}")
     return ok({"disabled_channels": disabled}, legacy={"success": True, "disabled_channels": disabled}), 200
+
+
+def _normalized_stored_platforms(proj: Dict[str, Any], *, default_if_empty: bool = True) -> List[str]:
+    raw = proj.get("platforms")
+    if not isinstance(raw, list) or not raw:
+        return list(DEFAULT_PROJECT_PLATFORMS) if default_if_empty else []
+    out: List[str] = []
+    seen = set()
+    for item in raw:
+        pid = str(item).strip().lower()
+        if is_valid_platform_id(pid) and pid not in seen:
+            seen.add(pid)
+            out.append(pid)
+    if not out and default_if_empty:
+        return list(DEFAULT_PROJECT_PLATFORMS)
+    return out
+
+
+def _project_platform_whitelist(project_id: str, proj: Dict[str, Any]) -> List[str]:
+    return _normalized_stored_platforms(proj)
+
+
+def add_platform(project_id: str, platform_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    pid = str(platform_id or "").strip().lower()
+    if not is_valid_platform_id(pid):
+        return attach_legacy_error(fail("平台不存在", code="not_found", legacy={"error": "平台不存在"})), 404
+    platforms = _normalized_stored_platforms(proj)
+    if pid in platforms:
+        return ok(
+            {"platforms": platforms, "already_exists": True},
+            legacy={"success": True, "platforms": platforms, "already_exists": True},
+        ), 200
+    platforms = platforms + [pid]
+    proj["platforms"] = platforms
+    disabled = proj.get("disabled_platforms")
+    if isinstance(disabled, list):
+        proj["disabled_platforms"] = [x for x in disabled if str(x).strip().lower() != pid]
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_add_platform", f"{project_id} {pid}")
+    return ok({"platforms": platforms}, legacy={"success": True, "platforms": platforms}), 200
+
+
+def remove_platform(project_id: str, platform_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    pid = str(platform_id or "").strip().lower()
+    if not is_valid_platform_id(pid):
+        return attach_legacy_error(fail("平台 ID 不能为空", code="validation_error", legacy={"error": "平台 ID 不能为空"})), 400
+    platforms = _normalized_stored_platforms(proj, default_if_empty=False)
+    if not platforms:
+        platforms = [p for p in DEFAULT_PROJECT_PLATFORMS if p != pid]
+    else:
+        platforms = [p for p in platforms if p != pid]
+    proj["platforms"] = platforms
+    disabled = proj.get("disabled_platforms")
+    if isinstance(disabled, list):
+        proj["disabled_platforms"] = [x for x in disabled if str(x).strip().lower() != pid]
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_remove_platform", f"{project_id} {pid}")
+    return ok(
+        {"platforms": platforms, "disabled_platforms": proj.get("disabled_platforms") or []},
+        legacy={"success": True, "platforms": platforms},
+    ), 200
+
+
+def disable_platform(project_id: str, platform_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    pid = str(platform_id or "").strip().lower()
+    if not pid:
+        return attach_legacy_error(fail("平台 ID 不能为空", code="validation_error", legacy={"error": "平台 ID 不能为空"})), 400
+    whitelist = _project_platform_whitelist(project_id, proj)
+    if pid not in whitelist:
+        return attach_legacy_error(fail("该平台不在项目白名单中", code="not_found", legacy={"error": "该平台不在项目白名单中"})), 404
+    disabled = proj.get("disabled_platforms")
+    if not isinstance(disabled, list):
+        disabled = []
+    if pid in disabled:
+        return attach_legacy_error(fail("该平台已禁用", code="conflict", legacy={"error": "该平台已禁用"})), 409
+    disabled = disabled + [pid]
+    proj["disabled_platforms"] = disabled
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_disable_platform", f"{project_id} {pid}")
+    return ok({"disabled_platforms": disabled}, legacy={"success": True, "disabled_platforms": disabled}), 200
+
+
+def enable_platform(project_id: str, platform_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    pid = str(platform_id or "").strip().lower()
+    if not pid:
+        return attach_legacy_error(fail("平台 ID 不能为空", code="validation_error", legacy={"error": "平台 ID 不能为空"})), 400
+    disabled = proj.get("disabled_platforms")
+    if not isinstance(disabled, list) or pid not in disabled:
+        return attach_legacy_error(fail("该平台未处于禁用状态", code="not_found", legacy={"error": "该平台未处于禁用状态"})), 404
+    disabled = [x for x in disabled if str(x).strip().lower() != pid]
+    proj["disabled_platforms"] = disabled
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_enable_platform", f"{project_id} {pid}")
+    return ok({"disabled_platforms": disabled}, legacy={"success": True, "disabled_platforms": disabled}), 200
+
+
+CHANNEL_BINDING_KEYS = ("jenkins_job", "package_suffix", "signing_ref", "notes")
+
+
+def _normalize_channel_binding(raw: Any) -> Dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, str] = {}
+    for key in CHANNEL_BINDING_KEYS:
+        if key in raw and raw.get(key) is not None:
+            out[key] = str(raw.get(key) or "").strip()
+    return out
+
+
+def list_channel_bindings(project_id: str) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    bindings = proj.get("channel_bindings") if isinstance(proj.get("channel_bindings"), list) else []
+    normalized: List[Dict[str, Any]] = []
+    for row in bindings:
+        if not isinstance(row, dict):
+            continue
+        cid = str(row.get("channel_id") or "").strip()
+        if not cid:
+            continue
+        entry = {"channel_id": cid}
+        entry.update(_normalize_channel_binding(row))
+        normalized.append(entry)
+    return ok({"channel_bindings": normalized}, legacy={"channel_bindings": normalized}), 200
+
+
+def update_channel_binding(project_id: str, channel_id: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
+    proj = projects_repo.get_project(project_id)
+    if not proj:
+        return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
+    cid = str(channel_id or "").strip()
+    if not cid:
+        return attach_legacy_error(fail("渠道 ID 不能为空", code="validation_error", legacy={"error": "渠道 ID 不能为空"})), 400
+    whitelist = _project_channel_whitelist(project_id, proj)
+    if cid not in whitelist:
+        return attach_legacy_error(fail("该渠道不在项目白名单中", code="not_found", legacy={"error": "该渠道不在项目白名单中"})), 404
+    bindings = proj.get("channel_bindings") if isinstance(proj.get("channel_bindings"), list) else []
+    bindings = [row for row in bindings if isinstance(row, dict) and str(row.get("channel_id") or "").strip() != cid]
+    payload = _normalize_channel_binding(data)
+    if any(payload.values()):
+        entry = {"channel_id": cid}
+        entry.update(payload)
+        bindings.append(entry)
+    proj["channel_bindings"] = bindings
+    projects_repo.save_projects_repo()
+    projects_repo.audit("project_update_channel_binding", f"{project_id} {cid} {sorted(payload.keys())}")
+    return ok({"channel_bindings": bindings}, legacy={"success": True, "channel_bindings": bindings}), 200
+
+
+def delete_channel_binding(project_id: str, channel_id: str) -> Tuple[Dict[str, Any], int]:
+    return update_channel_binding(project_id, channel_id, {})
 
 
 def set_archive(project_id: str, archive: bool) -> Tuple[Dict[str, Any], int]:

@@ -48,12 +48,12 @@
       oss_project_root: document.getElementById('ossRoot').value.trim(),
       channels: JSON.parse(document.getElementById('channelsJson').value||'[]')
     };
-    fetch('/api/release/manifests/upsert',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)})
+    fetch('/api/release/manifests/upsert',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':(document.querySelector('meta[name=csrf-token]')||{}).content||''},credentials:'same-origin',body:JSON.stringify(payload)})
       .then(function(r){return r.json();}).then(show).catch(function(e){show({ok:false,error:String(e)});});
   };
   document.getElementById('btnBootstrapScopes').onclick=function(){
     var pid=document.getElementById('projectId').value.trim();
-    fetch('/api/release/manifests/'+encodeURIComponent(pid)+'/bootstrap-scopes',{method:'POST',credentials:'same-origin'})
+    fetch('/api/release/manifests/'+encodeURIComponent(pid)+'/bootstrap-scopes',{method:'POST',headers:{'X-CSRFToken':(document.querySelector('meta[name=csrf-token]')||{}).content||''},credentials:'same-origin'})
       .then(function(r){return r.json();}).then(show).catch(function(e){show({ok:false,error:String(e)});});
   };
   fetch('/api/release/manifests/GomeKu',{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){

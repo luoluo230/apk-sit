@@ -1,31 +1,30 @@
 # -*- coding: utf-8 -*-
 """User accounts and login attempt tracking."""
 
+import os
 from datetime import datetime
 
 from flask import session
 
 from config import Config
 from data._store import LOGIN_ATTEMPTS_FILE, USERS_FILE, get_logger, load_document, save_document
+from data.repositories.user_repository import get_user_repository
 
-users_db = load_document(USERS_FILE, {
-    'admin': {
-        'password': __import__('hashlib').sha256('admin123'.encode()).hexdigest(),
-        'role': 'super_admin',
-        'created_at': datetime.now().isoformat(),
-        'email': 'admin@example.com',
-        'last_login': None
-    }
-})
-login_attempts = load_document(LOGIN_ATTEMPTS_FILE, {})
+_user_repo = get_user_repository()
+users_db = _user_repo.data
 
 
 def save_users():
     save_document(USERS_FILE, users_db)
+    if os.path.normpath(str(_user_repo._storage.filepath)) == os.path.normpath(str(USERS_FILE)):
+        _user_repo.save()
 
 
 def save_login_attempts():
     save_document(LOGIN_ATTEMPTS_FILE, login_attempts)
+
+
+login_attempts = load_document(LOGIN_ATTEMPTS_FILE, {})
 
 
 def is_inner_network(ip):
@@ -61,9 +60,8 @@ def record_login_attempt(ip, success):
     if success:
         login_attempts[ip] = {'attempts': 0, 'locked_until': 0}
         username = session.get('user')
-        if username and username in users_db:
-            users_db[username]['last_login'] = datetime.now().isoformat()
-            save_users()
+        if username and _user_repo.exists(username):
+            _user_repo.update(username, {'last_login': datetime.now().isoformat()})
     else:
         login_attempts[ip]['attempts'] = login_attempts[ip].get('attempts', 0) + 1
         limit_val = get_system_config('LOGIN_ATTEMPTS_LIMIT')

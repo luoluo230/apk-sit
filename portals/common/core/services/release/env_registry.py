@@ -106,6 +106,14 @@ def get_project_env_defs(project_id: str) -> List[Dict[str, Any]]:
             "enabled": bool(item.get("enabled", base.get("enabled", True))),
             "order": int(item.get("order") or base.get("order") or 50),
         }
+        if isinstance(item.get("channels"), list):
+            merged[key]["channels"] = item.get("channels")
+        if isinstance(item.get("platforms"), list):
+            merged[key]["platforms"] = item.get("platforms")
+        if isinstance(item.get("disabled_channels"), list):
+            merged[key]["disabled_channels"] = item.get("disabled_channels")
+        if isinstance(item.get("disabled_platforms"), list):
+            merged[key]["disabled_platforms"] = item.get("disabled_platforms")
     return sorted(merged.values(), key=lambda row: (int(row.get("order") or 0), row.get("env_key") or ""))
 
 

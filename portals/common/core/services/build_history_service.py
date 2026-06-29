@@ -363,7 +363,62 @@ def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None, det
 def builds_for_version_enriched(version_id: str, instance_id: str = "") -> list:
     records = list_records_for_version(version_id, instance_id=instance_id)
     cache: dict = {}
-    return [_resolve_build_status(r, cache, detail_mode=False) for r in records]
+    pid = ""
+    meta: dict = {}
+    for rec in records:
+        pid = (rec.get("project_id") or "").strip()
+        if pid:
+            break
+    if not pid and version_id:
+        for project_id, versions in project_versions_db.items():
+            if not isinstance(versions, list):
+                continue
+            hit = next((x for x in versions if isinstance(x, dict) and (x.get("id") or "") == version_id), None)
+            if hit:
+                pid = str(project_id)
+                meta = hit
+                break
+    if pid and version_id and not meta:
+        meta = _version_meta(pid, version_id)
+    from repositories.admin import versions_repo
+
+    apk_download = meta.get("apk_download") if isinstance(meta.get("apk_download"), dict) else {}
+    apk_status = "found" if pid and meta and versions_repo.has_apk(pid, meta) else "not_found"
+    if apk_status == "found" and pid and meta:
+        try:
+            from services.apk_artifact_service import build_download_info
+
+            dl_info = build_download_info(pid, meta)
+            if dl_info:
+                apk_download = {
+                    "local_download_url": dl_info.get("local_download_url") or "",
+                    "local_qr_dataurl": dl_info.get("local_qr_dataurl") or "",
+                    "oss_download_url": dl_info.get("oss_download_url") or "",
+                    "oss_qr_dataurl": dl_info.get("oss_qr_dataurl") or "",
+                    "oss_remote_key": dl_info.get("oss_remote_key") or "",
+                    "public_download_url": dl_info.get("public_download_url") or "",
+                    "public_qr_dataurl": dl_info.get("public_qr_dataurl") or "",
+                    "public_download_reachable": bool(dl_info.get("public_download_reachable")),
+                    "public_download_hint": dl_info.get("public_download_hint") or "",
+                    "build_time": dl_info.get("build_time") or "",
+                    "build_number": dl_info.get("build_number"),
+                    "size_bytes": dl_info.get("size_bytes") or 0,
+                }
+        except Exception:
+            pass
+    env_key = stage_to_env_key(meta.get("env_key") or meta.get("stage") or "development")
+    platform = str(meta.get("platform") or "").strip()
+    channel_id = str(meta.get("channel") or "").strip()
+    out = []
+    for rec in records:
+        item = _resolve_build_status(rec, cache, detail_mode=False)
+        item["env_key"] = env_key
+        item["platform"] = platform
+        item["channel_id"] = channel_id
+        item["apk_download"] = apk_download
+        item["apk_status"] = apk_status
+        out.append(item)
+    return out
 
 
 def builds_grouped_by_project(project_id: str) -> dict:
@@ -392,6 +447,32 @@ def builds_grouped_by_project(project_id: str) -> dict:
         channel = get_channel_by_id(channel_id) or {}
         channel_name = str(channel.get("name") or channel_id or "未配置渠道")
         env_key = stage_to_env_key(meta.get("env_key") or meta.get("stage") or "development")
+        from repositories.admin import versions_repo
+
+        apk_status = "found" if versions_repo.has_apk(project_id, meta) else "not_found"
+        apk_download = meta.get("apk_download") if isinstance(meta.get("apk_download"), dict) else {}
+        if apk_status == "found" and meta:
+            try:
+                from services.apk_artifact_service import build_download_info
+
+                dl_info = build_download_info(project_id, meta)
+                if dl_info:
+                    apk_download = {
+                        "local_download_url": dl_info.get("local_download_url") or "",
+                        "local_qr_dataurl": dl_info.get("local_qr_dataurl") or "",
+                        "oss_download_url": dl_info.get("oss_download_url") or "",
+                        "oss_qr_dataurl": dl_info.get("oss_qr_dataurl") or "",
+                        "oss_remote_key": dl_info.get("oss_remote_key") or "",
+                        "public_download_url": dl_info.get("public_download_url") or "",
+                        "public_qr_dataurl": dl_info.get("public_qr_dataurl") or "",
+                        "public_download_reachable": bool(dl_info.get("public_download_reachable")),
+                        "public_download_hint": dl_info.get("public_download_hint") or "",
+                        "build_time": dl_info.get("build_time") or "",
+                        "build_number": dl_info.get("build_number"),
+                        "size_bytes": dl_info.get("size_bytes") or 0,
+                    }
+            except Exception:
+                pass
         g = groups.setdefault(vn, {"version_name": vn, "version_codes": []})
         g["version_codes"].append({
             "version_id": vid,
@@ -400,6 +481,8 @@ def builds_grouped_by_project(project_id: str) -> dict:
             "channel_name": channel_name,
             "env_key": env_key,
             "platform": meta.get("platform") or "",
+            "apk_status": apk_status,
+            "apk_download": apk_download,
             "builds": sorted(builds, key=lambda x: int(x.get("build_number") or 0), reverse=True),
         })
     grouped = []

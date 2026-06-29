@@ -504,6 +504,16 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export GIT_BRANCH="${GIT_BRANCH:-main}"
   export PROJECT_ID="${PROJECT_ID:-GomeKu}"
   export VERSION_STAGE="${VERSION_STAGE:-dev}"
+  echo "=== Step 4-pre: 同步 HotUpdateConfig（免手工改 Unity） ==="
+  _HC_ARGS="-releaseVersion \"${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}\""
+  _HC_ARGS="$_HC_ARGS -releaseEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
+  _HC_ARGS="$_HC_ARGS -releaseChannel \"${RELEASE_CHANNEL:-${CHANNEL:-wechat}}\""
+  _HC_ARGS="$_HC_ARGS -projectId \"${PROJECT_ID:-GomeKu}\""
+  _HC_ARGS="$_HC_ARGS -versionCode \"${VERSION_CODE:-1}\""
+  if [ -n "${RESOURCE_SERVER_URL:-}" ]; then
+    _HC_ARGS="$_HC_ARGS -resourceServerUrl \"${RESOURCE_SERVER_URL}\""
+  fi
+  _run_unity HotUpdateConfigSyncCli.ExecuteFromCommandLine $_HC_ARGS || exit $?
   APK_SCRIPT="$(_resolve_apk_build_script || true)"
   if [ -z "$APK_SCRIPT" ]; then
     echo "ERROR: APK 步骤已启用但未找到 build_gameku_android.sh"
@@ -535,6 +545,7 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export UNITY_LOG
   _run_unity ApkReleaseUploadCli.ExecuteFromCommandLine $APK_UP_ARGS || exit $?
   echo "=== Step 4c: APK 本地落盘 + 版本下载信息 ==="
+  export APK_PUBLISH_DIR="${APK_PUBLISH_DIR:-${APK_SCAN_DIR:-}}"
   ARCHIVE_SCRIPT="${JENKINS_HOME:-}/scripts/archive_apk_after_build.py"
   [ -f "$ARCHIVE_SCRIPT" ] || ARCHIVE_SCRIPT="$(dirname "$0")/archive_apk_after_build.py"
   if [ -f "$ARCHIVE_SCRIPT" ]; then
@@ -542,7 +553,16 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export VERSION_CHANNEL_ID="${VERSION_CHANNEL_ID:-${CHANNEL:-}}"
   export OSS_APK_REMOTE_KEY="${RELEASE_PROJECT_ROOT:-MyGame1}/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-wechat}/${RELEASE_PLATFORM:-android}/apk/${APP_NAME}_${VERSION_NAME:-1.0.0}_vc${VERSION_CODE}.apk"
   export BUILD_NUMBER="${BUILD_NUMBER:-}"
-  python3 "$ARCHIVE_SCRIPT" || { echo "ERROR: APK 本地归档失败"; exit 1; }
+  _py_cmd=""
+  if command -v python3 >/dev/null 2>&1; then _py_cmd="python3"
+  elif command -v python >/dev/null 2>&1; then _py_cmd="python"
+  elif command -v py >/dev/null 2>&1; then _py_cmd="py -3"
+  fi
+  if [ -z "$_py_cmd" ]; then
+    echo "ERROR: 未找到 Python 可执行文件，无法运行 archive_apk_after_build.py"
+    exit 1
+  fi
+  $_py_cmd "$ARCHIVE_SCRIPT" || { echo "ERROR: APK 本地归档失败"; exit 1; }
   else
     echo "ERROR: 未找到 archive_apk_after_build.py，无法写入版本落盘"
     exit 1

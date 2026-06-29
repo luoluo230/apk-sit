@@ -29,6 +29,113 @@ def _get_conn():
     return _conn
 
 
+def _bundle_platform(row) -> str:
+    plat = str(row["platform"] or "").strip().lower() if "platform" in row.keys() else ""
+    if plat in {"android", "ios"}:
+        return plat
+    try:
+        payload = json.loads(row["payload"] or "{}")
+        client = payload.get("client") if isinstance(payload.get("client"), dict) else {}
+        plat = str(client.get("platform") or "android").strip().lower()
+    except (TypeError, json.JSONDecodeError, AttributeError):
+        plat = "android"
+    return plat if plat in {"android", "ios"} else "android"
+
+
+def _migrate_release_scopes_platform(conn) -> None:
+    """Split legacy env×channel scopes into env×channel×platform scopes."""
+    rows = conn.execute("SELECT scope_id, platform FROM release_scopes").fetchall()
+    legacy_ids = []
+    for row in rows:
+        sid = str(row["scope_id"] or "")
+        parts = [p for p in sid.split(":") if p]
+        if len(parts) == 3:
+            legacy_ids.append(sid)
+        elif len(parts) == 4 and parts[3] in {"android", "ios"} and not str(row["platform"] or "").strip():
+            conn.execute("UPDATE release_scopes SET platform=? WHERE scope_id=?", (parts[3], sid))
+    if not legacy_ids:
+        return
+    now = datetime.now().isoformat()
+    migrated = set()
+    for sid in legacy_ids:
+        if sid in migrated:
+            continue
+        migrated.add(sid)
+        row = conn.execute("SELECT * FROM release_scopes WHERE scope_id=?", (sid,)).fetchone()
+        if not row:
+            continue
+        parts = [p for p in sid.split(":") if p]
+        slug, env_key, channel_id = parts[0], parts[1], parts[2]
+        active_by_platform = {"android": "", "ios": ""}
+        bundles = conn.execute(
+            "SELECT bundle_id, platform, payload, publish_status FROM release_bundles WHERE scope_id=?",
+            (sid,),
+        ).fetchall()
+        for bundle in bundles:
+            plat = _bundle_platform(bundle)
+            if str(bundle["publish_status"] or "") == "published":
+                active_by_platform[plat] = str(bundle["bundle_id"] or "")
+        legacy_active = str(row["active_bundle_id"] or "").strip()
+        if legacy_active and not any(active_by_platform.values()):
+            for bundle in bundles:
+                if str(bundle["bundle_id"] or "") == legacy_active:
+                    active_by_platform[_bundle_platform(bundle)] = legacy_active
+                    break
+            if not any(active_by_platform.values()):
+                active_by_platform["android"] = legacy_active
+        for plat in ("android", "ios"):
+            new_sid = f"{slug}:{env_key}:{channel_id}:{plat}"
+            conn.execute(
+                """
+                INSERT INTO release_scopes (
+                    scope_id, project_id, env_key, channel_id, channel_key, platform,
+                    default_topology_id, active_bundle_id, status, payload, created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(scope_id) DO UPDATE SET
+                    platform=excluded.platform,
+                    active_bundle_id=CASE
+                        WHEN excluded.active_bundle_id != '' THEN excluded.active_bundle_id
+                        ELSE release_scopes.active_bundle_id
+                    END,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    new_sid,
+                    row["project_id"],
+                    env_key,
+                    channel_id,
+                    row["channel_key"],
+                    plat,
+                    row["default_topology_id"],
+                    active_by_platform[plat],
+                    row["status"],
+                    row["payload"],
+                    row["created_at"],
+                    now,
+                ),
+            )
+        for bundle in bundles:
+            plat = _bundle_platform(bundle)
+            new_sid = f"{slug}:{env_key}:{channel_id}:{plat}"
+            conn.execute(
+                "UPDATE release_bundles SET scope_id=? WHERE bundle_id=?",
+                (new_sid, bundle["bundle_id"]),
+            )
+        for order in conn.execute(
+            "SELECT release_order_id, platform FROM release_orders WHERE scope_id=?",
+            (sid,),
+        ).fetchall():
+            plat = str(order["platform"] or "android").strip().lower()
+            if plat not in {"android", "ios"}:
+                plat = "android"
+            new_sid = f"{slug}:{env_key}:{channel_id}:{plat}"
+            conn.execute(
+                "UPDATE release_orders SET scope_id=? WHERE release_order_id=?",
+                (new_sid, order["release_order_id"]),
+            )
+        conn.execute("DELETE FROM release_scopes WHERE scope_id=?", (sid,))
+
+
 def init_db():
     with _db_lock:
         conn = _get_conn()
@@ -168,6 +275,7 @@ def init_db():
             env_key TEXT NOT NULL,
             channel_id TEXT NOT NULL,
             channel_key TEXT DEFAULT '',
+            platform TEXT DEFAULT '',
             default_topology_id TEXT DEFAULT '',
             active_bundle_id TEXT DEFAULT '',
             status TEXT DEFAULT 'active',
@@ -176,7 +284,7 @@ def init_db():
             updated_at TEXT NOT NULL
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_release_scope_target
-            ON release_scopes(project_id, env_key, channel_id);
+            ON release_scopes(project_id, env_key, channel_id, platform);
 
         CREATE TABLE IF NOT EXISTS release_bundles (
             bundle_id TEXT PRIMARY KEY,
@@ -302,6 +410,14 @@ def init_db():
         scope_columns = {row["name"] for row in conn.execute("PRAGMA table_info(release_scopes)").fetchall()}
         if "active_bundle_id" not in scope_columns:
             conn.execute("ALTER TABLE release_scopes ADD COLUMN active_bundle_id TEXT DEFAULT ''")
+        if "platform" not in scope_columns:
+            conn.execute("ALTER TABLE release_scopes ADD COLUMN platform TEXT DEFAULT ''")
+        conn.execute("DROP INDEX IF EXISTS idx_release_scope_target")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_release_scope_target "
+            "ON release_scopes(project_id, env_key, channel_id, platform)"
+        )
+        _migrate_release_scopes_platform(conn)
         conn.commit()
 
 

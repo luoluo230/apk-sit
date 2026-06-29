@@ -123,6 +123,16 @@ def resolve_version_id(
     return ""
 
 
+def _apk_archive_extension(platform: str, package_format: str = "") -> str:
+    plat = str(platform or "android").strip().lower()
+    if plat == "ios":
+        return ".ipa"
+    fmt = str(package_format or "apk").strip().lower()
+    if fmt in ("aab", "iaa", "google", "google-play"):
+        return ".aab"
+    return ".apk"
+
+
 def _expected_archive_filename(version: dict[str, Any], project_id: str = "") -> str:
     vn = (version.get("version_name") or "1.0.0").strip()
     vc = str(version.get("version_code") or "").strip()
@@ -131,7 +141,10 @@ def _expected_archive_filename(version: dict[str, Any], project_id: str = "") ->
     app = (apk_build.get("app_name") or version.get("app_name") or project_id or "GameKu").strip()
     if not app:
         app = "GameKu"
-    return f"{_safe_segment(app, 'GameKu')}_{vn}_vc{vc}.apk"
+    platform = str(version.get("platform") or "android").strip().lower()
+    package_format = str(apk_build.get("package_format") or "apk").strip()
+    ext = _apk_archive_extension(platform, package_format)
+    return f"{_safe_segment(app, 'GameKu')}_{vn}_vc{vc}{ext}"
 
 
 def resolve_version_apk_rel_path(project_id: str, version: dict[str, Any]) -> str:
@@ -191,7 +204,159 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes} B"
 
 
-def build_download_info(project_id: str, version: dict[str, Any]) -> dict[str, Any] | None:
+def _canonical_site_base_url(site_base_url: str | None = None) -> str:
+    return (site_base_url or Config.get_public_base_url() or get_canonical_base_url() or "").strip().rstrip("/")
+
+
+def _is_internal_base_url(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = (urlparse((url or "").strip()).hostname or "").lower()
+    if not host:
+        return True
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    if host.startswith("10.") or host.startswith("192.168.") or host.startswith("172.16.") or host.startswith("26.26."):
+        return True
+    return False
+
+
+def _public_share_base_url() -> str:
+    for candidate in (
+        Config.get_public_base_url(),
+        getattr(Config, "ADMIN_PUBLIC_URL", "") or "",
+    ):
+        base = (candidate or "").strip().rstrip("/")
+        if base and not _is_internal_base_url(base):
+            return base
+    return ""
+
+
+def _oss_custom_domain_url(oss_remote_key: str) -> str:
+    key = (oss_remote_key or "").strip().lstrip("/")
+    if not key:
+        return ""
+    unity = _unity_project_path()
+    if not unity:
+        return ""
+    try:
+        from services.oss_client_helper import _custom_domain, is_oss_apk_forbidden_url, load_oss_config
+
+        custom = _custom_domain(load_oss_config(unity))
+        if not custom:
+            return ""
+        url = f"{custom.rstrip('/')}/{key}"
+        return url if not is_oss_apk_forbidden_url(url) else ""
+    except Exception:
+        return ""
+
+
+def _unity_project_path() -> str:
+    return (os.environ.get("UNITY_PROJECT_PATH") or os.environ.get("MACLIENT_ROOT") or "").strip()
+
+
+def _oss_key_from_url(url: str) -> str:
+    from urllib.parse import urlparse
+
+    u = (url or "").strip()
+    if not u:
+        return ""
+    if ".aliyuncs.com/" in u:
+        return u.split(".aliyuncs.com/", 1)[1].split("?", 1)[0].lstrip("/")
+    parsed = urlparse(u)
+    path = (parsed.path or "").lstrip("/")
+    if path.startswith("pub/oss-download/"):
+        return path[len("pub/oss-download/"):].split("?", 1)[0].lstrip("/")
+    return path
+
+
+def resolve_oss_apk_download_url(oss_remote_key: str, site_base_url: str | None = None) -> str:
+    key = (oss_remote_key or "").strip().lstrip("/")
+    if not key:
+        return ""
+    custom_url = _oss_custom_domain_url(key)
+    if custom_url:
+        return custom_url
+    base = _canonical_site_base_url(site_base_url)
+    unity = _unity_project_path()
+    if unity:
+        try:
+            from services.oss_client_helper import apk_download_url, load_oss_config
+
+            return apk_download_url(load_oss_config(unity), key, site_base_url=base)
+        except Exception:
+            pass
+    if not base:
+        return ""
+    return f"{base}/pub/oss-download/{key}?source=qr"
+
+
+def normalize_apk_download_urls(
+    rel_path: str,
+    merged: dict[str, Any],
+    local_base_url: str | None = None,
+) -> dict[str, Any]:
+    """生成外网分享与内网测试下载地址（二维码随链接同步生成）。"""
+    rel = (rel_path or "").strip().replace("\\", "/").lstrip("/")
+    public_base = _public_share_base_url()
+
+    oss_remote_key = (merged.get("oss_remote_key") or "").strip().lstrip("/")
+    oss_url = (merged.get("oss_download_url") or "").strip()
+    if not oss_remote_key and oss_url:
+        oss_remote_key = _oss_key_from_url(oss_url)
+
+    from services.oss_client_helper import is_oss_apk_forbidden_url
+
+    custom_oss_url = _oss_custom_domain_url(oss_remote_key)
+    public_url = ""
+    public_hint = ""
+    public_reachable = False
+
+    if custom_oss_url:
+        public_url = custom_oss_url
+        public_reachable = True
+        public_hint = "OSS 自定义域名直链，外网可直接扫码安装"
+    elif public_base:
+        if oss_remote_key:
+            public_url = f"{public_base}/pub/oss-download/{oss_remote_key}?source=qr"
+        elif rel:
+            public_url = f"{public_base}/pub/download/{rel}?source=qr"
+        if public_url:
+            public_reachable = True
+            public_hint = "通过 apk-site 公网地址下载，外网可访问"
+    elif oss_remote_key and is_oss_apk_forbidden_url(oss_url):
+        public_hint = "阿里云禁止默认 OSS 域名直链 APK；请配置 OSS_CUSTOM_DOMAIN（桶 CNAME）或 ADMIN_PUBLIC_URL"
+    else:
+        public_hint = "外网暂不可达：请在 .env 配置 ADMIN_PUBLIC_URL，或为 OSS 桶绑定 CNAME 并设置 OSS_CUSTOM_DOMAIN"
+
+    local_base = _canonical_site_base_url(local_base_url)
+    local_url = f"{local_base}/pub/download/{rel}?source=qr" if rel and local_base else ""
+    oss_proxy_url = ""
+    if oss_remote_key and not custom_oss_url:
+        oss_proxy_url = resolve_oss_apk_download_url(oss_remote_key, site_base_url=local_base or public_base)
+
+    public_qr = _qr_png_dataurl(public_url) if public_url else ""
+    local_qr = _qr_png_dataurl(local_url) if local_url and local_url != public_url else ""
+    oss_qr = _qr_png_dataurl(oss_proxy_url) if oss_proxy_url and oss_proxy_url != public_url else ""
+
+    return {
+        "public_download_url": public_url,
+        "public_qr_dataurl": public_qr,
+        "public_download_reachable": public_reachable,
+        "public_download_hint": public_hint,
+        "local_download_url": local_url,
+        "local_qr_dataurl": local_qr,
+        "oss_download_url": public_url or oss_proxy_url,
+        "oss_qr_dataurl": public_qr or oss_qr,
+        "oss_remote_key": oss_remote_key,
+    }
+
+
+def build_download_info(
+    project_id: str,
+    version: dict[str, Any],
+    local_base_url: str | None = None,
+) -> dict[str, Any] | None:
     """构建版本 APK 下载详情（供弹窗/下载中心复用）。"""
     if not isinstance(version, dict):
         return None
@@ -222,19 +387,12 @@ def build_download_info(project_id: str, version: dict[str, Any]) -> dict[str, A
         or ""
     )
     app_name = merged.get("app_name") or parsed.get("app_name") or ""
-    base_url = Config.get_public_base_url() or get_canonical_base_url()
-    local_url = merged.get("local_download_url") or f"{base_url.rstrip('/')}/pub/download/{rel_path}?source=qr"
-    oss_url = merged.get("oss_download_url") or ""
-    oss_remote_key = (merged.get("oss_remote_key") or "").strip()
-    if not oss_url and oss_remote_key:
-        oss_url = f"{base_url.rstrip('/')}/pub/oss-download/{oss_remote_key.lstrip('/')}?source=qr"
-
-    local_qr = merged.get("local_qr_dataurl") or ""
-    oss_qr = merged.get("oss_qr_dataurl") or ""
-    if not local_qr and local_url:
-        local_qr = _qr_png_dataurl(local_url)
-    if not oss_qr and oss_url:
-        oss_qr = _qr_png_dataurl(oss_url)
+    urls = normalize_apk_download_urls(rel_path, merged, local_base_url=local_base_url)
+    local_url = urls.get("local_download_url") or ""
+    oss_url = urls.get("oss_download_url") or ""
+    local_qr = urls.get("local_qr_dataurl") or ""
+    oss_qr = urls.get("oss_qr_dataurl") or ""
+    oss_remote_key = urls.get("oss_remote_key") or ""
 
     channel_id = (version.get("channel") or "").strip()
     stage = (version.get("stage") or "dev").strip() or "dev"
@@ -267,6 +425,10 @@ def build_download_info(project_id: str, version: dict[str, Any]) -> dict[str, A
         "oss_download_url": oss_url,
         "oss_qr_dataurl": oss_qr,
         "oss_remote_key": oss_remote_key,
+        "public_download_url": urls.get("public_download_url") or "",
+        "public_qr_dataurl": urls.get("public_qr_dataurl") or "",
+        "public_download_reachable": bool(urls.get("public_download_reachable")),
+        "public_download_hint": urls.get("public_download_hint") or "",
     }
 
 
@@ -372,7 +534,7 @@ def archive_apk(
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
 
-    base_url = Config.get_public_base_url() or get_canonical_base_url()
+    base_url = _public_share_base_url() or _canonical_site_base_url()
     local_download_url = f"{base_url.rstrip('/')}/pub/download/{rel_path}?source=qr"
 
     if not oss_remote_key:
@@ -386,10 +548,10 @@ def archive_apk(
     oss_download_url = ""
     if unity_project_path:
         try:
-            from services.oss_client_helper import load_oss_config, public_url
+            from services.oss_client_helper import apk_download_url, load_oss_config
 
             cfg = load_oss_config(unity_project_path)
-            oss_download_url = public_url(cfg, oss_remote_key)
+            oss_download_url = apk_download_url(cfg, oss_remote_key, site_base_url=base_url)
         except Exception:
             oss_download_url = f"{base_url.rstrip('/')}/pub/oss-download/{oss_remote_key}?source=qr"
     elif oss_remote_key:

@@ -21,7 +21,7 @@
     <div class="ops-shell-nav-group"><b>交付管理</b>
       {{ nav_item('versions', '/admin/projects/' ~ project_id ~ '/versions', 'nav_version_code', '版本管理') }}
       {{ nav_item('release-orders', '/admin/projects/' ~ project_id ~ '/release-orders', 'nav_release_order', '发布中心') }}
-      {{ nav_item('builds', '/admin/projects/' ~ project_id ~ '/build-history', 'nav_build_artifact', '构建产物') }}
+      {{ nav_item('builds', '/admin/projects/' ~ project_id ~ '/build-history?env_key=' ~ (env_key or 'production') ~ '&scoped=1', 'nav_build_artifact', '构建产物') }}
     </div>
     <div class="ops-shell-nav-group"><b>运行管理</b>
       {{ nav_item('topology', '/admin/projects/' ~ project_id ~ '/topologies', 'nav_topology', '拓扑资产') }}

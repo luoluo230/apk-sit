@@ -207,6 +207,7 @@ class Config:
     ).lower() in ('true', '1', 'yes')
     PUBLIC_URL = (os.getenv('PUBLIC_URL') or _get('external.public_url') or '').strip()
     EXTERNAL_DOMAIN = (os.getenv('EXTERNAL_DOMAIN') or _get('external.external_domain') or '').strip()
+    OSS_CUSTOM_DOMAIN = (os.getenv('OSS_CUSTOM_DOMAIN') or os.getenv('OSS_APK_CDN_BASE') or _get('external.oss_custom_domain') or '').strip().rstrip('/')
 
     WORKSPACE_BASE_DIR = _resolve_path(_get('workspace.base_dir') or 'data/workspaces')
     DOCS_ATTACHMENTS_DIR = _resolve_path(_get('docs.attachments_dir') or 'data/doc_attachments')

@@ -582,8 +582,6 @@ def api_list_available_instances():
     available = []
     seen = set()
     for inst in instances:
-        if inst.get('status') != 'running':
-            continue
         iid = inst.get('id') or ''
         itype = (inst.get('instance_type') or 'general').strip().lower()
         if instance_type_filter and itype != instance_type_filter:
@@ -592,18 +590,22 @@ def api_list_available_instances():
         bdir = jm.get_builds_dir_for_instance(instance_id=iid)
         if not url or not bdir:
             continue
+        status = (inst.get('status') or 'stopped').strip().lower()
         reachable = False
         health_message = ''
         building = False
-        try:
-            st = jenkins_svc.fetch_jenkins_status(base_url=url, builds_dir=bdir, instance_id=iid)
-            reachable = bool(st.get('ok'))
-            health_message = st.get('message') or ''
-            building = bool(st.get('building'))
-            if reachable and building and iid not in include_ids:
-                continue
-        except Exception as exc:
-            health_message = str(exc)
+        if status == 'running':
+            try:
+                st = jenkins_svc.fetch_jenkins_status(base_url=url, builds_dir=bdir, instance_id=iid)
+                reachable = bool(st.get('ok'))
+                health_message = st.get('message') or ''
+                building = bool(st.get('building'))
+                if reachable and building and iid not in include_ids:
+                    continue
+            except Exception as exc:
+                health_message = str(exc)
+        else:
+            health_message = '实例已停止，选择后触发构建将尝试自动启动'
         row = dict(inst)
         row['reachable'] = reachable
         row['health_message'] = health_message
@@ -611,7 +613,10 @@ def api_list_available_instances():
         seen.add(iid)
     for inst in instances:
         iid = inst.get('id') or ''
-        if iid in include_ids and iid not in seen and inst.get('status') == 'running':
+        if iid in include_ids and iid not in seen:
+            itype = (inst.get('instance_type') or 'general').strip().lower()
+            if instance_type_filter and itype != instance_type_filter:
+                continue
             row = dict(inst)
             row['reachable'] = False
             row['health_message'] = '强制包含（健康检查未通过）'

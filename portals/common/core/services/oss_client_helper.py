@@ -48,6 +48,11 @@ def get_bucket(unity_project_path: str | None = None):
 
 def _custom_domain(cfg: dict[str, Any]) -> str:
     """OSS 自定义域名（CNAME），APK 公网下载必须走此域名。"""
+    env_dom = (os.environ.get("OSS_CUSTOM_DOMAIN") or os.environ.get("OSS_APK_CDN_BASE") or "").strip().rstrip("/")
+    if env_dom:
+        if env_dom.startswith("http://") or env_dom.startswith("https://"):
+            return env_dom.rstrip("/")
+        return f"https://{env_dom}"
     for key in ("CustomDomain", "customDomain", "CdnDomain", "cdnDomain", "PublicBaseUrl", "publicBaseUrl"):
         val = (cfg.get(key) or "").strip().rstrip("/")
         if val:

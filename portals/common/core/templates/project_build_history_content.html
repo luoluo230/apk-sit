@@ -1,9 +1,9 @@
-<section class="build-center" data-project-id="{{ project_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+<section class="build-center" data-project-id="{{ project_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-scope-version-id="{{ scope_version_id }}" data-scope-env-key="{{ scope_env_key }}" data-scope-platform="{{ scope_platform }}" data-scope-version-name="{{ scope_version_name }}" data-scope-version-code="{{ scope_version_code }}" data-scope-channel-id="{{ scope_channel_id }}" data-scoped="{{ 'true' if scope_version_id or scope_env_key or scope_platform else 'false' }}">
   <header class="build-page-head">
     <div>
       <p class="build-eyebrow">PROJECT DELIVERY / BUILD & ARTIFACTS</p>
       <h1>构建与产物</h1>
-      <p>查看项目全部构建记录、实时状态与关联产物，快速定位失败原因。</p>
+      <p id="buildPageSubtitle">查看项目全部构建记录、实时状态与关联产物，快速定位失败原因。</p>
     </div>
     <div class="build-page-actions">
       <a class="build-btn build-btn-primary" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">
@@ -14,6 +14,14 @@
       </button>
     </div>
   </header>
+
+  <div class="build-scope-banner is-hidden" data-scope-banner>
+    <div>
+      <strong data-scope-title>当前仅显示指定 VersionCode 的构建历史</strong>
+      <p data-scope-desc></p>
+    </div>
+    <a class="build-btn" data-scope-back href="/admin/projects/{{ project_id }}/versions">返回版本列表</a>
+  </div>
 
   <div class="build-kpis" data-kpis>
     <article><span class="kpi-icon violet"><img src="/static/project_ui/svg/kpi_build.svg" alt=""></span><div><small>全部构建</small><strong data-kpi="total">--</strong><em>项目完整流水</em></div></article>
@@ -114,6 +122,10 @@
 <style>
 .build-center{--blue:#1677ff;--line:#e5eaf3;--text:#1f2a37;--muted:#77849a;display:flex;flex-direction:column;gap:16px;color:var(--text)}
 .build-page-head{display:flex;justify-content:space-between;align-items:center;gap:24px}.build-eyebrow{margin:0 0 5px;color:var(--blue);font-size:11px;font-weight:700;letter-spacing:.14em}.build-page-head h1{margin:0;font-size:24px;line-height:32px}.build-page-head p:not(.build-eyebrow){margin:5px 0 0;color:var(--muted);font-size:13px}.build-page-actions{display:flex;gap:8px}
+.build-scope-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid #d6e4ff;border-radius:8px;background:#f5f9ff}
+.build-scope-banner.is-hidden{display:none}
+.build-scope-banner strong{display:block;font-size:13px;color:#17243d}
+.build-scope-banner p{margin:4px 0 0;color:#667085;font-size:12px}
 .build-btn{height:36px;padding:0 14px;border:1px solid #dce4f2;border-radius:6px;background:#fff;color:#475467;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;font-size:13px;font-weight:600;cursor:pointer}.build-btn img{width:16px;height:16px}.build-btn:hover{border-color:#91caff;color:var(--blue);background:#f5f9ff}.build-btn:disabled{opacity:.45;cursor:not-allowed}.build-btn-primary{border-color:var(--blue);background:var(--blue);color:#fff}.build-btn-primary:hover{background:#0958d9;color:#fff}.build-btn-danger{color:#e5484d;border-color:#ffc7c9}.build-btn-danger-solid{color:#fff;border-color:#e5484d;background:#e5484d}
 .build-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.build-kpis article{min-height:94px;padding:16px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;gap:13px;box-shadow:0 2px 10px rgba(31,42,55,.025)}.kpi-icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto}.kpi-icon img{width:22px;height:22px}.kpi-icon.violet{background:#f3ebff}.kpi-icon.green{background:#e7f8ed}.kpi-icon.orange{background:#fff1df}.kpi-icon.red{background:#ffebeb}.kpi-icon.blue{background:#e8f1ff}.build-kpis div{display:flex;min-width:0;flex-direction:column}.build-kpis small{font-size:12px;color:#667085}.build-kpis strong{font-size:24px;line-height:30px}.build-kpis em{font-size:11px;color:#98a2b3;font-style:normal}
 .build-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px;align-items:start}.build-main,.build-side{display:flex;flex-direction:column;gap:12px}.build-panel{border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 2px 10px rgba(31,42,55,.025)}.build-filter-panel{padding:14px}.build-filters{display:grid;grid-template-columns:minmax(260px,1fr) 150px 130px 100px auto;gap:10px;align-items:end}.build-filters label:not(.build-search){display:flex;flex-direction:column;gap:5px}.build-filters label span{font-size:11px;color:#667085}.build-filters select,.build-search{height:36px;border:1px solid #dce4f2;border-radius:6px;background:#fff}.build-filters select{width:100%;padding:0 10px;color:#475467;outline:0}.build-search{display:flex;align-items:center;gap:8px;padding:0 11px}.build-search img{width:16px}.build-search input{width:100%;border:0;outline:0;background:transparent;color:#344054}
@@ -132,6 +144,16 @@
   if (!root) return;
   const projectId = root.dataset.projectId;
   const canEdit = root.dataset.canEdit === 'true';
+  const pageQuery = new URLSearchParams(location.search);
+  const scopeVersionId = (pageQuery.get('version_id') || root.dataset.scopeVersionId || '').trim();
+  const scopeEnvKey = (pageQuery.get('env_key') || root.dataset.scopeEnvKey || '').trim();
+  const scopePlatform = (pageQuery.get('platform') || root.dataset.scopePlatform || '').trim().toLowerCase();
+  const scopeVersionName = (pageQuery.get('version_name') || root.dataset.scopeVersionName || '').trim();
+  const scopeVersionCode = (pageQuery.get('version_code') || root.dataset.scopeVersionCode || '').trim();
+  const scopeChannelId = (pageQuery.get('channel_id') || root.dataset.scopeChannelId || '').trim();
+  const isScoped = pageQuery.get('scoped') === '1' || scopeVersionId || scopeEnvKey;
+  const envLabels = { development: '开发环境', testing: '测试环境', staging: '预发环境', production: '生产环境' };
+  const platformLabels = { android: 'Android', ios: 'iOS' };
   const ui = {
     rows: root.querySelector('[data-build-rows]'), state: root.querySelector('[data-state]'), tableWrap: root.querySelector('[data-table-wrap]'),
     search: root.querySelector('[data-search]'), status: root.querySelector('[data-status]'), platform: root.querySelector('[data-platform]'),
@@ -151,10 +173,83 @@
   const statusBadge = item => `<span class="build-status ${statusClass(item)}">${statusText(item)}</span>`;
   const toast = message => { const el = document.querySelector('[data-toast]'); el.textContent = message; el.hidden = false; clearTimeout(el._timer); el._timer = setTimeout(() => el.hidden = true, 2600); };
 
+  const applyScopeUi = () => {
+    if (!isScoped) return;
+    const banner = root.querySelector('[data-scope-banner]');
+    const title = root.querySelector('[data-scope-title]');
+    const desc = root.querySelector('[data-scope-desc]');
+    const subtitle = document.getElementById('buildPageSubtitle');
+    const parts = [];
+    if (scopeVersionName) parts.push(`版本 ${scopeVersionName}`);
+    if (scopeVersionCode) parts.push(`VC ${scopeVersionCode}`);
+    if (scopeEnvKey) parts.push(envLabels[scopeEnvKey] || scopeEnvKey);
+    if (scopePlatform) parts.push(platformLabels[scopePlatform] || scopePlatform);
+    if (scopeChannelId) parts.push(`渠道 ${scopeChannelId}`);
+    const scopeText = parts.join(' · ');
+    if (banner) banner.classList.remove('is-hidden');
+    if (title) title.textContent = scopeVersionId ? '当前仅显示该 VersionCode 的构建历史' : '当前仅显示指定交付范围的构建历史';
+    if (desc) desc.textContent = scopeText ? `范围：${scopeText}。其他环境 / 平台的记录已隐藏。` : '已按 URL 范围过滤构建记录。';
+    if (subtitle) subtitle.textContent = '仅展示当前交付范围内的构建记录，不混入其他环境或平台。';
+    const panelDesc = document.querySelector('.build-table-panel .build-panel-title p');
+    if (panelDesc) panelDesc.textContent = '仅显示当前交付范围内的构建记录，不混入其他环境或平台。';
+    if (scopePlatform && ui.platform) {
+      const wanted = scopePlatform === 'android' ? 'Android' : scopePlatform === 'ios' ? 'iOS' : scopePlatform;
+      ui.platform.value = wanted;
+      ui.platform.disabled = true;
+    }
+    const back = root.querySelector('[data-scope-back]');
+    if (back && scopeEnvKey) {
+      const qs = new URLSearchParams();
+      qs.set('env_key', scopeEnvKey);
+      if (scopePlatform) qs.set('platform', scopePlatform);
+      if (scopeVersionName) qs.set('version_name', scopeVersionName);
+      back.href = `/admin/projects/${projectId}/versions?${qs.toString()}`;
+    }
+  };
+
+  const matchesScope = (row) => {
+    if (!isScoped) return true;
+    if (scopeVersionId && String(row.version_id || '') !== scopeVersionId) return false;
+    if (scopeEnvKey && String(row.env_key || '') !== scopeEnvKey) return false;
+    if (scopePlatform && String(row.platform || '').toLowerCase() !== scopePlatform) return false;
+    if (scopeVersionName && String(row.version_name || '') !== scopeVersionName) return false;
+    if (scopeVersionCode && String(row.version_code || '') !== scopeVersionCode) return false;
+    return true;
+  };
+
   function flatten(groups) {
     const output = [];
-    (groups || []).forEach(group => (group.version_codes || []).forEach(vc => (vc.builds || []).forEach(build => output.push({...build, version_name: build.version_name || group.version_name || '', version_code: build.version_code || vc.version_code || '', version_id: build.version_id || vc.version_id || '', channel_id: vc.channel_id || '', channel_name: vc.channel_name || '', env_key: vc.env_key || '', platform: vc.platform || ''}))));
+    (groups || []).forEach(group => (group.version_codes || []).forEach(vc => (vc.builds || []).forEach(build => output.push({
+      ...build,
+      version_name: build.version_name || group.version_name || '',
+      version_code: build.version_code || vc.version_code || '',
+      version_id: build.version_id || vc.version_id || '',
+      channel_id: vc.channel_id || '',
+      channel_name: vc.channel_name || '',
+      env_key: vc.env_key || '',
+      platform: vc.platform || '',
+      apk_status: vc.apk_status || '',
+      apk_download: vc.apk_download || {},
+    }))));
     return output.sort((a,b) => Number(b.build_number || b.number || 0) - Number(a.build_number || a.number || 0));
+  }
+
+  function artifactHtml(row) {
+    const dl = row.apk_download && typeof row.apk_download === 'object' ? row.apk_download : {};
+    const bn = String(row.build_number || row.number || '');
+    const matchBuild = dl.build_number && String(dl.build_number) === bn;
+    const ready = row.apk_status === 'found' || matchBuild || dl.public_download_url || dl.local_download_url || dl.oss_download_url;
+    if (!ready) {
+      return '<div class="artifact-missing">当前构建记录未登记可展示的结构化产物。构建成功并完成 APK 归档后，将显示外网下载链接与二维码。</div>';
+    }
+    const publicUrl = dl.public_download_url || dl.oss_download_url || '';
+    const parts = [];
+    if (publicUrl) parts.push(`<a class="build-btn primary" href="${esc(publicUrl)}" target="_blank" rel="noopener">外网下载</a>`);
+    if (dl.local_download_url && dl.local_download_url !== publicUrl) parts.push(`<a class="build-btn" href="${esc(dl.local_download_url)}" target="_blank" rel="noopener">本机测试</a>`);
+    const qr = dl.public_qr_dataurl || dl.oss_qr_dataurl || dl.local_qr_dataurl;
+    const qrHtml = qr ? `<div class="artifact-qr" style="margin-top:10px"><img src="${esc(qr)}" alt="下载二维码" width="96" height="96" style="border:1px solid #e5eaf3;border-radius:6px"></div>` : '';
+    const sizeText = dl.size_bytes ? `${(dl.size_bytes / 1048576).toFixed(1)} MB` : '-';
+    return `<div class="artifact-links" style="display:flex;gap:8px;flex-wrap:wrap">${parts.join('')}</div>${qrHtml}<p style="margin:10px 0 0;color:#98a2b3;font-size:11px">归档 ${esc(dl.build_time || '-')} · 构建 #${esc(dl.build_number || bn)} · ${esc(sizeText)}</p>`;
   }
 
   function setKpis() {
@@ -171,6 +266,7 @@
   function applyFilters() {
     const keyword = ui.search.value.trim().toLowerCase(), wantedStatus = ui.status.value, wantedPlatform = ui.platform.value;
     filtered = records.filter(row => {
+      if (!matchesScope(row)) return false;
       const haystack = [row.build_number,row.number,row.version_name,row.version_code,row.triggered_by,row.instance_id,row.channel_id,row.channel_name,row.env_key,row.platform].join(' ').toLowerCase();
       return (!keyword || haystack.includes(keyword)) && (!wantedStatus || statusKey(row) === wantedStatus) && (!wantedPlatform || String(row.platform).toLowerCase() === wantedPlatform.toLowerCase());
     });
@@ -212,7 +308,7 @@
     ui.current.innerHTML = `<div class="current-number"><strong>#${esc(num)}</strong>${statusBadge(row)}</div><div class="current-progress"><span style="width:${progress}%"></span></div><div class="current-meta">
       <div><span>版本</span><b>${esc(row.version_name || '-')} (${esc(row.version_code || '-')})</b></div><div><span>环境 / 平台</span><b>${esc(({development:'开发环境',testing:'测试环境',staging:'预发环境',production:'生产环境'})[row.env_key] || '-')} / ${esc(({android:'Android',ios:'iOS'})[String(row.platform || '').toLowerCase()] || row.platform || '-')}</b></div><div><span>Jenkins 实例</span><b>${esc(row.instance_id || '-')}</b></div><div><span>触发人</span><b>${esc(row.triggered_by || '-')}</b></div><div><span>触发时间</span><b>${esc(dateText(row.started_at))}</b></div><div><span>耗时</span><b>${esc(row.duration || '-')}</b></div></div>`;
     ui.failurePanel.hidden = statusKey(row) !== 'FAILURE'; ui.failure.textContent = row.failure_summary || '请打开完整详情读取真实失败日志。';
-    ui.artifacts.innerHTML = `<div class="artifact-selected"><div class="artifact-selected-header"><div><h3>构建 #${esc(num)} · ${esc(row.version_name || '未命名版本')}</h3><p>VersionCode ${esc(row.version_code || '-')} · ${esc(({development:'开发环境',testing:'测试环境',staging:'预发环境',production:'生产环境'})[row.env_key] || '-')} / ${esc(({android:'Android',ios:'iOS'})[String(row.platform || '').toLowerCase()] || row.platform || '-')}</p></div>${statusBadge(row)}</div><div class="artifact-missing">当前构建记录未登记可展示的结构化产物。请在发布单中关联并校验 APK、资源、配置和代码产物。</div></div>`;
+    ui.artifacts.innerHTML = `<div class="artifact-selected"><div class="artifact-selected-header"><div><h3>构建 #${esc(num)} · ${esc(row.version_name || '未命名版本')}</h3><p>VersionCode ${esc(row.version_code || '-')} · ${esc(({development:'开发环境',testing:'测试环境',staging:'预发环境',production:'生产环境'})[row.env_key] || '-')} / ${esc(({android:'Android',ios:'iOS'})[String(row.platform || '').toLowerCase()] || row.platform || '-')}</p></div>${statusBadge(row)}</div>${artifactHtml(row)}</div>`;
     [ui.detail,ui.downloadLog,ui.console,ui.deleteCurrent].filter(Boolean).forEach(button => button.disabled = false);
     ui.console.disabled = !row.console_url;
     document.querySelectorAll('[data-row]').forEach(el => el.classList.toggle('selected', el.dataset.instance === String(row.instance_id) && Number(el.dataset.number) === Number(num)));
@@ -290,16 +386,42 @@
   async function load() {
     ui.state.hidden = false; ui.tableWrap.hidden = true; ui.state.innerHTML = '<span class="build-spinner"></span><strong>正在加载构建历史</strong><p>正在同步本地记录与 Jenkins 实时状态。</p>';
     try {
-      const response = await fetch(`/api/build/history-by-project?project_id=${encodeURIComponent(projectId)}`,{credentials:'same-origin'});
-      const data = await response.json(); if (!response.ok || data.ok === false) throw new Error(data.error || '构建历史加载失败');
-      records = flatten(data.groups); setKpis(); applyFilters();
+      let loaded = [];
+      if (scopeVersionId) {
+        const response = await fetch(`/api/build/history-by-version?version_id=${encodeURIComponent(scopeVersionId)}`, { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok || data.ok === false) throw new Error(data.error || '构建历史加载失败');
+        loaded = (data.builds || []).map((build) => ({
+          ...build,
+          version_id: scopeVersionId,
+          version_name: build.version_name || scopeVersionName,
+          version_code: build.version_code || scopeVersionCode,
+          env_key: build.env_key || scopeEnvKey,
+          platform: build.platform || scopePlatform,
+          channel_id: build.channel_id || scopeChannelId,
+        }));
+      } else {
+        const response = await fetch(`/api/build/history-by-project?project_id=${encodeURIComponent(projectId)}`, { credentials: 'same-origin' });
+        const data = await response.json();
+        if (!response.ok || data.ok === false) throw new Error(data.error || '构建历史加载失败');
+        loaded = flatten(data.groups);
+      }
+      records = loaded.filter(matchesScope);
+      setKpis(); applyFilters();
       if (records.length && !selected) { renderCurrent(records[0]); loadDetail(records[0], false); }
     } catch (error) { ui.state.hidden = false; ui.tableWrap.hidden = true; ui.state.innerHTML = `<img src="${icon('status_error')}" alt="" style="width:32px"><strong>构建历史加载失败</strong><p>${esc(error.message)}</p>`; }
   }
 
+  applyScopeUi();
+
   root.addEventListener('click', event => {
     if (event.target.closest('[data-refresh]')) load();
-    if (event.target.closest('[data-reset]')) { ui.search.value=''; ui.status.value=''; ui.platform.value=''; applyFilters(); }
+    if (event.target.closest('[data-reset]')) {
+      ui.search.value = '';
+      ui.status.value = '';
+      if (!scopePlatform) ui.platform.value = '';
+      applyFilters();
+    }
     const row = findRow(event.target);
     if (event.target.closest('[data-delete]') && row) { event.stopPropagation(); askDelete([row]); return; }
     if (event.target.closest('[data-open]') && row) { event.stopPropagation(); renderCurrent(row); loadDetail(row, true); return; }

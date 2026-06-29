@@ -1,0 +1,250 @@
+<link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">
+<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260625-bc-layered1">
+<style>
+  .build-config-app .workflow-section:not(.active) { display: none !important; }
+  .build-config-app .workflow-section.active { display: block; }
+  .build-config-banner{margin:10px 0 16px;padding:12px 16px;border:1px solid #c7d6f3;border-radius:10px;background:#f0f5ff;color:#17243d;display:flex;align-items:center;gap:12px;font-size:13px}
+  .build-config-banner strong{font-weight:600}
+  .build-config-banner span{color:#476291;font-size:12px}
+</style>
+<section class="delivery-app build-config-app" data-page="version-build-config" data-project-id="{{ project_id }}" data-version-id="{{ version_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-entry-from="{{ entry_from or 'version-group' }}" data-edit-scope="{{ edit_scope_mode or 'version_group' }}" data-version-name="{{ version_name or '' }}" data-platform="{{ platform or '' }}" data-env-key="{{ env_key or '' }}">
+  <div class="workflow-heading">
+    <a href="{{ return_url }}"><img src="/static/project_ui/svg/action_back.svg" alt="">{{ return_label }}</a>
+    <div>
+      <h1>{{ version_label }}</h1>
+      <p>{{ '版本组管线模板：保存后自动同步到组内所有 VersionCode，并被发布单只读引用。路径字段按 VC 编号自动推导。' if (edit_scope_mode or 'version_group') == 'version_group' else '兼容旧路径：仅保存本 VersionCode 构建参数。新流程请在版本组层级配置。' }}</p>
+    </div>
+    {% if workflow_url %}
+    <a class="ui-secondary" href="{{ workflow_url }}" target="_blank" rel="noopener noreferrer">
+      <img src="/static/project_ui/svg/nav_execute.svg" alt="">前往执行构建
+    </a>
+    {% endif %}
+  </div>
+
+  {% if (edit_scope_mode or 'version_group') == 'version_group' %}
+  <div class="build-config-banner" role="note">
+    <img src="/static/project_ui/svg/status_info.svg" alt="" onerror="this.style.display='none'">
+    <div>
+      <strong>这里是构建管线的唯一源</strong>
+      <span>保存后将作用于本版本组（版本名 × 环境 × 平台）下所有 VersionCode，并被发布单页只读引用。新建 VC 自动继承该模板，无需重复配置。</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="workflow-layout build-config-layout">
+    <aside class="workflow-steps build-config-steps" aria-label="配置步骤">
+      <button type="button" class="active" data-section-tab="jenkins"><b>1</b><span>构建环境<em>Jenkins 与 Unity</em></span></button>
+      <button type="button" data-section-tab="config_export"><b>2</b><span>配置导出<em>Step1 ConfigRemotePublish</em></span></button>
+      <button type="button" data-section-tab="resource_build"><b>3</b><span>资源打包<em>Step2 Addressables</em></span></button>
+      <button type="button" data-section-tab="hot_release"><b>4</b><span>热更发布<em>Step3 代码与资源</em></span></button>
+      <button type="button" data-section-tab="artifact"><b>5</b><span>安装包<em>Step4 APK/IPA</em></span></button>
+      <button type="button" data-section-tab="client_policy"><b>6</b><span>客户端策略<em>runtime-bootstrap</em></span></button>
+    </aside>
+
+    <main class="workflow-main">
+      <form id="versionBuildConfigForm">
+        <section class="workflow-section active" data-section="jenkins">
+          <div class="section-title">
+            <div><span>环境</span><h2>Jenkins 与构建环境</h2></div>
+            <p>实例、Job 与 Unity 构建基础参数。</p>
+          </div>
+          <div class="form-grid">
+            <label class="span-2">
+              <span>Jenkins 实例</span>
+              <select name="jenkins_instance_id" id="jenkinsInstanceSelect">
+                <option value="">未绑定（构建页选择）</option>
+              </select>
+              <a class="preview-card-link" href="/admin/jenkins" target="_blank" rel="noopener noreferrer">管理 Jenkins 实例</a>
+            </label>
+            <label><span>Jenkins Job</span><input name="jenkins_job_id" placeholder="例如 Android"></label>
+            <label id="channelJobOverrideWrap" class="span-2" hidden>
+              <span>本渠道 Jenkins Job 覆盖（可选）</span>
+              <input name="channel_jenkins_job_override" placeholder="仅当本渠道 Job 与组默认不同时填写">
+            </label>
+            <label><span>Git 分支</span><input name="git_branch" placeholder="main"></label>
+            <label>
+              <span>Unity 版本</span>
+              <select name="unity_version" id="unityVersionSelect">
+                <option value="">请选择 Unity 版本</option>
+              </select>
+              <a class="preview-card-link" href="/admin/jenkins" target="_blank" rel="noopener noreferrer">Unity 版本管理</a>
+            </label>
+            <label><span>应用名 APP_NAME</span><input name="app_name" placeholder="与 Jenkins 一致"></label>
+            <label class="span-2 path-field">
+              <span>Unity 工程路径</span>
+              <div class="path-field-row">
+                <input name="unity_project_path" placeholder="选择或输入 Unity 工程根目录">
+                <button type="button" class="ui-secondary path-pick-btn" data-path-pick="unity_project_path" data-path-mode="dir">浏览…</button>
+              </div>
+            </label>
+            <label class="span-2 path-field">
+              <span>输出目录 OUTPUT_BASE_DIR</span>
+              <div class="path-field-row">
+                <input name="output_base_dir" placeholder="选择或输入 APK/IPA 输出目录">
+                <button type="button" class="ui-secondary path-pick-btn" data-path-pick="output_base_dir" data-path-mode="dir">浏览…</button>
+              </div>
+            </label>
+          </div>
+        </section>
+
+        <section class="workflow-section" data-section="config_export" hidden>
+          <div class="section-title">
+            <div><span>STEP 01</span><h2>配置导出</h2></div>
+            <p>Excel 导表 → manifest → 上传 OSS（ConfigRemotePublish）。</p>
+          </div>
+          <div class="form-grid">
+            <label class="span-4 checkbox-row"><input type="checkbox" name="config_export_enabled" id="configExportEnabled"><span>启用配置导出</span></label>
+            <label><span>远端路径前缀</span><input name="config_remote_prefix" placeholder="MyGame1"></label>
+            <label><span>客户端版本</span><input name="config_client_version" class="is-locked" readonly title="继承自 VersionCode 版本组"></label>
+            <label><span>环境</span><input name="config_environment" class="is-locked" readonly title="继承自 VersionCode 交付环境"></label>
+            <label><span>平台</span><input name="config_platform" class="is-locked" readonly title="继承自 VersionCode 平台"></label>
+            <label class="span-4 checkbox-row"><input type="checkbox" name="config_include_code"><span>配置导出包含代码产物</span></label>
+            <label class="span-4"><span>配置包登记路径</span><input name="config_path" class="is-locked" readonly title="按环境 / 渠道 / 版本组 / VersionCode 自动生成"></label>
+          </div>
+        </section>
+
+        <section class="workflow-section" data-section="resource_build" hidden>
+          <div class="section-title">
+            <div><span>STEP 02</span><h2>资源打包</h2></div>
+            <p>Addressables / 资源流水线构建。</p>
+          </div>
+          <div class="form-grid">
+            <label class="span-4 checkbox-row"><input type="checkbox" name="resource_build_enabled" id="resourceBuildEnabled"><span>启用资源打包</span></label>
+            <label><span>构建引擎</span><select name="resource_provider"><option value="addressables-v2">Addressables v2</option><option value="legacy-bundle-builder">Legacy</option></select></label>
+            <label><span>场景方案</span><input name="resource_scenario" placeholder="default"></label>
+            <label class="span-4"><span>资源包登记路径</span><input name="resource_path" class="is-locked" readonly title="按环境 / 渠道 / 版本组 / VersionCode 自动生成"></label>
+          </div>
+        </section>
+
+        <section class="workflow-section" data-section="hot_release" hidden>
+          <div class="section-title">
+            <div><span>STEP 03</span><h2>热更发布</h2></div>
+            <p>代码包与资源包可独立热更；配置包在 Step1 处理。</p>
+          </div>
+          <div class="build-config-preset-row" id="hotPresetRow">
+            <span>快捷组合</span>
+            <button type="button" class="overview-tab" data-preset="code-only">仅代码热更</button>
+            <button type="button" class="overview-tab" data-preset="resource-only">仅资源热更</button>
+            <button type="button" class="overview-tab" data-preset="code-resource">代码+资源</button>
+            <button type="button" class="overview-tab" data-preset="hot-off">关闭热更</button>
+          </div>
+          <div class="form-grid">
+            <label class="span-4 checkbox-row"><input type="checkbox" name="hot_release_enabled" id="hotReleaseEnabled"><span>启用热更发布</span></label>
+            <label><span>发布模式</span><select name="release_mode"><option value="build-upload">构建并上传</option><option value="build">仅构建</option><option value="upload">仅上传</option><option value="activate">激活</option><option value="rollback">回滚</option></select></label>
+            <label><span>上传模式</span><select name="release_upload_mode"><option value="incremental">增量</option><option value="full">全量</option></select></label>
+            <label><span>发布渠道</span><input name="release_channel" class="is-locked" readonly title="继承自 VersionCode 渠道"></label>
+            <label><span>热更标签</span><input name="release_hot_labels" placeholder="hotupdate,aotmeta"></label>
+            <label class="span-4"><span>回滚目标版本</span><input name="release_rollback_target" placeholder="回滚模式填写"></label>
+          </div>
+          <div class="build-config-target-row">
+            <span>发布对象</span>
+            <button type="button" class="channel-chip build-config-target-chip active" data-target-chip="code">代码包</button>
+            <button type="button" class="channel-chip build-config-target-chip active" data-target-chip="resource">资源包</button>
+          </div>
+          <div class="workflow-preview-grid">
+            <div class="build-config-strategy-panel span-2">
+              <strong>代码包策略</strong>
+              <div class="form-grid">
+                <label class="span-2 checkbox-row"><input type="checkbox" name="code_enabled" checked><span>启用代码包</span></label>
+                <label><span>压缩</span><select name="code_compression"><option value="Zip">Zip</option><option value="None">None</option><option value="Lz4">Lz4</option></select></label>
+                <label><span>加密</span><select name="code_encryption"><option value="Aes">Aes</option><option value="None">None</option><option value="Xor">Xor</option></select></label>
+                <label><span>签名</span><select name="code_signature"><option value="builtin-signature">启用</option><option value="">关闭</option></select></label>
+                <label class="span-2"><span>包单元</span><input name="code_units" value="aotmeta, hotupdate, scriptpatch, symbols"></label>
+              </div>
+            </div>
+            <div class="build-config-strategy-panel span-2">
+              <strong>资源包策略</strong>
+              <div class="form-grid">
+                <label class="span-2 checkbox-row"><input type="checkbox" name="resource_hot_enabled" checked><span>启用资源包</span></label>
+                <label><span>压缩</span><select name="resource_compression"><option value="None">None</option><option value="Zip">Zip</option><option value="Lz4">Lz4</option></select></label>
+                <label><span>加密</span><select name="resource_encryption"><option value="None">None</option><option value="Aes">Aes</option></select></label>
+                <label><span>签名</span><select name="resource_signature"><option value="builtin-signature">启用</option><option value="">关闭</option></select></label>
+                <label class="span-2"><span>包单元</span><input name="resource_units" value="addressable, hotupdate, optional, platform, hd, streaming"></label>
+              </div>
+            </div>
+          </div>
+          <details class="build-config-advanced">
+            <summary>高级覆盖（可选）</summary>
+            <div class="form-grid">
+              <label><span>压缩覆盖</span><select name="release_compression_override"><option value="">默认</option><option value="Zip">Zip</option><option value="Lz4">Lz4</option><option value="None">None</option></select></label>
+              <label><span>加密覆盖</span><select name="release_encryption_override"><option value="">默认</option><option value="Aes">Aes</option><option value="Xor">Xor</option><option value="None">None</option></select></label>
+              <label><span>签名覆盖</span><select name="release_signature_override"><option value="">默认</option><option value="builtin-signature">启用</option></select></label>
+            </div>
+          </details>
+        </section>
+
+        <section class="workflow-section" data-section="artifact" hidden>
+          <div class="section-title">
+            <div><span>STEP 04</span><h2>安装包</h2></div>
+            <p>控制是否执行 APK/AAB/IPA 打包与本地产物登记。</p>
+          </div>
+          <div class="form-grid">
+            <label class="span-4 checkbox-row"><input type="checkbox" name="apk_build_enabled" id="apkBuildEnabled"><span>启用安装包打包上传</span></label>
+            <label id="packageFormatWrap"><span>出包格式</span><select name="package_format" id="packageFormatSelect"></select></label>
+            <label class="span-4"><span>安装包路径</span><input name="apk_path" class="is-locked" readonly title="按环境 / 渠道 / 版本组 / VersionCode 与出包格式自动生成"></label>
+            <div class="span-4">
+              <a class="ui-secondary" id="buildHistoryLink" href="/admin/projects/{{ project_id }}/build-history">查看构建历史与产物</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="workflow-section" data-section="client_policy" hidden>
+          <div class="section-title">
+            <div><span>策略</span><h2>客户端更新策略</h2></div>
+            <p>控制 runtime-bootstrap 门禁字段；配置 / 代码 / 资源三域与 Jenkins 步骤对应。</p>
+          </div>
+          <div class="build-config-domain-row" id="domainStatusChips" aria-label="三域状态">
+            <span class="channel-chip" data-domain-chip="config">配置域</span>
+            <span class="channel-chip" data-domain-chip="code">代码域</span>
+            <span class="channel-chip" data-domain-chip="resource">资源域</span>
+            <span class="channel-chip" data-domain-chip="apk">安装包</span>
+          </div>
+          <div class="build-config-preset-row" id="policyPresetRow">
+            <span>策略组合</span>
+            <button type="button" class="overview-tab" data-policy-preset="config-only">仅配置热更</button>
+            <button type="button" class="overview-tab" data-policy-preset="code-only">仅代码热更</button>
+            <button type="button" class="overview-tab" data-policy-preset="resource-only">仅资源热更</button>
+            <button type="button" class="overview-tab" data-policy-preset="code-resource">代码+资源</button>
+            <button type="button" class="overview-tab" data-policy-preset="force-apk">强更整包</button>
+          </div>
+          <div class="form-grid">
+            <label class="span-4"><span>资源服务器 URL</span><input name="resource_server_url" placeholder="https://oss.example.com/MyGame1"></label>
+            <label><span>Catalog 文件名</span><input name="catalog_file_name" placeholder="catalog_1.0.0.bin"></label>
+            <label><span>最低客户端版本</span><input name="min_client_version" placeholder="默认同版本组"></label>
+            <label><span>灰度比例 (%)</span><input name="rollout_percentage" type="number" min="0" max="100" placeholder="100"></label>
+            <label class="span-4 checkbox-row"><input type="checkbox" name="force_update" id="forceUpdateEnabled"><span>强制整包更新（force_update）</span></label>
+            <label class="span-4 checkbox-row"><input type="checkbox" name="is_revoked" id="isRevokedEnabled"><span>撤销该 VersionCode 热更（is_revoked）</span></label>
+          </div>
+        </section>
+      </form>
+    </main>
+
+    <aside class="workflow-rail">
+      <section class="ui-panel">
+        <div class="ui-panel-head">
+          <h2>Jenkins 参数预览</h2>
+          <button type="button" class="version-link-btn" data-refresh-preview>刷新</button>
+        </div>
+        <p class="build-config-panel-hint">保存后可在「执行构建」页触发 Jenkins 时写入 Job 参数。</p>
+        <ul id="jenkinsPreviewList" class="build-config-preview-list"></ul>
+        <div id="jenkinsPreviewWarnings" class="build-config-warnings"></div>
+      </section>
+      <section class="ui-panel">
+        <div class="ui-panel-head">
+          <h2>客户端 Bootstrap 预览</h2>
+          <button type="button" class="version-link-btn" data-refresh-bootstrap>刷新</button>
+        </div>
+        <p class="build-config-panel-hint">与 runtime-bootstrap 门禁字段对齐；发布后写入 Bundle 快照。</p>
+        <p class="build-config-scope-meta" id="runtimeScopeMeta"></p>
+        <ul id="bootstrapPreviewList" class="build-config-preview-list"></ul>
+      </section>
+    </aside>
+  </div>
+
+  <div class="workflow-footer">
+    <a class="ui-secondary" href="{{ return_url }}">取消</a>
+    <button type="button" class="ui-primary" id="btnSaveBuildConfig">保存配置</button>
+    <span id="vcConfigStatus" class="build-config-status"></span>
+  </div>
+</section>
+<script src="/static/project_version_build_config.js?v=20260625-bc-layered1"></script>

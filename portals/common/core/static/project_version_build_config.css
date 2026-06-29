@@ -1,0 +1,310 @@
+/* Build-config on ops shell + project_delivery.css workflow shell */
+
+.build-config-app .workflow-section:not(.active) {
+  display: none !important;
+}
+
+.build-config-app .workflow-section.active {
+  display: block;
+}
+
+.ops-shell-content .build-config-app {
+  width: 100%;
+  max-width: none;
+}
+
+.ops-shell-content .build-config-app .workflow-footer {
+  margin: 18px 0 0 !important;
+  border-radius: 8px;
+  border-top: 1px solid #e5eaf3;
+}
+
+.build-config-layout.workflow-layout {
+  grid-template-columns: 184px minmax(0, 1fr) 264px;
+  align-items: start;
+}
+
+.build-config-layout .workflow-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 86px;
+}
+
+.build-config-steps button {
+  min-height: 64px;
+}
+
+.build-config-steps button:not(:last-child)::after {
+  height: 28px;
+}
+
+.build-config-layout .form-grid label.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.build-config-layout .form-grid label.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: #1677ff;
+}
+
+.build-config-layout .form-grid label.checkbox-row span {
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.build-config-layout .form-grid input.is-locked,
+.build-config-layout .form-grid select.is-locked {
+  background: #f5f7fa;
+  color: #667085;
+  cursor: not-allowed;
+}
+
+.path-field .path-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.path-field .path-field-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.path-field .path-pick-btn {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.build-config-preset-row,
+.build-config-target-row,
+.build-config-domain-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #71809a;
+}
+
+.build-config-preset-row .overview-tab {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.build-config-preset-row .overview-tab.active {
+  background: #1677ff;
+  border-color: #1677ff;
+  color: #fff;
+}
+
+.build-config-target-chip.active {
+  border-color: #1677ff;
+  background: #edf4ff;
+  color: #1677ff;
+}
+
+.build-config-target-chip.active[data-target-chip="resource"] {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.build-config-domain-row .channel-chip.on {
+  border-color: #1677ff;
+  background: #edf4ff;
+  color: #1677ff;
+}
+
+.build-config-domain-row .channel-chip.on[data-domain-chip="resource"] {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.build-config-domain-row .channel-chip.on[data-domain-chip="apk"] {
+  border-color: #ffe0a3;
+  background: #fff8e8;
+  color: #ad6800;
+}
+
+.build-config-strategy-panel {
+  padding: 12px;
+  border: 1px solid #e5eaf3;
+  border-radius: 6px;
+  background: #fafcff;
+}
+
+.build-config-strategy-panel strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #17243d;
+}
+
+.build-config-strategy-panel .form-grid {
+  margin-top: 0;
+}
+
+.workflow-preview-grid .span-2 {
+  grid-column: span 2;
+}
+
+.build-config-advanced {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #475467;
+}
+
+.build-config-advanced summary {
+  cursor: pointer;
+  color: #1677ff;
+  font-weight: 600;
+}
+
+.build-config-panel-hint {
+  margin: 0;
+  padding: 0 16px 10px;
+  color: #8a96a8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.build-config-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px 12px;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 11px;
+}
+
+.build-config-preview-list li {
+  padding: 8px 0;
+  border-top: 1px solid #eef1f5;
+}
+
+.build-config-preview-list li:first-child {
+  border-top: 0;
+}
+
+.build-config-preview-list code {
+  display: block;
+  color: #71809a;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+
+.build-config-preview-list span {
+  display: block;
+  color: #17243d;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.build-config-warnings {
+  margin: 0 16px 12px;
+  font-size: 11px;
+  color: #d96c00;
+}
+
+.build-config-warnings:empty {
+  display: none;
+}
+
+.build-config-scope-meta {
+  margin: 0 16px 8px;
+  font-size: 11px;
+  color: #71809a;
+  line-height: 1.5;
+}
+
+.build-config-scope-meta code {
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+}
+
+.build-config-status {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #38a45b;
+}
+
+.build-config-steps button:focus-visible,
+.build-config-preset-row button:focus-visible,
+.build-config-target-row button:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 1px;
+}
+
+.build-config-steps button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (max-width: 1500px) {
+  .build-config-layout.workflow-layout {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+
+  .build-config-layout .workflow-rail {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    position: static;
+    grid-column: 1 / -1;
+  }
+
+  .build-config-layout .workflow-rail .ui-panel {
+    flex: 1 1 280px;
+    min-width: 260px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .build-config-layout.workflow-layout {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+
+  .build-config-steps {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 86px;
+  }
+
+  .build-config-steps button {
+    min-height: 56px;
+    padding-left: 44px;
+  }
+
+  .build-config-steps button:not(:last-child)::after {
+    display: block;
+    height: 20px;
+  }
+}
+
+@media (max-width: 900px) {
+  .build-config-layout.workflow-layout {
+    display: block;
+  }
+
+  .build-config-steps {
+    position: static;
+    margin-bottom: 12px;
+  }
+}

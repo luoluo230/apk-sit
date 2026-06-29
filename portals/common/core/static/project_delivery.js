@@ -15,10 +15,25 @@
     return result.error_text || result.error_legacy || fallback;
   };
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const api = async (path, options) => {
-    const response = await fetch(path, options);
-    const result = await response.json();
-    if (!response.ok || result.ok === false) throw new Error(result.error || "请求失败");
+  const parseJsonResponse = async (response) => {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await response.text();
+      if (response.status === 401 || text.trim().startsWith("<")) {
+        throw new Error(response.status >= 500 ? `服务异常 (${response.status})，请刷新后重试` : "会话已过期，请重新登录后重试");
+      }
+      throw new Error(`请求失败 (${response.status})`);
+    }
+    return response.json();
+  };
+  const api = async (path, options = {}) => {
+    const response = await fetch(path, { ...options, credentials: "same-origin" });
+    const result = await parseJsonResponse(response);
+    if (!response.ok || result.ok === false) {
+      const err = result.error;
+      const message = typeof err === "string" ? err : err?.message || result.error_text || result.error_legacy || "请求失败";
+      throw new Error(message);
+    }
     return result.data;
   };
   const toast = (message, type="success") => {
@@ -33,11 +48,13 @@
     return token && token.content ? { "X-CSRFToken": token.content } : {};
   };
   const matrixActions = (line, envKey) => {
-    const query = `env_key=${encodeURIComponent(envKey)}&channel_id=${encodeURIComponent(line.channel_id)}&platform=${encodeURIComponent(line.platform)}`;
+    const baseQuery = `env_key=${encodeURIComponent(envKey)}&channel_id=${encodeURIComponent(line.channel_id)}&platform=${encodeURIComponent(line.platform)}`;
+    const viewVersionsHref = `/admin/projects/${projectId}/versions?${baseQuery}`;
+    const addVcHref = `${viewVersionsHref}&action=create_vc`;
     const primary = line.configured
-      ? `<a class="matrix-btn primary" href="/admin/projects/${projectId}/release-orders/new?${query}">发布</a>`
-      : `<a class="matrix-btn primary" href="/admin/projects/${projectId}/versions?${query}">添加 VC</a>`;
-    return `<div class="matrix-actions">${primary}<a class="matrix-btn" href="/admin/projects/${projectId}/versions?${query}">版本</a><a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?${query}">拓扑</a></div>`;
+      ? `<a class="matrix-btn primary" href="/admin/projects/${projectId}/release-orders/new?${baseQuery}">发布</a>`
+      : `<a class="matrix-btn primary" href="${addVcHref}">添加 VC</a>`;
+    return `<div class="matrix-actions">${primary}<a class="matrix-btn" href="${viewVersionsHref}">版本</a><a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?${baseQuery}">拓扑</a></div>`;
   };
   const renderChannelList = (host, assigned, { manageable = false } = {}) => {
     if (!host) return;
@@ -177,6 +194,144 @@
       ? assigned.map((item) => `<span class="channel-chip${item.enabled ? "" : " is-disabled"}">${esc(item.name)}${item.enabled ? "" : "（已禁用）"}</span>`).join("")
       : '<span class="channel-chip muted">未配置渠道</span>';
   };
+  let platformCatalogCache = null;
+  const loadPlatformCatalog = async () => {
+    if (platformCatalogCache) return platformCatalogCache;
+    const result = await fetch("/api/release/platform-catalog", { credentials: "same-origin" }).then((r) => r.json());
+    if (!result.ok) throw new Error(result.error || "平台目录加载失败");
+    platformCatalogCache = (result.data || []).map((row) => ({
+      id: String(row.id || "").toLowerCase(),
+      name: String(row.name || row.id || ""),
+    }));
+    return platformCatalogCache;
+  };
+  const renderPlatformList = (host, assigned, { manageable = false } = {}) => {
+    if (!host) return;
+    host.innerHTML = assigned.length
+      ? assigned.map((item) => {
+          const enabled = Boolean(item.enabled);
+          const status = enabled ? "" : " is-disabled";
+          const meta = enabled ? "" : " · 已禁用";
+          const toggle = manageable
+            ? (enabled
+              ? `<button class="channel-disable" type="button" data-disable-platform="${esc(item.id)}">禁用</button>`
+              : `<button class="channel-enable" type="button" data-enable-platform="${esc(item.id)}">启用</button>`)
+            : "";
+          const remove = manageable
+            ? `<button class="channel-remove" type="button" data-remove-platform="${esc(item.id)}">移除</button>`
+            : "";
+          return `<div class="channel-item${status}"><div><strong>${esc(item.name)}</strong><small>ID: ${esc(item.id)}${meta}</small></div><div class="channel-actions">${toggle}${remove}</div></div>`;
+        }).join("")
+      : '<div class="ui-empty">尚未配置项目平台</div>';
+    if (!manageable) return;
+    host.querySelectorAll("[data-disable-platform]").forEach((button) => {
+      button.onclick = async () => {
+        if (!confirm(`确认禁用平台「${button.dataset.disablePlatform}」？禁用后不会出现在交付线与发布流程。`)) return;
+        try {
+          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/platforms/disable`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            credentials: "same-origin",
+            body: JSON.stringify({ platform_id: button.dataset.disablePlatform }),
+          });
+          const result = await response.json();
+          if (!response.ok || result.error || result.ok === false) throw new Error(parseApiError(result, "禁用失败"));
+          toast("平台已禁用");
+          await loadProjectPlatforms();
+          if (page.dataset.deliveryPage === "overview") await loadOverview();
+          if (page.dataset.deliveryPage === "environment") await loadEnvironmentDetail();
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      };
+    });
+    host.querySelectorAll("[data-enable-platform]").forEach((button) => {
+      button.onclick = async () => {
+        try {
+          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/platforms/enable`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            credentials: "same-origin",
+            body: JSON.stringify({ platform_id: button.dataset.enablePlatform }),
+          });
+          const result = await response.json();
+          if (!response.ok || result.error || result.ok === false) throw new Error(parseApiError(result, "启用失败"));
+          toast("平台已启用");
+          await loadProjectPlatforms();
+          if (page.dataset.deliveryPage === "overview") await loadOverview();
+          if (page.dataset.deliveryPage === "environment") await loadEnvironmentDetail();
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      };
+    });
+    host.querySelectorAll("[data-remove-platform]").forEach((button) => {
+      button.onclick = async () => {
+        if (!confirm(`确认从项目中移除平台「${button.dataset.removePlatform}」？`)) return;
+        try {
+          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/platforms/remove`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...csrfHeaders() },
+            credentials: "same-origin",
+            body: JSON.stringify({ platform_id: button.dataset.removePlatform }),
+          });
+          const result = await response.json();
+          if (!response.ok || result.ok === false) throw new Error(parseApiError(result, "移除失败"));
+          if (result.error && typeof result.error === "string") throw new Error(result.error);
+          toast("平台已移除");
+          await loadProjectPlatforms();
+          if (page.dataset.deliveryPage === "overview") await loadOverview();
+          if (page.dataset.deliveryPage === "environment") await loadEnvironmentDetail();
+        } catch (error) {
+          toast(error.message, "error");
+        }
+      };
+    });
+  };
+  const loadProjectPlatforms = async () => {
+    const listHost = document.getElementById("projectPlatformList") || document.getElementById("envPlatformList");
+    const select = document.getElementById("projectPlatformAddSelect");
+    if (!listHost) return [];
+    try {
+      const projectRes = await fetch(`/admin/projects/get/${encodeURIComponent(projectId)}`, { credentials: "same-origin" }).then((r) => r.json());
+      const project = projectRes.project || projectRes.data?.project || {};
+      const catalog = await loadPlatformCatalog();
+      const assignedIds = Array.isArray(project.platforms) && project.platforms.length
+        ? project.platforms.map((id) => String(id).toLowerCase())
+        : ["android", "ios"];
+      const disabledIds = new Set(
+        Array.isArray(project.disabled_platforms) ? project.disabled_platforms.map((id) => String(id).toLowerCase()) : []
+      );
+      const assigned = assignedIds.map((id) => {
+        const row = catalog.find((item) => item.id === id) || { id, name: id };
+        const pid = String(row.id || id);
+        return {
+          id: pid,
+          name: String(row.name || row.id || id),
+          enabled: !disabledIds.has(pid),
+        };
+      });
+      renderPlatformList(listHost, assigned, { manageable: listHost.id === "projectPlatformList" });
+      renderPlatformChips(assigned);
+      if (select) {
+        const available = catalog.filter((item) => !assignedIds.includes(item.id));
+        select.innerHTML = '<option value="">选择要添加的平台</option>' + available.map((item) => `<option value="${esc(item.id)}">${esc(item.name)} (${esc(item.id)})</option>`).join("");
+      }
+      return assigned;
+    } catch (error) {
+      if (listHost.id === "projectPlatformList") {
+        listHost.innerHTML = `<div class="ui-empty">${esc(error.message || "平台加载失败")}</div>`;
+      }
+      return [];
+    }
+  };
+  const renderPlatformChips = (assigned) => {
+    const host = document.getElementById("overviewPlatformChipsList");
+    if (!host) return;
+    host.innerHTML = assigned.length
+      ? assigned.map((item) => `<span class="channel-chip${item.enabled ? "" : " is-disabled"}">${esc(item.name)}${item.enabled ? "" : "（已禁用）"}</span>`).join("")
+      : '<span class="channel-chip muted">未配置平台</span>';
+  };
   const overviewFilterParams = () => {
     const params = new URLSearchParams(location.search);
     return {
@@ -189,11 +344,28 @@
   const overviewQueryString = (filters) => {
     const params = new URLSearchParams();
     if (location.search.includes("tab=channels")) params.set("tab", "channels");
+    if (location.search.includes("tab=platforms")) params.set("tab", "platforms");
+    if (location.search.includes("tab=environments")) params.set("tab", "environments");
     Object.entries(filters || overviewFilterParams()).forEach(([key, value]) => {
       if (value) params.set(key, value);
     });
     const text = params.toString();
     return text ? `?${text}` : "";
+  };
+  const loadOverviewManifestStatus = async () => {
+    const node = document.getElementById("overviewScopeSyncStatus");
+    if (!node) return;
+    try {
+      const result = await fetch(`/api/release/manifests/${encodeURIComponent(projectId)}`, { credentials: "same-origin" }).then((r) => r.json());
+      if (result.ok && result.manifest?.project_id) {
+        const count = result.manifest.channels?.length || 0;
+        node.textContent = `交付线 Scope：Manifest 已注册（${count} 个渠道）；变更白名单或环境范围后，请在渠道管理「初始化交付线 Scope」同步矩阵`;
+      } else {
+        node.textContent = "交付线 Scope：尚未注册 Manifest；请先在渠道管理配置渠道并点击「初始化交付线 Scope」";
+      }
+    } catch {
+      node.textContent = "交付线 Scope：无法读取 Manifest 状态";
+    }
   };
   const bindManifestBootstrap = () => {
     const manifestBtn = document.getElementById("btnOverviewBootstrapScopes");
@@ -218,6 +390,7 @@
         if (!result.ok) throw new Error(result.error || "初始化失败");
         toast(`已初始化 ${result.count || 0} 条交付线 Scope`);
         await loadOverview();
+        await loadOverviewManifestStatus();
       } catch (error) {
         toast(error.message, "error");
       }
@@ -234,12 +407,18 @@
       });
       const url = new URL(location.href);
       if (name === "channels") url.searchParams.set("tab", "channels");
+      else if (name === "platforms") url.searchParams.set("tab", "platforms");
+      else if (name === "environments") url.searchParams.set("tab", "environments");
       else url.searchParams.delete("tab");
       history.replaceState(null, "", `${url.pathname}${url.search}`);
       if (name === "channels") {
         loadProjectChannels();
         bindProjectChannelAdd();
         bindManifestBootstrap();
+      } else if (name === "platforms") {
+        loadProjectPlatforms();
+        bindProjectPlatformAdd();
+      } else if (name === "environments") {
         bindProjectEnvAdd();
         loadProjectEnvironments();
       }
@@ -250,12 +429,12 @@
     document.querySelectorAll("[data-overview-tab-jump]").forEach((btn) => {
       btn.onclick = () => setTab(btn.dataset.overviewTabJump);
     });
-    document.getElementById("btnManageEnvironments")?.addEventListener("click", () => setTab("channels"));
-    setTab(params.get("tab") === "channels" ? "channels" : "overview");
+    document.getElementById("btnManageEnvironments")?.addEventListener("click", () => setTab("environments"));
+    const tab = params.get("tab");
+    setTab(tab === "channels" || tab === "platforms" || tab === "environments" ? tab : "overview");
   };
   const populateOverviewFilters = (data) => {
     const envSelect = document.getElementById("filterEnvKey");
-    const channelSelect = document.getElementById("filterChannelId");
     const platformSelect = document.getElementById("filterPlatform");
     const healthSelect = document.getElementById("filterHealth");
     const filters = overviewFilterParams();
@@ -263,11 +442,6 @@
       const options = data.environment_options || [];
       envSelect.innerHTML = '<option value="">全部环境</option>' + options.map((row) => `<option value="${esc(row.env_key)}">${esc(row.env_label)}</option>`).join("");
       envSelect.value = filters.env_key;
-    }
-    if (channelSelect) {
-      const options = data.channel_options || [];
-      channelSelect.innerHTML = '<option value="">全部渠道</option>' + options.map((row) => `<option value="${esc(row.channel_id)}">${esc(row.channel_name)}</option>`).join("");
-      channelSelect.value = filters.channel_id;
     }
     if (platformSelect) {
       const options = data.platform_options || [];
@@ -284,19 +458,21 @@
     const apply = () => {
       const filters = {
         env_key: document.getElementById("filterEnvKey")?.value || "",
-        channel_id: document.getElementById("filterChannelId")?.value || "",
+        channel_id: overviewFilterParams().channel_id || "",
         platform: document.getElementById("filterPlatform")?.value || "",
         health: document.getElementById("filterHealth")?.value || "",
       };
       const url = new URL(location.href);
-      ["env_key", "channel_id", "platform", "health"].forEach((key) => {
+      ["env_key", "platform", "health"].forEach((key) => {
         if (filters[key]) url.searchParams.set(key, filters[key]);
         else url.searchParams.delete(key);
       });
+      if (filters.channel_id) url.searchParams.set("channel_id", filters.channel_id);
+      else url.searchParams.delete("channel_id");
       history.replaceState(null, "", `${url.pathname}${url.search}`);
       loadOverview().catch((error) => toast(error.message, "error"));
     };
-    ["filterEnvKey", "filterChannelId", "filterPlatform", "filterHealth"].forEach((id) => {
+    ["filterEnvKey", "filterPlatform", "filterHealth"].forEach((id) => {
       const node = document.getElementById(id);
       if (node) node.onchange = apply;
     });
@@ -306,6 +482,26 @@
       history.replaceState(null, "", `${url.pathname}${url.search}`);
       loadOverview().catch((error) => toast(error.message, "error"));
     });
+  };
+  const formatEnvScopeSummary = (row) => {
+    const scope = row.delivery_scope || {};
+    const channelLabels = scope.channel_labels || [];
+    const platformLabels = scope.platform_labels || [];
+    if (!channelLabels.length && !platformLabels.length) {
+      return '<div class="env-scope-summary"><span class="env-scope-metrics muted">未读取到交付范围</span></div>';
+    }
+    const metrics = `${scope.enabled_channel_count || channelLabels.length} 渠道 × ${scope.enabled_platform_count || platformLabels.length} 平台 · ${scope.delivery_line_count || 0} 条交付线`;
+    const inheritParts = [];
+    if (scope.inherits_project_channels) inheritParts.push("渠道");
+    if (scope.inherits_project_platforms) inheritParts.push("平台");
+    const inheritNote = inheritParts.length
+      ? `<span class="env-scope-inherit">${inheritParts.join("、")}继承项目白名单</span>`
+      : "";
+    const chips = [
+      ...channelLabels.map((name) => `<span class="scope-chip">${esc(name)}</span>`),
+      ...platformLabels.map((name) => `<span class="scope-chip platform">${esc(name)}</span>`),
+    ].join("");
+    return `<div class="env-scope-summary">${inheritNote}<span class="env-scope-metrics">${metrics}</span><div class="env-scope-chips">${chips}</div></div>`;
   };
   const loadProjectEnvironments = async () => {
     const host = document.getElementById("projectEnvList");
@@ -323,9 +519,14 @@
               ? `<button type="button" class="env-disable" data-env-toggle="${key}" data-enabled="0">禁用</button>`
               : `<button type="button" class="env-enable" data-env-toggle="${key}" data-enabled="1">启用</button>`;
             const remove = builtin ? "" : `<button type="button" class="env-remove" data-env-remove="${key}">删除</button>`;
-            return `<div class="env-config-item${enabled ? "" : " is-disabled"}"><div><strong>${esc(row.label)}</strong><small>${key}${builtin ? " · 内置" : ""}${enabled ? "" : " · 已禁用"}</small></div><div class="env-config-actions">${toggle}${remove}</div></div>`;
+            const scopeBtn = `<button type="button" class="env-scope-config" data-scope-env="${key}">配置</button>`;
+            const scopeLink = `<a class="env-scope-link" href="/admin/projects/${encodeURIComponent(projectId)}/environments/${key}#delivery-scope">环境详情</a>`;
+            return `<div class="env-config-item${enabled ? "" : " is-disabled"}"><div class="env-config-main"><strong>${esc(row.label)}</strong><small>${key}${builtin ? " · 内置" : ""}${enabled ? "" : " · 已禁用"}</small>${formatEnvScopeSummary(row)}</div><div class="env-config-actions">${scopeBtn}${scopeLink}${toggle}${remove}</div></div>`;
           }).join("")
         : '<div class="ui-empty">暂无环境配置</div>';
+      host.querySelectorAll("[data-scope-env]").forEach((button) => {
+        button.onclick = () => openDeliveryScopeDialog({ envKey: button.dataset.scopeEnv });
+      });
       host.querySelectorAll("[data-env-toggle]").forEach((button) => {
         button.onclick = async () => {
           try {
@@ -366,6 +567,160 @@
       });
     } catch (error) {
       host.innerHTML = `<div class="ui-empty">${esc(error.message || "环境加载失败")}</div>`;
+    }
+  };
+  let envDeliveryScopeState = null;
+  let scopeDialogEnvKey = "";
+  const renderDeliveryMatrixHtml = (lines, envKey) => {
+    if (!lines.length) return '<div class="ui-empty">当前环境暂无交付线，请先在项目中配置渠道并初始化 Scope。</div>';
+    const groups = new Map();
+    lines.forEach((line) => {
+      const cid = String(line.channel_id || "").trim();
+      if (!groups.has(cid)) groups.set(cid, { name: line.channel_name || cid, lines: [] });
+      groups.get(cid).lines.push(line);
+    });
+    let html = `<div class="matrix-head"><span>渠道</span><span>平台</span><span>当前版本</span><span>拓扑</span><span>Bundle</span><span>操作</span></div>`;
+    groups.forEach((group) => {
+      html += `<div class="matrix-group-head"><strong>${esc(group.name)}</strong><span>${group.lines.length} 个平台</span></div>`;
+      group.lines.forEach((line) => {
+        const versionText = line.version_name ? `${line.version_name} / ${line.version_code}` : "未配置";
+        html += `<div class="matrix-row ${line.configured ? "" : "unconfigured"}">
+          <div><strong>${esc(line.channel_name)}</strong></div>
+          <div>${esc(line.platform_label || line.platform)}</div>
+          <div>${esc(versionText)}</div>
+          <div>${esc(line.topology_id || "-")}</div>
+          <div>${esc(line.bundle_id || "-")}</div>
+          ${matrixActions(line, envKey)}
+        </div>`;
+      });
+    });
+    return html;
+  };
+  const renderDeliveryScopeChips = (scope) => {
+    const hint = document.getElementById("envDeliveryScopeHint");
+    const host = document.getElementById("envDeliveryScopeChips");
+    if (!host) return;
+    const channels = scope?.assigned_channels || [];
+    const platforms = scope?.assigned_platforms || [];
+    if (hint) {
+      const inhCh = scope?.inherits_project_channels ? "渠道继承项目白名单" : "渠道已单独配置";
+      const inhPl = scope?.inherits_project_platforms ? "平台继承项目白名单" : "平台已单独配置";
+      const enabledCh = channels.filter((item) => item.enabled).length;
+      const enabledPl = platforms.filter((item) => item.enabled).length;
+      hint.textContent = `${inhCh} · ${inhPl} · ${enabledCh} 渠道 × ${enabledPl} 平台`;
+    }
+    const chips = [
+      ...channels.map((item) => `<span class="scope-chip${item.enabled ? "" : " is-disabled"}">${esc(item.channel_name)}${item.enabled ? "" : "（禁用）"}</span>`),
+      ...platforms.map((item) => `<span class="scope-chip platform${item.enabled ? "" : " is-disabled"}">${esc(item.platform_name)}${item.enabled ? "" : "（禁用）"}</span>`),
+    ];
+    host.innerHTML = chips.length ? chips.join("") : '<span class="scope-chip muted">继承项目白名单（未单独限制）</span>';
+  };
+  const loadEnvDeliveryScopeFor = async (envKey) => {
+    if (!envKey) return null;
+    const scope = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}/delivery-scope`);
+    envDeliveryScopeState = scope;
+    if (page.dataset.envKey === envKey) renderDeliveryScopeChips(scope);
+    return scope;
+  };
+  const loadEnvDeliveryScope = async () => {
+    const envKey = page.dataset.envKey;
+    if (!envKey) return null;
+    scopeDialogEnvKey = envKey;
+    const hint = document.getElementById("envDeliveryScopeHint");
+    try {
+      return await loadEnvDeliveryScopeFor(envKey);
+    } catch (error) {
+      if (hint) hint.textContent = error.message || "交付范围加载失败";
+      const host = document.getElementById("envDeliveryScopeChips");
+      if (host) host.innerHTML = '<span class="scope-chip muted">交付范围暂不可用，请刷新或重启服务后重试</span>';
+      return null;
+    }
+  };
+  const openDeliveryScopeDialog = async (options = {}) => {
+    const dialog = document.getElementById("deliveryScopeDialog");
+    if (!dialog) return;
+    const envKey = options.envKey || page.dataset.envKey || scopeDialogEnvKey;
+    if (!envKey) return;
+    scopeDialogEnvKey = envKey;
+    try {
+      const scope = await loadEnvDeliveryScopeFor(envKey);
+      if (!scope) return;
+      const chHost = document.getElementById("deliveryScopeChannels");
+      const plHost = document.getElementById("deliveryScopePlatforms");
+      const assignedCh = new Set((scope.assigned_channels || []).map((item) => item.channel_id));
+      const assignedPl = new Set((scope.assigned_platforms || []).map((item) => item.platform_id));
+      const catalogCh = scope.project_channel_catalog || [];
+      const catalogPl = scope.project_platform_catalog || [];
+      chHost.innerHTML = catalogCh.map((item) => {
+        const checked = assignedCh.has(item.channel_id);
+        return `<label class="scope-check"><input type="checkbox" value="${esc(item.channel_id)}"${checked ? " checked" : ""}>${esc(item.channel_name)}</label>`;
+      }).join("");
+      plHost.innerHTML = catalogPl.map((item) => `<label class="scope-check"><input type="checkbox" value="${esc(item.platform_id)}"${assignedPl.has(item.platform_id) ? " checked" : ""}>${esc(item.platform_name)}</label>`).join("");
+      const title = document.querySelector("#deliveryScopeDialog h3");
+      if (title) title.textContent = "配置环境交付范围";
+      dialog.classList.remove("is-hidden");
+      dialog.setAttribute("aria-hidden", "false");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  };
+  const closeDeliveryScopeDialog = () => {
+    const dialog = document.getElementById("deliveryScopeDialog");
+    if (!dialog) return;
+    dialog.classList.add("is-hidden");
+    dialog.setAttribute("aria-hidden", "true");
+  };
+  const saveDeliveryScope = async () => {
+    const envKey = scopeDialogEnvKey || page.dataset.envKey;
+    const btn = document.getElementById("btnSaveDeliveryScope");
+    try {
+      if (btn) btn.disabled = true;
+      let channels = [...document.querySelectorAll("#deliveryScopeChannels input:checked")].map((node) => node.value);
+      const platforms = [...document.querySelectorAll("#deliveryScopePlatforms input:checked")].map((node) => node.value);
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}/delivery-scope`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...csrfHeaders() },
+        credentials: "same-origin",
+        body: JSON.stringify({ channels, platforms }),
+      });
+      const result = await parseJsonResponse(response);
+      if (!response.ok || result.ok === false) throw new Error(parseApiError(result, "保存失败"));
+      envDeliveryScopeState = result.data;
+      if (page.dataset.envKey === envKey) renderDeliveryScopeChips(envDeliveryScopeState);
+      closeDeliveryScopeDialog();
+      toast("交付范围已更新");
+      if (page.dataset.deliveryPage === "environment" && page.dataset.envKey === envKey) {
+        const summary = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`);
+        const lines = summary.delivery_lines || [];
+        document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey);
+      }
+      if (page.dataset.deliveryPage === "overview") await loadOverview();
+    } catch (error) {
+      toast(error.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
+  const bindDeliveryScopeDialog = () => {
+    const editBtn = document.getElementById("btnEditDeliveryScope");
+    if (editBtn && editBtn.dataset.bound !== "1") {
+      editBtn.dataset.bound = "1";
+      editBtn.onclick = openDeliveryScopeDialog;
+    }
+    const closeBtn = document.getElementById("btnCloseDeliveryScope");
+    const cancelBtn = document.getElementById("btnCancelDeliveryScope");
+    const saveBtn = document.getElementById("btnSaveDeliveryScope");
+    if (closeBtn && closeBtn.dataset.bound !== "1") {
+      closeBtn.dataset.bound = "1";
+      closeBtn.onclick = closeDeliveryScopeDialog;
+    }
+    if (cancelBtn && cancelBtn.dataset.bound !== "1") {
+      cancelBtn.dataset.bound = "1";
+      cancelBtn.onclick = closeDeliveryScopeDialog;
+    }
+    if (saveBtn && saveBtn.dataset.bound !== "1") {
+      saveBtn.dataset.bound = "1";
+      saveBtn.onclick = saveDeliveryScope;
     }
   };
   const bindProjectEnvAdd = () => {
@@ -433,6 +788,43 @@
       }
     };
   };
+  const bindProjectPlatformAdd = () => {
+    const button = document.getElementById("btnProjectPlatformAdd");
+    const select = document.getElementById("projectPlatformAddSelect");
+    if (!button || !select || button.dataset.bound === "1") return;
+    button.dataset.bound = "1";
+    button.onclick = async () => {
+      const platformId = select.value;
+      if (!platformId) {
+        toast("请先选择平台", "error");
+        return;
+      }
+      try {
+        button.disabled = true;
+        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/platforms/add`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...csrfHeaders() },
+          credentials: "same-origin",
+          body: JSON.stringify({ platform_id: platformId }),
+        });
+        const result = await response.json();
+        if (!response.ok || result.ok === false) throw new Error(parseApiError(result, "添加失败"));
+        if (result.error && typeof result.error === "string") throw new Error(result.error);
+        if (result.data?.already_exists || result.already_exists) {
+          toast("该平台已在项目白名单中");
+        } else {
+          toast("平台已添加");
+        }
+        select.value = "";
+        await loadProjectPlatforms();
+        if (page.dataset.deliveryPage === "overview") await loadOverview();
+      } catch (error) {
+        toast(error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    };
+  };
   const currentContext = () => {
     const source = new URLSearchParams(location.search);
     const query = new URLSearchParams();
@@ -440,11 +832,32 @@
     return query.toString() ? `?${query}` : "";
   };
 
+  const renderOverviewChannelTabs = (channelOptions, activeChannelId) => {
+    const host = document.getElementById("overviewChannelTabs");
+    if (!host) return;
+    const tabs = [{ id: "", name: "全部渠道" }, ...(channelOptions || []).map((row) => ({ id: row.channel_id, name: row.channel_name }))];
+    host.innerHTML = tabs.map((tab) => `<button type="button" class="overview-channel-tab${activeChannelId === tab.id ? " active" : ""}" data-overview-channel-id="${esc(tab.id)}">${esc(tab.name)}</button>`).join("");
+    host.querySelectorAll("[data-overview-channel-id]").forEach((button) => {
+      button.onclick = () => {
+        const channelId = button.dataset.overviewChannelId || "";
+        const url = new URL(location.href);
+        if (channelId) url.searchParams.set("channel_id", channelId);
+        else url.searchParams.delete("channel_id");
+        history.replaceState(null, "", `${url.pathname}${url.search}`);
+        loadOverview().catch((error) => toast(error.message, "error"));
+      };
+    });
+  };
+
   async function loadOverview() {
-    const assigned = await loadProjectChannels();
-    renderChannelChips(assigned);
+    const assignedChannels = await loadProjectChannels();
+    renderChannelChips(assignedChannels);
+    const assignedPlatforms = await loadProjectPlatforms();
+    renderPlatformChips(assignedPlatforms);
+    const activeChannelId = overviewFilterParams().channel_id || "";
     const data = await api(`/api/projects/${encodeURIComponent(projectId)}/overview${overviewQueryString()}`);
     populateOverviewFilters(data);
+    renderOverviewChannelTabs(data.channel_options || [], activeChannelId);
     const cards = data.environments || [];
     const totalOrders = cards.reduce((sum, item) => sum + item.release_order_count, 0);
     const totalLines = cards.reduce((sum, item) => sum + (item.delivery_line_count || 0), 0);
@@ -459,7 +872,15 @@
     document.getElementById("overviewKpis").innerHTML = kpis.map(([icon, label, value]) => `<article class="kpi-card"><img src="/static/project_ui/svg/${icon}" alt=""><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
     const healthLabels = { healthy: "运行中", blocked: "存在阻断", warning: "待处理", processing: "处理中", unconfigured: "未配置" };
     document.getElementById("environmentCards").innerHTML = cards.length
-      ? cards.map((item) => `<article class="environment-card">
+      ? cards.map((item) => {
+          const channelHint = activeChannelId && item.channel_platform_labels?.length
+            ? `本渠道平台：${item.channel_platform_labels.join("、")}`
+            : (item.blocker_hint || (item.unconfigured_line_count ? `还有 ${item.unconfigured_line_count} 条交付线未配置` : "各渠道×平台交付线可在环境详情中查看"));
+          const versionQuery = activeChannelId
+            ? `env_key=${encodeURIComponent(item.env_key)}&channel_id=${encodeURIComponent(activeChannelId)}`
+            : `env_key=${encodeURIComponent(item.env_key)}`;
+          const scopeBtn = `<button type="button" class="matrix-btn" data-config-scope="${esc(item.env_key)}">配置范围</button>`;
+          return `<article class="environment-card">
       <div class="environment-head"><h3>${esc(item.env_label)}</h3><span class="environment-status ${item.health}">${healthLabels[item.health] || item.health}</span></div>
       <div class="environment-summary">
         <div><span>交付线</span><strong>${item.configured_line_count || 0} / ${item.delivery_line_count || 0}</strong></div>
@@ -467,18 +888,24 @@
         <div><span>进行中</span><strong>${item.processing_count || 0}</strong></div>
         <div><span>待审批</span><strong>${item.pending_approval_count || 0}</strong></div>
       </div>
-      <p class="environment-hint">${esc(item.blocker_hint || (item.unconfigured_line_count ? `还有 ${item.unconfigured_line_count} 条交付线未配置` : "各渠道×平台交付线可在环境详情中查看"))}</p>
+      <p class="environment-hint">${esc(channelHint)}</p>
       <div class="environment-action-bar">
         <a class="matrix-btn primary" href="/admin/projects/${projectId}/environments/${item.env_key}">环境详情</a>
-        <a class="matrix-btn" href="/admin/projects/${projectId}/versions?env_key=${item.env_key}">版本</a>
+        <a class="matrix-btn" href="/admin/projects/${projectId}/versions?${versionQuery}">版本</a>
         <a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?env_key=${item.env_key}">拓扑</a>
+        ${scopeBtn}
       </div>
       <div class="environment-actions"><a class="icon-link" href="/admin/projects/${projectId}/release-orders?env_key=${item.env_key}">查看发布单<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
-    </article>`).join("")
+    </article>`;
+        }).join("")
       : '<div class="ui-empty">当前筛选下无匹配环境</div>';
+    document.querySelectorAll("[data-config-scope]").forEach((button) => {
+      button.onclick = () => openDeliveryScopeDialog({ envKey: button.dataset.configScope });
+    });
     const events = cards.flatMap((item) => item.latest_orders || []).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0, 7);
     document.getElementById("overviewActivity").innerHTML = events.length ? events.map((item) => `<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)} 发布单更新</strong><span>${esc(item.updated_at)}</span></a>`).join("") : '<div class="ui-empty">暂无最近动态</div>';
     document.getElementById("overviewUpdatedAt").textContent = new Date().toLocaleString("zh-CN");
+    await loadOverviewManifestStatus();
   }
 
   async function loadEnvironmentDetail() {
@@ -494,24 +921,7 @@
       ["待审批", summary.pending_approval_count || 0],
     ].map(([label, value]) => `<article class="kpi-card"><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
     const lines = data.delivery_lines || [];
-    document.getElementById("deliveryMatrix").innerHTML = lines.length
-      ? `<div class="matrix-head"><span>渠道</span><span>平台</span><span>当前版本</span><span>拓扑</span><span>Bundle</span><span>操作</span></div>` +
-        lines.map((line) => {
-          const versionText = line.version_name ? `${line.version_name} / ${line.version_code}` : "未配置";
-          return `<div class="matrix-row ${line.configured ? "" : "unconfigured"}">
-            <div><strong>${esc(line.channel_name)}</strong></div>
-            <div>${esc(line.platform_label || line.platform)}</div>
-            <div>${esc(versionText)}</div>
-            <div>${esc(line.topology_id || "-")}</div>
-            <div>${esc(line.bundle_id || "-")}</div>
-            ${matrixActions(line, envKey)}
-          </div>`;
-        }).join("")
-      : '<div class="ui-empty">当前环境暂无交付线，请先在项目中配置渠道并初始化 Scope。</div>';
-    const versions = data.versions || [];
-    document.getElementById("envVersions").innerHTML = versions.length
-      ? versions.slice(0, 8).map((row) => `<div class="detail-row"><strong>${esc(row.version_name)} / ${esc(row.version_code)}</strong><span>${esc(row.channel_name)} · ${esc(row.platform)}</span><b>${esc(row.version_status || "")}</b></div>`).join("")
-      : '<div class="ui-empty">本环境暂无 VersionCode</div>';
+    document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey);
     const orders = data.release_orders || [];
     document.getElementById("envOrders").innerHTML = orders.length
       ? orders.slice(0, 6).map((item) => `<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)}</strong><span>${esc(item.updated_at)}</span></a>`).join("")
@@ -532,7 +942,10 @@
         toast(error.message, "error");
       }
     };
-    await loadProjectChannels();
+    await loadEnvDeliveryScope();
+    bindDeliveryScopeDialog();
+    await loadProjectPlatforms();
+    if (location.hash === "#delivery-scope") openDeliveryScopeDialog();
   }
 
   const renderOrderTable = (items) => {
@@ -559,7 +972,17 @@
 
   async function setupOrderForm() {
     const form=document.getElementById("releaseOrderForm"), orderId=page.dataset.orderId;
-    const options=await api(`/api/projects/${projectId}/context-options`);
+    const search=new URLSearchParams(location.search);
+    const envFromUrl=search.get("env_key")||"";
+    const options=await api(`/api/projects/${projectId}/context-options${envFromUrl?`?env_key=${encodeURIComponent(envFromUrl)}`:""}`);
+    try {
+      const listResponse=await fetch(`/admin/projects/${projectId}/versions/list`,{credentials:"same-origin"});
+      const listPayload=await listResponse.json();
+      if(listResponse.ok&&Array.isArray(listPayload.versions)){
+        const enriched=new Map(listPayload.versions.map((item)=>[String(item.id),item]));
+        options.versions=(options.versions||[]).map((item)=>({...item,...(enriched.get(String(item.id))||{})}));
+      }
+    }catch(_error){/* keep context-options versions */}
     const fill=(select,items,key,label)=>{select.innerHTML=items.map(item=>`<option value="${esc(item[key])}">${esc(item[label])}</option>`).join("");};
     const valueText=value=>typeof value==="object"&&value!==null?JSON.stringify(value,null,2):String(value??"");
     fill(form.env_key,options.environments,"env_key","label");
@@ -578,19 +1001,246 @@
     }
 
     const selectedVersion=()=>options.versions.find(item=>String(item.id)===String(form.version_id.value))||{};
-    const previewCard=(icon,label,value,detail="")=>`<div class="preview-card"><img src="/static/project_ui/svg/${icon}.svg" alt=""><div><span>${esc(label)}</span><strong>${esc(value||"未配置")}</strong>${detail?`<small>${esc(detail)}</small>`:""}</div></div>`;
+    let formContext={required_fields:["reason","owner"],release_policy:{form_depth:"minimal"},delivery_readiness:{ready:false,pipeline_ready:false,percent:0},build_config_href:""};
+    const loadFormContext=async(version)=>{
+      const params=new URLSearchParams();
+      if(version?.id)params.set("version_id",version.id);
+      if(form.env_key.value)params.set("env_key",form.env_key.value);
+      if(form.channel_id.value)params.set("channel_id",form.channel_id.value);
+      if(form.platform.value)params.set("platform",form.platform.value);
+      try{
+        const data=await api(`/api/projects/${projectId}/release-order-form-context?${params}`);
+        formContext=data||formContext;
+        applyReleaseDefaults(formContext.release_defaults||{});
+        applyFormDepth(formContext.form_depth||formContext.release_policy?.form_depth||"standard");
+      }catch(_error){/* keep defaults */}
+      updateCompleteness();
+      updatePipelineGate();
+    };
+    const applyReleaseDefaults=(defaults)=>{
+      if(!defaults||typeof defaults!=="object")return;
+      Object.entries(defaults).forEach(([key,value])=>{
+        if(!form[key])return;
+        if(!String(form[key].value||"").trim()&&String(value||"").trim())form[key].value=String(value);
+      });
+    };
+    const applyFormDepth=(depth)=>{
+      const root=page.querySelector(".order-form-app")||page;
+      const minimal=depth==="minimal";
+      const standard=depth==="standard";
+      root.classList.toggle("order-form-minimal",minimal);
+      root.classList.toggle("order-form-standard",standard&&!minimal);
+      const subtitle=document.getElementById("orderFormSubtitle");
+      if(subtitle){
+        subtitle.textContent=minimal
+          ? "开发/测试快捷发布：交付目标已锁定，填写发布原因与负责人即可保存或触发构建。"
+          : standard
+            ? "标准发布：补充发布说明与策略；管线在版本组模板维护。"
+            : "完整发布计划：含验证、回滚与审批所需全部信息。";
+      }
+      page.querySelectorAll(".workflow-steps [data-form-step]").forEach((btn)=>{
+        const step=btn.dataset.formStep;
+        const advanced=step==="runtime"||step==="strategy"||step==="verify"||step==="rollback";
+        const hideBuild=minimal&&step==="build";
+        if((minimal&&advanced)||hideBuild)btn.classList.add("is-collapsed-step");
+        else btn.classList.remove("is-collapsed-step");
+      });
+      page.querySelectorAll(".order-section-advanced").forEach((section)=>{
+        if(minimal)section.classList.add("is-collapsed-section");
+        else if(standard&&section.dataset.section==="rollback")section.classList.add("is-collapsed-section");
+        else section.classList.remove("is-collapsed-section");
+      });
+      const buildSection=page.querySelector(".order-section-build");
+      if(buildSection){
+        if(minimal)buildSection.classList.add("is-collapsed-section");
+        else buildSection.classList.remove("is-collapsed-section");
+      }
+      page.querySelectorAll(".order-field-optional").forEach((el)=>{
+        el.classList.toggle("is-hidden-field",minimal);
+      });
+      const miniSummary=document.getElementById("orderMinimalBuildSummary");
+      if(miniSummary)miniSummary.hidden=!minimal;
+    };
+    const updatePipelineGate=()=>{
+      const delivery=formContext.delivery_readiness||{};
+      const pipelineReady=Boolean(delivery.pipeline_ready);
+      const btnBuild=document.getElementById("btnSaveBuild");
+      const btnConfig=document.getElementById("btnConfigurePipeline");
+      if(btnBuild)btnBuild.disabled=!pipelineReady;
+      if(btnConfig){
+        const href=formContext.build_config_href||"";
+        if(!pipelineReady&&href){
+          btnConfig.href=href;
+          btnConfig.classList.remove("is-hidden");
+        }else btnConfig.classList.add("is-hidden");
+      }
+      const gateHint=document.getElementById("orderPipelineGateHint");
+      if(gateHint){
+        gateHint.textContent=pipelineReady?"管线已就绪，可保存并触发构建。":"管线未就绪：请先在版本组配置 Jenkins 实例、Job 与四步管线。";
+      }
+    };
+    const versionContextQuery=(version)=>{
+      if(!version||(!version.id&&!version.version_name))return "";
+      const params=new URLSearchParams();
+      if(version.env_key)params.set("env_key",version.env_key);
+      if(version.channel_id)params.set("channel_id",version.channel_id);
+      if(version.platform)params.set("platform",version.platform);
+      if(version.version_name)params.set("version_name",version.version_name);
+      if(version.version_code)params.set("version_code",version.version_code);
+      return params.toString();
+    };
+    const previewCard=(icon,label,value,detail="",href="",linkLabel="去配置",sameWindow=false)=>{
+      const targetAttr=sameWindow?"":" target=\"_blank\" rel=\"noopener noreferrer\"";
+      const link=href?`<a class="preview-card-link" href="${href}"${targetAttr}>${esc(linkLabel)}</a>`:"";
+      return `<div class="preview-card"><img src="/static/project_ui/svg/${icon}.svg" alt=""><div><span>${esc(label)}</span><strong>${esc(value||"未配置")}</strong>${detail?`<small>${esc(detail)}</small>`:""}${link}</div></div>`;
+    };
+    const lockTargetFields=()=>{
+      [form.env_key,form.channel_id,form.platform,form.version_id].forEach((field)=>{
+        field.classList.add("is-locked");
+        field.setAttribute("aria-readonly","true");
+        field.tabIndex=-1;
+      });
+      const banner=document.getElementById("orderTargetLockBanner");
+      if(banner)banner.classList.remove("is-hidden");
+    };
+    const applyTargetFromUrl=()=>{
+      if(orderId)return false;
+      const vn=search.get("version_name");
+      const vc=search.get("version_code");
+      const vid=search.get("version_id");
+      if(!vn&&!vc&&!vid)return false;
+      ["env_key","channel_id","platform"].forEach((key)=>{if(search.get(key))form[key].value=search.get(key);});
+      renderVersions();
+      let match=null;
+      if(vid)match=options.versions.find((item)=>String(item.id)===String(vid));
+      if(!match&&vn){
+        match=options.versions.find((item)=>
+          String(item.version_name||"")===vn
+          &&(!vc||String(item.version_code||"")===vc)
+          &&String(item.env_key||"")===String(form.env_key.value||"")
+          &&String(item.channel_id||"")===String(form.channel_id.value||"")
+          &&String(item.platform||"")===String(form.platform.value||""),
+        );
+      }
+      if(match)form.version_id.value=match.id;
+      lockTargetFields();
+      renderPlanPreview();
+      return Boolean(match||vn||vc||vid);
+    };
+    const effectivePipelineCache=new Map();
+    const loadEffectivePipeline=async(vid)=>{
+      if(!vid)return null;
+      if(effectivePipelineCache.has(vid))return effectivePipelineCache.get(vid);
+      try{
+        const data=await api(`/api/projects/${projectId}/versions/${encodeURIComponent(vid)}/effective-pipeline`);
+        effectivePipelineCache.set(vid,data);
+        return data;
+      }catch(_e){return null;}
+    };
     const renderPlanPreview=()=>{
       const version=selectedVersion();
+      const ctx=versionContextQuery(version);
+      const pipeline=version.pipeline&&typeof version.pipeline==="object"?version.pipeline:{};
+      const apkBuild=pipeline.apk_build||{};
+      const configExport=pipeline.config_export||{};
+      const resourceBuild=pipeline.resource_build||{};
+      const hotRelease=pipeline.hot_release||{};
+      const pipelineSummary=[
+        configExport.enabled?"配置导出":"",
+        resourceBuild.enabled?"资源打包":"",
+        hotRelease.enabled?"热更发布":"",
+        apkBuild.enabled?"安装包":"",
+      ].filter(Boolean).join(" · ")||"管线未配置";
+      const buildConfigParams=new URLSearchParams();
+      buildConfigParams.set("from","release-order");
+      if(orderId)buildConfigParams.set("release_order_id",orderId);
+      const ctxQs=versionContextQuery(version);
+      if(ctxQs)new URLSearchParams(ctxQs).forEach((v,k)=>buildConfigParams.set(k,v));
+      const anchorId=version.id||search.get("version_id")||"";
+      const buildConfigBase=anchorId?`/admin/projects/${projectId}/versions/${encodeURIComponent(anchorId)}/build-config`:"";
+      const buildConfigHref=(section)=>{
+        if(!buildConfigBase)return "";
+        buildConfigParams.set("section",section);
+        return `${buildConfigBase}?${buildConfigParams.toString()}`;
+      };
+      const workflowHref=version.id?`/admin/projects/${projectId}/versions/${encodeURIComponent(version.id)}/workflow`:"";
+      const buildHistoryHref=ctx?`/admin/projects/${projectId}/build-history?${ctx}`:`/admin/projects/${projectId}/build-history`;
+      const jenkinsInstance=version.jenkins_instance_id||form.jenkins_instance_id.value;
+      const jenkinsJob=version.jenkins_job_id||version.jenkins_job||form.jenkins_job.value;
+      const jenkinsHref=jenkinsInstance?`/admin/jenkins/edit?instance_id=${encodeURIComponent(jenkinsInstance)}`:"/admin/jenkins";
+      const summaryCard=document.getElementById("orderPipelineSummaryCard");
+      if(summaryCard){
+        const instCell=summaryCard.querySelector("[data-field='jenkins_instance_id']");
+        const jobCell=summaryCard.querySelector("[data-field='jenkins_job']");
+        const pipelineCell=summaryCard.querySelector("[data-field='pipeline_summary']");
+        if(instCell)instCell.textContent=jenkinsInstance||"未配置";
+        if(jobCell)jobCell.textContent=jenkinsJob||"未配置";
+        if(pipelineCell)pipelineCell.textContent=pipelineSummary||"管线未配置";
+        const sourcePill=document.getElementById("orderPipelineSourcePill");
+        if(sourcePill){
+          const ready=Boolean(formContext.delivery_readiness?.pipeline_ready);
+          sourcePill.textContent=ready?"版本组管线模板":"管线未配置";
+          sourcePill.classList.toggle("ready",ready);
+          sourcePill.classList.toggle("missing",!ready);
+        }
+        const cta=document.getElementById("orderGoConfigurePipelineBtn");
+        if(cta){
+          const href=formContext.build_config_href||buildConfigHref("jenkins");
+          if(href){cta.href=href;cta.removeAttribute("hidden");}
+          else cta.setAttribute("hidden","");
+        }
+      }
+      const resourceReady=version.resource_url||version.resource_path||version.config_url||version.config_path;
+      const artifactReady=version.apk_url||version.apk_path||version.apk_status==="found";
       document.getElementById("buildPlanPreview").innerHTML=[
-        previewCard("nav_build_artifact","Jenkins 实例",version.jenkins_instance_id||form.jenkins_instance_id.value),
-        previewCard("nav_execute","构建任务",version.jenkins_job_id||version.jenkins_job||form.jenkins_job.value),
-        previewCard("nav_download_center","资源与配置",version.resource_url||version.resource_path||version.config_url||version.config_path?"已登记":"尚未登记"),
-        previewCard("file_android","APK 产物",version.apk_url||version.apk_path?"已登记":"尚未登记")
+        previewCard("nav_build_artifact","Jenkins 实例",jenkinsInstance||"未配置","维护 Jenkins 实例连接",jenkinsHref,"管理实例"),
+        previewCard("nav_execute","构建任务",jenkinsJob||"未配置","Job 与四步开关在版本组管线模板维护",buildConfigHref("jenkins"),"配置版本组模板",true),
+        previewCard("nav_download_center","管线摘要",pipelineSummary,"配置导出、资源打包与热更",buildConfigHref("hot_release"),"配置管线",true),
+        previewCard("file_android","APK 产物",artifactReady?"已登记":"尚未登记","查看构建历史与产物",buildHistoryHref,"查看产物"),
       ].join("");
+      const miniSummary=document.getElementById("orderMinimalBuildSummary");
+      if(miniSummary){
+        miniSummary.innerHTML=`<div class="minimal-build-banner"><strong>构建与管线（只读）</strong><p>${esc(pipelineSummary||"管线未配置")} · Jenkins ${esc(jenkinsInstance||"未配置")} / ${esc(jenkinsJob||"未配置")}</p>${formContext.build_config_href?`<a class="preview-card-link" href="${esc(formContext.build_config_href)}">配置版本组模板</a>`:""}</div>`;
+      }
       if(!form.jenkins_instance_id.value&&version.jenkins_instance_id)form.jenkins_instance_id.value=version.jenkins_instance_id;
       if(!form.jenkins_job.value&&(version.jenkins_job||version.jenkins_job_id))form.jenkins_job.value=version.jenkins_job||version.jenkins_job_id;
-      if(!form.jenkins_params.value&&version.jenkins_params)form.jenkins_params.value=valueText(version.jenkins_params);
-      updateCompleteness();
+      loadFormContext(version);
+      if(version.id){
+        loadEffectivePipeline(version.id).then((data)=>{
+          if(!data)return;
+          const card=document.getElementById("orderPipelineSummaryCard");
+          if(!card)return;
+          const eff=data.effective_pipeline||{};
+          const summary=[
+            (eff.config_export||{}).enabled?"配置导出":"",
+            (eff.resource_build||{}).enabled?"资源打包":"",
+            (eff.hot_release||{}).enabled?"热更发布":"",
+            (eff.apk_build||{}).enabled?"安装包":"",
+          ].filter(Boolean).join(" · ")||"管线未配置";
+          const j=data.jenkins||{};
+          const pillEl=document.getElementById("orderPipelineSourcePill");
+          if(pillEl){
+            const ready=Boolean(data.readiness?.ready);
+            pillEl.textContent=ready?"版本组管线模板":"管线未配置";
+            pillEl.classList.toggle("ready",ready);
+            pillEl.classList.toggle("missing",!ready);
+          }
+          const instCell=card.querySelector("[data-field='jenkins_instance_id']");
+          const jobCell=card.querySelector("[data-field='jenkins_job']");
+          const pipelineCell=card.querySelector("[data-field='pipeline_summary']");
+          if(instCell)instCell.textContent=j.jenkins_instance_id||"未配置";
+          if(jobCell)jobCell.textContent=j.jenkins_job_id||"未配置";
+          if(pipelineCell)pipelineCell.textContent=summary;
+          if(data.build_config_href){
+            const cta=document.getElementById("orderGoConfigurePipelineBtn");
+            if(cta){cta.href=data.build_config_href;cta.removeAttribute("hidden");}
+          }
+          const instInput=form.jenkins_instance_id;
+          const jobInput=form.jenkins_job;
+          if(instInput&&j.jenkins_instance_id)instInput.value=j.jenkins_instance_id;
+          if(jobInput&&j.jenkins_job_id)jobInput.value=j.jenkins_job_id;
+        }).catch(()=>{});
+      }
     };
     const renderVersions=()=>{
       const current=form.version_id.value;
@@ -600,24 +1250,39 @@
       renderPlanPreview();
     };
     const updateCompleteness=()=>{
-      const required=["env_key","channel_id","platform","version_id","reason","owner","release_window","release_description","validation_plan","rollback_plan"];
-      const complete=required.filter(key=>form[key]&&String(form[key].value||"").trim()).length;
-      const percent=Math.round(complete/required.length*100);
-      document.getElementById("planCompleteness").textContent=`${percent}%`;
-      document.getElementById("planCompletenessBar").style.width=`${percent}%`;
-      document.getElementById("planCompletenessHint").textContent=percent===100?"计划信息完整，可保存并进入构建。":`还有 ${required.length-complete} 项关键计划信息待补充。`;
+      const required=formContext.required_fields||["env_key","channel_id","platform","version_id","reason","owner"];
+      const planComplete=required.filter(key=>form[key]&&String(form[key].value||"").trim()).length;
+      const planPercent=required.length?Math.round(planComplete/required.length*100):0;
+      document.getElementById("planCompleteness").textContent=`${planPercent}%`;
+      document.getElementById("planCompletenessBar").style.width=`${planPercent}%`;
+      document.getElementById("planCompletenessHint").textContent=planPercent===100?"计划信息完整，可保存并进入构建。":`还有 ${required.length-planComplete} 项计划信息待补充。`;
+      const delivery=formContext.delivery_readiness||{};
+      const delPercent=Number(delivery.percent||0);
+      const delEl=document.getElementById("deliveryReadiness");
+      const delBar=document.getElementById("deliveryReadinessBar");
+      const delHint=document.getElementById("deliveryReadinessHint");
+      if(delEl)delEl.textContent=`${delPercent}%`;
+      if(delBar)delBar.style.width=`${delPercent}%`;
+      if(delHint){
+        const checks=delivery.checks||{};
+        const missing=[];
+        if(!checks.jenkins_instance)missing.push("Jenkins 实例");
+        if(!checks.jenkins_job)missing.push("Jenkins Job");
+        if(!checks.pipeline)missing.push("管线配置");
+        if(!checks.topology)missing.push("拓扑绑定");
+        if(!checks.artifacts)missing.push("产物登记");
+        delHint.textContent=delivery.pipeline_ready?"交付链路基本就绪。":(missing.length?`待完成：${missing.join("、")}`:"选择 VersionCode 后评估就绪度。");
+      }
+      updatePipelineGate();
     };
-    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",renderVersions));
-    form.version_id.addEventListener("change",renderPlanPreview);
+    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());}));
+    form.version_id.addEventListener("change",()=>{renderPlanPreview();loadFormContext(selectedVersion());});
     form.addEventListener("input",updateCompleteness);
     page.querySelectorAll("[data-form-step]").forEach(button=>button.addEventListener("click",()=>{
       page.querySelectorAll("[data-form-step]").forEach(item=>item.classList.toggle("active",item===button));
       page.querySelector(`[data-section="${button.dataset.formStep}"]`)?.scrollIntoView({behavior:"smooth",block:"start"});
     }));
 
-    const search=new URLSearchParams(location.search);
-    ["env_key","channel_id","platform"].forEach(key=>search.get(key)&&(form[key].value=search.get(key)));
-    renderVersions();
     if(orderId){
       const order=await api(`/api/projects/${projectId}/release-orders/${orderId}`);
       ["env_key","channel_id","platform"].forEach(key=>form[key].value=order[key]);
@@ -628,13 +1293,28 @@
       if(form.target_topology_id&&order.payload?.target_topology_id)form.target_topology_id.value=order.payload.target_topology_id;
       document.getElementById("resolvedTopology").textContent=order.topology_id||"尚未解析";
       document.getElementById("resolvedRuntime").textContent=order.runtime_run_id||"预检后确认";
-      [form.env_key,form.channel_id,form.platform,form.version_id].forEach(x=>x.disabled=true);
+      lockTargetFields();
       renderPlanPreview();
+      loadFormContext(selectedVersion());
+    }else if(!applyTargetFromUrl()){
+      ["env_key","channel_id","platform"].forEach((key)=>{if(search.get(key))form[key].value=search.get(key);});
+      renderVersions();
+      loadFormContext(selectedVersion());
     }
     updateCompleteness();
-    const payload=()=>Object.fromEntries(new FormData(form).entries());
+    const payload=()=>{
+      const data=Object.fromEntries(new FormData(form).entries());
+      ["env_key","channel_id","platform","version_id"].forEach((key)=>{
+        if(form[key]?.classList.contains("is-locked"))data[key]=form[key].value;
+      });
+      return data;
+    };
     const save=async(buildAfter=false)=>{
       try{
+        if(buildAfter&&!formContext.delivery_readiness?.pipeline_ready){
+          toast("管线未就绪，请先配置版本组管线模板","error");
+          return;
+        }
         if(!form.reportValidity())return;
         page.querySelectorAll("[data-save-order],[data-save-build]").forEach(button=>button.disabled=true);
         let order;
@@ -681,6 +1361,7 @@
   if(type==="overview"){
     initOverviewTabs();
     bindOverviewFilters();
+    bindDeliveryScopeDialog();
     bindProjectEnvAdd();
     loadOverview().catch(error=>toast(error.message,"error"));
     page.querySelector("[data-refresh-overview]")?.addEventListener("click",()=>loadOverview().catch(error=>toast(error.message,"error")));
