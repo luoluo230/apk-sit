@@ -1,0 +1,7 @@
+/* PM filter toolbar */
+.pm-filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 16px;border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm)}
+.pm-filter-search{flex:1;min-width:200px;height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid #dce4f2;border-radius:var(--radius-sm);background:#fff}
+.pm-filter-search img{width:16px;height:16px;opacity:.6}
+.pm-filter-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:13px;color:var(--color-text)}
+.pm-filter-bar select{height:36px;padding:0 10px;border:1px solid #dce4f2;border-radius:var(--radius-sm);background:#fff;font-size:13px;color:#475467;outline:0}
+.pm-filter-bar .pm-btn{height:36px}

@@ -5,7 +5,7 @@
     <span class="draft-badge">草稿可随时保存</span>
   </div>
   <div class="workflow-layout">
-    <aside class="workflow-steps" aria-label="发布单计划步骤">
+    <aside class="workflow-steps pm-stepper-vertical" aria-label="发布单计划步骤">
       <button class="active" data-form-step="target" type="button"><b>1</b><span>交付目标<em>环境、渠道与版本</em></span></button>
       <button data-form-step="build" type="button"><b>2</b><span>构建与产物<em>Jenkins 与交付物</em></span></button>
       <button data-form-step="runtime" type="button"><b>3</b><span>拓扑与运行态<em>绑定拓扑与 Runtime</em></span></button>
@@ -14,6 +14,10 @@
       <button data-form-step="rollback" type="button"><b>6</b><span>回滚方案<em>触发条件与恢复目标</em></span></button>
     </aside>
     <main class="workflow-main">
+      <div class="risk-banner production-banner is-hidden" id="orderProductionBanner">
+        <img src="/static/project_ui/svg/status_warning.svg" alt="">
+        <div><strong>生产环境发布</strong><span>所有变更将直接影响线上玩家，请确认审批、验证与回滚方案。</span></div>
+      </div>
       <div class="risk-banner" id="orderRiskBanner">
         <img src="/static/project_ui/svg/status_warning.svg" alt="">
         <div><strong>发布前必须完成产物、拓扑、Runtime 与服务探活预检</strong><span>生产环境还需要审批通过；发布目标变化会使旧预检与审批失效。</span></div>

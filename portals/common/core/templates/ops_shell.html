@@ -7,7 +7,7 @@
   <title>{{ title }} - Dev Portal</title>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml">
   <link rel="stylesheet" href="/static/project_ui/design-tokens.css?v=20260613-1">
-  <link rel="stylesheet" href="/static/ops_shell.css?v=20260623-nav1">
+  <link rel="stylesheet" href="/static/ops_shell.css?v=20260625-pm10">
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
 </head>
 <body>
@@ -17,7 +17,7 @@
     <header class="ops-shell-topbar">
       <div class="ops-shell-breadcrumb">
         <button class="ops-shell-menu-button" type="button" aria-label="收起或展开导航"><img src="/static/project_ui/svg/global_menu.svg" alt=""></button>
-        <span>项目管理</span><b>/</b><span>项目空间</span><b>/</b><strong>{{ title }}</strong>
+        <span>项目管理</span><b>/</b><span>项目工作区</span><b>/</b><span class="ops-breadcrumb-module">{{ breadcrumb_module or '项目工作区' }}</span><b>/</b><strong>{{ title }}</strong>
       </div>
       <div class="ops-shell-top-actions">
         <div class="ops-context-picker">
@@ -33,7 +33,7 @@
         </div>
         <label class="ops-shell-search">
           <img src="/static/project_ui/svg/global_search.svg" alt="">
-          <input type="search" placeholder="搜索项目、文档、任务、版本、发布单...">
+          <input type="search" data-shell-search placeholder="搜索项目、文档、任务、版本、发布单...">
         </label>
         <a class="ops-shell-icon-button" href="/docs?module=projects" title="帮助中心"><img src="/static/project_ui/svg/global_help.svg" alt=""></a>
         <a class="ops-shell-icon-button" href="/admin/notifications" title="通知中心"><img src="/static/project_ui/svg/global_bell.svg" alt="">{% if unread_notification_count %}<span>{{ unread_notification_count }}</span>{% endif %}</a>
@@ -43,7 +43,7 @@
     <section class="ops-shell-content">{{ content|safe }}</section>
   </main>
 </div>
-<script src="/static/ops_shell.js?v=20260623-nav1"></script>
+<script src="/static/ops_shell.js?v=20260625-pm10"></script>
 <script>
   (function () {
     var tokenEl = document.querySelector('meta[name="csrf-token"]');

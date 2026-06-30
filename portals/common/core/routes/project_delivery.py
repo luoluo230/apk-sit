@@ -34,7 +34,31 @@ from services.release.release_policy_service import release_order_form_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
 
+DELIVERY_ASSET_VER = "20260625-pm10"
+
 bp = Blueprint("project_delivery", __name__)
+
+BREADCRUMB_BY_PAGE = {
+    "project-home": "总览",
+    "environment-overview": "总览",
+    "project-channels": "项目设置",
+    "versions": "交付管理",
+    "release-orders": "交付管理",
+    "builds": "交付管理",
+    "download-center": "交付管理",
+    "test-devices": "交付管理",
+    "topology": "运行管理",
+    "topology-bindings": "运行管理",
+    "agent-control": "运行管理",
+    "actions": "运行管理",
+    "diagnostics": "运行管理",
+    "approval-center": "治理与审计",
+    "change-governance": "治理与审计",
+    "audit-log": "治理与审计",
+    "project-tasks": "协作",
+    "project-docs": "协作",
+    "project-settings": "项目设置",
+}
 
 
 def _actor() -> str:
@@ -48,7 +72,7 @@ def _filters() -> dict:
     }
 
 
-def _page(template_name: str, title: str, project_id: str, active_page: str, **context):
+def _page(template_name: str, title: str, project_id: str, active_page: str, breadcrumb_module: str = "", **context):
     if project_id not in projects_db:
         return "项目不存在", 404
     env_key = str(context.pop("page_env_key", "") or request.args.get("env_key") or "production")
@@ -60,14 +84,20 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, **c
         context_filters=_filters(),
         **context,
     )
+    js = f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+    if template_name == "project_overview.html":
+        css = f'<link rel="stylesheet" href="/static/project_overview.css?v={DELIVERY_ASSET_VER}">'
+    else:
+        css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
     return _render_ops_page(
         content,
         title,
         active_page=active_page,
         project_id=project_id,
         env_key=env_key,
-        extra_css='<link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">',
-        extra_js='<script src="/static/project_delivery.js?v=20260625-layered1"></script>',
+        breadcrumb_module=breadcrumb_module or BREADCRUMB_BY_PAGE.get(active_page, "项目工作区"),
+        extra_css=css,
+        extra_js=js,
     )
 
 
@@ -228,6 +258,7 @@ def project_overview_page(project_id: str):
         "项目总览",
         project_id,
         "project-home",
+        breadcrumb_module="总览",
         **_channel_panel_context(project_id),
         **_platform_panel_context(project_id),
         **_project_members_context(project_id),
@@ -337,6 +368,45 @@ def release_order_detail_page(project_id: str, order_id: str):
         order_id=order_id,
         page_env_key=order["env_key"],
     )
+
+
+@bp.route("/admin/projects/<project_id>/download-center")
+@admin_required("projects")
+def project_download_center_page(project_id: str):
+    return _page("project_download_center.html", "下载中心", project_id, "download-center")
+
+
+@bp.route("/admin/projects/<project_id>/test-devices")
+@admin_required("projects")
+def project_test_devices_page(project_id: str):
+    return _page("project_test_devices.html", "测试设备", project_id, "test-devices")
+
+
+@bp.route("/admin/projects/<project_id>/settings")
+@admin_required("projects")
+def project_settings_page(project_id: str):
+    return _page("project_settings.html", "项目设置", project_id, "project-settings")
+
+
+@bp.route("/admin/projects/<project_id>/tasks")
+@admin_required("projects")
+def project_tasks_page(project_id: str):
+    return _page("project_placeholder.html", "项目任务", project_id, "project-tasks", placeholder_title="项目任务", placeholder_desc="任务协作功能即将上线，当前可通过发布单与变更治理跟踪交付事项。")
+
+
+@bp.route("/admin/projects/<project_id>/docs")
+@admin_required("projects")
+def project_docs_page(project_id: str):
+    return _page("project_placeholder.html", "项目文档", project_id, "project-docs", placeholder_title="项目文档", placeholder_desc="文档中心即将上线，当前可访问帮助中心查看通用说明。")
+
+
+@bp.route("/admin/projects/<project_id>/audit-log")
+@admin_required("projects")
+def project_audit_log_page(project_id: str):
+    from urllib.parse import urlencode
+
+    qs = urlencode({"keyword": project_id})
+    return redirect(f"/admin/audit-log?{qs}")
 
 
 @bp.route("/api/projects/context-catalog")

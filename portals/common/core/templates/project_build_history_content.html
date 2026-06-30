@@ -1,11 +1,14 @@
 <section class="build-center" data-project-id="{{ project_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-scope-version-id="{{ scope_version_id }}" data-scope-env-key="{{ scope_env_key }}" data-scope-platform="{{ scope_platform }}" data-scope-version-name="{{ scope_version_name }}" data-scope-version-code="{{ scope_version_code }}" data-scope-channel-id="{{ scope_channel_id }}" data-scoped="{{ 'true' if scope_version_id or scope_env_key or scope_platform else 'false' }}">
-  <header class="build-page-head">
-    <div>
-      <p class="build-eyebrow">PROJECT DELIVERY / BUILD & ARTIFACTS</p>
-      <h1>构建与产物</h1>
-      <p id="buildPageSubtitle">查看项目全部构建记录、实时状态与关联产物，快速定位失败原因。</p>
+  <header class="build-page-head pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""></span>
+      <div>
+        <h1>构建与产物</h1>
+        <p id="buildPageSubtitle">查看项目全部构建记录、实时状态与关联产物，快速定位失败原因。</p>
+      </div>
     </div>
-    <div class="build-page-actions">
+    <div class="build-page-actions pm-page-head-actions">
+      <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
       <a class="build-btn build-btn-primary" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">
         <img src="/static/project_ui/svg/kpi_build.svg" alt="">进入版本管理触发构建
       </a>
@@ -23,12 +26,12 @@
     <a class="build-btn" data-scope-back href="/admin/projects/{{ project_id }}/versions">返回版本列表</a>
   </div>
 
-  <div class="build-kpis" data-kpis>
-    <article><span class="kpi-icon violet"><img src="/static/project_ui/svg/kpi_build.svg" alt=""></span><div><small>全部构建</small><strong data-kpi="total">--</strong><em>项目完整流水</em></div></article>
-    <article><span class="kpi-icon green"><img src="/static/project_ui/svg/status_success.svg" alt=""></span><div><small>构建成功</small><strong data-kpi="success">--</strong><em data-kpi-note="success">等待加载</em></div></article>
-    <article><span class="kpi-icon orange"><img src="/static/project_ui/svg/status_running.svg" alt=""></span><div><small>进行中</small><strong data-kpi="building">--</strong><em>实时 Jenkins 状态</em></div></article>
-    <article><span class="kpi-icon red"><img src="/static/project_ui/svg/status_error.svg" alt=""></span><div><small>构建失败</small><strong data-kpi="failed">--</strong><em data-kpi-note="failed">等待加载</em></div></article>
-    <article><span class="kpi-icon blue"><img src="/static/project_ui/svg/file_bundle.svg" alt=""></span><div><small>VersionCode</small><strong data-kpi="versions">--</strong><em>已关联版本构建</em></div></article>
+  <div class="build-kpis pm-kpi-row" data-kpis>
+    <article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--blue"><img src="/static/project_ui/svg/kpi_build.svg" alt=""></span><div class="pm-kpi-body"><span>今日构建</span><strong data-kpi="today">--</strong></div></article>
+    <article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--green"><img src="/static/project_ui/svg/status_success.svg" alt=""></span><div class="pm-kpi-body"><span>成功率</span><strong data-kpi="rate">--</strong><em data-kpi-note="success" style="font-size:11px;color:#98a2b3;font-style:normal">等待加载</em></div></article>
+    <article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--violet"><img src="/static/project_ui/svg/file_bundle.svg" alt=""></span><div class="pm-kpi-body"><span>产物总数</span><strong data-kpi="artifacts">--</strong></div></article>
+    <article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--orange"><img src="/static/project_ui/svg/status_warning.svg" alt=""></span><div class="pm-kpi-body"><span>缺失产物</span><strong data-kpi="missing">--</strong></div></article>
+    <article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--red"><img src="/static/project_ui/svg/action_delete.svg" alt=""></span><div class="pm-kpi-body"><span>待清理</span><strong data-kpi="stale">--</strong></div></article>
   </div>
 
   <div class="build-layout">
@@ -41,6 +44,9 @@
           </label>
           <label><span>构建状态</span><select data-status><option value="">全部状态</option><option value="building">进行中</option><option value="SUCCESS">成功</option><option value="FAILURE">失败</option><option value="ABORTED">已取消</option><option value="UNKNOWN">未知</option></select></label>
           <label><span>平台</span><select data-platform><option value="">全部平台</option><option value="Android">Android</option><option value="iOS">iOS</option></select></label>
+          <label><span>产物类型</span><select data-artifact-type><option value="">全部类型</option><option value="apk">安装包</option><option value="missing">缺失产物</option></select></label>
+          <label><span>开始日期</span><input type="date" data-date-from style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
+          <label><span>结束日期</span><input type="date" data-date-to style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
           <label><span>每页</span><select data-page-size><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></label>
           <button class="build-btn" type="button" data-reset><img src="/static/project_ui/svg/action_refresh.svg" alt="">重置</button>
         </div>
@@ -65,14 +71,17 @@
         </div>
       </section>
 
-      <section class="build-panel artifact-panel">
+      <section class="build-panel artifact-panel artifact-list-panel">
         <div class="build-panel-title">
-          <div><h2>选中构建的产物</h2><p>产物数据只展示真实登记结果，不使用模拟文件填充。</p></div>
+          <div><h2>产物列表</h2><p>按构建展平的真实产物登记记录</p></div>
         </div>
-        <div class="artifact-empty" data-artifacts>
-          <img src="/static/project_ui/svg/file_bundle.svg" alt="">
-          <strong>请选择一条构建记录</strong>
-          <p>选择后可查看该构建关联的 APK、资源、配置与代码产物。</p>
+        <div class="artifact-tabs" data-artifact-tabs>
+          <button type="button" class="active" data-artifact-tab="latest">最新产物</button>
+          <button type="button" data-artifact-tab="by-build">按构建</button>
+          <button type="button" data-artifact-tab="missing">缺失产物</button>
+        </div>
+        <div data-artifact-list-body style="padding:0 14px 14px">
+          <table class="artifact-list-table pm-table"><thead><tr><th>类型</th><th>版本 / VC</th><th>构建号</th><th>大小</th><th>校验</th><th>操作</th></tr></thead><tbody data-artifact-list-rows><tr><td colspan="6">加载后展示</td></tr></tbody></table>
         </div>
       </section>
     </main>
@@ -119,327 +128,4 @@
 
 <div class="build-toast" data-toast hidden></div>
 
-<style>
-.build-center{--blue:#1677ff;--line:#e5eaf3;--text:#1f2a37;--muted:#77849a;display:flex;flex-direction:column;gap:16px;color:var(--text)}
-.build-page-head{display:flex;justify-content:space-between;align-items:center;gap:24px}.build-eyebrow{margin:0 0 5px;color:var(--blue);font-size:11px;font-weight:700;letter-spacing:.14em}.build-page-head h1{margin:0;font-size:24px;line-height:32px}.build-page-head p:not(.build-eyebrow){margin:5px 0 0;color:var(--muted);font-size:13px}.build-page-actions{display:flex;gap:8px}
-.build-scope-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid #d6e4ff;border-radius:8px;background:#f5f9ff}
-.build-scope-banner.is-hidden{display:none}
-.build-scope-banner strong{display:block;font-size:13px;color:#17243d}
-.build-scope-banner p{margin:4px 0 0;color:#667085;font-size:12px}
-.build-btn{height:36px;padding:0 14px;border:1px solid #dce4f2;border-radius:6px;background:#fff;color:#475467;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none;font-size:13px;font-weight:600;cursor:pointer}.build-btn img{width:16px;height:16px}.build-btn:hover{border-color:#91caff;color:var(--blue);background:#f5f9ff}.build-btn:disabled{opacity:.45;cursor:not-allowed}.build-btn-primary{border-color:var(--blue);background:var(--blue);color:#fff}.build-btn-primary:hover{background:#0958d9;color:#fff}.build-btn-danger{color:#e5484d;border-color:#ffc7c9}.build-btn-danger-solid{color:#fff;border-color:#e5484d;background:#e5484d}
-.build-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.build-kpis article{min-height:94px;padding:16px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;gap:13px;box-shadow:0 2px 10px rgba(31,42,55,.025)}.kpi-icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto}.kpi-icon img{width:22px;height:22px}.kpi-icon.violet{background:#f3ebff}.kpi-icon.green{background:#e7f8ed}.kpi-icon.orange{background:#fff1df}.kpi-icon.red{background:#ffebeb}.kpi-icon.blue{background:#e8f1ff}.build-kpis div{display:flex;min-width:0;flex-direction:column}.build-kpis small{font-size:12px;color:#667085}.build-kpis strong{font-size:24px;line-height:30px}.build-kpis em{font-size:11px;color:#98a2b3;font-style:normal}
-.build-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px;align-items:start}.build-main,.build-side{display:flex;flex-direction:column;gap:12px}.build-panel{border:1px solid var(--line);border-radius:8px;background:#fff;box-shadow:0 2px 10px rgba(31,42,55,.025)}.build-filter-panel{padding:14px}.build-filters{display:grid;grid-template-columns:minmax(260px,1fr) 150px 130px 100px auto;gap:10px;align-items:end}.build-filters label:not(.build-search){display:flex;flex-direction:column;gap:5px}.build-filters label span{font-size:11px;color:#667085}.build-filters select,.build-search{height:36px;border:1px solid #dce4f2;border-radius:6px;background:#fff}.build-filters select{width:100%;padding:0 10px;color:#475467;outline:0}.build-search{display:flex;align-items:center;gap:8px;padding:0 11px}.build-search img{width:16px}.build-search input{width:100%;border:0;outline:0;background:transparent;color:#344054}
-.build-panel-title{min-height:58px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #eef1f6}.build-panel-title h2{margin:0;font-size:14px}.build-panel-title p{margin:4px 0 0;color:#98a2b3;font-size:11px}.build-state{min-height:280px;padding:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#667085}.build-state strong{margin-top:12px;font-size:14px}.build-state p{margin:6px 0 0;font-size:12px}.build-spinner{width:28px;height:28px;border:3px solid #d6e4ff;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.build-table-wrap{overflow:hidden}.build-table{width:100%;border-collapse:collapse;font-size:12px}.build-table th{height:40px;padding:0 10px;background:#fafbfc;color:#667085;text-align:left;font-weight:600;white-space:nowrap}.build-table td{height:54px;padding:8px 10px;border-top:1px solid #eef1f6;color:#475467}.build-table tbody tr{cursor:pointer}.build-table tbody tr:hover,.build-table tbody tr.selected{background:#f5f9ff}.build-table .check-col{width:34px}.build-number{color:var(--blue);font-weight:700}.build-version strong{display:block;color:#344054}.build-version small{color:#98a2b3}.build-status{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;font-size:11px;font-weight:600}.build-status.success{background:#e9f8ef;color:#169b51}.build-status.failure{background:#ffeded;color:#e5484d}.build-status.building{background:#fff4e5;color:#d97706}.build-status.aborted,.build-status.unknown{background:#f2f4f7;color:#667085}.build-row-actions{display:flex;gap:4px}.build-row-actions button{width:28px;height:28px;border:1px solid #dce4f2;border-radius:5px;background:#fff;display:grid;place-items:center;cursor:pointer}.build-row-actions img{width:14px;height:14px}.build-pagination{height:48px;padding:0 14px;border-top:1px solid #eef1f6;display:flex;align-items:center;justify-content:space-between;color:#667085;font-size:12px}.build-pagination div{display:flex;align-items:center;gap:8px}.build-pagination button{width:30px;height:30px;border:1px solid #dce4f2;border-radius:5px;background:#fff;display:grid;place-items:center;cursor:pointer}.build-pagination button:disabled{opacity:.35}.build-pagination img{width:14px}
-.artifact-panel{min-height:160px}.artifact-empty,.build-current-empty{min-height:130px;padding:24px;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;color:#667085}.artifact-empty img,.build-current-empty img{width:30px;height:30px;margin-bottom:8px}.artifact-empty strong,.build-current-empty strong{font-size:13px}.artifact-empty p,.build-current-empty p{margin:5px 0 0;color:#98a2b3;font-size:11px}.artifact-selected{padding:14px}.artifact-selected-header{display:flex;justify-content:space-between;gap:12px}.artifact-selected h3{margin:0;font-size:13px}.artifact-selected p{margin:4px 0 0;color:#98a2b3;font-size:11px}.artifact-missing{margin-top:12px;padding:14px;border:1px dashed #ffd591;border-radius:6px;background:#fffaf0;color:#ad6800;font-size:12px}
-.build-side{position:sticky;top:88px}.build-current-content{padding:14px}.current-number{display:flex;align-items:center;justify-content:space-between;gap:8px}.current-number strong{font-size:20px;color:var(--blue)}.current-progress{height:5px;margin:14px 0;background:#eef1f6;border-radius:3px;overflow:hidden}.current-progress span{height:100%;display:block;background:var(--blue)}.current-meta{display:grid;grid-template-columns:1fr;gap:0}.current-meta div{padding:8px 0;display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #f0f2f5;font-size:11px}.current-meta span{color:#98a2b3}.current-meta b{color:#475467;text-align:right}.build-failure pre{margin:0;padding:14px;max-height:180px;overflow:auto;white-space:pre-wrap;color:#b42318;background:#fff7f7;font:11px/1.6 Consolas,monospace}.build-quick-actions{padding:8px}.build-quick-actions button{width:100%;padding:10px;border:0;border-bottom:1px solid #f0f2f5;background:#fff;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}.build-quick-actions button:last-child{border:0}.build-quick-actions button:disabled{opacity:.4;cursor:not-allowed}.build-quick-actions button:hover:not(:disabled){background:#f5f9ff}.build-quick-actions img{width:22px;height:22px}.build-quick-actions span{display:flex;flex-direction:column}.build-quick-actions strong{font-size:12px;color:#344054}.build-quick-actions small{margin-top:3px;color:#98a2b3;font-size:10px}
-.build-drawer-mask,.build-confirm-mask{position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.42);backdrop-filter:blur(2px)}.build-drawer{position:absolute;right:0;top:0;width:min(680px,92vw);height:100%;background:#fff;box-shadow:-18px 0 50px rgba(15,23,42,.16);display:flex;flex-direction:column}.build-drawer header{min-height:76px;padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.build-drawer header small{color:var(--blue);font-weight:700;letter-spacing:.12em}.build-drawer header h2{margin:4px 0 0;font-size:18px}.build-drawer header p{margin:3px 0 0;color:#98a2b3;font-size:11px}.build-drawer header button{width:32px;height:32px;border:1px solid var(--line);border-radius:6px;background:#fff;display:grid;place-items:center}.build-drawer header img{width:16px}.build-drawer-body{padding:16px;overflow:auto}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.detail-card{padding:12px;border:1px solid var(--line);border-radius:6px}.detail-card span{display:block;color:#98a2b3;font-size:10px}.detail-card strong{display:block;margin-top:5px;color:#344054;font-size:12px;word-break:break-all}.detail-section{margin-top:14px;border:1px solid var(--line);border-radius:7px;overflow:hidden}.detail-section h3{margin:0;padding:11px 13px;background:#fafbfc;border-bottom:1px solid var(--line);font-size:12px}.detail-section table{width:100%;border-collapse:collapse;font-size:11px}.detail-section td{padding:8px 12px;border-top:1px solid #f0f2f5}.detail-section pre{margin:0;max-height:360px;overflow:auto;padding:13px;background:#111827;color:#dbeafe;white-space:pre-wrap;font:11px/1.6 Consolas,monospace}
-.build-confirm-mask{display:grid;place-items:center}.build-confirm{width:min(420px,calc(100vw - 32px));padding:24px;border-radius:10px;background:#fff;box-shadow:0 24px 70px rgba(15,23,42,.22)}.confirm-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:#fff4e5}.confirm-icon img{width:24px}.build-confirm h2{margin:14px 0 6px;font-size:18px}.build-confirm p{margin:0;color:#667085;font-size:12px}.build-confirm label{display:flex;flex-direction:column;gap:6px;margin-top:16px;color:#475467;font-size:12px}.build-confirm textarea{padding:10px;border:1px solid #dce4f2;border-radius:6px;resize:vertical;outline:0}.build-confirm>div{margin-top:18px;display:flex;justify-content:flex-end;gap:8px}.build-toast{position:fixed;right:24px;bottom:24px;z-index:120;padding:11px 15px;border-radius:7px;background:#1f2a37;color:#fff;font-size:12px;box-shadow:0 12px 30px rgba(15,23,42,.2)}
-.build-drawer-mask[hidden],.build-confirm-mask[hidden],.build-toast[hidden],.build-state[hidden],.build-table-wrap[hidden],.build-current-content[hidden],.build-current-empty[hidden],.build-failure[hidden]{display:none!important}
-@media(max-width:1400px){.build-layout{grid-template-columns:minmax(0,1fr) 250px}.build-filters{grid-template-columns:minmax(220px,1fr) 140px 120px 90px auto}.build-table th:nth-child(6),.build-table td:nth-child(6){display:none}}@media(max-width:1100px){.build-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.build-layout{grid-template-columns:1fr}.build-side{position:static}.build-filters{grid-template-columns:1fr 1fr 1fr}.build-search{grid-column:1/-1}}@media(max-width:760px){.build-page-head{align-items:flex-start;flex-direction:column}.build-page-actions{width:100%;flex-wrap:wrap}.build-kpis{grid-template-columns:1fr 1fr}.build-filters{grid-template-columns:1fr 1fr}.build-table{min-width:850px}.build-table-wrap{overflow:auto}.detail-grid{grid-template-columns:1fr}}
-</style>
-
-<script>
-(() => {
-  const root = document.querySelector('.build-center');
-  if (!root) return;
-  const projectId = root.dataset.projectId;
-  const canEdit = root.dataset.canEdit === 'true';
-  const pageQuery = new URLSearchParams(location.search);
-  const scopeVersionId = (pageQuery.get('version_id') || root.dataset.scopeVersionId || '').trim();
-  const scopeEnvKey = (pageQuery.get('env_key') || root.dataset.scopeEnvKey || '').trim();
-  const scopePlatform = (pageQuery.get('platform') || root.dataset.scopePlatform || '').trim().toLowerCase();
-  const scopeVersionName = (pageQuery.get('version_name') || root.dataset.scopeVersionName || '').trim();
-  const scopeVersionCode = (pageQuery.get('version_code') || root.dataset.scopeVersionCode || '').trim();
-  const scopeChannelId = (pageQuery.get('channel_id') || root.dataset.scopeChannelId || '').trim();
-  const isScoped = pageQuery.get('scoped') === '1' || scopeVersionId || scopeEnvKey;
-  const envLabels = { development: '开发环境', testing: '测试环境', staging: '预发环境', production: '生产环境' };
-  const platformLabels = { android: 'Android', ios: 'iOS' };
-  const ui = {
-    rows: root.querySelector('[data-build-rows]'), state: root.querySelector('[data-state]'), tableWrap: root.querySelector('[data-table-wrap]'),
-    search: root.querySelector('[data-search]'), status: root.querySelector('[data-status]'), platform: root.querySelector('[data-platform]'),
-    pageSize: root.querySelector('[data-page-size]'), pageText: root.querySelector('[data-page-text]'), resultCount: root.querySelector('[data-result-count]'),
-    prev: root.querySelector('[data-prev]'), next: root.querySelector('[data-next]'), checkAll: root.querySelector('[data-check-all]'),
-    batchDelete: root.querySelector('[data-batch-delete]'), current: root.querySelector('[data-current]'), currentEmpty: root.querySelector('[data-current-empty]'),
-    failurePanel: root.querySelector('[data-failure-panel]'), failure: root.querySelector('[data-failure]'), artifacts: root.querySelector('[data-artifacts]'),
-    detail: root.querySelector('[data-detail]'), downloadLog: root.querySelector('[data-download-log]'), console: root.querySelector('[data-console]'), deleteCurrent: root.querySelector('[data-delete-current]')
-  };
-  let records = [], filtered = [], selected = null, page = 1, pendingDelete = [];
-  const icon = name => `/static/project_ui/svg/${name}.svg`;
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const dateText = value => value ? String(value).replace('T',' ').slice(0,19) : '-';
-  const statusKey = item => item.building ? 'building' : String(item.result || 'UNKNOWN').toUpperCase();
-  const statusText = item => ({building:'进行中',SUCCESS:'成功',FAILURE:'失败',ABORTED:'已取消',UNSTABLE:'部分成功',UNKNOWN:'未知','':'未知'})[statusKey(item)] || statusKey(item);
-  const statusClass = item => ({building:'building',SUCCESS:'success',FAILURE:'failure',ABORTED:'aborted',UNSTABLE:'building',UNKNOWN:'unknown','':'unknown'})[statusKey(item)] || 'unknown';
-  const statusBadge = item => `<span class="build-status ${statusClass(item)}">${statusText(item)}</span>`;
-  const toast = message => { const el = document.querySelector('[data-toast]'); el.textContent = message; el.hidden = false; clearTimeout(el._timer); el._timer = setTimeout(() => el.hidden = true, 2600); };
-
-  const applyScopeUi = () => {
-    if (!isScoped) return;
-    const banner = root.querySelector('[data-scope-banner]');
-    const title = root.querySelector('[data-scope-title]');
-    const desc = root.querySelector('[data-scope-desc]');
-    const subtitle = document.getElementById('buildPageSubtitle');
-    const parts = [];
-    if (scopeVersionName) parts.push(`版本 ${scopeVersionName}`);
-    if (scopeVersionCode) parts.push(`VC ${scopeVersionCode}`);
-    if (scopeEnvKey) parts.push(envLabels[scopeEnvKey] || scopeEnvKey);
-    if (scopePlatform) parts.push(platformLabels[scopePlatform] || scopePlatform);
-    if (scopeChannelId) parts.push(`渠道 ${scopeChannelId}`);
-    const scopeText = parts.join(' · ');
-    if (banner) banner.classList.remove('is-hidden');
-    if (title) title.textContent = scopeVersionId ? '当前仅显示该 VersionCode 的构建历史' : '当前仅显示指定交付范围的构建历史';
-    if (desc) desc.textContent = scopeText ? `范围：${scopeText}。其他环境 / 平台的记录已隐藏。` : '已按 URL 范围过滤构建记录。';
-    if (subtitle) subtitle.textContent = '仅展示当前交付范围内的构建记录，不混入其他环境或平台。';
-    const panelDesc = document.querySelector('.build-table-panel .build-panel-title p');
-    if (panelDesc) panelDesc.textContent = '仅显示当前交付范围内的构建记录，不混入其他环境或平台。';
-    if (scopePlatform && ui.platform) {
-      const wanted = scopePlatform === 'android' ? 'Android' : scopePlatform === 'ios' ? 'iOS' : scopePlatform;
-      ui.platform.value = wanted;
-      ui.platform.disabled = true;
-    }
-    const back = root.querySelector('[data-scope-back]');
-    if (back && scopeEnvKey) {
-      const qs = new URLSearchParams();
-      qs.set('env_key', scopeEnvKey);
-      if (scopePlatform) qs.set('platform', scopePlatform);
-      if (scopeVersionName) qs.set('version_name', scopeVersionName);
-      back.href = `/admin/projects/${projectId}/versions?${qs.toString()}`;
-    }
-  };
-
-  const matchesScope = (row) => {
-    if (!isScoped) return true;
-    if (scopeVersionId && String(row.version_id || '') !== scopeVersionId) return false;
-    if (scopeEnvKey && String(row.env_key || '') !== scopeEnvKey) return false;
-    if (scopePlatform && String(row.platform || '').toLowerCase() !== scopePlatform) return false;
-    if (scopeVersionName && String(row.version_name || '') !== scopeVersionName) return false;
-    if (scopeVersionCode && String(row.version_code || '') !== scopeVersionCode) return false;
-    return true;
-  };
-
-  function flatten(groups) {
-    const output = [];
-    (groups || []).forEach(group => (group.version_codes || []).forEach(vc => (vc.builds || []).forEach(build => output.push({
-      ...build,
-      version_name: build.version_name || group.version_name || '',
-      version_code: build.version_code || vc.version_code || '',
-      version_id: build.version_id || vc.version_id || '',
-      channel_id: vc.channel_id || '',
-      channel_name: vc.channel_name || '',
-      env_key: vc.env_key || '',
-      platform: vc.platform || '',
-      apk_status: vc.apk_status || '',
-      apk_download: vc.apk_download || {},
-    }))));
-    return output.sort((a,b) => Number(b.build_number || b.number || 0) - Number(a.build_number || a.number || 0));
-  }
-
-  function artifactHtml(row) {
-    const dl = row.apk_download && typeof row.apk_download === 'object' ? row.apk_download : {};
-    const bn = String(row.build_number || row.number || '');
-    const matchBuild = dl.build_number && String(dl.build_number) === bn;
-    const ready = row.apk_status === 'found' || matchBuild || dl.public_download_url || dl.local_download_url || dl.oss_download_url;
-    if (!ready) {
-      return '<div class="artifact-missing">当前构建记录未登记可展示的结构化产物。构建成功并完成 APK 归档后，将显示外网下载链接与二维码。</div>';
-    }
-    const publicUrl = dl.public_download_url || dl.oss_download_url || '';
-    const parts = [];
-    if (publicUrl) parts.push(`<a class="build-btn primary" href="${esc(publicUrl)}" target="_blank" rel="noopener">外网下载</a>`);
-    if (dl.local_download_url && dl.local_download_url !== publicUrl) parts.push(`<a class="build-btn" href="${esc(dl.local_download_url)}" target="_blank" rel="noopener">本机测试</a>`);
-    const qr = dl.public_qr_dataurl || dl.oss_qr_dataurl || dl.local_qr_dataurl;
-    const qrHtml = qr ? `<div class="artifact-qr" style="margin-top:10px"><img src="${esc(qr)}" alt="下载二维码" width="96" height="96" style="border:1px solid #e5eaf3;border-radius:6px"></div>` : '';
-    const sizeText = dl.size_bytes ? `${(dl.size_bytes / 1048576).toFixed(1)} MB` : '-';
-    return `<div class="artifact-links" style="display:flex;gap:8px;flex-wrap:wrap">${parts.join('')}</div>${qrHtml}<p style="margin:10px 0 0;color:#98a2b3;font-size:11px">归档 ${esc(dl.build_time || '-')} · 构建 #${esc(dl.build_number || bn)} · ${esc(sizeText)}</p>`;
-  }
-
-  function setKpis() {
-    const count = key => records.filter(row => statusKey(row) === key).length;
-    root.querySelector('[data-kpi="total"]').textContent = records.length;
-    root.querySelector('[data-kpi="success"]').textContent = count('SUCCESS');
-    root.querySelector('[data-kpi="building"]').textContent = count('building');
-    root.querySelector('[data-kpi="failed"]').textContent = count('FAILURE');
-    root.querySelector('[data-kpi="versions"]').textContent = new Set(records.map(r => r.version_id).filter(Boolean)).size;
-    root.querySelector('[data-kpi-note="success"]').textContent = records.length ? `${Math.round(count('SUCCESS') / records.length * 100)}% 成功率` : '暂无记录';
-    root.querySelector('[data-kpi-note="failed"]').textContent = count('FAILURE') ? '需要排查' : '无失败记录';
-  }
-
-  function applyFilters() {
-    const keyword = ui.search.value.trim().toLowerCase(), wantedStatus = ui.status.value, wantedPlatform = ui.platform.value;
-    filtered = records.filter(row => {
-      if (!matchesScope(row)) return false;
-      const haystack = [row.build_number,row.number,row.version_name,row.version_code,row.triggered_by,row.instance_id,row.channel_id,row.channel_name,row.env_key,row.platform].join(' ').toLowerCase();
-      return (!keyword || haystack.includes(keyword)) && (!wantedStatus || statusKey(row) === wantedStatus) && (!wantedPlatform || String(row.platform).toLowerCase() === wantedPlatform.toLowerCase());
-    });
-    page = 1;
-    renderRows();
-  }
-
-  function renderRows() {
-    const pageSize = Number(ui.pageSize.value || 20), pages = Math.max(1, Math.ceil(filtered.length / pageSize));
-    page = Math.min(page, pages);
-    const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
-    ui.rows.innerHTML = visible.map(row => {
-      const num = row.build_number || row.number, isSelected = selected && String(selected.instance_id) === String(row.instance_id) && Number(selected.build_number || selected.number) === Number(num);
-      return `<tr data-row data-instance="${esc(row.instance_id)}" data-number="${esc(num)}" data-version="${esc(row.version_id)}" class="${isSelected ? 'selected' : ''}">
-        <td><input type="checkbox" data-check aria-label="选择构建 ${esc(num)}" ${row.building ? 'disabled' : ''}></td>
-        <td><span class="build-number">#${esc(num)}</span></td>
-        <td><span class="build-version"><strong>${esc(row.version_name || '未命名版本')}</strong><small>VC ${esc(row.version_code || '-')} · ${esc(row.channel_name || '未配置渠道')}</small></span></td>
-        <td>${esc(({development:'开发环境',testing:'测试环境',staging:'预发环境',production:'生产环境'})[row.env_key] || '未配置')} / ${esc(({android:'Android',ios:'iOS'})[String(row.platform || '').toLowerCase()] || row.platform || '未配置')}</td><td>${statusBadge(row)}</td><td>${esc(row.triggered_by || '-')}</td><td>${esc(dateText(row.started_at))}</td><td>${esc(row.duration || '-')}</td>
-        <td><span class="build-row-actions"><button type="button" data-open title="查看详情"><img src="${icon('nav_doc')}" alt=""></button>${canEdit && !row.building ? `<button type="button" data-delete title="删除"><img src="${icon('action_delete')}" alt=""></button>` : ''}</span></td>
-      </tr>`;
-    }).join('');
-    ui.state.hidden = true; ui.tableWrap.hidden = false;
-    ui.resultCount.textContent = `共 ${filtered.length} 条记录`;
-    ui.pageText.textContent = `${page} / ${pages}`;
-    ui.prev.disabled = page <= 1; ui.next.disabled = page >= pages;
-    ui.checkAll.checked = false; updateBatchState();
-    if (!visible.length) { ui.state.hidden = false; ui.tableWrap.hidden = true; ui.state.innerHTML = '<img src="' + icon('global_search') + '" alt="" style="width:30px"><strong>没有匹配的构建记录</strong><p>请调整筛选条件后重试。</p>'; }
-  }
-
-  function findRow(target) {
-    const rowEl = target.closest('[data-row]');
-    if (!rowEl) return null;
-    return records.find(row => String(row.instance_id) === rowEl.dataset.instance && Number(row.build_number || row.number) === Number(rowEl.dataset.number));
-  }
-
-  function renderCurrent(row) {
-    selected = row; ui.currentEmpty.hidden = true; ui.current.hidden = false;
-    const progress = row.building ? 62 : 100, num = row.build_number || row.number;
-    ui.current.innerHTML = `<div class="current-number"><strong>#${esc(num)}</strong>${statusBadge(row)}</div><div class="current-progress"><span style="width:${progress}%"></span></div><div class="current-meta">
-      <div><span>版本</span><b>${esc(row.version_name || '-')} (${esc(row.version_code || '-')})</b></div><div><span>环境 / 平台</span><b>${esc(({development:'开发环境',testing:'测试环境',staging:'预发环境',production:'生产环境'})[row.env_key] || '-')} / ${esc(({android:'Android',ios:'iOS'})[String(row.platform || '').toLowerCase()] || row.platform || '-')}</b></div><div><span>Jenkins 实例</span><b>${esc(row.instance_id || '-')}</b></div><div><span>触发人</span><b>${esc(row.triggered_by || '-')}</b></div><div><span>触发时间</span><b>${esc(dateText(row.started_at))}</b></div><div><span>耗时</span><b>${esc(row.duration || '-')}</b></div></div>`;
-    ui.failurePanel.hidden = statusKey(row) !== 'FAILURE'; ui.failure.textContent = row.failure_summary || '请打开完整详情读取真实失败日志。';
-    ui.artifacts.innerHTML = `<div class="artifact-selected"><div class="artifact-selected-header"><div><h3>构建 #${esc(num)} · ${esc(row.version_name || '未命名版本')}</h3><p>VersionCode ${esc(row.version_code || '-')} · ${esc(({development:'开发环境',testing:'测试环境',staging:'预发环境',production:'生产环境'})[row.env_key] || '-')} / ${esc(({android:'Android',ios:'iOS'})[String(row.platform || '').toLowerCase()] || row.platform || '-')}</p></div>${statusBadge(row)}</div>${artifactHtml(row)}</div>`;
-    [ui.detail,ui.downloadLog,ui.console,ui.deleteCurrent].filter(Boolean).forEach(button => button.disabled = false);
-    ui.console.disabled = !row.console_url;
-    document.querySelectorAll('[data-row]').forEach(el => el.classList.toggle('selected', el.dataset.instance === String(row.instance_id) && Number(el.dataset.number) === Number(num)));
-  }
-
-  async function loadDetail(row, openDrawer = true) {
-    const num = row.build_number || row.number;
-    if (openDrawer) openDetailDrawer(row, '<div class="build-state"><span class="build-spinner"></span><strong>正在加载构建详情</strong><p>读取真实参数和日志。</p></div>');
-    try {
-      const query = new URLSearchParams({instance_id:row.instance_id || '',version_id:row.version_id || '',project_id:projectId});
-      const response = await fetch(`/api/build/${encodeURIComponent(num)}/detail?${query}`, {credentials:'same-origin'});
-      const data = await response.json();
-      if (!response.ok || !data.build) throw new Error(data.error || '构建详情加载失败');
-      data.build.version_name = data.build.version_name || row.version_name;
-      data.build.version_code = data.build.version_code || row.version_code;
-      data.build.version_id = data.build.version_id || row.version_id;
-      data.build.project_id = data.build.project_id || projectId;
-      data.build.channel_id = data.build.channel_id || row.channel_id;
-      data.build.channel_name = data.build.channel_name || row.channel_name;
-      data.build.env_key = data.build.env_key || row.env_key;
-      data.build.platform = data.build.platform || row.platform;
-      Object.assign(row, data.build); renderCurrent(row);
-      if (openDrawer) openDetailDrawer(row, detailHtml(data.build));
-    } catch (error) {
-      if (openDrawer) openDetailDrawer(row, `<div class="build-state"><img src="${icon('status_error')}" alt="" style="width:32px"><strong>构建详情加载失败</strong><p>${esc(error.message)}</p></div>`);
-      toast(error.message);
-    }
-  }
-
-  function detailHtml(row) {
-    const params = Object.entries(row.parameters || {});
-    return `<div class="detail-grid">${[['构建状态',statusText(row)],['版本',`${row.version_name || '-'} (${row.version_code || '-'})`],['Jenkins 实例',row.instance_id || '-'],['触发人',row.triggered_by || '-'],['开始时间',dateText(row.started_at)],['结束时间',dateText(row.ended_at)],['耗时',row.duration || '-'],['日志大小',`${row.log_size || 0} 字符`]].map(([k,v]) => `<div class="detail-card"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>
-      <section class="detail-section"><h3>构建参数</h3>${params.length ? `<table>${params.map(([k,v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>` : '<div class="artifact-empty"><strong>无构建参数</strong></div>'}</section>
-      <section class="detail-section"><h3>构建日志</h3><pre>${esc(row.log || '暂无日志')}</pre></section>`;
-  }
-
-  function openDetailDrawer(row, html) {
-    const mask = document.querySelector('[data-drawer-mask]'); mask.hidden = false;
-    document.querySelector('[data-drawer-title]').textContent = `构建 #${row.build_number || row.number}`;
-    document.querySelector('[data-drawer-subtitle]').textContent = `${row.version_name || '未命名版本'} / VersionCode ${row.version_code || '-'}`;
-    document.querySelector('[data-drawer-body]').innerHTML = html;
-  }
-
-  function updateBatchState() {
-    if (!ui.batchDelete) return;
-    const count = root.querySelectorAll('[data-check]:checked').length;
-    ui.batchDelete.disabled = count === 0; ui.batchDelete.textContent = count ? `批量删除 (${count})` : '批量删除';
-    if (count) { const img = document.createElement('img'); img.src = icon('action_delete'); img.alt = ''; ui.batchDelete.prepend(img); }
-  }
-
-  function askDelete(items) {
-    pendingDelete = items; const mask = document.querySelector('[data-confirm-mask]'); mask.hidden = false;
-    document.querySelector('[data-confirm-title]').textContent = items.length > 1 ? `确认删除 ${items.length} 条构建记录` : `确认删除构建 #${items[0].build_number || items[0].number}`;
-    document.querySelector('[data-confirm-text]').textContent = '将同时删除对应 Jenkins 构建目录；被发布单或 Bundle 引用的构建不允许删除。';
-    document.querySelector('[data-confirm-reason]').value = '';
-  }
-
-  async function deletePending() {
-    const reason = document.querySelector('[data-confirm-reason]').value.trim();
-    if (!reason) { toast('请输入删除原因'); return; }
-    const button = document.querySelector('[data-confirm-action]'); button.disabled = true;
-    try {
-      if (pendingDelete.length === 1) {
-        const row = pendingDelete[0], num = row.build_number || row.number, query = new URLSearchParams({instance_id:row.instance_id || '',version_id:row.version_id || '',project_id:projectId});
-        const response = await fetch(`/api/build/${encodeURIComponent(num)}?${query}`, {method:'DELETE',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({instance_id:row.instance_id,reason})});
-        const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.error || '删除失败');
-      } else {
-        const response = await fetch('/api/build/records/batch-delete',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:projectId,reason,items:pendingDelete.map(row=>({instance_id:row.instance_id,build_number:row.build_number || row.number,version_id:row.version_id || ''}))})});
-        const data = await response.json(); if (!response.ok || !data.success) throw new Error(data.error || '批量删除失败');
-      }
-      document.querySelector('[data-confirm-mask]').hidden = true; toast('构建记录已删除'); await load();
-    } catch (error) { toast(error.message); } finally { button.disabled = false; }
-  }
-
-  async function load() {
-    ui.state.hidden = false; ui.tableWrap.hidden = true; ui.state.innerHTML = '<span class="build-spinner"></span><strong>正在加载构建历史</strong><p>正在同步本地记录与 Jenkins 实时状态。</p>';
-    try {
-      let loaded = [];
-      if (scopeVersionId) {
-        const response = await fetch(`/api/build/history-by-version?version_id=${encodeURIComponent(scopeVersionId)}`, { credentials: 'same-origin' });
-        const data = await response.json();
-        if (!response.ok || data.ok === false) throw new Error(data.error || '构建历史加载失败');
-        loaded = (data.builds || []).map((build) => ({
-          ...build,
-          version_id: scopeVersionId,
-          version_name: build.version_name || scopeVersionName,
-          version_code: build.version_code || scopeVersionCode,
-          env_key: build.env_key || scopeEnvKey,
-          platform: build.platform || scopePlatform,
-          channel_id: build.channel_id || scopeChannelId,
-        }));
-      } else {
-        const response = await fetch(`/api/build/history-by-project?project_id=${encodeURIComponent(projectId)}`, { credentials: 'same-origin' });
-        const data = await response.json();
-        if (!response.ok || data.ok === false) throw new Error(data.error || '构建历史加载失败');
-        loaded = flatten(data.groups);
-      }
-      records = loaded.filter(matchesScope);
-      setKpis(); applyFilters();
-      if (records.length && !selected) { renderCurrent(records[0]); loadDetail(records[0], false); }
-    } catch (error) { ui.state.hidden = false; ui.tableWrap.hidden = true; ui.state.innerHTML = `<img src="${icon('status_error')}" alt="" style="width:32px"><strong>构建历史加载失败</strong><p>${esc(error.message)}</p>`; }
-  }
-
-  applyScopeUi();
-
-  root.addEventListener('click', event => {
-    if (event.target.closest('[data-refresh]')) load();
-    if (event.target.closest('[data-reset]')) {
-      ui.search.value = '';
-      ui.status.value = '';
-      if (!scopePlatform) ui.platform.value = '';
-      applyFilters();
-    }
-    const row = findRow(event.target);
-    if (event.target.closest('[data-delete]') && row) { event.stopPropagation(); askDelete([row]); return; }
-    if (event.target.closest('[data-open]') && row) { event.stopPropagation(); renderCurrent(row); loadDetail(row, true); return; }
-    if (row && !event.target.matches('input')) renderCurrent(row);
-  });
-  [ui.search,ui.status,ui.platform,ui.pageSize].forEach(control => control.addEventListener(control === ui.search ? 'input' : 'change', applyFilters));
-  ui.prev.addEventListener('click',()=>{page--;renderRows()}); ui.next.addEventListener('click',()=>{page++;renderRows()});
-  ui.checkAll.addEventListener('change',()=>{root.querySelectorAll('[data-check]:not(:disabled)').forEach(box=>box.checked=ui.checkAll.checked);updateBatchState()});
-  ui.rows.addEventListener('change',updateBatchState);
-  if (ui.batchDelete) ui.batchDelete.addEventListener('click',()=>askDelete([...root.querySelectorAll('[data-check]:checked')].map(box=>findRow(box)).filter(Boolean)));
-  ui.detail.addEventListener('click',()=>selected && loadDetail(selected,true));
-  ui.downloadLog.addEventListener('click',()=>{if(selected) location.href=`/api/build/log/${selected.build_number || selected.number}?instance_id=${encodeURIComponent(selected.instance_id || '')}`});
-  ui.console.addEventListener('click',()=>{if(selected?.console_url) window.open(selected.console_url,'_blank','noopener')});
-  if (ui.deleteCurrent) ui.deleteCurrent.addEventListener('click',()=>selected && askDelete([selected]));
-  document.querySelector('[data-close-drawer]').addEventListener('click',()=>document.querySelector('[data-drawer-mask]').hidden=true);
-  document.querySelector('[data-drawer-mask]').addEventListener('click',event=>{if(event.target.matches('[data-drawer-mask]')) event.currentTarget.hidden=true});
-  document.querySelector('[data-cancel-confirm]').addEventListener('click',()=>document.querySelector('[data-confirm-mask]').hidden=true);
-  document.querySelector('[data-confirm-action]').addEventListener('click',deletePending);
-  load();
-})();
-</script>
+<script src="/static/project_build_history.js?v=20260625-pm1"></script>

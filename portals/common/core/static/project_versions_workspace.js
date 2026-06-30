@@ -22,6 +22,8 @@
   let filterVersionName = urlParams.get("version_name") || "";
   let activePlatformKey = lockPlatform || "";
   const collapsedGroups = new Set();
+  let listPage = 1;
+  const listPageSize = 20;
 
   const csrfHeaders = () => {
     const token = document.querySelector('meta[name="csrf-token"]');
@@ -250,6 +252,119 @@
     }
   };
 
+  const platformIconOf = (platform) => {
+    const p = String(platform || "").toLowerCase();
+    if (p.includes("ios") || p === "iphone") return "file_ios.svg";
+    if (p.includes("win")) return "file_windows.svg";
+    return "file_android.svg";
+  };
+  const formatUpdatedAt = (row) => {
+    const raw = row.updated_at || row.build_time || row.created_at || "";
+    if (!raw) return "—";
+    const text = String(raw);
+    if (text.length >= 16) return text.slice(0, 16).replace("T", " ");
+    return text;
+  };
+  const versionStatusHtml = (row) => {
+    if (row.active_bundle_id) return '<span class="version-pill active">已发布</span>';
+    if ((row.jenkins_job_id || (row.pipeline || {}).jenkins_job_id) && row.apk_status !== "found") return '<span class="version-pill building">构建中</span>';
+    if (row.version_status === "disabled" || row.version_status === "archived") return '<span class="version-pill failed">构建失败</span>';
+    const st = row.version_status || "draft";
+    return `<span class="version-pill ${esc(st)}">${esc(row.version_status_label || statusLabels[st] || st)}</span>`;
+  };
+  const artifactStatusHtml = (row) => {
+    if (row.apk_status === "found") return '<span class="version-artifact-status ready">完整</span>';
+    if (row.jenkins_job_id) return '<span class="version-artifact-status pending">构建中</span>';
+    return '<span class="version-artifact-status missing">产物不完整</span>';
+  };
+  const latestBuildHtml = (row) => {
+    const num = row.build_number || row.jenkins_build_number || (row.pipeline || {}).last_build_number;
+    if (num) return `<a class="version-build-link" href="/admin/projects/${projectId}/build-history?env_key=${encodeURIComponent(normalizedEnv(row))}&channel_id=${encodeURIComponent(channelIdOf(row))}&platform=${encodeURIComponent(row.platform || "")}&scoped=1">#${esc(num)}</a>`;
+    return '<span class="version-group-dash">—</span>';
+  };
+  const versionNameTagHtml = (row, group) => {
+    const mode = group?.version_mode || row.version_mode || "general";
+    if (mode === "commercial") return '<span class="pm-tag pm-tag--official">正式</span>';
+    if (row.version_status === "draft") return '<span class="pm-tag pm-tag--draft">草稿</span>';
+    if (row.version_status === "testing") return '<span class="pm-tag pm-tag--test">测试版</span>';
+    return '<span class="pm-tag pm-tag--prerelease">预发布</span>';
+  };
+
+  const closeVcDrawer = () => {
+    const drawer = document.getElementById("versionVcDrawer");
+    if (!drawer) return;
+    drawer.classList.add("is-hidden");
+    drawer.setAttribute("aria-hidden", "true");
+  };
+
+  const openVcDrawer = async (row) => {
+    if (!row) return;
+    const drawer = document.getElementById("versionVcDrawer");
+    const body = document.getElementById("versionVcDrawerBody");
+    const foot = document.getElementById("versionVcDrawerFoot");
+    if (!drawer || !body) return;
+    document.getElementById("versionVcDrawerTitle").textContent = `${row.version_name || "-"} · VC ${row.version_code || "-"}`;
+    document.getElementById("versionVcDrawerSubtitle").textContent = [
+      envLabels[normalizedEnv(row)] || normalizedEnv(row),
+      row.channel_name || channelNameOf(channelIdOf(row)),
+      row.platform_label || row.platform || "-",
+    ].join(" · ");
+    body.innerHTML = `<div class="version-download-empty"><strong>正在加载详情…</strong></div>`;
+    foot.innerHTML = "";
+    drawer.classList.remove("is-hidden");
+    drawer.setAttribute("aria-hidden", "false");
+    const context = `env_key=${encodeURIComponent(normalizedEnv(row))}&channel_id=${encodeURIComponent(channelIdOf(row))}&platform=${encodeURIComponent(row.platform || "")}&version_id=${encodeURIComponent(row.id || "")}&version_name=${encodeURIComponent(row.version_name || "")}&version_code=${encodeURIComponent(row.version_code || "")}&scoped=1`;
+    const workflowHref = row.id ? `/admin/projects/${projectId}/versions/${encodeURIComponent(row.id)}/workflow` : `/admin/projects/${projectId}/build-history?${context}`;
+    let downloadInfo = row.apk_download || {};
+    try {
+      const data = await request(`/api/projects/${projectId}/versions/${encodeURIComponent(row.id)}/apk-download-info`);
+      downloadInfo = { ...downloadInfo, ...data };
+    } catch (_) { /* keep row data */ }
+    const artifactReady = row.apk_status === "found" || downloadInfo.public_download_url || downloadInfo.local_download_url;
+    body.innerHTML = `<div class="pm-drawer-tags">${versionNameTagHtml(row, null)}<span class="pm-tag pm-tag--muted">${esc(row.version_name || "")}</span><span class="pm-tag pm-tag--muted">${esc(normalizedEnv(row))}</span><span class="pm-tag pm-tag--muted">${esc(row.channel_name || channelNameOf(channelIdOf(row)))}</span><span class="pm-tag pm-tag--muted">${esc(row.platform_label || row.platform || "")}</span></div>
+    <div class="pm-drawer-section"><h3>当前构建</h3><div class="pm-drawer-build-head"><strong>${artifactReady ? "已完成" : "构建中"}</strong>${latestBuildHtml(row)}</div>
+    <div class="current-progress" style="height:6px;background:#eef1f6;border-radius:3px;margin:10px 0"><span style="display:block;height:100%;width:${artifactReady ? 100 : 10}%;background:#1677ff;border-radius:3px"></span></div>
+    <p class="pm-drawer-hint">${artifactReady ? "产物已归档" : "构建进行中，请稍候刷新"}</p></div>
+    <div class="pm-drawer-section"><h3>产物完整性</h3><div class="pm-drawer-meta"><div><span>状态</span><b>${artifactReady ? "完整" : "不完整"}</b></div><div><span>发布</span><b>${row.active_bundle_id ? "已发布" : "未发布"}</b></div></div></div>
+    <div class="pm-drawer-section"><h3>关联发布单</h3><p class="pm-drawer-hint">${row.active_bundle_id ? "已有活跃 Bundle" : "暂无发布单"} · <a href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">查看发布单</a></p></div>`;
+    foot.innerHTML = `<a class="pm-btn" href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">创建发布单</a>
+      <a class="pm-btn pm-btn--primary" href="${workflowHref}">构建</a>
+      <button class="pm-btn" type="button" data-download-apk="${esc(row.id)}">下载</button>
+      <a class="pm-btn" href="/admin/projects/${projectId}/build-history?${context}">构建历史</a>`;
+  };
+
+  const exportCsv = () => {
+    const filterEnv = document.getElementById("versionEnv");
+    const platformGate = activePlatform();
+    const filtered = rows.filter((row) => {
+      const rowChannel = channelIdOf(row);
+      const envGate = lockEnvKey || filterEnv?.value || "";
+      const channelGate = document.getElementById("versionChannel")?.value || "";
+      const artifactGate = document.getElementById("versionArtifactStatus")?.value || "";
+      const statusGate = document.getElementById("versionStatus")?.value || "";
+      return (
+        (!envGate || normalizedEnv(row) === envGate) &&
+        (!channelGate || rowChannel === channelGate) &&
+        (!platformGate || row.platform === platformGate) &&
+        (!statusGate || row.version_status === statusGate) &&
+        (!artifactGate || (artifactGate === "ready" ? row.apk_status === "found" : row.apk_status !== "found")) &&
+        (!filterVersionName || (row.version_name || "") === filterVersionName)
+      );
+    });
+    const header = ["version_name", "version_code", "env", "channel", "platform", "status", "apk_status"];
+    const lines = [header.join(",")].concat(
+      filtered.map((r) => [
+        r.version_name, r.version_code, normalizedEnv(r), channelIdOf(r), r.platform, r.version_status, r.apk_status,
+      ].map((c) => `"${String(c || "").replace(/"/g, '""')}"`).join(",")),
+    );
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `versions-${projectId}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   const closeDownloadDialog = () => {
     const dialog = document.getElementById("versionDownloadDialog");
     if (!dialog) return;
@@ -262,23 +377,22 @@
     const workflowHref = row.id
       ? `/admin/projects/${projectId}/versions/${encodeURIComponent(row.id)}/workflow`
       : `/admin/projects/${projectId}/build-history?${context}`;
-    const artifactReady = row.apk_status === "found";
-    const artifactCell = artifactReady
-      ? `<div class="version-artifact-cell"><span class="version-artifact-status ready">已就绪</span><button class="version-btn compact ghost" type="button" data-download-apk="${esc(row.id)}">下载</button></div>`
-      : `<div class="version-artifact-cell"><span class="version-artifact-status pending">未就绪</span><small>${esc(row.jenkins_job_id || row.jenkins_instance_id || "待构建")}</small></div>`;
-    const releaseCell = row.active_bundle_id
-      ? `<span class="version-release-pill published">已发布</span>`
-      : `<span class="version-release-pill muted">未发布</span>`;
-    return `<div class="version-row version-row-child" data-version-id="${esc(row.id || "")}">
-      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">VersionCode</span></div>
-      <div class="version-scope-cell"><span class="version-scope-env">${esc(envLabels[normalizedEnv(row)] || normalizedEnv(row))}</span><span class="version-scope-meta">${esc(row.channel_name || row.channel_label || channelNameOf(channelIdOf(row)))} · ${esc(row.platform_label || row.platform || "-")}</span></div>
-      <div><span class="version-pill ${esc(row.version_status)}">${esc(row.version_status_label || statusLabels[row.version_status] || row.version_status || "未配置")}</span></div>
-      <div>${artifactCell}</div>
-      <div>${releaseCell}</div>
-      <div class="version-row-actions version-row-actions-compact">
-        <a class="version-action-link" href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">发布单</a>
-        <a class="version-action-link primary" href="${workflowHref}">构建</a>
-        <a class="version-action-link" href="/admin/projects/${projectId}/build-history?${context}">历史</a>
+    const platform = row.platform || "android";
+    return `<div class="version-row version-row-child pm-table-cols-10" data-version-id="${esc(row.id || "")}" data-open-vc="${esc(row.id || "")}">
+      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">${esc(row.version_name || "")}</span></div>
+      <div>${versionNameTagHtml(row, null)}</div>
+      <div><span class="version-scope-env">${esc(envLabels[normalizedEnv(row)] || normalizedEnv(row))}</span></div>
+      <div><span class="version-scope-meta">${esc(row.channel_name || row.channel_label || channelNameOf(channelIdOf(row)))}</span></div>
+      <div class="version-platform-cell"><img src="/static/project_ui/svg/${platformIconOf(platform)}" alt="">${esc(row.platform_label || platform)}</div>
+      <div>${versionStatusHtml(row)}</div>
+      <div>${artifactStatusHtml(row)}</div>
+      <div>${latestBuildHtml(row)}</div>
+      <div class="version-updated-at">${esc(formatUpdatedAt(row))}</div>
+      <div class="version-row-actions">
+        <button class="version-action-link" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
+        <a class="version-action-link primary" href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">创建发布单</a>
+        <a class="version-action-link" href="${workflowHref}">重新构建</a>
+        <a class="version-action-link" href="/admin/projects/${projectId}/build-history?${context}">查看日志</a>
       </div>
     </div>`;
   };
@@ -312,20 +426,24 @@
       ? ""
       : `<div class="version-empty-inline">尚无 VersionCode · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button></div>`;
     return `<div class="version-group${collapsed ? " is-collapsed" : ""}" data-group="${esc(groupName)}">
-      <div class="version-row version-row-group">
+      <div class="version-row version-row-group pm-table-cols-10">
         <div class="version-group-title">
           <button class="version-group-toggle" type="button" data-toggle-group="${esc(groupName)}" aria-expanded="${collapsed ? "false" : "true"}">
             <img src="/static/project_ui/svg/action_next.svg" alt="">
           </button>
           <div class="version-group-head">
-            <div class="version-group-name-line"><strong>${esc(groupName)}</strong>${pipelineBadge}<span class="version-mode-tag">${esc(groupModeLabels[group.version_mode] || group.version_mode || "通用")}</span></div>
+            <div class="version-group-name-line"><strong>${esc(groupName)}</strong><span class="pm-tag pm-tag--muted">默认分组</span>${pipelineBadge}</div>
             <div class="version-group-meta-line"><span>${children.length} VC</span><span>${activeCount} 有效</span><span>${configuredBuilds} 已配构建</span><span>${publishedCount} 已发布</span>${group.notes ? `<span class="group-notes-inline">${esc(group.notes)}</span>` : ""}</div>
           </div>
         </div>
-        <div><span class="version-pill ${esc(group.status || "active")}">${esc(statusLabels[group.status] || group.status || "有效")}</span></div>
+        <div>${versionNameTagHtml(children[0] || {}, group)}</div>
+        <div class="version-group-dash">${envLabel ? esc(envLabel) : "—"}</div>
         <div class="version-group-dash">—</div>
-        <div class="version-group-stat">${configuredBuilds}</div>
-        <div class="version-group-stat">${publishedCount}</div>
+        <div class="version-group-dash">—</div>
+        <div><span class="version-pill ${esc(group.status || "active")}">${esc(statusLabels[group.status] || group.status || "有效")}</span></div>
+        <div class="version-group-dash">${configuredBuilds} / ${children.length}</div>
+        <div class="version-group-dash">—</div>
+        <div class="version-group-dash">—</div>
         <div class="version-row-actions version-group-actions">${groupActions}</div>
       </div>
       <div class="version-group-children">${emptyHint}${children.map(childRowHtml).join("")}</div>
@@ -338,17 +456,20 @@
     const filterChannel = document.getElementById("versionChannel");
     const filterPlatform = document.getElementById("versionPlatform");
     const filterStatus = document.getElementById("versionStatus");
+    const artifactFilter = document.getElementById("versionArtifactStatus");
     const platformGate = activePlatform();
     const filtered = rows.filter((row) => {
       const rowChannel = channelIdOf(row);
       const envGate = lockEnvKey || filterEnv?.value || "";
       const channelGate = document.getElementById("versionChannel")?.value || "";
+      const artifactGate = artifactFilter?.value || "";
       return (
         (!envGate || normalizedEnv(row) === envGate) &&
         (!channelGate || rowChannel === channelGate) &&
         (!platformGate || row.platform === platformGate) &&
         (!filterPlatform?.value || !platformTabsVisible() || row.platform === filterPlatform.value) &&
         (!filterStatus?.value || row.version_status === filterStatus.value) &&
+        (!artifactGate || (artifactGate === "ready" ? row.apk_status === "found" : row.apk_status !== "found")) &&
         (!filterVersionName || (row.version_name || "") === filterVersionName) &&
         (!query || JSON.stringify(row).toLowerCase().includes(query))
       );
@@ -362,15 +483,36 @@
       return filtered.some((row) => (row.version_name || "") === group.version_name);
     });
     const groupNames = visibleGroups.map((group) => group.version_name);
+    const buildingCount = filtered.filter((x) => (x.jenkins_job_id || (x.pipeline || {}).jenkins_job_id) && x.apk_status !== "found").length;
+    const artifactReadyCount = filtered.filter((x) => x.apk_status === "found").length;
+    const publishedKpiCount = filtered.filter((x) => x.active_bundle_id).length;
+    const activeVcCount = filtered.filter((x) => x.version_status === "active").length;
+    const completeRate = filtered.length ? ((artifactReadyCount / filtered.length) * 100).toFixed(1) : "0.0";
     document.getElementById("versionKpis").innerHTML = [
-      ["nav_version_code.svg", "版本组数", groupNames.length],
-      ["nav_version_code.svg", "VersionCode", filtered.length],
-      ["kpi_health.svg", "有效版本", filtered.filter((x) => x.version_status === "active").length],
-      ["nav_release_order.svg", "可创建发布单", filtered.filter((x) => x.version_name && x.version_code).length],
+      ["nav_version_code.svg", "版本组数", groupNames.length, "blue", "", `/admin/projects/${projectId}/versions`],
+      ["nav_version_code.svg", "有效 VersionCode", activeVcCount, "cyan", "", ""],
+      ["kpi_build.svg", "构建中", buildingCount, "orange", "", `/admin/projects/${projectId}/build-history?scoped=1`],
+      ["file_bundle.svg", "产物完整", artifactReadyCount, "green", `完整率 ${completeRate}%`, ""],
+      ["nav_release_order.svg", "已发布", publishedKpiCount, "violet", "", `/admin/projects/${projectId}/release-orders`],
     ]
-      .map(([icon, label, value]) => `<article><img src="/static/project_ui/svg/${icon}" alt=""><div><span>${label}</span><strong>${value}</strong></div></article>`)
+      .map(([icon, label, value, tone, sub, link]) => `<article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--${tone}"><img src="/static/project_ui/svg/${icon}" alt=""></span><div class="pm-kpi-body"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="pm-kpi-sub">${sub}</span>` : ""}${link ? `<a class="pm-kpi-footlink" href="${link}">查看详情 &gt;</a>` : ""}</div></article>`)
       .join("");
-    const groups = visibleGroups.map((group) => {
+    const pages = Math.max(1, Math.ceil(visibleGroups.length / listPageSize));
+    listPage = Math.min(listPage, pages);
+    const pageGroups = visibleGroups.slice((listPage - 1) * listPageSize, listPage * listPageSize);
+    const pagination = document.getElementById("versionPagination");
+    if (pagination) {
+      pagination.hidden = visibleGroups.length <= listPageSize;
+      const countEl = pagination.querySelector("[data-version-count]");
+      const pageText = pagination.querySelector("[data-version-page-text]");
+      const prev = pagination.querySelector("[data-version-prev]");
+      const next = pagination.querySelector("[data-version-next]");
+      if (countEl) countEl.textContent = `共 ${visibleGroups.length} 个版本组，${filtered.length} 个 VersionCode`;
+      if (pageText) pageText.textContent = `${listPage} / ${pages}`;
+      if (prev) prev.disabled = listPage <= 1;
+      if (next) next.disabled = listPage >= pages;
+    }
+    const groups = pageGroups.map((group) => {
       const children = filtered
         .filter((row) => (row.version_name || "") === group.version_name)
         .sort((a, b) => {
@@ -411,6 +553,14 @@
         event.preventDefault();
         event.stopPropagation();
         handleDownloadClick(button.getAttribute("data-download-apk") || "");
+      };
+    });
+    document.querySelectorAll("[data-open-vc]").forEach((el) => {
+      el.onclick = (event) => {
+        if (event.target.closest("a, button, [data-download-apk]")) return;
+        const id = el.getAttribute("data-open-vc");
+        const row = rows.find((item) => String(item.id || "") === String(id));
+        if (row) openVcDrawer(row);
       };
     });
     updateBuildHistoryLink();
@@ -765,6 +915,41 @@
   };
 
   document.getElementById("btnCreateVersionGroup")?.addEventListener("click", () => openGroupDialog());
+  document.getElementById("btnCreateVersionCode")?.addEventListener("click", () => openVersionDialog());
+  document.getElementById("btnExportVersions")?.addEventListener("click", exportCsv);
+  document.getElementById("btnResetVersionFilters")?.addEventListener("click", () => {
+    const search = document.getElementById("versionSearch");
+    if (search) search.value = "";
+    ["versionChannel", "versionPlatform", "versionStatus", "versionArtifactStatus"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    if (!envScoped) {
+      const envEl = document.getElementById("versionEnv");
+      if (envEl) envEl.value = "";
+    }
+    listPage = 1;
+    render();
+  });
+  document.getElementById("versionPagination")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-version-prev]")) {
+      listPage = Math.max(1, listPage - 1);
+      render();
+    }
+    if (event.target.closest("[data-version-next]")) {
+      listPage += 1;
+      render();
+    }
+  });
+  document.querySelectorAll("[data-vc-drawer-close]").forEach((el) => el.addEventListener("click", closeVcDrawer));
+  document.addEventListener("pm-shell-search", (event) => {
+    const search = document.getElementById("versionSearch");
+    if (search) {
+      search.value = event.detail?.query || "";
+      listPage = 1;
+      render();
+    }
+  });
   document.getElementById("btnCloseVersionGroupDialog").onclick = closeGroupDialog;
   document.getElementById("btnCancelVersionGroupDialog").onclick = closeGroupDialog;
   document.getElementById("btnCloseVersionDialog").onclick = closeVersionDialog;
@@ -839,21 +1024,22 @@
 
   applyEnvScopedUi();
 
-  ["versionSearch", "versionChannel", "versionPlatform", "versionStatus"].forEach((id) => {
+  ["versionSearch", "versionChannel", "versionPlatform", "versionStatus", "versionArtifactStatus"].forEach((id) => {
     const node = document.getElementById(id);
     if (!node) return;
     if (id === "versionSearch") {
-      node.addEventListener("input", render);
+      node.addEventListener("input", () => { listPage = 1; render(); });
       return;
     }
     if (id === "versionChannel") {
       node.addEventListener("change", async () => {
         syncScopeUrl();
+        listPage = 1;
         render();
       });
       return;
     }
-    node.addEventListener("change", render);
+    node.addEventListener("change", () => { listPage = 1; render(); });
   });
 
   form.addEventListener("submit", async (event) => {
@@ -891,6 +1077,11 @@
         urlParams.delete("action");
         const qs = urlParams.toString();
         history.replaceState(null, "", `${location.pathname}${qs ? `?${qs}` : ""}`);
+      }
+      const drawerId = urlParams.get("vc_drawer");
+      if (drawerId) {
+        const row = rows.find((item) => String(item.id || "") === drawerId);
+        if (row) openVcDrawer(row);
       }
     })
     .catch((error) => toast(error.message, "error"));

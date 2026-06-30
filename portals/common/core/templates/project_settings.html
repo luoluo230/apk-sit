@@ -1,0 +1,21 @@
+<section class="delivery-app settings-app" data-delivery-page="settings" data-project-id="{{ project_id }}">
+  <div class="pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_project_setting.svg" alt=""></span>
+      <div><h1>项目设置</h1><p>基础信息、环境与渠道、构建集成与成员权限。</p></div>
+    </div>
+    <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
+  </div>
+  <div class="pm-filter-bar" style="margin-top:16px">
+    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=environments"><img src="/static/project_ui/svg/nav_environment.svg" alt="">环境与交付范围</a>
+    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=channels"><img src="/static/project_ui/svg/nav_binding.svg" alt="">渠道白名单</a>
+    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=platforms"><img src="/static/project_ui/svg/file_android.svg" alt="">平台白名单</a>
+    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview"><img src="/static/project_ui/svg/nav_roles_member.svg" alt="">成员与权限</a>
+  </div>
+  <div class="pm-placeholder-page" style="margin-top:16px">
+    <img src="/static/project_ui/svg/nav_project_setting.svg" alt="">
+    <h2>设置项已分散在项目总览</h2>
+    <p>为避免重复业务逻辑，环境、渠道、平台与成员管理仍在项目总览对应 Tab 中维护；此处提供快捷入口。</p>
+    <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/overview?tab=environments">打开环境管理</a>
+  </div>
+</section>

@@ -38,7 +38,7 @@
 
 ## 设计稿对照差距清单（2026-06-25）
 
-真源设计图目录：`D:\Art\设计图\设计图\`（21 张 PNG，基准视口约 1680×960）。  
+真源设计图目录：`docs/design_assets/project_management/`（已从 `D:\Art\设计图\设计图` 同步 21 张 PNG）。  
 运行入口对照：`http://127.0.0.1:5003/admin/projects/{project_id}/...`
 
 **整体结论（主观估算，非像素验收）：**
@@ -141,7 +141,7 @@
 
 | 页面编号 | 页面 | 设计稿 | 实现概况 |
 |---|---|---|---|
-| P01 | 项目列表 | 无独立稿 | 有旧列表，未按新壳统一 |
+| P01 | 项目列表 | [`P01_project_list_10_54_37.png`](../design_assets/project_management/P01_project_list_10_54_37.png) | [`project_list_p01.md`](project_list_p01.md) — pm13 组件重构，屏级 PASS 表进行中 |
 | P03 | 环境详情 | 可能在其他 PNG | 有 `project_environment_detail`，未对照验收 |
 | P05 | VersionCode 详情 | 设计在 P04 右栏 | 无独立详情页，缺右栏 |
 | P08 | 下载中心 | 无 | 未独立实现 |
@@ -157,6 +157,19 @@
 4. **P02**：环境卡 + 活动流 + 右栏三块对齐。  
 5. **全站 Token 清扫**：圆角 16px、阴影、字号层级统一到 `design-tokens.css`。
 
+## 实施进度（2026-06-25 计划落地）
+
+| 阶段 | 状态 | 关键交付 |
+|------|------|----------|
+| 阶段0 | 完成 | `project_ui/pm-*.css`、四级面包屑、侧栏 IA、星标/顶栏搜索 |
+| 阶段1 P04 | 完成 | VC 抽屉 D02、KPI/筛选/分页/导出、`v=20260625-pm7` |
+| 阶段1 P06 | 完成 | `project_build_history.css/js`、产物 Tab、scoped banner 保留 |
+| 阶段1 P11/P12 | 完成 | 纵向/横向步骤器、三列告警、生产 Banner |
+| 阶段1 P02/P10 | 完成 | pm-kpi 卡片、发布单列表 pm 样式 |
+| 阶段2 | 完成 | 下载中心、测试设备、设置、审计跳转 |
+| 阶段3–5 | 完成 | 运行/治理 breadcrumb、pm-modal 弹窗类 |
+
+回归：`test_delivery_scope` + `test_scope_resolver` 6 passed。屏级 PASS 表待浏览器逐页填写。
 
 第一阶段完成后必须逐页记录：
 

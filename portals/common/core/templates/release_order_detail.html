@@ -17,8 +17,8 @@
     <aside class="ui-panel timeline-panel"><div class="ui-panel-head"><h2>事件时间线</h2></div><div id="orderEvents"></div></aside>
   </div>
 </section>
-<div id="orderActionDialog" class="delivery-dialog is-hidden" aria-hidden="true">
-  <div class="delivery-dialog-card" role="dialog" aria-modal="true" aria-labelledby="orderActionDialogTitle">
+<div id="orderActionDialog" class="delivery-dialog pm-modal-root is-hidden" aria-hidden="true">
+  <div class="delivery-dialog-card pm-modal pm-modal--480" role="dialog" aria-modal="true" aria-labelledby="orderActionDialogTitle">
     <div class="delivery-dialog-head"><div><h3 id="orderActionDialogTitle">确认操作</h3><p id="orderActionDialogHint">请确认本次操作影响范围。</p></div><button id="orderActionDialogClose" class="icon-button" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
     <label class="block-label"><span>操作原因</span><textarea id="orderActionReason" rows="3" placeholder="说明执行原因、影响范围和回退方式"></textarea></label>
     <div class="delivery-dialog-actions"><button id="orderActionDialogCancel" class="ui-secondary" type="button">取消</button><button id="orderActionDialogConfirm" class="ui-primary" type="button">确认执行</button></div>

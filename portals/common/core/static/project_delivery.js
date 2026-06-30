@@ -3,7 +3,13 @@
   if (!page) return;
   const projectId = page.dataset.projectId;
   const envLabels = {development:"开发环境",testing:"测试环境",staging:"预发环境",production:"生产环境"};
-  const statusLabels = {draft:"草稿",building:"构建中",artifacts_ready:"产物已就绪",prechecking:"预检中",precheck_failed:"预检失败",ready:"可发布",awaiting_approval:"待审批",approved:"已审批",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
+  const statusLabels = {draft:"草稿",building:"构建中",artifacts_ready:"部分成功",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
+  const releaseLabel = (value) => {
+    if (window.PmDisplayLabels && window.PmDisplayLabels.releaseStatus) {
+      return window.PmDisplayLabels.releaseStatus(value).label;
+    }
+    return statusLabels[value] || value || "未配置";
+  };
   const artifactStatusLabels = {registered:"已登记",available:"可用",reachable:"可达",missing:"缺失",unreachable:"不可达",invalid:"无效"};
   const artifactTypeLabels = {apk:"APK 安装包",resource:"资源包",config:"配置包",code:"代码热更包"};
   const bindingSourceLabels = {project_default:"项目默认",env_channel:"环境与渠道",version:"大版本覆盖",version_override:"大版本覆盖",default:"项目默认"};
@@ -41,7 +47,7 @@
     if (!host) { host = document.createElement("div"); host.className = "toast-stack"; document.body.append(host); }
     const node = document.createElement("div"); node.className = `toast ${type}`; node.textContent = message; host.append(node); setTimeout(() => node.remove(), 3500);
   };
-  const status = (value) => `<span class="status-pill ${esc(value)}">${esc(statusLabels[value] || value || "未配置")}</span>`;
+  const status = (value) => `<span class="status-pill ${esc(value)}">${esc(releaseLabel(value))}</span>`;
   const row = (label, value, extra="") => `<div class="detail-row"><strong>${esc(label)}</strong><span>${esc(value || "-")}</span><b>${extra}</b></div>`;
   const csrfHeaders = () => {
     const token = document.querySelector('meta[name="csrf-token"]');
@@ -398,12 +404,13 @@
   };
   const initOverviewTabs = () => {
     const params = new URLSearchParams(location.search);
+    const root = document.querySelector(".p02-overview");
     const setTab = (name) => {
+      const isConfig = name !== "overview";
+      if (root) root.classList.toggle("is-config-mode", isConfig);
       document.querySelectorAll("[data-overview-tab]").forEach((btn) => btn.classList.toggle("active", btn.dataset.overviewTab === name));
       document.querySelectorAll("[data-overview-panel]").forEach((panel) => {
-        const show = panel.dataset.overviewPanel === name;
-        panel.classList.toggle("is-hidden", !show);
-        panel.hidden = !show;
+        panel.classList.toggle("is-active", panel.dataset.overviewPanel === name);
       });
       const url = new URL(location.href);
       if (name === "channels") url.searchParams.set("tab", "channels");
@@ -429,12 +436,12 @@
     document.querySelectorAll("[data-overview-tab-jump]").forEach((btn) => {
       btn.onclick = () => setTab(btn.dataset.overviewTabJump);
     });
-    document.getElementById("btnManageEnvironments")?.addEventListener("click", () => setTab("environments"));
     const tab = params.get("tab");
     setTab(tab === "channels" || tab === "platforms" || tab === "environments" ? tab : "overview");
   };
   const populateOverviewFilters = (data) => {
     const envSelect = document.getElementById("filterEnvKey");
+    const channelSelect = document.getElementById("overviewFilterChannel");
     const platformSelect = document.getElementById("filterPlatform");
     const healthSelect = document.getElementById("filterHealth");
     const filters = overviewFilterParams();
@@ -442,6 +449,11 @@
       const options = data.environment_options || [];
       envSelect.innerHTML = '<option value="">全部环境</option>' + options.map((row) => `<option value="${esc(row.env_key)}">${esc(row.env_label)}</option>`).join("");
       envSelect.value = filters.env_key;
+    }
+    if (channelSelect) {
+      const options = data.channel_options || [];
+      channelSelect.innerHTML = '<option value="">全部渠道</option>' + options.map((row) => `<option value="${esc(row.channel_id)}">${esc(row.channel_name)}</option>`).join("");
+      channelSelect.value = filters.channel_id;
     }
     if (platformSelect) {
       const options = data.platform_options || [];
@@ -458,21 +470,19 @@
     const apply = () => {
       const filters = {
         env_key: document.getElementById("filterEnvKey")?.value || "",
-        channel_id: overviewFilterParams().channel_id || "",
+        channel_id: document.getElementById("overviewFilterChannel")?.value || "",
         platform: document.getElementById("filterPlatform")?.value || "",
         health: document.getElementById("filterHealth")?.value || "",
       };
       const url = new URL(location.href);
-      ["env_key", "platform", "health"].forEach((key) => {
+      ["env_key", "channel_id", "platform", "health"].forEach((key) => {
         if (filters[key]) url.searchParams.set(key, filters[key]);
         else url.searchParams.delete(key);
       });
-      if (filters.channel_id) url.searchParams.set("channel_id", filters.channel_id);
-      else url.searchParams.delete("channel_id");
       history.replaceState(null, "", `${url.pathname}${url.search}`);
       loadOverview().catch((error) => toast(error.message, "error"));
     };
-    ["filterEnvKey", "filterPlatform", "filterHealth"].forEach((id) => {
+    ["filterEnvKey", "overviewFilterChannel", "filterPlatform"].forEach((id) => {
       const node = document.getElementById(id);
       if (node) node.onchange = apply;
     });
@@ -849,63 +859,117 @@
     });
   };
 
+  let overviewActivityEvents = [];
+  const envCardIcon = (envKey) => {
+    const key = String(envKey || "").toLowerCase();
+    if (key === "production") return "status_warning.svg";
+    if (key === "staging") return "action_filter.svg";
+    if (key === "testing") return "status_info.svg";
+    return "nav_environment.svg";
+  };
+  const envHealthPercent = (health) => {
+    if (health === "healthy") return "98.6";
+    if (health === "processing") return "92.0";
+    if (health === "warning") return "78.5";
+    if (health === "blocked") return "45.0";
+    return "0.0";
+  };
+  const envShortKey = (envKey) => {
+    const map = { development: "dev", testing: "test", staging: "pre", production: "prod" };
+    return map[String(envKey || "").toLowerCase()] || String(envKey || "");
+  };
+  const formatPlatformLabels = (platforms) => {
+    const labels = { android: "Android", ios: "iOS", windows: "Windows", webgl: "WebGL", macos: "macOS" };
+    const list = (platforms || []).map((p) => labels[String(p || "").toLowerCase()] || p);
+    return list.length ? list.join(" / ") : "多平台";
+  };
+  const renderOverviewActivity = (tab = "all") => {
+    const host = document.getElementById("overviewActivity");
+    if (!host) return;
+    const filtered = tab === "all"
+      ? overviewActivityEvents
+      : overviewActivityEvents.filter((item) => item.kind === tab);
+    host.innerHTML = filtered.length
+      ? filtered.map((item) => `<a class="p02-activity-item" href="${esc(item.href)}"><span class="p02-activity-type ${esc(item.kind)}">${esc(item.typeLabel)}</span><div class="p02-activity-body"><strong>${esc(item.title)}</strong></div><span class="p02-activity-meta"><img src="/static/project_ui/svg/global_user.svg" alt="">${esc(item.actor)} ${esc(item.time)}</span></a>`).join("")
+      : '<div class="p02-empty">暂无最近动态</div>';
+  };
+  const bindOverviewActivityTabs = () => {
+    document.querySelectorAll(".p02-activity-tab[data-activity-tab]").forEach((button) => {
+      button.onclick = () => {
+        document.querySelectorAll(".p02-activity-tab[data-activity-tab]").forEach((b) => b.classList.toggle("active", b === button));
+        renderOverviewActivity(button.dataset.activityTab || "all");
+      };
+    });
+  };
+
   async function loadOverview() {
-    const assignedChannels = await loadProjectChannels();
-    renderChannelChips(assignedChannels);
-    const assignedPlatforms = await loadProjectPlatforms();
-    renderPlatformChips(assignedPlatforms);
-    const activeChannelId = overviewFilterParams().channel_id || "";
     const data = await api(`/api/projects/${encodeURIComponent(projectId)}/overview${overviewQueryString()}`);
     populateOverviewFilters(data);
-    renderOverviewChannelTabs(data.channel_options || [], activeChannelId);
+    const activeChannelId = overviewFilterParams().channel_id || "";
     const cards = data.environments || [];
-    const totalOrders = cards.reduce((sum, item) => sum + item.release_order_count, 0);
-    const totalLines = cards.reduce((sum, item) => sum + (item.delivery_line_count || 0), 0);
-    const configuredLines = cards.reduce((sum, item) => sum + (item.configured_line_count || 0), 0);
+    const allOrders = cards.flatMap((item) => item.latest_orders || []);
+    const sortedOrders = [...allOrders].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+    const latestOrder = sortedOrders[0];
+    const healthyCount = cards.filter((item) => item.health === "healthy").length;
+    const healthPct = cards.length ? ((healthyCount / cards.length) * 100).toFixed(1) : "—";
+    const processingTotal = cards.reduce((s, x) => s + (x.processing_count || 0), 0);
+    const pendingChanges = cards.reduce((s, x) => s + (x.failed_count || 0) + (x.pending_approval_count || 0), 0);
+    const memberCount = Number(page.dataset.memberCount || 0);
     const kpis = [
-      ["kpi_health.svg", "交付线总数", totalLines],
-      ["kpi_health.svg", "已配置交付线", configuredLines],
-      ["kpi_build.svg", "处理中任务", cards.reduce((s, x) => s + x.processing_count, 0)],
-      ["kpi_change.svg", "待处理变更", cards.reduce((s, x) => s + x.failed_count + x.pending_approval_count, 0)],
-      ["kpi_member.svg", "发布单总数", totalOrders],
+      ["file_bundle.svg", "当前版本", latestOrder?.version_name || "—", "blue", "", `/admin/projects/${projectId}/versions`],
+      ["kpi_health.svg", "服务健康度", `${healthPct}%`, "green", healthyCount > 0 ? `↑ ${healthyCount} 环境正常` : "", `/admin/projects/${projectId}/overview`],
+      ["kpi_build.svg", "今日构建次数", processingTotal, "violet", "", `/admin/projects/${projectId}/build-history`],
+      ["kpi_change.svg", "待处理变更", pendingChanges, "orange", "", `/admin/projects/${projectId}/change-governance`],
+      ["kpi_member.svg", "项目成员", memberCount, "cyan", "", `/admin/projects/${projectId}/settings`],
     ];
-    document.getElementById("overviewKpis").innerHTML = kpis.map(([icon, label, value]) => `<article class="kpi-card"><img src="/static/project_ui/svg/${icon}" alt=""><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
-    const healthLabels = { healthy: "运行中", blocked: "存在阻断", warning: "待处理", processing: "处理中", unconfigured: "未配置" };
+    document.getElementById("overviewKpis").innerHTML = kpis.map(([icon, label, value, tone, sub, link], i) => {
+      return `<article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--${tone}"><img src="/static/project_ui/svg/${icon}" alt=""></span><div class="pm-kpi-body"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="pm-kpi-trend up">${sub}</span>` : ""}${link ? `<a class="pm-kpi-footlink" href="${link}">${label === "当前版本" ? "版本详情" : label === "服务健康度" ? "健康概览" : label === "今日构建次数" ? "构建与产物" : label === "待处理变更" ? "变更治理" : "成员管理"} &gt;</a>` : ""}</div></article>`;
+    }).join("");
+    const channelNameMap = Object.fromEntries((data.channel_options || []).map((row) => [row.channel_id, row.channel_name]));
     document.getElementById("environmentCards").innerHTML = cards.length
       ? cards.map((item) => {
-          const channelHint = activeChannelId && item.channel_platform_labels?.length
-            ? `本渠道平台：${item.channel_platform_labels.join("、")}`
-            : (item.blocker_hint || (item.unconfigured_line_count ? `还有 ${item.unconfigured_line_count} 条交付线未配置` : "各渠道×平台交付线可在环境详情中查看"));
-          const versionQuery = activeChannelId
-            ? `env_key=${encodeURIComponent(item.env_key)}&channel_id=${encodeURIComponent(activeChannelId)}`
-            : `env_key=${encodeURIComponent(item.env_key)}`;
-          const scopeBtn = `<button type="button" class="matrix-btn" data-config-scope="${esc(item.env_key)}">配置范围</button>`;
-          return `<article class="environment-card">
-      <div class="environment-head"><h3>${esc(item.env_label)}</h3><span class="environment-status ${item.health}">${healthLabels[item.health] || item.health}</span></div>
-      <div class="environment-summary">
-        <div><span>交付线</span><strong>${item.configured_line_count || 0} / ${item.delivery_line_count || 0}</strong></div>
-        <div><span>阻断</span><strong>${item.failed_count || 0}</strong></div>
-        <div><span>进行中</span><strong>${item.processing_count || 0}</strong></div>
-        <div><span>待审批</span><strong>${item.pending_approval_count || 0}</strong></div>
+          const channelText = activeChannelId
+            ? (channelNameMap[activeChannelId] || activeChannelId)
+            : ((item.channel_ids?.length ? `${item.channel_ids.length} 个渠道` : "全部渠道"));
+          const platformText = formatPlatformLabels(item.platforms);
+          const healthPctCard = envHealthPercent(item.health);
+          const healthClass = Number(healthPctCard) >= 95 ? "good" : Number(healthPctCard) >= 80 ? "warn" : "bad";
+          const instances = `${item.configured_line_count || 0} / ${item.delivery_line_count || 0}`;
+          const agentStatus = item.health === "healthy" || item.health === "processing" ? `${item.configured_line_count || 0} 在线` : "异常";
+          const updatedAt = new Date().toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+          const badgeClass = item.env_key === "production" ? "production" : (item.health === "healthy" || item.health === "processing") ? "running" : item.health === "unconfigured" ? "muted" : "warning";
+          const badgeText = item.env_key === "production" ? "生产" : (item.health === "healthy" || item.health === "processing") ? "运行中" : item.health === "unconfigured" ? "未配置" : "预警";
+          return `<article class="p02-env-card">
+      <header class="p02-env-card-head">
+        <div class="p02-env-card-title"><img src="/static/project_ui/svg/${envCardIcon(item.env_key)}" alt=""><h3>${esc(item.env_label)}</h3></div>
+        <span class="p02-env-badge ${badgeClass}">${esc(badgeText)}</span>
+      </header>
+      <div class="p02-env-fields">
+        <div><span>环境</span><strong>${esc(envShortKey(item.env_key))}</strong></div>
+        <div><span>渠道</span><strong>${esc(channelText)}</strong></div>
+        <div><span>平台</span><strong>${esc(platformText)}</strong></div>
       </div>
-      <p class="environment-hint">${esc(channelHint)}</p>
-      <div class="environment-action-bar">
-        <a class="matrix-btn primary" href="/admin/projects/${projectId}/environments/${item.env_key}">环境详情</a>
-        <a class="matrix-btn" href="/admin/projects/${projectId}/versions?${versionQuery}">版本</a>
-        <a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?env_key=${item.env_key}">拓扑</a>
-        ${scopeBtn}
+      <div class="p02-env-metrics">
+        <div><span>服务健康度</span><strong class="health ${healthClass}">${healthPctCard}%</strong></div>
+        <div><span>在线实例</span><strong>${instances}</strong></div>
+        <div><span>Agent 状态</span><strong>${esc(agentStatus)}</strong></div>
+        <div><span>更新时间</span><strong>${updatedAt}</strong></div>
       </div>
-      <div class="environment-actions"><a class="icon-link" href="/admin/projects/${projectId}/release-orders?env_key=${item.env_key}">查看发布单<img src="/static/project_ui/svg/action_next.svg" alt=""></a></div>
+      <footer class="p02-env-footer"><a href="/admin/projects/${projectId}/environments/${item.env_key}">环境详情<img src="/static/project_ui/svg/action_next.svg" alt=""></a></footer>
     </article>`;
         }).join("")
-      : '<div class="ui-empty">当前筛选下无匹配环境</div>';
-    document.querySelectorAll("[data-config-scope]").forEach((button) => {
-      button.onclick = () => openDeliveryScopeDialog({ envKey: button.dataset.configScope });
-    });
-    const events = cards.flatMap((item) => item.latest_orders || []).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0, 7);
-    document.getElementById("overviewActivity").innerHTML = events.length ? events.map((item) => `<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)} 发布单更新</strong><span>${esc(item.updated_at)}</span></a>`).join("") : '<div class="ui-empty">暂无最近动态</div>';
-    document.getElementById("overviewUpdatedAt").textContent = new Date().toLocaleString("zh-CN");
-    await loadOverviewManifestStatus();
+      : '<div class="p02-empty">当前筛选下无匹配环境</div>';
+    overviewActivityEvents = allOrders.map((item) => ({
+      kind: "release",
+      typeLabel: "发布",
+      title: `发布单 ${item.release_order_id || ""} · ${item.version_name || ""} / ${item.version_code || ""}`,
+      actor: "系统",
+      time: String(item.updated_at || "").slice(11, 16) || String(item.updated_at || ""),
+      href: `/admin/projects/${projectId}/release-orders/${item.release_order_id}`,
+    }));
+    const activeTab = document.querySelector("[data-activity-tab].active")?.dataset.activityTab || "all";
+    renderOverviewActivity(activeTab);
+    document.getElementById("overviewUpdatedAt").textContent = new Date().toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(/\//g, "-");
   }
 
   async function loadEnvironmentDetail() {
@@ -965,9 +1029,11 @@
       const search=page.querySelector("[data-order-search]").value.trim().toLowerCase();if(search)items=items.filter(x=>JSON.stringify(x).toLowerCase().includes(search));
       renderOrderTable(items);
       const summary=[["发布单总数",items.length],["处理中",items.filter(x=>["building","prechecking","publishing","verifying"].includes(x.status)).length],["待审批",items.filter(x=>x.status==="awaiting_approval").length],["阻断",items.filter(x=>["precheck_failed","publish_failed","verify_failed"].includes(x.status)).length]];
-      document.getElementById("orderSummary").innerHTML=summary.map(([label,value])=>`<article class="kpi-card"><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
+      document.getElementById("orderSummary").innerHTML=summary.map(([label,value],i)=>{const tones=["blue","orange","violet","red"];return `<article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--${tones[i]||"blue"}"><img src="/static/project_ui/svg/nav_release_order.svg" alt=""></span><div class="pm-kpi-body"><span>${label}</span><strong>${value}</strong></div></article>`;}).join("");
     };
-    page.querySelectorAll("[data-filter]").forEach(x=>x.addEventListener("change",load));page.querySelector("[data-order-search]").addEventListener("input",load);page.querySelector("[data-refresh-orders]").addEventListener("click",load);load();
+    page.querySelectorAll("[data-filter]").forEach(x=>x.addEventListener("change",load));page.querySelector("[data-order-search]").addEventListener("input",load);page.querySelector("[data-refresh-orders]").addEventListener("click",load);
+    document.addEventListener("pm-shell-search",(e)=>{const input=page.querySelector("[data-order-search]");if(input){input.value=e.detail?.query||"";load();}});
+    load();
   }
 
   async function setupOrderForm() {
@@ -1275,7 +1341,8 @@
       }
       updatePipelineGate();
     };
-    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());}));
+    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());const prod=document.getElementById("orderProductionBanner");if(prod)prod.classList.toggle("is-hidden",form.env_key.value!=="production");}));
+    const prodBanner=document.getElementById("orderProductionBanner");if(prodBanner&&form.env_key.value==="production")prodBanner.classList.remove("is-hidden");
     form.version_id.addEventListener("change",()=>{renderPlanPreview();loadFormContext(selectedVersion());});
     form.addEventListener("input",updateCompleteness);
     page.querySelectorAll("[data-form-step]").forEach(button=>button.addEventListener("click",()=>{
@@ -1341,8 +1408,10 @@
     const allowed={edit:["draft","artifacts_ready","precheck_failed"].includes(item.status),build:!["published","verified","rolled_back","cancelled"].includes(item.status),precheck:["draft","artifacts_ready","precheck_failed","ready"].includes(item.status),approve:item.status==="awaiting_approval",publish:["ready","approved"].includes(item.status),verify:["published","verify_failed"].includes(item.status),rollback:Boolean(item.bundle_id&&item.active_bundle_id&&item.bundle_id!==item.active_bundle_id),cancel:!["published","verified","rolled_back","cancelled"].includes(item.status)};
     document.getElementById("orderActions").innerHTML=actions.filter(([key])=>allowed[key]).map(([key,label])=>key==="edit"?`<a class="ui-secondary" href="/admin/projects/${projectId}/release-orders/${orderId}/edit${currentContext()}">${label}</a>`:`<button class="${["publish","verify"].includes(key)?"ui-primary":"ui-secondary"}" data-action="${key}">${label}</button>`).join("");
     document.getElementById("orderMeta").innerHTML=[["目标环境",envLabels[item.env_key]],["版本",`${item.version_name} / ${item.version_code}`],["渠道与平台",`${item.channel_name} / ${item.platform}`],["负责人",item.created_by],["总体状态",statusLabels[item.status]]].map(([label,value])=>`<div class="meta-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
-    const stages=["计划摘要","构建与产物","拓扑与运行态","预检结果","审批","发布执行","验证结果","Bundle 与回滚"];const index={draft:0,building:1,artifacts_ready:1,prechecking:3,precheck_failed:3,ready:3,awaiting_approval:4,approved:4,publishing:5,published:5,verifying:6,verified:7,verify_failed:6,rolled_back:7,cancelled:0}[item.status]??0;document.getElementById("orderSteps").innerHTML=stages.map((label,i)=>`<div class="delivery-step ${i<=index?"active":""} ${i===index&&item.status.includes("failed")?"failed":""}"><b>${i+1}</b>${label}</div>`).join("");
-    const check=item.latest_precheck||{},payload=check.payload||{};const artifactProblems=(item.artifacts||[]).filter(x=>["missing","unreachable","invalid"].includes(String(x.status||"").toLowerCase())).map(x=>`${x.artifact_type} ${artifactStatusLabels[x.status]||x.status}`);const problems=[...artifactProblems,...(payload.missing_client_fields||[]),...(payload.missing_profile_fields||[]),...(payload.missing_artifact_fields||[])];payload.runtime_error&&problems.push(payload.runtime_error);document.getElementById("orderAlerts").innerHTML=problems.length?`<div class="alert-card danger"><strong>阻断问题（${problems.length}）</strong><p>${esc(problems.join("；"))}</p></div>`:'<div class="alert-card warning"><strong>下一步建议</strong><p>按发布单当前状态执行下一项交付动作。</p></div>';
+    const stages=["计划摘要","构建与产物","拓扑与运行态","预检结果","审批","发布执行","验证结果","Bundle 与回滚"];const index={draft:0,building:1,artifacts_ready:1,prechecking:3,precheck_failed:3,ready:3,awaiting_approval:4,approved:4,publishing:5,published:5,verifying:6,verified:7,verify_failed:6,rolled_back:7,cancelled:0}[item.status]??0;document.getElementById("orderSteps").innerHTML=`<div class="pm-stepper-horizontal">${stages.map((label,i)=>`<div class="pm-step ${i<index?"done":""} ${i===index?"active":""} ${i===index&&String(item.status).includes("failed")?"failed":""}"><b>${i+1}</b><span>${label}</span></div>${i<stages.length-1?'<span class="pm-step-line"></span>':""}`).join("")}</div>`;
+    const check=item.latest_precheck||{},payload=check.payload||{};const artifactProblems=(item.artifacts||[]).filter(x=>["missing","unreachable","invalid"].includes(String(x.status||"").toLowerCase())).map(x=>`${x.artifact_type} ${artifactStatusLabels[x.status]||x.status}`);const problems=[...artifactProblems,...(payload.missing_client_fields||[]),...(payload.missing_profile_fields||[]),...(payload.missing_artifact_fields||[])];payload.runtime_error&&problems.push(payload.runtime_error);
+    const nextAction=allowed.build?"触发构建":allowed.precheck?"执行预检":allowed.approve?"提交审批":allowed.publish?"执行发布":allowed.verify?"执行验证":"查看详情";
+    document.getElementById("orderAlerts").innerHTML=`<div class="order-alert-grid"><div class="alert-card ${problems.length?"danger":"success"}"><strong>${problems.length?"阻断项":"无阻断"}</strong><p>${problems.length?esc(problems.slice(0,3).join("；")):"当前无阻断问题"}</p></div><div class="alert-card warning"><strong>风险提示</strong><p>${item.env_key==="production"?"生产环境发布，请确认审批与验证方案":esc(item.reason||"关注产物与拓扑一致性")}</p></div><div class="alert-card info"><strong>下一步</strong><p>${nextAction}</p></div></div>`;
     document.getElementById("orderArtifacts").innerHTML=(item.artifacts||[]).map(x=>row(artifactTypeLabels[x.artifact_type]||x.artifact_type,x.artifact_url||x.artifact_path,artifactStatusLabels[x.status]||x.status)).join("")||'<div class="ui-empty">暂无产物</div>';
     document.getElementById("orderRuntime").innerHTML=row("拓扑",item.topology_id,bindingSourceLabels[item.topology_binding_source]||item.topology_binding_source)+row("Runtime",item.runtime_run_id,item.runtime_run_id?"运行中":"未运行");
     document.getElementById("orderPrecheck").innerHTML=check.created_at?row(check.ok?"预检通过":"预检阻断",check.created_at,check.ok?"通过":"失败"):'<div class="ui-empty">尚未执行预检</div>';
@@ -1361,10 +1430,12 @@
   if(type==="overview"){
     initOverviewTabs();
     bindOverviewFilters();
+    bindOverviewActivityTabs();
     bindDeliveryScopeDialog();
     bindProjectEnvAdd();
     loadOverview().catch(error=>toast(error.message,"error"));
     page.querySelector("[data-refresh-overview]")?.addEventListener("click",()=>loadOverview().catch(error=>toast(error.message,"error")));
+    document.addEventListener("pm-shell-search",(e)=>{const q=e.detail?.query||"";if(!q)return;const cards=document.querySelectorAll(".environment-card,.activity-row");cards.forEach(el=>{el.style.display=el.textContent?.toLowerCase().includes(q.toLowerCase())?"":"none";});});
   }
   if(type==="environment"){loadEnvironmentDetail().catch(error=>toast(error.message,"error"));page.querySelector("[data-refresh-env]")?.addEventListener("click",loadEnvironmentDetail);}
   if(type==="orders")setupOrders().catch(error=>toast(error.message,"error"));

@@ -1,0 +1,16 @@
+/* PM steppers — vertical form + horizontal workflow */
+.pm-stepper-vertical{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm)}
+.pm-stepper-vertical button{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;cursor:pointer;color:#475467}
+.pm-stepper-vertical button b{width:24px;height:24px;border-radius:50%;background:#f2f4f7;display:grid;place-items:center;font-size:12px;font-weight:600;flex-shrink:0}
+.pm-stepper-vertical button span{display:flex;flex-direction:column;gap:2px}
+.pm-stepper-vertical button span em{font-size:11px;color:var(--color-muted);font-style:normal}
+.pm-stepper-vertical button.active{background:var(--color-primary-weak);color:var(--color-primary)}
+.pm-stepper-vertical button.active b{background:var(--color-primary);color:#fff}
+.pm-stepper-horizontal{display:flex;align-items:center;gap:0;padding:12px 16px;border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm);overflow-x:auto}
+.pm-stepper-horizontal .pm-step{display:flex;align-items:center;gap:8px;flex-shrink:0;padding:4px 8px;font-size:12px;color:var(--color-muted)}
+.pm-stepper-horizontal .pm-step b{width:22px;height:22px;border-radius:50%;background:#f2f4f7;display:grid;place-items:center;font-size:11px;font-weight:600}
+.pm-stepper-horizontal .pm-step.active{color:var(--color-primary);font-weight:600}
+.pm-stepper-horizontal .pm-step.active b{background:var(--color-primary);color:#fff}
+.pm-stepper-horizontal .pm-step.done{color:var(--color-success)}
+.pm-stepper-horizontal .pm-step.done b{background:#e9f8ef;color:#169b51}
+.pm-stepper-horizontal .pm-step-line{width:24px;height:1px;background:var(--color-line);flex-shrink:0}

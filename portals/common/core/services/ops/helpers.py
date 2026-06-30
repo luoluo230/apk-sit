@@ -614,6 +614,17 @@ def _ops_csrf_token() -> str:
         return ""
 
 
+PM_UI_CSS = (
+    '<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-table.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-drawer.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v=20260625-pm9">'
+)
+
+
 def _render_ops_page(
     content: str,
     title: str,
@@ -621,6 +632,7 @@ def _render_ops_page(
     project_id: str = "",
     env_key: str = "",
     topology_id: str = "",
+    breadcrumb_module: str = "",
     extra_css: str = "",
     extra_js: str = "",
 ):
@@ -666,7 +678,8 @@ def _render_ops_page(
         avatar_text=(user_name[:1] or "A").upper(),
         user_name=user_name,
         unread_notification_count=unread_notification_count,
-        extra_css=extra_css,
+        breadcrumb_module=breadcrumb_module or "项目工作区",
+        extra_css=PM_UI_CSS + extra_css,
         extra_js=extra_js,
         csrf_token=_ops_csrf_token(),
     )

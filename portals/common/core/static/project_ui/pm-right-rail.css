@@ -1,0 +1,19 @@
+/* 共享右栏 — 快速操作 / 筛选空态 */
+.pm-rail-panel{border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm)}
+.pm-rail-panel.is-hidden{display:none}
+.pm-rail-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #eef1f6}
+.pm-rail-head h2{margin:0;font-size:15px;font-weight:600}
+.pm-rail-link{border:0;background:transparent;color:var(--color-primary);font-size:12px;font-weight:600;cursor:pointer}
+.pm-rail-quick-item{display:flex;align-items:flex-start;gap:12px;width:100%;padding:14px 16px;border:0;border-top:1px solid #eef1f6;background:#fff;text-align:left;cursor:pointer}
+.pm-rail-quick-item:first-of-type{border-top:0}
+.pm-rail-quick-item img{width:20px;height:20px;flex-shrink:0;margin-top:2px}
+.pm-rail-quick-item span{display:block;font-size:13px;font-weight:600;color:var(--color-text)}
+.pm-rail-quick-item em{display:block;margin-top:2px;font-size:11px;font-style:normal;color:#98a2b3}
+.pm-rail-quick-item:hover{background:#f8fafc}
+.pm-rail-chips{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px}
+.pm-rail-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:14px;background:#f2f4f7;font-size:12px;color:#475467}
+.pm-rail-chip button{border:0;background:transparent;cursor:pointer;color:#98a2b3;font-size:14px;line-height:1}
+.pm-rail-empty{padding:20px 16px 24px;text-align:center}
+.pm-rail-empty-illus{width:120px;height:88px;margin:0 auto 12px;background:linear-gradient(180deg,#f2f4f7 0%,#e8edf5 100%);border-radius:12px;position:relative}
+.pm-rail-empty-illus::after{content:"";position:absolute;inset:24px 20px 16px;border:2px dashed #c5cdd8;border-radius:8px}
+.pm-rail-empty p{margin:0 0 12px;font-size:13px;color:#667085}

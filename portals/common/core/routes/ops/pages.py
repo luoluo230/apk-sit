@@ -45,7 +45,7 @@ def ops_platform_actions_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     content = ops_helpers._render_local_template("ops_actions_page.html", project_id=project_id, env_key=env_key)
-    return ops_helpers._render_ops_page(content, "动作执行中心", active_page="actions", project_id=project_id, env_key=env_key)
+    return ops_helpers._render_ops_page(content, "动作执行中心", active_page="actions", project_id=project_id, env_key=env_key, breadcrumb_module="运行管理")
 
 
 @bp.route("/admin/projects/<project_id>/topologies")
@@ -67,6 +67,7 @@ def ops_platform_topology_page(project_id: str = ""):
         project_id=project_id,
         env_key=env_key,
         topology_id=topology_id,
+        breadcrumb_module="运行管理",
     )
 
 
@@ -87,6 +88,7 @@ def project_topology_bindings_page(project_id: str = ""):
         active_page="topology-bindings",
         project_id=project_id,
         env_key=env_key,
+        breadcrumb_module="运行管理",
     )
 
 
@@ -122,7 +124,7 @@ def ops_platform_diagnostics_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     content = ops_helpers._render_local_template("ops_diagnostics_page.html", project_id=project_id, env_key=env_key)
-    return ops_helpers._render_ops_page(content, "节点诊断中心", active_page="diagnostics", project_id=project_id, env_key=env_key)
+    return ops_helpers._render_ops_page(content, "节点诊断中心", active_page="diagnostics", project_id=project_id, env_key=env_key, breadcrumb_module="运行管理")
 
 
 @bp.route("/admin/projects/<project_id>/agents")
@@ -132,7 +134,7 @@ def ops_platform_agent_control_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     content = ops_helpers._render_local_template("ops_agent_control_page.html", project_id=project_id, env_key=env_key)
-    return ops_helpers._render_ops_page(content, "Agent 控制面", active_page="agent-control", project_id=project_id, env_key=env_key)
+    return ops_helpers._render_ops_page(content, "Agent 控制面", active_page="agent-control", project_id=project_id, env_key=env_key, breadcrumb_module="运行管理")
 
 
 
@@ -167,4 +169,4 @@ def ops_platform_change_governance_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     content = ops_helpers._render_local_template("ops_change_governance_page.html", project_id=project_id, env_key=env_key)
-    return ops_helpers._render_ops_page(content, "发布与变更治理", active_page="change-governance", project_id=project_id, env_key=env_key)
+    return ops_helpers._render_ops_page(content, "发布与变更治理", active_page="change-governance", project_id=project_id, env_key=env_key, breadcrumb_module="治理与审计")

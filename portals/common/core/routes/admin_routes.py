@@ -359,17 +359,40 @@ def _safe_json_for_script(s):
     return re.sub(r'(?i)</script>', r'<\\u002fscript>', s)
 
 from routes.admin.views.api_docs import render_api_docs_page
-from routes.admin.views.projects import render_projects_page
+from routes.admin.views.projects import projects_page_context
 
 
 def _current_username():
     return session.get('user') or ''
 
 
+PROJECT_LIST_ASSET_VER = "20260625-pm14"
+
+
 @bp.route('/admin/projects')
 @admin_required('projects')
 def admin_projects_page():
-    return _admin_layout(render_projects_page(), '项目管理')
+    from flask import render_template
+    from services.ops.helpers import _render_ops_page
+
+    content = render_template('project_list.html', **projects_page_context())
+    css = (
+        f'<link rel="stylesheet" href="/static/project_ui/pm-project-card.css?v={PROJECT_LIST_ASSET_VER}">'
+        f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={PROJECT_LIST_ASSET_VER}">'
+        f'<link rel="stylesheet" href="/static/project_list.css?v={PROJECT_LIST_ASSET_VER}">'
+    )
+    js = (
+        f'<script src="/static/project_ui/pm-display-labels.js?v={PROJECT_LIST_ASSET_VER}"></script>'
+        f'<script src="/static/project_list.js?v={PROJECT_LIST_ASSET_VER}"></script>'
+    )
+    return _render_ops_page(
+        content,
+        '项目列表',
+        active_page='projects',
+        breadcrumb_module='总览',
+        extra_css=css,
+        extra_js=js,
+    )
 
 
 # ---------- 项目详情页（商业级仪表盘、版本管理、构建入口） ----------
@@ -446,6 +469,7 @@ def project_versions_page(project_id):
         active_page="versions",
         project_id=project_id,
         env_key=env_key,
+        breadcrumb_module="交付管理",
     )
 
 
@@ -677,7 +701,15 @@ def project_build_history_page(project_id):
         scope_version_code=(request.args.get('version_code') or '').strip(),
         scope_channel_id=(request.args.get('channel_id') or '').strip(),
     )
-    return _render_ops_page(content, '构建历史', active_page='builds', project_id=project_id, env_key=request.args.get('env_key') or 'production')
+    return _render_ops_page(
+        content,
+        '构建与产物',
+        active_page='builds',
+        project_id=project_id,
+        env_key=request.args.get('env_key') or 'production',
+        breadcrumb_module='交付管理',
+        extra_css='<link rel="stylesheet" href="/static/project_build_history.css?v=20260625-pm1">',
+    )
 
 def _user_project_role(project_id, username):
     """当前用户在该项目中的角色（仅编辑者有角色）。"""

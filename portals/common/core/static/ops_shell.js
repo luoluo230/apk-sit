@@ -2,9 +2,11 @@
   const app = document.querySelector(".ops-shell-app");
   if (!app) return;
   const projectId = app.dataset.projectId || "";
+  const pageKey = app.dataset.page || "";
   const contextKeys = ["env_key", "channel_id", "platform", "version_name", "version_code", "release_order_id"];
   const current = new URLSearchParams(location.search);
   const storageKey = "project_workspace_sidebar_collapsed";
+  const favoriteKey = `pm_page_favorite_${projectId}_${pageKey}`;
   const collapse = document.querySelector(".ops-shell-collapse-btn");
   if (localStorage.getItem(storageKey) === "1") app.classList.add("sidebar-collapsed");
   collapse?.addEventListener("click", () => {
@@ -56,5 +58,27 @@
       menu.hidden = true;
       trigger.setAttribute("aria-expanded", "false");
     }
+  });
+
+  const shellSearch = document.querySelector("[data-shell-search]");
+  if (shellSearch) {
+    let timer = null;
+    shellSearch.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        document.dispatchEvent(new CustomEvent("pm-shell-search", { detail: { query: shellSearch.value.trim() } }));
+      }, 200);
+    });
+  }
+
+  document.querySelectorAll(".pm-page-star").forEach((button) => {
+    const key = button.dataset.favoriteKey || favoriteKey;
+    const sync = () => button.classList.toggle("is-favorite", localStorage.getItem(key) === "1");
+    sync();
+    button.addEventListener("click", () => {
+      const next = localStorage.getItem(key) === "1" ? "0" : "1";
+      localStorage.setItem(key, next);
+      sync();
+    });
   });
 })();

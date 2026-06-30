@@ -1,0 +1,26 @@
+/* PM modal / confirm — M01–M37 unified */
+.pm-modal-root{position:fixed;inset:0;z-index:210;display:grid;place-items:center;padding:24px}
+.pm-modal-root.is-hidden{display:none}
+.pm-modal-mask{position:absolute;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(2px)}
+.pm-modal{width:min(560px,calc(100vw - 48px));position:relative;border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;max-height:calc(100vh - 48px)}
+.pm-modal--480{width:min(480px,calc(100vw - 48px))}
+.pm-modal--720{width:min(720px,calc(100vw - 48px))}
+.pm-modal-head{min-height:56px;padding:16px 20px;border-bottom:1px solid var(--color-line);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.pm-modal-head h2{margin:0;font-size:16px;font-weight:600}
+.pm-modal-head p{margin:4px 0 0;font-size:12px;color:var(--color-muted)}
+.pm-modal-body{padding:20px;overflow:auto;flex:1}
+.pm-modal-foot{padding:12px 20px;border-top:1px solid var(--color-line);display:flex;justify-content:flex-end;gap:8px}
+.pm-btn{height:36px;padding:0 14px;border:1px solid #dce4f2;border-radius:var(--radius-sm);background:#fff;color:#475467;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
+.pm-btn img{width:16px;height:16px}
+.pm-btn:hover{border-color:#91caff;color:var(--color-primary);background:#f5f9ff}
+.pm-btn:disabled{opacity:.45;cursor:not-allowed}
+.pm-btn--primary{border-color:var(--color-primary);background:var(--color-primary);color:#fff}
+.pm-btn--primary:hover{background:#0958d9;color:#fff}
+.pm-btn--danger{border-color:#ffc7c9;color:var(--color-danger)}
+.pm-btn--danger-solid{border-color:var(--color-danger);background:var(--color-danger);color:#fff}
+.pm-btn--ghost{border-color:transparent;background:transparent}
+.pm-btn--compact{height:30px;padding:0 10px;font-size:12px}
+.pm-placeholder-page{padding:48px 24px;text-align:center;border:1px dashed var(--color-line);border-radius:var(--radius-lg);background:#fff}
+.pm-placeholder-page img{width:48px;height:48px;opacity:.5;margin-bottom:12px}
+.pm-placeholder-page h2{margin:0;font-size:18px}
+.pm-placeholder-page p{margin:8px 0 16px;color:var(--color-muted);font-size:13px}

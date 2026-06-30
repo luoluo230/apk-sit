@@ -1,0 +1,156 @@
+<div id="createProjectModal" class="delivery-dialog is-hidden" role="dialog" aria-modal="true" aria-labelledby="createProjectTitle">
+  <div class="delivery-dialog-card p01-modal-card" onclick="event.stopPropagation()">
+    <div class="delivery-dialog-head">
+      <div>
+        <h3 id="createProjectTitle">创建项目</h3>
+        <p>填写项目基础信息与构建配置，创建后可进入项目总览管理交付。</p>
+      </div>
+      <button type="button" class="icon-button" data-close-modal="createProjectModal" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+    </div>
+    <form class="p01-modal-body" onsubmit="return false;">
+      <div class="p01-form-grid">
+        <div><label>项目ID（英文）</label><input type="text" id="newProjectId" placeholder="如 MyGame" required></div>
+        <div><label>名称</label><input type="text" id="newProjectName" placeholder="项目名称" required></div>
+        <div><label>英文名</label><input type="text" id="newProjectNameEn" placeholder="English name"></div>
+        <div><label>项目图标</label><div class="p01-inline"><input type="file" id="newProjectIconFile" accept="image/*"><span id="newProjectIconPreview" class="p01-hint">未上传</span></div><input type="hidden" id="newProjectIcon" value=""></div>
+        <div><label>项目阶段</label><select id="newProjectPhase">{% for value, label in project_phases %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+        <div><label>gameId（唯一，必填）</label><input type="text" id="newProjectGameId" readonly></div>
+        <div><label>gameKey（唯一，必填）</label><input type="text" id="newProjectGameKey" readonly></div>
+        <div class="p01-form-actions-inline"><button type="button" class="pm-btn" id="btnGenerateCredentials">系统生成凭据</button></div>
+      </div>
+      <div><label>简介</label><input type="text" id="newProjectIntro" placeholder="简短介绍"></div>
+      <div><label>详情</label><textarea id="newProjectDetail" rows="2" placeholder="详细描述"></textarea></div>
+      <div><label>网络连接说明</label><input type="text" id="newProjectNetwork" placeholder="如：需内网/外网"></div>
+      <details class="p01-details" open>
+        <summary>构建配置（Git / APP / Unity）</summary>
+        <div class="p01-form-grid">
+          <div><label>默认 APP_NAME</label><input type="text" id="newProjectAppName" placeholder="如 GameKu"></div>
+          <div><label>OUTPUT_BASE_DIR（可选）</label><div class="p01-inline"><input type="text" id="newProjectOutputBaseDir" placeholder="/path/to/output"><button type="button" class="pm-btn" data-path-picker="newProjectOutputBaseDir" data-path-mode="dir">浏览</button></div></div>
+          <div class="p01-span-2"><label>Git 仓库 URL</label><input type="text" id="newProjectGitUrl" placeholder="https://或 git@"></div>
+          <div class="p01-span-2"><label>Git 工作目录</label><div class="p01-inline"><input type="text" id="newProjectGitWorkspace" placeholder="/path/to/clone"><button type="button" class="pm-btn" data-path-picker="newProjectGitWorkspace" data-path-mode="dir">浏览</button></div></div>
+          <div class="p01-span-2"><label>Git SSH 密钥路径（可选）</label><div class="p01-inline"><input type="text" id="newProjectGitSshKey" placeholder="如 ~/.ssh/id_ed25519"><button type="button" class="pm-btn" data-path-picker="newProjectGitSshKey" data-path-mode="file">浏览</button></div></div>
+          <div><label>默认 Git 分支</label><input type="text" id="newProjectDefaultGitBranch" placeholder="main"></div>
+          <div class="p01-span-2"><label>Git 分支列表（每行一个）</label><textarea id="newProjectGitBranches" rows="2" placeholder="main&#10;develop"></textarea></div>
+          <div class="p01-span-2"><label>Unity 项目路径（可选）</label><div class="p01-inline"><input type="text" id="newProjectUnityProjectPath" placeholder="/path/to/unity/project"><button type="button" class="pm-btn" data-path-picker="newProjectUnityProjectPath" data-path-mode="dir">浏览</button></div></div>
+          <div class="p01-span-2 p01-form-actions-inline"><button type="button" class="pm-btn" id="newProjectValidateGitBtn">验证 Git 配置</button><span id="newProjectGitValidateResult" class="p01-hint"></span></div>
+        </div>
+      </details>
+      <div class="p01-form-grid p01-form-grid--3">
+        <div><label>玩家官网域名</label><input type="text" id="newProjectPlayerPublicUrl" placeholder="https://game.example.com"></div>
+        <div><label>论坛域名</label><input type="text" id="newProjectForumPublicUrl" placeholder="https://forum.example.com"></div>
+        <div><label>开发后台域名</label><input type="text" id="newProjectAdminPublicUrl" placeholder="https://studio.example.com"></div>
+      </div>
+      <div class="p01-form-grid">
+        <div><label>可查看用户</label><input type="text" id="newProjectViewers" placeholder="多个用户名用逗号分隔"></div>
+        <div><label>项目参与人员</label><div class="p01-inline"><input type="text" id="newParticipantUser" placeholder="输入用户名"><button type="button" class="pm-btn" id="btnAddNewParticipant">验证并添加</button></div><ul id="newParticipantsList" class="p01-participant-list"></ul></div>
+      </div>
+      <div id="addProjectFeedback" class="p01-feedback" aria-live="polite"></div>
+      <div class="delivery-dialog-actions">
+        <button type="button" class="ui-secondary" data-close-modal="createProjectModal">取消</button>
+        <button type="button" class="ui-primary" id="addProjectBtn">添加项目</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="channelManageModal" class="delivery-dialog is-hidden" role="dialog" aria-modal="true">
+  <div class="delivery-dialog-card p01-modal-card" onclick="event.stopPropagation()">
+    <div class="delivery-dialog-head">
+      <div>
+        <h3>渠道管理</h3>
+        <p>维护版本渠道（如开发版、测试版、线上版），用于版本管理与下载中心筛选。</p>
+      </div>
+      <button type="button" class="icon-button" data-close-modal="channelManageModal" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+    </div>
+    <div class="p01-modal-body">
+      <div class="p01-channel-form">
+        <div class="p01-form-grid p01-form-grid--3">
+          <div><label>渠道 ID</label><input type="text" id="channelFormId" placeholder="如 dev / test / production"></div>
+          <div><label>渠道名称</label><input type="text" id="channelFormName" placeholder="如 开发版 / 测试版 / 线上版"></div>
+          <div><label>排序</label><input type="number" id="channelFormOrder" value="0"></div>
+        </div>
+        <div class="p01-form-grid">
+          <div><label>APK 子目录（可选）</label><input type="text" id="channelFormApkSubdir" placeholder="如 dev、test"></div>
+          <div><label>构建参数（可选）</label><input type="text" id="channelFormBuildParam" placeholder="如 CHANNEL=dev"></div>
+        </div>
+        <div><label>说明（可选）</label><textarea id="channelFormDesc" rows="2" placeholder="渠道用途说明"></textarea></div>
+        <div class="p01-form-actions-inline">
+          <button type="button" class="pm-btn" id="btnResetChannelForm">重置</button>
+          <button type="button" class="pm-btn pm-btn--primary" id="btnSubmitChannelForm">保存渠道</button>
+        </div>
+        <input type="hidden" id="channelFormEditingId" value="">
+      </div>
+      <h4 class="p01-subheading">已有渠道</h4>
+      <table class="p01-mini-table">
+        <thead><tr><th>ID</th><th>名称</th><th>APK 子目录</th><th>构建参数</th><th>操作</th></tr></thead>
+        <tbody id="channelTableBody"></tbody>
+      </table>
+      <p id="channelEmptyTip" class="p01-hint p01-center is-hidden">暂无渠道，可在上方添加。</p>
+    </div>
+  </div>
+</div>
+
+<div id="participantRoleModal" class="delivery-dialog is-hidden" role="dialog" aria-modal="true">
+  <div class="delivery-dialog-card p01-modal-card p01-modal-card--sm" onclick="event.stopPropagation()">
+    <h3>设定角色</h3>
+    <p class="p01-hint">用户：<strong id="roleModalUsername"></strong></p>
+    <select id="roleModalRole" class="p01-full">{% for role in project_roles %}<option value="{{ role }}">{{ role }}</option>{% endfor %}</select>
+    <div class="delivery-dialog-actions">
+      <button type="button" class="ui-secondary" data-close-modal="participantRoleModal">取消</button>
+      <button type="button" class="ui-primary" id="btnConfirmParticipantRole">确认</button>
+    </div>
+  </div>
+</div>
+
+<div id="editProjectModal" class="delivery-dialog is-hidden" role="dialog" aria-modal="true">
+  <div class="delivery-dialog-card p01-modal-card" onclick="event.stopPropagation()">
+    <div class="delivery-dialog-head">
+      <div>
+        <h3>编辑项目</h3>
+        <p>项目ID：<strong id="editProjectIdLabel"></strong></p>
+      </div>
+      <button type="button" class="icon-button" data-close-modal="editProjectModal" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+    </div>
+    <div class="p01-modal-body">
+      <div class="p01-form-grid">
+        <div><label>名称</label><input type="text" id="editProjectName"></div>
+        <div><label>英文名</label><input type="text" id="editProjectNameEn"></div>
+      </div>
+      <div><label>项目阶段</label><select id="editProjectPhase">{% for value, label in project_phases %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+      <div><label>项目图标</label><div class="p01-inline"><input type="file" id="editProjectIconFile" accept="image/*"><span id="editProjectIconPreview" class="p01-hint"></span></div><input type="hidden" id="editProjectIcon" value=""></div>
+      <div><label>简介</label><input type="text" id="editProjectIntro"></div>
+      <div><label>详情</label><textarea id="editProjectDetail" rows="2"></textarea></div>
+      <div><label>网络连接说明</label><input type="text" id="editProjectNetwork"></div>
+      <details class="p01-details" open>
+        <summary>构建配置（Git / APP / Unity）</summary>
+        <div class="p01-form-grid">
+          <div><label>默认 APP_NAME</label><input type="text" id="editProjectAppName"></div>
+          <div><label>OUTPUT_BASE_DIR（可选）</label><div class="p01-inline"><input type="text" id="editProjectOutputBaseDir"><button type="button" class="pm-btn" data-path-picker="editProjectOutputBaseDir" data-path-mode="dir">浏览</button></div></div>
+          <div class="p01-span-2"><label>Git 仓库 URL</label><input type="text" id="editProjectGitUrl"></div>
+          <div class="p01-span-2"><label>Git 工作目录</label><div class="p01-inline"><input type="text" id="editProjectGitWorkspace"><button type="button" class="pm-btn" data-path-picker="editProjectGitWorkspace" data-path-mode="dir">浏览</button></div></div>
+          <div class="p01-span-2"><label>Git SSH 密钥路径（可选）</label><div class="p01-inline"><input type="text" id="editProjectGitSshKey"><button type="button" class="pm-btn" data-path-picker="editProjectGitSshKey" data-path-mode="file">浏览</button></div></div>
+          <div><label>默认 Git 分支</label><input type="text" id="editProjectDefaultGitBranch"></div>
+          <div class="p01-span-2"><label>Git 分支列表（每行一个）</label><textarea id="editProjectGitBranches" rows="2"></textarea></div>
+          <div class="p01-span-2"><label>Unity 项目路径（可选）</label><div class="p01-inline"><input type="text" id="editProjectUnityProjectPath"><button type="button" class="pm-btn" data-path-picker="editProjectUnityProjectPath" data-path-mode="dir">浏览</button></div></div>
+          <div class="p01-span-2 p01-form-actions-inline"><button type="button" class="pm-btn" id="editProjectValidateGitBtn">验证 Git 配置</button><span id="editProjectGitValidateResult" class="p01-hint"></span></div>
+        </div>
+      </details>
+      <div class="p01-form-grid p01-form-grid--3">
+        <div><label>玩家官网域名</label><input type="text" id="editProjectPlayerPublicUrl" placeholder="https://game.example.com"></div>
+        <div><label>论坛域名</label><input type="text" id="editProjectForumPublicUrl" placeholder="https://forum.example.com"></div>
+        <div><label>开发后台域名</label><input type="text" id="editProjectAdminPublicUrl" placeholder="https://studio.example.com"></div>
+      </div>
+      <div class="p01-form-grid">
+        <div><label>可查看用户</label><input type="text" id="editProjectViewers" placeholder="多个用户名用逗号分隔"></div>
+        <div><label>项目参与人员</label><div class="p01-inline"><input type="text" id="editParticipantUser" placeholder="输入用户名"><button type="button" class="pm-btn" id="btnAddEditParticipant">验证并添加</button></div><ul id="editParticipantsList" class="p01-participant-list"></ul></div>
+      </div>
+      <div><label>可用渠道</label><div id="editProjectChannels" class="p01-channel-checks"></div></div>
+      <div class="delivery-dialog-actions">
+        <button type="button" class="ui-secondary" data-close-modal="editProjectModal">取消</button>
+        <button type="button" class="ui-primary" id="btnSaveEditProject">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="p01CardMenu" class="p01-card-menu is-hidden" role="menu"></div>

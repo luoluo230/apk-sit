@@ -1,0 +1,19 @@
+/* PM KPI row — 5 cards with colored icon circles */
+.pm-kpi-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.pm-kpi-card{min-height:96px;padding:16px;border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:14px}
+.pm-kpi-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.pm-kpi-icon img{width:22px;height:22px}
+.pm-kpi-icon--blue{background:#e8f1ff}
+.pm-kpi-icon--green{background:#e7f8ed}
+.pm-kpi-icon--orange{background:#fff1df}
+.pm-kpi-icon--red{background:#ffebeb}
+.pm-kpi-icon--violet{background:#f3ebff}
+.pm-kpi-icon--cyan{background:#e6fffb}
+.pm-kpi-body{display:flex;min-width:0;flex-direction:column;gap:2px}
+.pm-kpi-body span{font-size:12px;color:var(--color-muted);line-height:18px}
+.pm-kpi-body strong{font-size:24px;line-height:30px;font-weight:600;color:var(--color-text)}
+.pm-kpi-trend{font-size:11px;color:var(--color-muted);display:flex;align-items:center;gap:4px;margin-top:2px}
+.pm-kpi-trend.up{color:var(--color-success)}
+.pm-kpi-trend.down{color:var(--color-danger)}
+@media(max-width:1280px){.pm-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.pm-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}}

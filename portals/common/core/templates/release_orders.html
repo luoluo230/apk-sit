@@ -1,18 +1,24 @@
 <section class="delivery-app" data-delivery-page="orders" data-project-id="{{ project_id }}">
-  <div class="delivery-titlebar">
-    <div><span class="delivery-kicker">DELIVERY ORDERS</span><h1>发布单</h1><p>管理从构建、预检、审批到发布验证和回滚的完整交付流程。</p></div>
-    <a class="ui-primary" href="/admin/projects/{{ project_id }}/release-orders/new?env_key={{ env_key }}"><img src="/static/project_ui/svg/action_add.svg" alt="">新建发布单</a>
+  <div class="delivery-titlebar pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_release_order.svg" alt=""></span>
+      <div><h1>发布单</h1><p>管理从构建、预检、审批到发布验证和回滚的完整交付流程。</p></div>
+    </div>
+    <div class="pm-page-head-actions">
+      <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
+      <a class="ui-primary pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/release-orders/new?env_key={{ env_key }}"><img src="/static/project_ui/svg/action_add.svg" alt="">新建发布单</a>
+    </div>
   </div>
-  <div class="order-kpi-row" id="orderSummary"></div>
-  <section class="ui-panel">
-    <div class="delivery-toolbar">
-      <label><img src="/static/project_ui/svg/global_search.svg" alt=""><input data-order-search type="search" placeholder="搜索发布单编号、版本或 VersionCode"></label>
+  <div class="order-kpi-row pm-kpi-row" id="orderSummary"></div>
+  <section class="ui-panel pm-table-panel">
+    <div class="delivery-toolbar pm-filter-bar">
+      <label class="pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input data-order-search type="search" placeholder="搜索发布单编号、版本或 VersionCode"></label>
       <select data-filter="env_key"><option value="">全部环境</option></select>
       <select data-filter="channel_id"><option value="">全部渠道</option></select>
       <select data-filter="platform"><option value="">全部平台</option></select>
       <select data-filter="status"><option value="">全部状态</option></select>
-      <button class="ui-secondary" data-refresh-orders><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+      <button class="ui-secondary pm-btn" data-refresh-orders><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
     </div>
-    <div class="order-table" id="releaseOrderList"><div class="ui-skeleton">正在加载发布单...</div></div>
+    <div class="order-table pm-table-wrap" id="releaseOrderList"><div class="ui-skeleton">正在加载发布单...</div></div>
   </section>
 </section>

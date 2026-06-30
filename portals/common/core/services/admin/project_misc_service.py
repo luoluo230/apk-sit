@@ -119,6 +119,120 @@ def validate_username(username: str) -> Dict[str, Any]:
     return {"exists": True, "username": user}
 
 
+def _release_status_label(status: str) -> str:
+    mapping = {
+        "verified": "成功",
+        "published": "成功",
+        "precheck_failed": "失败",
+        "publish_failed": "失败",
+        "verify_failed": "失败",
+        "cancelled": "失败",
+        "verifying": "部分成功",
+        "publishing": "部分成功",
+        "building": "部分成功",
+        "prechecking": "部分成功",
+        "artifacts_ready": "部分成功",
+        "awaiting_approval": "待审批",
+        "ready": "待发布",
+        "approved": "待发布",
+        "draft": "草稿",
+        "rolled_back": "已回滚",
+    }
+    key = str(status or "").strip().lower()
+    if key in mapping:
+        return mapping[key]
+    raw = str(status or "").strip()
+    if raw and not all(ch.isascii() and (ch.isalnum() or ch == "_") for ch in raw):
+        return raw
+    return raw.replace("_", " ") if raw else "--"
+
+
+def _project_card_summary(project_id: str, item: Dict[str, Any]) -> Dict[str, Any]:
+    """Aggregate delivery metrics for the project list card grid."""
+    status = str(item.get("status") or "active").strip().lower()
+    editors = item.get("editors") or []
+    owner = str(item.get("created_by") or (editors[0] if editors else "")).strip()
+    updated_at = str(item.get("updated_at") or item.get("created_at") or "").strip()
+    if status == "archived":
+        return {
+            "owner": owner,
+            "updated_at": updated_at,
+            "card_status": "archived",
+            "card_status_label": "已归档",
+            "env_health_pct": None,
+            "prod_version": None,
+            "pending_approval": 0,
+            "blocker_count": 0,
+            "latest_release": None,
+            "health_state": "archived",
+        }
+
+    from services.release.env_registry import list_project_env_keys, normalize_release_env_key
+    from services.release.release_order_service import _delivery_lines_for_env, list_release_orders
+
+    env_keys = list_project_env_keys(project_id)
+    primary_env = next(
+        (key for key in env_keys if normalize_release_env_key(key, project_id=project_id) == "production"),
+        env_keys[0] if env_keys else "production",
+    )
+    orders = list_release_orders(project_id, {})
+    pending = sum(1 for row in orders if row.get("status") == "awaiting_approval")
+    failed = sum(1 for row in orders if row.get("status") in {"precheck_failed", "publish_failed", "verify_failed"})
+    latest_order = orders[0] if orders else None
+
+    total_lines = 0
+    configured_lines = 0
+    blockers = 0
+    prod_version = ""
+    for env_key in env_keys:
+        lines = _delivery_lines_for_env(project_id, env_key)
+        total_lines += len(lines)
+        configured_lines += sum(1 for line in lines if line.get("configured"))
+        blockers += sum(1 for line in lines if not line.get("configured"))
+    prod_lines = _delivery_lines_for_env(project_id, primary_env)
+    for line in prod_lines:
+        version_name = str(line.get("version_name") or "").strip()
+        if version_name:
+            prod_version = version_name
+
+    health_pct = round(100.0 * configured_lines / total_lines, 1) if total_lines else 0.0
+    if failed or blockers > 0:
+        card_status = "blocked"
+        card_status_label = "阻塞中"
+        health_state = "blocked"
+    elif pending > 0:
+        card_status = "warning"
+        card_status_label = "风险中"
+        health_state = "warning"
+    else:
+        card_status = "running"
+        card_status_label = "运行中"
+        health_state = "healthy"
+
+    latest_release = None
+    if latest_order:
+        rel_status = str(latest_order.get("status") or "").strip().lower()
+        latest_release = {
+            "version_name": str(latest_order.get("version_name") or "").strip(),
+            "updated_at": str(latest_order.get("updated_at") or latest_order.get("created_at") or "").strip(),
+            "status": rel_status,
+            "status_label": _release_status_label(rel_status),
+        }
+
+    return {
+        "owner": owner,
+        "updated_at": updated_at,
+        "card_status": card_status,
+        "card_status_label": card_status_label,
+        "env_health_pct": health_pct,
+        "prod_version": prod_version or None,
+        "pending_approval": pending,
+        "blocker_count": blockers + failed,
+        "latest_release": latest_release,
+        "health_state": health_state,
+    }
+
+
 def list_projects_for_user(username: str, status_filter: str = "active") -> Dict[str, Any]:
     projects = []
     phase_map = dict(PROJECT_PHASES)
@@ -151,6 +265,7 @@ def list_projects_for_user(username: str, status_filter: str = "active") -> Dict
                 "player_public_url": normalize_public_url(item.get("player_public_url")),
                 "forum_public_url": normalize_public_url(item.get("forum_public_url")),
                 "admin_public_url": normalize_public_url(item.get("admin_public_url")),
+                **_project_card_summary(project_id, item),
             }
         )
     projects.sort(key=lambda row: (projects_db.get(row["id"]) or {}).get("order", 9999))

@@ -1,0 +1,54 @@
+/* P01/P02 共享 — 项目卡片（结构由 template 固定，JS 只填 data-* 与文本） */
+.pm-project-card{border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.pm-project-card.is-archived{background:#fafbfc;border-color:#e8ecf2}
+.pm-project-card__head{display:flex;align-items:flex-start;gap:8px;flex-wrap:nowrap}
+.pm-project-card__title{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
+.pm-project-card__icon{width:40px;height:40px;border-radius:var(--radius-sm);background:#f2f4f7;display:grid;place-items:center;flex-shrink:0;overflow:hidden}
+.pm-project-card__icon img{width:100%;height:100%;object-fit:cover}
+.pm-project-card__title h3{margin:0;font-size:15px;line-height:22px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-project-card__status{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.pm-project-card__status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.pm-project-card__status.running{color:#389e0d;background:#f6ffed}
+.pm-project-card__status.running .pm-project-card__status-dot{background:#52c41a}
+.pm-project-card__status.warning{color:#d48806;background:#fff7e6}
+.pm-project-card__status.warning .pm-project-card__status-dot{background:#faad14}
+.pm-project-card__status.blocked{color:#cf1322;background:#fff1f0}
+.pm-project-card__status.blocked .pm-project-card__status-dot{background:#ff4d4f}
+.pm-project-card__status.archived{color:#667085;background:#f2f4f7}
+.pm-project-card__status.archived .pm-project-card__status-dot{background:#98a2b3}
+.pm-project-card__tools{display:flex;gap:4px;flex-shrink:0;margin-left:4px}
+.pm-project-card__star,.pm-project-card__more{width:28px;height:28px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;border-radius:var(--radius-sm)}
+.pm-project-card__star:hover,.pm-project-card__more:hover{background:#f2f4f7}
+.pm-project-card__star img,.pm-project-card__more img{width:18px;height:18px;opacity:.72}
+.pm-project-card__star.is-favorite img{opacity:1}
+.pm-project-card__owner{display:flex;align-items:center;gap:8px;font-size:12px;color:#667085}
+.pm-project-card__owner img{width:20px;height:20px;border-radius:50%;background:#e8f1ff;padding:3px;box-sizing:border-box}
+.pm-project-card__owner time{margin-left:auto;color:#98a2b3;white-space:nowrap}
+.pm-project-card__metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px 0;border-top:1px solid #eef1f6;border-bottom:1px solid #eef1f6}
+.pm-project-card__metric{text-align:center;min-width:0}
+.pm-project-card__metric-icon{width:36px;height:36px;margin:0 auto 6px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.pm-project-card__metric-icon img{width:20px;height:20px;display:block}
+.pm-project-card__metric-icon--health{background:#e8f8ee}
+.pm-project-card__metric-icon--version{background:#eef3ff}
+.pm-project-card__metric-icon--pending{background:#fff7e8}
+.pm-project-card__metric-icon--blockers{background:#fff0f0}
+.pm-project-card__metric span{display:block;font-size:11px;color:#98a2b3;line-height:16px}
+.pm-project-card__metric strong{display:block;margin-top:2px;font-size:14px;font-weight:600;line-height:20px;color:var(--color-text)}
+.pm-project-card__metric em{display:block;font-size:10px;color:#98a2b3;font-style:normal;line-height:14px;margin-top:1px}
+.pm-project-card__metric strong.good{color:#52c41a}
+.pm-project-card__metric strong.warn{color:#faad14}
+.pm-project-card__metric strong.bad{color:#ff4d4f}
+.pm-project-card__metric strong.muted{color:#98a2b3}
+.pm-project-card__release{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#667085;min-height:22px}
+.pm-project-card__release b{color:var(--color-text);font-weight:600}
+.pm-project-card__release-tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:4px;font-size:11px;font-weight:600}
+.pm-project-card__release-tag.success{color:#389e0d;background:#f6ffed}
+.pm-project-card__release-tag.danger{color:#cf1322;background:#fff1f0}
+.pm-project-card__release-tag.warning{color:#d48806;background:#fff7e6}
+.pm-project-card__release-tag.muted{color:#667085;background:#f2f4f7}
+.pm-project-card__foot{display:flex;align-items:center;justify-content:center;position:relative;padding-top:4px;min-height:32px}
+.pm-project-card__foot a{display:inline-flex;align-items:center;gap:4px;color:var(--color-primary);font-size:13px;font-weight:600;text-decoration:none}
+.pm-project-card__foot a img{width:14px;height:14px}
+.pm-project-card__foot-more{position:absolute;right:0;top:50%;transform:translateY(-50%);width:28px;height:28px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;border-radius:var(--radius-sm)}
+.pm-project-card__foot-more:hover{background:#f2f4f7}
+.pm-project-card__foot-more img{width:18px;height:18px;opacity:.72}

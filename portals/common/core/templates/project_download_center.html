@@ -1,0 +1,88 @@
+<section class="delivery-app download-center-app" data-delivery-page="download-center" data-project-id="{{ project_id }}">
+  <div class="pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_download_center.svg" alt=""></span>
+      <div><h1>下载中心</h1><p>聚合项目内可下载的安装包与产物，支持外网分享链接与扫码安装。</p></div>
+    </div>
+    <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
+  </div>
+  <div class="pm-filter-bar">
+    <label class="pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input type="search" data-dc-search placeholder="搜索版本、VersionCode、渠道"></label>
+    <select data-dc-env><option value="">全部环境</option><option value="development">开发</option><option value="testing">测试</option><option value="staging">预发</option><option value="production">生产</option></select>
+    <select data-dc-platform><option value="">全部平台</option><option value="android">Android</option><option value="ios">iOS</option></select>
+    <button class="pm-btn" type="button" data-dc-refresh><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+  </div>
+  <div class="pm-table-panel">
+    <table class="pm-table"><thead><tr><th>版本</th><th>VersionCode</th><th>环境/渠道/平台</th><th>构建号</th><th>大小</th><th>操作</th></tr></thead><tbody data-dc-rows><tr><td colspan="6">正在加载…</td></tr></tbody></table>
+    <div class="pm-table-pagination"><span data-dc-count>共 0 条</span></div>
+  </div>
+</section>
+<script>
+(() => {
+  const root = document.querySelector('.download-center-app');
+  if (!root) return;
+  const projectId = root.dataset.projectId;
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'':'&#39;'}[c]));
+  const envLabels = { development: '开发', testing: '测试', staging: '预发', production: '生产' };
+  let rows = [];
+  const tbody = root.querySelector('[data-dc-rows]');
+  const render = () => {
+    const q = (root.querySelector('[data-dc-search]').value || '').trim().toLowerCase();
+    const env = root.querySelector('[data-dc-env]').value;
+    const platform = root.querySelector('[data-dc-platform]').value;
+    const filtered = rows.filter(r => {
+      const hay = JSON.stringify(r).toLowerCase();
+      return (!q || hay.includes(q)) && (!env || r.env_key === env) && (!platform || String(r.platform).toLowerCase() === platform);
+    });
+    root.querySelector('[data-dc-count]').textContent = `共 ${filtered.length} 条`;
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="6">暂无可下载产物</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filtered.map(r => {
+      const url = r.public_download_url || r.oss_download_url || r.local_download_url || '';
+      const size = r.size_bytes ? `${(r.size_bytes / 1048576).toFixed(1)} MB` : '-';
+      return `<tr><td>${esc(r.version_name)}</td><td>${esc(r.version_code)}</td><td>${esc(envLabels[r.env_key] || r.env_key)} / ${esc(r.channel_name || r.channel_id)} / ${esc(r.platform)}</td><td>#${esc(r.build_number || '-')}</td><td>${esc(size)}</td><td class="pm-table-actions">${url ? `<a class="pm-btn pm-btn--compact pm-btn--primary" href="${esc(url)}" target="_blank" rel="noopener">下载</a>` : '<span class="pm-tag pm-tag--muted">未就绪</span>'}</td></tr>`;
+    }).join('');
+  };
+  const load = async () => {
+    tbody.innerHTML = '<tr><td colspan="6">正在加载…</td></tr>';
+    try {
+      const res = await fetch(`/api/build/history-by-project?project_id=${encodeURIComponent(projectId)}`, { credentials: 'same-origin' });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || '加载失败');
+      rows = [];
+      (data.groups || []).forEach(g => (g.version_codes || []).forEach(vc => {
+        const dl = vc.apk_download && typeof vc.apk_download === 'object' ? vc.apk_download : {};
+        if (dl.public_download_url || dl.local_download_url || dl.oss_download_url || vc.apk_status === 'found') {
+          rows.push({
+            version_name: g.version_name || vc.version_name,
+            version_code: vc.version_code,
+            env_key: vc.env_key,
+            channel_id: vc.channel_id,
+            channel_name: vc.channel_name,
+            platform: vc.platform,
+            build_number: dl.build_number,
+            size_bytes: dl.size_bytes,
+            public_download_url: dl.public_download_url,
+            oss_download_url: dl.oss_download_url,
+            local_download_url: dl.local_download_url,
+          });
+        }
+      }));
+      render();
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6">${esc(e.message)}</td></tr>`;
+    }
+  };
+  root.querySelector('[data-dc-refresh]').onclick = load;
+  root.querySelector('[data-dc-search]').oninput = render;
+  root.querySelector('[data-dc-env]').onchange = render;
+  root.querySelector('[data-dc-platform]').onchange = render;
+  document.addEventListener('pm-shell-search', e => {
+    root.querySelector('[data-dc-search]').value = e.detail?.query || '';
+    render();
+  });
+  load();
+})();
+</script>

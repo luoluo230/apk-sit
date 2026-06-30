@@ -546,7 +546,7 @@ loadProjects();
 '''
 
 
-def render_projects_page() -> str:
+def projects_page_context() -> dict:
     import json
     import re
 
@@ -557,10 +557,6 @@ def render_projects_page() -> str:
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
         return re.sub(r"(?i)</script>", r"<\\u002fscript>", text)
 
-    phase_options = "".join(
-        '<option value="%s">%s</option>' % (k, v) for k, v in PROJECT_PHASES
-    )
-    role_options = "".join('<option value="%s">%s</option>' % (r, r) for r in PROJECT_ROLES)
     all_channels = [
         {
             "id": (c.get("id") or "").strip(),
@@ -569,9 +565,14 @@ def render_projects_page() -> str:
         for c in (channels_db if isinstance(channels_db, list) else [])
         if (c.get("id") or "").strip()
     ]
-    return (
-        PROJECTS_PAGE.replace("{{PROJECT_PHASE_OPTIONS}}", phase_options)
-        .replace("{{PROJECT_ROLE_OPTIONS}}", role_options)
-        .replace("{{PROJECT_ROLES_JSON}}", _safe_json_for_script(PROJECT_ROLES))
-        .replace("{{ALL_CHANNELS_JSON}}", _safe_json_for_script(all_channels))
-    )
+    return {
+        "project_phases": PROJECT_PHASES,
+        "project_roles": PROJECT_ROLES,
+        "init_data_json": _safe_json_for_script({"roles": PROJECT_ROLES, "channels": all_channels}),
+    }
+
+
+def render_projects_page() -> str:
+    from flask import render_template
+
+    return render_template("project_list.html", **projects_page_context())
