@@ -34,7 +34,10 @@ EDITABLE_PLAN_FIELDS = (
     "jenkins_params",
     "target_topology_id",
     "release_strategy",
+    "release_reason_type",
+    "gray_strategy",
     "gray_ratio",
+    "validation_items",
     "gray_duration",
     "gray_success_action",
     "target_audience",
@@ -209,7 +212,16 @@ def get_release_order(project_id: str, order_id: str, *, include_details: bool =
             "SELECT * FROM release_orders WHERE project_id=? AND release_order_id=?",
             (project_id, order_id),
         ).fetchone()
-        return _order_from_row(row, include_details=include_details) if row else {}
+    if not row:
+        return {}
+    if str(row["status"] or "") == "building":
+        sync_release_order_build_status(project_id, order_id)
+        with _db_lock:
+            row = _get_conn().execute(
+                "SELECT * FROM release_orders WHERE project_id=? AND release_order_id=?",
+                (project_id, order_id),
+            ).fetchone()
+    return _order_from_row(row, include_details=include_details) if row else {}
 
 
 def find_draft_release_order(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
@@ -461,6 +473,189 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
             {"build_number": build_number, "jenkins_instance_id": instance_id},
         )
     return get_release_order(project_id, order_id)
+
+
+def sync_release_order_build_status(project_id: str, order_id: str, *, actor: str = "system") -> Dict[str, Any]:
+    """When Jenkins build finishes, advance building → artifacts_ready and refresh artifacts."""
+    init_db()
+    with _db_lock:
+        row = _get_conn().execute(
+            "SELECT * FROM release_orders WHERE project_id=? AND release_order_id=?",
+            (project_id, order_id),
+        ).fetchone()
+    if not row or str(row["status"] or "") != "building":
+        return _order_from_row(row, include_details=False) if row else {}
+    order = _order_from_row(row, include_details=False)
+    payload = dict(order.get("payload") or {})
+    build_number = str(payload.get("build_job_id") or "").strip()
+    instance_id = str(payload.get("jenkins_instance_id") or "").strip()
+    if not build_number or not instance_id:
+        return order
+    try:
+        from services import jenkins as jenkins_svc
+        from services import jenkins_manager as jm
+
+        base_url = jm.get_jenkins_url_for_instance(instance_id=instance_id)
+        builds_dir = jm.get_builds_dir_for_instance(instance_id=instance_id)
+        st = jenkins_svc.get_build_status(
+            int(build_number),
+            base_url=base_url,
+            builds_dir=builds_dir,
+            instance_id=instance_id,
+        )
+    except Exception:
+        return order
+    if st.get("building"):
+        return order
+    result = str(st.get("status") or "").upper()
+    if result != "SUCCESS":
+        return order
+    version = _find_version(project_id, order["version_id"], order["version_code"])
+    if not version:
+        return order
+    artifacts = _artifact_rows(version)
+    now = _now_iso()
+    with get_cursor() as cur:
+        for artifact_type, url, path in artifacts:
+            cur.execute(
+                """
+                UPDATE release_order_artifacts
+                SET artifact_url=?, artifact_path=?, status=?, updated_at=?
+                WHERE release_order_id=? AND artifact_type=?
+                """,
+                (
+                    url,
+                    path,
+                    "registered" if url or path else "missing",
+                    now,
+                    order_id,
+                    artifact_type,
+                ),
+            )
+        cur.execute(
+            "UPDATE release_orders SET status='artifacts_ready', updated_at=? WHERE project_id=? AND release_order_id=?",
+            (now, project_id, order_id),
+        )
+        _event(cur, order_id, "build_completed", actor, "building", "artifacts_ready", {"build_number": build_number})
+    return get_release_order(project_id, order_id, include_details=False)
+
+
+def _scope_query_suffix(order: Dict[str, Any]) -> str:
+    from urllib.parse import urlencode
+
+    params = {
+        key: str(order.get(key) or "").strip()
+        for key in ("env_key", "channel_id", "platform", "version_id", "version_name", "version_code", "release_order_id")
+        if str(order.get(key) or "").strip()
+    }
+    qs = urlencode(params)
+    return f"?{qs}" if qs else ""
+
+
+def resolve_release_order_next_action(project_id: str, order_id: str) -> Dict[str, Any]:
+    order = get_release_order(project_id, order_id, include_details=True)
+    if not order:
+        raise ValueError("发布单不存在")
+    status = str(order.get("status") or "")
+    ctx = _scope_query_suffix(order)
+    base = f"/admin/projects/{project_id}/release-orders/{order_id}"
+    edit_href = f"{base}/edit{ctx}"
+    build_history_href = (
+        f"/admin/projects/{project_id}/build-history"
+        f"?env_key={order.get('env_key')}&channel_id={order.get('channel_id')}"
+        f"&platform={order.get('platform')}&version_id={order.get('version_id')}&scoped=1"
+    )
+    phase_map = {
+        "draft": 0,
+        "cancelled": 0,
+        "building": 1,
+        "artifacts_ready": 1,
+        "prechecking": 1,
+        "precheck_failed": 1,
+        "ready": 2,
+        "awaiting_approval": 2,
+        "approved": 2,
+        "publishing": 2,
+        "published": 2,
+        "verifying": 2,
+        "verified": 2,
+        "verify_failed": 2,
+        "rolled_back": 2,
+        "publish_failed": 2,
+    }
+    phase_index = phase_map.get(status, 0)
+    more: List[Dict[str, Any]] = []
+    terminal = status in TERMINAL_STATUSES or status in {"published", "verified", "cancelled"}
+
+    def _primary(action: str, label: str, *, api_action: str = "", href: str = "", disabled: bool = False, reason: str = ""):
+        return {
+            "action": action,
+            "label": label,
+            "api_action": api_action,
+            "href": href,
+            "disabled": disabled,
+            "reason": reason,
+        }
+
+    if status in {"draft", "artifacts_ready"}:
+        primary = _primary("build", "下一步：触发构建", api_action="build")
+        more.extend([
+            {"action": "edit", "label": "编辑计划", "href": edit_href},
+            {"action": "cancel", "label": "取消发布单", "api_action": "cancel"},
+        ])
+    elif status == "building":
+        primary = _primary("view_build", "下一步：查看构建日志", href=build_history_href)
+        more.append({"action": "cancel", "label": "取消发布单", "api_action": "cancel"})
+    elif status == "precheck_failed":
+        primary = _primary("edit", "下一步：编辑计划", href=edit_href)
+        more.extend([
+            {"action": "precheck", "label": "重新预检", "api_action": "precheck"},
+            {"action": "cancel", "label": "取消发布单", "api_action": "cancel"},
+        ])
+    elif status in {"ready", "approved"}:
+        primary = _primary("publish", "下一步：执行发布", api_action="publish")
+        more.extend([
+            {"action": "precheck", "label": "重新预检", "api_action": "precheck"},
+            {"action": "cancel", "label": "取消发布单", "api_action": "cancel"},
+        ])
+    elif status == "awaiting_approval":
+        primary = _primary("approve", "下一步：审批通过", api_action="approve")
+        more.append({"action": "cancel", "label": "取消发布单", "api_action": "cancel"})
+    elif status == "published":
+        primary = _primary("verify", "下一步：执行验证", api_action="verify")
+        more.append({"action": "rollback", "label": "回滚", "api_action": "rollback"})
+    elif status == "verify_failed":
+        primary = _primary("verify", "下一步：重新验证", api_action="verify")
+        if order.get("bundle_id") and order.get("active_bundle_id") and order.get("bundle_id") != order.get("active_bundle_id"):
+            more.append({"action": "rollback", "label": "回滚", "api_action": "rollback"})
+    elif status == "verified":
+        primary = _primary("view", "已完成", disabled=True, reason="发布与验证已完成")
+        if order.get("bundle_id") and order.get("active_bundle_id") and order.get("bundle_id") != order.get("active_bundle_id"):
+            more.append({"action": "rollback", "label": "回滚", "api_action": "rollback"})
+    elif status == "prechecking":
+        primary = _primary("wait", "预检进行中…", disabled=True, reason="请等待预检完成")
+    elif status == "publishing":
+        primary = _primary("wait", "发布执行中…", disabled=True, reason="请等待发布完成")
+    elif status == "verifying":
+        primary = _primary("wait", "验证进行中…", disabled=True, reason="请等待验证完成")
+    elif status == "cancelled":
+        primary = _primary("view", "已取消", disabled=True, reason="发布单已取消")
+    elif status == "rolled_back":
+        primary = _primary("view", "已回滚", disabled=True, reason="已回滚到上一 Bundle")
+    else:
+        primary = _primary("view", "查看详情", disabled=True)
+
+    if status in {"draft", "artifacts_ready", "precheck_failed", "ready"} and not terminal:
+        more.insert(0, {"action": "precheck", "label": "执行预检", "api_action": "precheck"})
+
+    return {
+        "release_order_id": order_id,
+        "status": status,
+        "phase_index": phase_index,
+        "phases": ["准备", "计划", "执行"],
+        "primary": primary,
+        "more": [item for item in more if item.get("action") != primary.get("action")],
+    }
 
 
 def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
@@ -813,6 +1008,40 @@ def context_options(project_id: str, env_key: str = "") -> Dict[str, Any]:
     }
 
 
+def _version_id_for_delivery_line(
+    project_id: str,
+    env_key: str,
+    channel_id: str,
+    platform: str,
+    version_name: str,
+    version_code: str,
+) -> str:
+    ek = normalize_release_env_key(env_key, project_id=project_id)
+    cid = resolve_channel_id(project_id, channel_id) or str(channel_id or "").strip()
+    plat = str(platform or "").strip().lower()
+    vn = str(version_name or "").strip()
+    vc = str(version_code or "").strip()
+    for source in project_versions_db.get(project_id) or []:
+        if not isinstance(source, dict):
+            continue
+        row = dict(source)
+        row_env = normalize_release_env_key(row.get("env_key") or row.get("stage") or row.get("env"), project_id=project_id)
+        row_channel = resolve_channel_id(project_id, str(row.get("channel_id") or row.get("channel") or "")) or str(
+            row.get("channel_id") or row.get("channel") or ""
+        ).strip()
+        row_plat = str(row.get("platform") or "android").strip().lower()
+        if row_env != ek or row_channel != cid or row_plat != plat:
+            continue
+        if vn and str(row.get("version_name") or "").strip() != vn:
+            continue
+        if vc and str(row.get("version_code") or "").strip() != vc:
+            continue
+        vid = str(row.get("id") or "").strip()
+        if vid:
+            return vid
+    return ""
+
+
 def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any]]:
     ek = normalize_release_env_key(env_key, project_id=project_id)
     channels = [
@@ -841,6 +1070,7 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
                 fallback_topology_id=str(scope.get("default_topology_id") or "") if scope else "",
             )
             configured = bool(scope and (bundle or version_name))
+            line_version_code = str(client.get("version_code") or bundle.get("version_code") or "")
             lines.append(
                 {
                     "channel_id": cid,
@@ -850,7 +1080,10 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
                     "scope_id": scope_id,
                     "configured": configured,
                     "version_name": version_name,
-                    "version_code": str(client.get("version_code") or bundle.get("version_code") or ""),
+                    "version_code": line_version_code,
+                    "version_id": _version_id_for_delivery_line(
+                        project_id, env_key, cid, plat_value, version_name, line_version_code
+                    ),
                     "topology_id": str(binding.get("topology_id") or server.get("topology_id") or ""),
                     "binding_source": str(binding.get("binding_source") or ""),
                     "bundle_id": str(bundle.get("bundle_id") or ""),

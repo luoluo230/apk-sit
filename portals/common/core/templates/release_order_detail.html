@@ -1,15 +1,17 @@
 <section class="delivery-app order-detail-app" data-delivery-page="order-detail" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
-  <div class="order-detail-heading"><div><h1 id="orderTitle">发布单详情</h1><p id="orderSubtitle">正在加载完整交付上下文...</p></div><div id="orderActions"></div></div>
+  <div class="order-detail-heading"><div><h1 id="orderTitle">发布单详情</h1><p id="orderSubtitle">正在加载完整交付上下文...</p></div><div id="orderActions" class="order-actions-bar"></div></div>
   <div class="order-meta-strip" id="orderMeta"></div>
-  <div class="delivery-steps" id="orderSteps"></div>
-  <div class="order-detail-layout">
+  <div class="ro-journey-progress" id="orderJourneyProgress" aria-label="发布进度"></div>
+  <div class="order-detail-layout order-detail-layout--two-col">
     <main>
       <section class="order-alerts" id="orderAlerts"></section>
-      <div class="order-detail-grid">
+      <div class="order-detail-grid order-detail-grid--two">
         <section class="ui-panel"><div class="ui-panel-head"><h2>构建与产物</h2></div><div id="orderArtifacts"></div></section>
         <section class="ui-panel"><div class="ui-panel-head"><h2>拓扑与运行态</h2></div><div id="orderRuntime"></div></section>
         <section class="ui-panel"><div class="ui-panel-head"><h2>预检结果</h2></div><div id="orderPrecheck"></div></section>
         <section class="ui-panel"><div class="ui-panel-head"><h2>审批信息</h2></div><div id="orderApprovals"></div></section>
+      </div>
+      <div class="order-detail-grid order-detail-secondary">
         <section class="ui-panel"><div class="ui-panel-head"><h2>发布与验证</h2></div><div id="orderExecution"></div></section>
         <section class="ui-panel"><div class="ui-panel-head"><h2>Bundle 与回滚</h2></div><div id="orderBundle"></div></section>
       </div>

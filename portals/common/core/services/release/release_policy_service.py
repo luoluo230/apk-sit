@@ -170,6 +170,38 @@ def _pipeline_has_content(pipeline: dict) -> bool:
     return bool(str(pipeline.get("git_branch") or "").strip())
 
 
+def _pipeline_step_labels() -> List[tuple]:
+    return [
+        ("config_export", "配置导出"),
+        ("resource_build", "资源打包"),
+        ("hot_release", "热更发布"),
+        ("apk_build", "安装包"),
+    ]
+
+
+def _missing_pipeline_steps(pipeline: dict) -> List[str]:
+    if not isinstance(pipeline, dict):
+        return [label for _, label in _pipeline_step_labels()]
+    missing: List[str] = []
+    for key, label in _pipeline_step_labels():
+        block = pipeline.get(key)
+        if isinstance(block, dict) and block.get("enabled"):
+            continue
+        missing.append(label)
+    return missing
+
+
+def _pipeline_summary(pipeline: dict) -> str:
+    if not isinstance(pipeline, dict):
+        return ""
+    parts: List[str] = []
+    for key, label in _pipeline_step_labels():
+        block = pipeline.get(key) or {}
+        if isinstance(block, dict) and block.get("enabled"):
+            parts.append(label)
+    return " · ".join(parts)
+
+
 def assess_pipeline_readiness(
     version: Optional[dict],
     group_meta: Optional[dict] = None,
@@ -180,52 +212,67 @@ def assess_pipeline_readiness(
     group_meta = group_meta or {}
     template = group_meta.get("pipeline_template") if isinstance(group_meta.get("pipeline_template"), dict) else {}
     legacy_pipeline = version.get("pipeline") if isinstance(version.get("pipeline"), dict) else {}
-    effective_pipeline = template if _pipeline_has_content(template) else legacy_pipeline
-    jenkins_instance = str(
-        group_meta.get("jenkins_instance_id") or version.get("jenkins_instance_id") or ""
-    ).strip()
-    jenkins_job = resolve_jenkins_job(version, group_meta, channel_id, project_id=project_id)
+
+    if project_id and version:
+        from services.admin.version_service import resolve_effective_jenkins, resolve_effective_pipeline
+
+        effective_pipeline = resolve_effective_pipeline(project_id, version)
+        jenkins = resolve_effective_jenkins(project_id, version)
+        jenkins_instance = str(jenkins.get("jenkins_instance_id") or "").strip()
+        jenkins_job = str(jenkins.get("jenkins_job_id") or "").strip()
+    else:
+        effective_pipeline = template if _pipeline_has_content(template) else legacy_pipeline
+        jenkins_instance = str(
+            group_meta.get("jenkins_instance_id") or version.get("jenkins_instance_id") or ""
+        ).strip()
+        jenkins_job = resolve_jenkins_job(version, group_meta, channel_id, project_id=project_id)
+
+    has_pipeline = _pipeline_has_content(effective_pipeline)
+    missing_steps = _missing_pipeline_steps(effective_pipeline) if has_pipeline else []
     checks = {
         "jenkins_instance": bool(jenkins_instance),
         "jenkins_job": bool(jenkins_job),
-        "pipeline": _pipeline_has_content(effective_pipeline),
+        "pipeline": has_pipeline,
     }
     ready = all(checks.values())
+
+    if _pipeline_has_content(template):
+        source = "version_group"
+    elif _pipeline_has_content(legacy_pipeline):
+        source = "legacy_vc"
+    elif has_pipeline:
+        source = "lazy_init"
+    else:
+        source = "none"
+
+    if not checks["jenkins_instance"] and not checks["jenkins_job"] and not has_pipeline:
+        status = "unconfigured"
+    elif ready and not missing_steps:
+        status = "ready"
+    else:
+        status = "partial"
+
     missing: List[str] = []
     if not checks["jenkins_instance"]:
         missing.append("Jenkins 实例")
     if not checks["jenkins_job"]:
         missing.append("Jenkins Job")
-    if not checks["pipeline"]:
+    if not has_pipeline:
         missing.append("管线四步配置")
+    elif missing_steps:
+        missing.extend(missing_steps)
+
     return {
         "ready": ready,
+        "status": status,
         "checks": checks,
         "jenkins_instance_id": jenkins_instance,
         "jenkins_job_id": jenkins_job,
         "pipeline_summary": _pipeline_summary(effective_pipeline),
         "missing": missing,
-        "source": "version_group" if _pipeline_has_content(template) else ("legacy_vc" if _pipeline_has_content(legacy_pipeline) else "none"),
+        "missing_pipeline_steps": missing_steps,
+        "source": source,
     }
-
-
-def _pipeline_summary(pipeline: dict) -> str:
-    if not isinstance(pipeline, dict):
-        return ""
-    parts: List[str] = []
-    ce = pipeline.get("config_export") or {}
-    rb = pipeline.get("resource_build") or {}
-    hr = pipeline.get("hot_release") or {}
-    ab = pipeline.get("apk_build") or {}
-    if isinstance(ce, dict) and ce.get("enabled"):
-        parts.append("配置导出")
-    if isinstance(rb, dict) and rb.get("enabled"):
-        parts.append("资源打包")
-    if isinstance(hr, dict) and hr.get("enabled"):
-        parts.append("热更发布")
-    if isinstance(ab, dict) and ab.get("enabled"):
-        parts.append("安装包")
-    return " · ".join(parts)
 
 
 def assess_delivery_readiness(
@@ -326,10 +373,10 @@ def release_order_form_context(
     channel_id: str = "",
     platform: str = "",
 ) -> Dict[str, Any]:
-    from models.data import project_versions_db
+    from repositories.admin import versions_repo
 
     version: dict = {}
-    versions = project_versions_db.get(project_id) or []
+    versions = versions_repo.list_versions(project_id) if versions_repo.has_project(project_id) else []
     if version_id:
         version = next((row for row in versions if str(row.get("id") or "") == str(version_id)), {})
     if not version and env_key and channel_id and platform:

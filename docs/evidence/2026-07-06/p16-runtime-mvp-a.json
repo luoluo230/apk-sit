@@ -1,0 +1,17 @@
+﻿{
+  "module": "P16_environment_runtime_overview",
+  "asset_ver": "20260706-p16-mvp-a",
+  "validated_at": "2026-07-06T10:30:00+08:00",
+  "tests": {
+    "unittest": "tests.test_environment_runtime_overview — 4 passed",
+    "js_syntax": "project_environment_runtime.js — node --check OK",
+    "page_status": "GET /admin/projects/GomeKu/environments/production/runtime — 200",
+    "api_status": "GET /api/.../runtime-overview — 200 ok:true"
+  },
+  "routes": [
+    "/admin/projects/{id}/environments/{env_key}/runtime",
+    "/admin/projects/{id}/overview/runtime?env_key=",
+    "/api/projects/{id}/environments/{env_key}/runtime-overview"
+  ],
+  "browser_note": "Manual login required for Glass browser screenshot; automated test client verified HTML render."
+}

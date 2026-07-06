@@ -147,7 +147,7 @@
 | P08 | 下载中心 | 无 | 未独立实现 |
 | P09 | 测试设备 | 无 | 未实现 |
 | P10 | 发布单中心 | 复用列表语言 | 有列表，视觉未对齐 P02 |
-| P13–P27 | 拓扑/Agent/诊断/审批/任务/设置等 | 部分在其他 PNG | 多沿用旧运维 UI，未纳入 Dev Portal 壳 |
+| P16 | 环境运行工作台 | `P16_environment_runtime_overview.png` | `/environments/{env}/runtime` MVP-A 已立项 |
 
 ### 建议修复优先级
 

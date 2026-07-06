@@ -1,0 +1,13 @@
+<section class="p02-panel env-config-panel">
+  <div class="p02-panel-head"><h2>项目环境</h2><span>内置环境可禁用，自定义环境可删除</span></div>
+  <p class="channel-hint scope-layer-hint">为每个环境配置交付范围（渠道×平台子集）。</p>
+  <div id="projectEnvList" class="env-config-grid"></div>
+  <div class="env-config-add">
+    <h3>添加环境</h3>
+    <div class="env-add-row">
+    <input id="projectEnvKeyInput" type="text" placeholder="环境 key（如 canary）" maxlength="32">
+    <input id="projectEnvLabelInput" type="text" placeholder="显示名称（如 灰度环境）">
+    <button class="ui-primary" id="btnProjectEnvAdd" type="button">添加环境</button>
+    </div>
+  </div>
+</section>

@@ -110,6 +110,15 @@ status: building, payload.pipeline_source = "version_group"
 | `POST /admin/build/trigger` (without `_version_id`，stage 构建) | 走旧的直触发流程（不影响） |
 | `GET /admin/projects/{id}/versions/{vid}/workflow` | 仍可访问，但建议从「发布单」按钮进入 |
 
+## 6. 用户可见操作路径
+
+详见 [`release_journey_unified.md`](release_journey_unified.md)。
+
+- **唯一发布入口**：版本代码页 → `开始发布` → `/release-orders/start?version_id=`
+- **准备步骤**：版本组「配置管线」（非发布入口）
+- **执行步骤**：发布单详情「下一步」驱动构建 / 预检 / 发布
+- **只读查看**：构建产物、发布单中心列表
+
 ## 5. API
 
 | 方法 | 路径 | 用途 |

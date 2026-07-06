@@ -10,8 +10,9 @@ from flask import Blueprint, jsonify, redirect, render_template, request, sessio
 from data.platforms import get_platform_by_id, get_project_assigned_platform_ids, is_valid_platform_id, list_platform_catalog
 from models.data import channels_db, can_edit_project, get_channel_by_id, get_channels_for_project, projects_db
 from services.admin import project_env_service, project_service
-from services.release.env_registry import get_project_env_defs, list_project_env_keys, normalize_release_env_key
+from services.release.env_registry import get_project_env_defs, list_project_env_keys, normalize_release_env_key, project_env_label
 from services.authz import admin_required
+from services.ops.environment_runtime_service import build_environment_runtime_overview
 from services.ops.helpers import _render_ops_page
 from services.release.release_order_service import (
     approve_release_order,
@@ -25,6 +26,7 @@ from services.release.release_order_service import (
     precheck_release_order,
     project_overview,
     publish_release_order,
+    resolve_release_order_next_action,
     request_build,
     rollback_release_order,
     update_release_order,
@@ -34,13 +36,15 @@ from services.release.release_policy_service import release_order_form_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
 
-DELIVERY_ASSET_VER = "20260625-pm10"
+DELIVERY_ASSET_VER = "20260706-release-journey-v4"
 
 bp = Blueprint("project_delivery", __name__)
 
 BREADCRUMB_BY_PAGE = {
     "project-home": "总览",
     "environment-overview": "总览",
+    "environment-runtime": "总览",
+    "environment-config": "项目设置",
     "project-channels": "项目设置",
     "versions": "交付管理",
     "release-orders": "交付管理",
@@ -84,11 +88,62 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
         context_filters=_filters(),
         **context,
     )
-    js = f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+    js = (
+        f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+        f'<script src="/static/project_overview.js?v={DELIVERY_ASSET_VER}"></script>'
+        f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+    )
     if template_name == "project_overview.html":
-        css = f'<link rel="stylesheet" href="/static/project_overview.css?v={DELIVERY_ASSET_VER}">'
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_overview.css?v={DELIVERY_ASSET_VER}">'
+        )
+    elif template_name == "project_environment_runtime.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_ui/pm-table.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_environment_runtime.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = f'<script src="/static/project_environment_runtime.js?v={DELIVERY_ASSET_VER}"></script>'
+    elif template_name == "release_order_form.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = (
+            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+        )
+    elif template_name == "project_environment_detail.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_environment_detail.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = (
+            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+        )
+    elif template_name == "release_order_detail.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = (
+            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+        )
     else:
         css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+        js = (
+            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+        )
     return _render_ops_page(
         content,
         title,
@@ -99,6 +154,77 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
         extra_css=css,
         extra_js=js,
     )
+
+
+@bp.route("/admin/projects/<project_id>/overview/runtime")
+@admin_required("projects")
+def project_runtime_overview_redirect(project_id: str):
+    if project_id not in projects_db:
+        return "项目不存在", 404
+    env_key = normalize_release_env_key(str(request.args.get("env_key") or "production"), project_id=project_id)
+    parts = []
+    for key in ("channel_id", "platform"):
+        val = str(request.args.get(key) or "").strip()
+        if val:
+            parts.append(f"{key}={val}")
+    target = f"/admin/projects/{project_id}/environments/{env_key}/runtime"
+    if parts:
+        target += "?" + "&".join(parts)
+    return redirect(target)
+
+
+@bp.route("/admin/projects/<project_id>/environments/<env_key>/runtime")
+@admin_required("projects")
+def environment_runtime_page(project_id: str, env_key: str):
+    if project_id not in projects_db:
+        return "项目不存在", 404
+    ek = normalize_release_env_key(env_key, project_id=project_id)
+    allowed = {str(row.get("env_key") or "").strip().lower() for row in get_project_env_defs(project_id)}
+    if ek not in allowed:
+        return "环境不存在", 404
+    env_options = [
+        {
+            "env_key": str(row.get("env_key") or "").strip().lower(),
+            "env_label": project_env_label(project_id, row.get("env_key")),
+        }
+        for row in get_project_env_defs(project_id)
+        if row.get("enabled") is not False
+    ]
+    return _page(
+        "project_environment_runtime.html",
+        "环境运行概览",
+        project_id,
+        "environment-runtime",
+        breadcrumb_module="总览",
+        page_env_key=ek,
+        env_options=env_options,
+    )
+
+
+@bp.route("/api/projects/<project_id>/environments/<env_key>/runtime-overview")
+@admin_required("projects")
+def environment_runtime_overview_api(project_id: str, env_key: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    filters = {
+        key: str(request.args.get(key) or "").strip()
+        for key in (
+            "channel_id",
+            "platform",
+            "service_q",
+            "service_cluster",
+            "service_category",
+            "service_health",
+            "service_status",
+            "service_page",
+            "service_page_size",
+        )
+    }
+    try:
+        data = build_environment_runtime_overview(project_id, env_key, filters)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    return jsonify({"ok": True, "data": data})
 
 
 @bp.route("/admin/projects/<project_id>/environments/<env_key>")
@@ -253,11 +379,24 @@ def platform_catalog_api():
 @bp.route("/admin/projects/<project_id>/overview")
 @admin_required("projects")
 def project_overview_page(project_id: str):
+    tab = str(request.args.get("tab") or "").strip().lower()
+    if tab == "environments":
+        active_page = "environment-config"
+        title = "环境配置"
+    elif tab == "channels":
+        active_page = "project-channels"
+        title = "渠道管理"
+    elif tab == "platforms":
+        active_page = "project-channels"
+        title = "平台管理"
+    else:
+        active_page = "project-home"
+        title = "项目总览"
     return _page(
         "project_overview.html",
-        "项目总览",
+        title,
         project_id,
-        "project-home",
+        active_page,
         breadcrumb_module="总览",
         **_channel_panel_context(project_id),
         **_platform_panel_context(project_id),
@@ -282,7 +421,8 @@ def release_order_start_page(project_id: str):
         return "项目不存在", 404
     version_id = str(request.args.get("version_id") or "").strip()
     if not version_id:
-        return redirect(f"/admin/projects/{project_id}/release-orders/new")
+        qs = urlencode({"hint": "pick_vc", "env_key": str(request.args.get("env_key") or "").strip()})
+        return redirect(f"/admin/projects/{project_id}/versions?{qs}")
     draft = find_draft_release_order(project_id, version_id)
     versions = project_versions_db.get(project_id) or []
     version = next((row for row in versions if str(row.get("id") or "") == version_id), None)
@@ -306,18 +446,10 @@ def release_order_start_page(project_id: str):
         try:
             draft = create_release_order(project_id, payload, _actor())
         except ValueError as exc:
-            qs = urlencode(
-                {
-                    "env_key": payload.get("env_key") or "",
-                    "channel_id": payload.get("channel_id") or "",
-                    "platform": payload.get("platform") or "",
-                    "version_name": str(version.get("version_name") or ""),
-                    "version_code": str(version.get("version_code") or ""),
-                    "version_id": version_id,
-                    "error": str(exc),
-                }
+            return redirect(
+                f"/admin/projects/{project_id}/versions?"
+                f"{urlencode({'hint': 'pick_vc', 'error': str(exc), 'version_id': version_id, 'env_key': payload.get('env_key') or ''})}"
             )
-            return redirect(f"/admin/projects/{project_id}/release-orders/new?{qs}")
     qs = urlencode(
         {
             "env_key": draft.get("env_key") or "",
@@ -335,7 +467,18 @@ def release_order_start_page(project_id: str):
 @bp.route("/admin/projects/<project_id>/release-orders/new")
 @admin_required("projects")
 def release_order_new_page(project_id: str):
-    return _page("release_order_form.html", "新建发布单", project_id, "release-orders", order_id="")
+    from urllib.parse import urlencode
+
+    version_id = str(request.args.get("version_id") or "").strip()
+    if not version_id:
+        params = {"hint": "pick_vc"}
+        env_key = str(request.args.get("env_key") or "").strip()
+        if env_key:
+            params["env_key"] = env_key
+        return redirect(f"/admin/projects/{project_id}/versions?{urlencode(params)}")
+    extra = {key: str(request.args.get(key) or "").strip() for key in ("env_key", "channel_id", "platform") if request.args.get(key)}
+    extra["version_id"] = version_id
+    return redirect(f"/admin/projects/{project_id}/release-orders/start?{urlencode(extra)}")
 
 
 @bp.route("/admin/projects/<project_id>/release-orders/<order_id>/edit")
@@ -587,6 +730,17 @@ def release_orders_api(project_id: str):
             return jsonify({"ok": True, "data": list_release_orders(project_id, _filters())})
         row = create_release_order(project_id, request.get_json(silent=True) or {}, _actor())
         return jsonify({"ok": True, "data": row}), 201
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/release-orders/<order_id>/next-action")
+@admin_required("projects")
+def release_order_next_action_api(project_id: str, order_id: str):
+    try:
+        if project_id not in projects_db:
+            return jsonify({"ok": False, "error": "项目不存在"}), 404
+        return jsonify({"ok": True, "data": resolve_release_order_next_action(project_id, order_id)})
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 

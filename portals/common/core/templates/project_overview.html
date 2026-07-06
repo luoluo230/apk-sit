@@ -1,4 +1,4 @@
-<section class="p02-overview" data-delivery-page="overview" data-project-id="{{ project_id }}" data-member-count="{{ project_members|length }}">
+<section class="p02-overview{% if request.args.get('tab') %} is-config-mode{% endif %}" data-overview-page data-delivery-page="overview" data-project-id="{{ project_id }}" data-project-name="{{ project.name or project_id }}" data-member-count="{{ project_members|length }}">
   <header class="p02-head">
     <div class="p02-head-main">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
@@ -6,39 +6,61 @@
         <h1>项目总览</h1>
       </div>
     </div>
-    <div class="p02-head-meta">
-      <span>数据更新时间：<b id="overviewUpdatedAt">--</b></span>
-      <button class="p02-icon-btn" data-refresh-overview type="button" title="刷新"><img src="/static/project_ui/svg/action_refresh.svg" alt=""></button>
-    </div>
   </header>
-  <div class="p02-filters" id="overviewFilterStrip">
-    <label>环境<select id="filterEnvKey"><option value="">全部环境</option></select></label>
-    <label>渠道<select id="overviewFilterChannel"><option value="">全部渠道</option></select></label>
-    <label>平台<select id="filterPlatform"><option value="">全部平台</option></select></label>
+
+  <div class="p02-filter-strip pm-filter-bar" id="overviewFilterStrip">
+    <div class="p02-filter-item">
+      <span class="p02-filter-label">项目</span>
+      <span class="p02-filter-pill p02-filter-pill--project" id="overviewProjectPill">{{ project.name or project_id }}</span>
+    </div>
+    <div class="p02-filter-item">
+      <span class="p02-filter-label">环境</span>
+      <select class="p02-filter-pill-select p02-filter-pill-select--env" id="filterEnvKey" aria-label="环境">
+        <option value="">全部环境</option>
+      </select>
+    </div>
+    <div class="p02-filter-item">
+      <span class="p02-filter-label">渠道</span>
+      <select class="p02-filter-pill-select p02-filter-pill-select--channel" id="overviewFilterChannel" aria-label="渠道">
+        <option value="">全部渠道</option>
+      </select>
+    </div>
+    <div class="p02-filter-item">
+      <span class="p02-filter-label">平台</span>
+      <select class="p02-filter-pill-select p02-filter-pill-select--platform" id="filterPlatform" aria-label="平台">
+        <option value="">多平台</option>
+      </select>
+    </div>
+    <div class="p02-filter-meta">
+      <span>数据更新时间：<b id="overviewUpdatedAt">--</b></span>
+      <button class="p02-icon-btn" data-refresh-overview type="button" title="刷新" aria-label="刷新"><img src="/static/project_ui/svg/action_refresh.svg" alt=""></button>
+    </div>
   </div>
-  <nav class="p02-config-tabs" aria-label="项目配置">
-    <button type="button" class="p02-config-tab" data-overview-tab="overview">运行概览</button>
-    <button type="button" class="p02-config-tab" data-overview-tab="environments">环境管理</button>
-    <button type="button" class="p02-config-tab" data-overview-tab="channels">渠道管理</button>
-    <button type="button" class="p02-config-tab" data-overview-tab="platforms">平台管理</button>
-  </nav>
-  <div class="p02-layout">
-    <div class="p02-main">
+
+  <div class="p02-layout pm-page-layout">
+    <div class="p02-main pm-page-main">
       <div class="pm-kpi-row" id="overviewKpis"></div>
-      <section class="p02-panel">
+
+      <section class="p02-panel p02-list-panel">
         <div class="p02-panel-head">
-          <h2>环境运行概览</h2>
+          <div class="p02-panel-title">
+            <h2>环境运行概览</h2>
+            <button type="button" class="p02-icon-btn p02-icon-btn--ghost" title="说明" aria-label="说明"><img src="/static/project_ui/svg/global_help.svg" alt=""></button>
+          </div>
           <div class="p02-panel-actions">
-            <button type="button" class="p02-icon-btn" title="说明"><img src="/static/project_ui/svg/global_help.svg" alt=""></button>
-            <button type="button" class="p02-config-tab p02-link-btn" data-overview-tab-jump="environments" id="btnManageEnvironments">管理环境</button>
+            <div class="p02-view-toggle p01-view-toggle" role="group" aria-label="环境视图">
+              <button type="button" class="p02-view-btn p01-view-btn active" data-env-view="grid" title="卡片视图" aria-label="卡片视图"><img src="/static/project_ui/svg/view_grid.svg" alt=""></button>
+              <button type="button" class="p02-view-btn p01-view-btn" data-env-view="list" title="列表视图" aria-label="列表视图"><img src="/static/project_ui/svg/view_table.svg" alt=""></button>
+            </div>
           </div>
         </div>
         <div class="p02-env-track" id="environmentCards"><div class="p02-empty">正在汇总项目交付状态...</div></div>
       </section>
-      <section class="p02-panel">
+
+      <section class="p02-panel p02-list-panel">
         <div class="p02-panel-head">
           <h2>最近动态</h2>
-          <a href="/admin/projects/{{ project_id }}/release-orders" style="font-size:12px;color:var(--color-primary)">查看全部<img src="/static/project_ui/svg/action_next.svg" alt="" style="width:14px;height:14px;vertical-align:middle"></a>
+          <a class="p02-panel-link" href="/admin/projects/{{ project_id }}/release-orders">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a>
         </div>
         <nav class="p02-activity-tabs" id="overviewActivityTabs" aria-label="动态类型">
           <button type="button" class="p02-activity-tab active" data-activity-tab="all">全部</button>
@@ -53,67 +75,71 @@
         <div class="p02-activity-list" id="overviewActivity"><div class="p02-empty">暂无最近动态</div></div>
       </section>
     </div>
-    <aside class="p02-rail">
-      <section class="p02-rail-panel">
-        <div class="p02-rail-head"><h2>项目成员</h2><a href="/admin/projects/{{ project_id }}/settings">查看全部</a></div>
-        <div class="p02-member-list">{% if project_members %}{% for member in project_members[:5] %}<div class="p02-member-row"><img src="/static/project_ui/svg/global_user.svg" alt=""><b>{{ member.username }}</b><em>{{ member.role_label }}</em></div>{% endfor %}{% else %}<div class="p02-empty">暂无项目成员</div>{% endif %}</div>
-        <div class="p02-member-invite"><a href="/admin/projects/{{ project_id }}/settings">+ 邀请成员</a></div>
+
+    <aside class="p02-rail pm-page-rail">
+      <section class="p02-rail-panel pm-rail-panel">
+        <div class="p02-rail-head">
+          <h2>项目成员</h2>
+          <a href="/admin/projects/{{ project_id }}/settings">查看全部</a>
+        </div>
+        <div class="p02-member-list">
+          {% if project_members %}
+            {% for member in project_members[:5] %}
+            <div class="p02-member-row">
+              <img class="p02-member-avatar" src="/static/project_ui/svg/global_user.svg" alt="">
+              <b>{{ member.username }}</b>
+              <em class="p02-role" data-role="{{ member.role_label }}">{{ member.role_label }}</em>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="p02-empty">暂无项目成员</div>
+          {% endif %}
+        </div>
+        <div class="p02-member-invite">
+          <a href="/admin/projects/{{ project_id }}/settings">+ 邀请成员</a>
+        </div>
       </section>
-      <section class="p02-rail-panel p02-support">
+
+      <section class="p02-rail-panel pm-rail-panel p02-support">
         <div class="p02-rail-head"><h2>帮助与支持</h2></div>
         <a href="/docs"><img src="/static/project_ui/svg/support_doc.svg" alt="">使用文档</a>
         <a href="/docs?tab=faq"><img src="/static/project_ui/svg/support_faq.svg" alt="">常见问题</a>
         <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/support_ticket.svg" alt="">提交工单</a>
         <a href="/docs?tab=contact"><img src="/static/project_ui/svg/support_contact.svg" alt="">联系我们</a>
       </section>
-      <section class="p02-rail-panel">
+
+      <section class="p02-rail-panel pm-rail-panel">
         <div class="p02-rail-head"><h2>快捷入口</h2></div>
         <div class="p02-quick-grid">
-          <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">发布单</a>
-          <a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
-          <a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a>
-          <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/nav_task.svg" alt="">项目任务</a>
+          <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/nav_release_order.svg" alt=""><span>发布单</span></a>
+          <a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""><span>构建与产物</span></a>
+          <a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt=""><span>拓扑资产</span></a>
+          <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/nav_task.svg" alt=""><span>项目任务</span></a>
         </div>
       </section>
     </aside>
   </div>
-  <div class="p02-config-panel" data-overview-panel="channels" id="project-channels">
-    <section class="p02-panel channel-panel">
-      <div class="p02-panel-head"><h2>项目渠道白名单</h2><a href="/admin/projects" target="_blank" rel="noopener">全局渠道库</a></div>
-      <div id="projectChannelList" class="channel-list"></div>
-      <div class="channel-add-row">
-        <select id="projectChannelAddSelect"><option value="">选择要添加的渠道</option>{% for ch in channel_catalog %}{% if ch.channel_id not in assigned_channel_ids %}<option value="{{ ch.channel_id }}">{{ ch.channel_name }} ({{ ch.channel_id }})</option>{% endif %}{% endfor %}</select>
-        <button class="ui-primary" id="btnProjectChannelAdd" type="button">添加</button>
-      </div>
-      <p class="channel-hint">变更后请在下方「初始化交付线 Scope」同步矩阵。</p>
-      <div class="manifest-panel manifest-panel-inline">
-        <p id="overviewManifestStatus">检查 Manifest...</p>
-        <button class="ui-primary" id="btnOverviewBootstrapScopes" type="button">初始化交付线 Scope</button>
-      </div>
-    </section>
+
+  <div class="p02-config-wrap{% if request.args.get('tab') %} is-active{% endif %}">
+    <div class="p02-config-head">
+      <a class="p02-back-link" href="/admin/projects/{{ project_id }}/overview"><img src="/static/project_ui/svg/action_back.svg" alt="">返回项目总览</a>
+      <h2>{% if request.args.get('tab') == 'channels' %}渠道管理{% elif request.args.get('tab') == 'platforms' %}平台管理{% elif request.args.get('tab') == 'environments' %}环境配置{% endif %}</h2>
+    </div>
+    {% if request.args.get('tab') == 'channels' %}
+    <div class="p02-config-panel is-active" data-overview-panel="channels" id="project-channels">
+      {% include 'project_overview_config_channels.html' %}
+    </div>
+    {% elif request.args.get('tab') == 'platforms' %}
+    <div class="p02-config-panel is-active" data-overview-panel="platforms" id="project-platforms">
+      {% include 'project_overview_config_platforms.html' %}
+    </div>
+    {% elif request.args.get('tab') == 'environments' %}
+    <div class="p02-config-panel is-active" data-overview-panel="environments" id="project-env-config">
+      {% include 'project_overview_config_envs.html' %}
+    </div>
+    {% endif %}
   </div>
-  <div class="p02-config-panel" data-overview-panel="environments" id="project-env-config">
-    <section class="p02-panel env-config-panel">
-      <div class="p02-panel-head"><h2>项目环境</h2><span>内置环境可禁用，自定义环境可删除</span></div>
-      <p class="channel-hint scope-layer-hint">为每个环境配置交付范围（渠道×平台子集）。</p>
-      <div id="projectEnvList" class="env-config-list"></div>
-      <div class="env-add-row">
-        <input id="projectEnvKeyInput" type="text" placeholder="环境 key（如 canary）" maxlength="32">
-        <input id="projectEnvLabelInput" type="text" placeholder="显示名称（如 灰度环境）">
-        <button class="ui-primary" id="btnProjectEnvAdd" type="button">添加环境</button>
-      </div>
-    </section>
-  </div>
-  <div class="p02-config-panel" data-overview-panel="platforms" id="project-platforms">
-    <section class="p02-panel channel-panel">
-      <div class="p02-panel-head"><h2>项目平台白名单</h2><span>Android / iOS / Windows 等</span></div>
-      <div id="projectPlatformList" class="channel-list"></div>
-      <div class="channel-add-row">
-        <select id="projectPlatformAddSelect"><option value="">选择要添加的平台</option>{% for row in platform_catalog %}{% if row.platform_id not in assigned_platform_ids %}<option value="{{ row.platform_id }}">{{ row.platform_name }} ({{ row.platform_id }})</option>{% endif %}{% endfor %}</select>
-        <button class="ui-primary" id="btnProjectPlatformAdd" type="button">添加</button>
-      </div>
-    </section>
-  </div>
+
   <div id="deliveryScopeDialog" class="delivery-dialog is-hidden" aria-hidden="true">
     <div class="delivery-dialog-card delivery-scope-card">
       <div class="delivery-dialog-head">

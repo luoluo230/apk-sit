@@ -1,127 +1,194 @@
-<section class="delivery-app order-form-app" data-delivery-page="order-form" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
-  <div class="workflow-heading">
-    <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/action_back.svg" alt="">返回发布单中心</a>
-    <div><h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1><p id="orderFormSubtitle">开发环境快捷发布：填写原因与负责人即可；管线在版本组模板维护。</p></div>
-    <span class="draft-badge">草稿可随时保存</span>
+<section class="delivery-app order-form-app ro-form-app" data-delivery-page="order-form" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
+  <header class="ro-form-head">
+    <a class="ro-form-back" href="/admin/projects/{{ project_id }}/release-orders" aria-label="返回发布单中心"><img src="/static/project_ui/svg/action_back.svg" alt=""></a>
+    <div class="ro-form-head-copy">
+      <h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1>
+      <p id="orderFormSubtitle" class="ro-form-subtitle">填写完整发布计划后保存或进入构建。</p>
+    </div>
+    <span class="ro-form-draft-badge">草稿可随时保存</span>
+  </header>
+
+  <div class="ro-journey-progress" id="orderFormJourneyProgress" aria-label="发布进度">
+    <div class="ro-journey-segment active" data-phase="0" data-jump="prepare" title="跳转到交付目标"><span>准备</span></div>
+    <div class="ro-journey-segment" data-phase="1" data-jump="plan" title="跳转到构建计划"><span>计划</span></div>
+    <div class="ro-journey-segment" data-phase="2" data-jump="execute" title="跳转到发布策略"><span>执行</span></div>
   </div>
-  <div class="workflow-layout">
-    <aside class="workflow-steps pm-stepper-vertical" aria-label="发布单计划步骤">
-      <button class="active" data-form-step="target" type="button"><b>1</b><span>交付目标<em>环境、渠道与版本</em></span></button>
-      <button data-form-step="build" type="button"><b>2</b><span>构建与产物<em>Jenkins 与交付物</em></span></button>
-      <button data-form-step="runtime" type="button"><b>3</b><span>拓扑与运行态<em>绑定拓扑与 Runtime</em></span></button>
-      <button data-form-step="strategy" type="button"><b>4</b><span>发布策略<em>全量或灰度策略</em></span></button>
-      <button data-form-step="verify" type="button"><b>5</b><span>验证方案<em>自动验证与人工检查</em></span></button>
-      <button data-form-step="rollback" type="button"><b>6</b><span>回滚方案<em>触发条件与恢复目标</em></span></button>
-    </aside>
-    <main class="workflow-main">
-      <div class="risk-banner production-banner is-hidden" id="orderProductionBanner">
+
+  <div class="ro-form-layout workflow-layout ro-form-layout--no-steps">
+    <main class="ro-form-main workflow-main">
+      <div class="ro-prod-banner risk-banner production-banner is-hidden" id="orderProductionBanner">
         <img src="/static/project_ui/svg/status_warning.svg" alt="">
-        <div><strong>生产环境发布</strong><span>所有变更将直接影响线上玩家，请确认审批、验证与回滚方案。</span></div>
+        <div>
+          <strong>当前选择为【生产环境】，发布风险较高</strong>
+          <span>建议启用灰度发布，并完善验证与回滚方案后再提交审批。</span>
+        </div>
       </div>
-      <div class="risk-banner" id="orderRiskBanner">
-        <img src="/static/project_ui/svg/status_warning.svg" alt="">
-        <div><strong>发布前必须完成产物、拓扑、Runtime 与服务探活预检</strong><span>生产环境还需要审批通过；发布目标变化会使旧预检与审批失效。</span></div>
-      </div>
-      <form id="releaseOrderForm">
-        <section class="workflow-section" data-section="target">
-          <div class="section-title"><div><span>STEP 01</span><h2>交付目标</h2></div><p>一张发布单只对应一个精确环境、渠道、平台和 VersionCode。</p></div>
+
+      <form id="releaseOrderForm" class="ro-form-body">
+        <section class="ro-section workflow-section" data-section="target">
+          <div class="ro-section-head section-title">
+            <div><span class="ro-step-no">01</span><h2>交付目标</h2></div>
+            <p>一张发布单只对应一个精确环境、渠道、平台和 VersionCode。</p>
+          </div>
           <div id="orderTargetLockBanner" class="target-lock-banner is-hidden">交付目标已从 VersionCode 带入，以下字段不可修改。</div>
-          <div class="form-grid">
+          <div class="ro-form-grid form-grid">
             <label>项目<input value="{{ project.get('name') or project_id }}" disabled></label>
-            <label>环境<select name="env_key" required></select></label>
+            <label>环境<select name="env_key" class="ro-env-select" required></select></label>
             <label>渠道<select name="channel_id" required></select></label>
             <label>平台<select name="platform" required></select></label>
             <label class="span-2">版本组 / VersionCode<select name="version_id" required></select></label>
+            <label>发布原因<select name="release_reason_type" id="orderReleaseReasonType">
+              <option value="feature">功能迭代发布</option>
+              <option value="hotfix">紧急修复</option>
+              <option value="config">配置变更</option>
+              <option value="resource">资源热更</option>
+            </select></label>
             <label>负责人<input name="owner" placeholder="本次发布负责人"></label>
-            <label class="order-field-optional">发布时间窗口<input name="release_window" placeholder="2026-06-13 20:00 - 22:00"></label>
-            <label class="order-field-optional">变更单号<input name="change_order" placeholder="例如 CHG-20260613-001"></label>
-            <label class="order-field-optional">关联需求<input name="related_requirements" placeholder="需求或里程碑编号"></label>
-            <label class="order-field-optional">关联任务<input name="related_tasks" placeholder="任务或缺陷编号"></label>
-            <label class="span-2">发布原因<textarea name="reason" required placeholder="说明本次发布目的、影响范围与业务价值"></textarea></label>
-            <label class="span-4 order-field-optional">发布说明<textarea name="release_description" placeholder="面向审批人与执行人的完整变更说明"></textarea></label>
+            <label class="order-field-optional">发布时间<input name="release_window" placeholder="2025-05-25 10:00"></label>
+            <label class="order-field-optional">变更单<input name="change_order" placeholder="可选"></label>
+            <label class="order-field-optional ro-tag-field">关联需求<input name="related_requirements" placeholder="RD-10258, RD-10188" data-tag-field></label>
+            <label class="order-field-optional ro-tag-field">关联任务<input name="related_tasks" placeholder="TSK-20250519-015" data-tag-field></label>
+            <label class="span-4 order-field-optional ro-textarea-field">发布说明<textarea name="release_description" maxlength="500" placeholder="面向审批人与执行人的完整变更说明"></textarea><span class="ro-char-count" id="orderDescCount">0 / 500</span></label>
+            <label class="span-4">发布原因说明<textarea name="reason" required placeholder="说明本次发布目的、影响范围与业务价值"></textarea></label>
             <div class="span-4 order-minimal-build-summary" id="orderMinimalBuildSummary" hidden></div>
           </div>
         </section>
 
-        <section class="workflow-section order-section-build" data-section="build">
-          <div class="section-title"><div><span>STEP 02</span><h2>构建与产物</h2></div><p>构建管线的唯一来源是「版本组管线模板」，发布单只读引用并触发。需要修改请回到版本组「配置管线」。</p></div>
-          <div class="pipeline-readonly-card" id="orderPipelineSummaryCard" data-pipeline-source="version_group">
+        <section class="ro-section workflow-section order-section-build" data-section="build">
+          <div class="ro-section-head section-title">
+            <div><span class="ro-step-no">02</span><h2>构建计划</h2></div>
+            <p>构建管线来源为版本组模板，发布单只读引用并触发构建。</p>
+          </div>
+          <div class="ro-form-grid form-grid ro-build-grid">
+            <label>Jenkins 实例<select id="orderJenkinsDisplay" disabled aria-readonly="true"></select></label>
+            <label class="span-2">Job / 任务<select id="orderJobDisplay" disabled aria-readonly="true"></select></label>
+            <label class="span-4 ro-tag-field">构建参数<input name="jenkins_params_display" id="orderJenkinsParamsDisplay" readonly placeholder="ENV=prod, CHANNEL=release" data-tag-field></label>
+          </div>
+          <div class="pipeline-readonly-card ro-pipeline-card" id="orderPipelineSummaryCard" data-pipeline-source="version_group">
             <div class="pipeline-readonly-head">
-              <strong>当前管线源</strong>
+              <strong>管线摘要</strong>
               <span class="pipeline-source-pill" id="orderPipelineSourcePill">版本组管线模板</span>
             </div>
             <ul class="pipeline-readonly-rows" id="orderPipelineSummaryRows">
-              <li><code>Jenkins 实例</code><span data-field="jenkins_instance_id" title="在版本组管线模板中选择 Jenkins 实例">未配置</span></li>
-              <li><code>Jenkins Job</code><span data-field="jenkins_job" title="在版本组管线模板中配置 Job">未配置</span></li>
-              <li><code>4 步管线</code><span data-field="pipeline_summary">-</span></li>
+              <li><code>Jenkins 实例</code><span data-field="jenkins_instance_id">-</span></li>
+              <li><code>Job / 任务</code><span data-field="jenkins_job">-</span></li>
+              <li><code>管线摘要</code><span data-field="pipeline_summary">-</span></li>
             </ul>
             <input type="hidden" name="jenkins_instance_id">
             <input type="hidden" name="jenkins_job">
             <input type="hidden" name="jenkins_params">
-            <p class="pipeline-readonly-hint">参数由版本组管线模板推导（Jenkins、Git/Unity、4 步流水线、Bootstrap）。如需调整，请前往版本组「配置管线」。</p>
-            <a class="ui-primary pipeline-cta" id="orderGoConfigurePipelineBtn" href="#">前往版本组管线配置</a>
+            <a class="ro-link-btn" id="orderGoConfigurePipelineBtn" href="#">前往版本组管线配置 &gt;</a>
           </div>
           <div class="workflow-preview-grid" id="buildPlanPreview"><div class="workflow-placeholder">选择 VersionCode 后展示构建与产物摘要。</div></div>
         </section>
 
-        <section class="workflow-section order-section-advanced" data-section="runtime">
-          <div class="section-title"><div><span>STEP 03</span><h2>拓扑与运行目标</h2></div><p>按项目默认、环境渠道、大版本三级规则解析，最终结果在发布 Bundle 中冻结。</p></div>
-          <div class="form-grid">
-            <label>目标拓扑（可选）<select name="target_topology_id"><option value="">按绑定规则自动解析</option></select></label>
-            <div class="runtime-readonly span-3"><span>说明</span><strong>指定后将覆盖默认绑定，发布时写入大版本级拓扑绑定</strong></div>
+        <section class="ro-section workflow-section order-section-advanced" data-section="runtime">
+          <div class="ro-section-head section-title">
+            <div><span class="ro-step-no">03</span><h2>拓扑与运行目标</h2></div>
+            <p>按项目默认、环境渠道、大版本三级规则解析，最终结果在发布 Bundle 中冻结。</p>
+          </div>
+          <div class="ro-form-grid form-grid">
+            <label>目标拓扑<select name="target_topology_id"><option value="">按绑定规则自动解析</option></select></label>
+            <label>拓扑版本<input id="orderTopologyVersion" readonly placeholder="保存后解析"></label>
+            <div class="ro-runtime-stat"><span>Runtime 状态</span><strong id="orderRuntimeBadge" class="ro-runtime-badge">—</strong></div>
+            <div class="ro-runtime-stat"><span>目标实例数</span><strong id="orderInstanceCount">—</strong></div>
             <div class="runtime-readonly span-2"><span>命中拓扑</span><strong id="resolvedTopology">保存后按绑定规则解析</strong></div>
             <div class="runtime-readonly span-2"><span>运行实例</span><strong id="resolvedRuntime">预检后确认</strong></div>
           </div>
-          <div class="workflow-preview-grid" id="runtimePlanPreview">
-            <div class="preview-card"><img src="/static/project_ui/svg/nav_binding.svg" alt=""><div><span>绑定来源</span><strong>保存发布单后解析</strong></div></div>
-            <div class="preview-card"><img src="/static/project_ui/svg/status_running.svg" alt=""><div><span>运行态门禁</span><strong>预检必须为运行中</strong></div></div>
+        </section>
+
+        <section class="ro-section workflow-section order-section-advanced" data-section="strategy">
+          <div class="ro-section-head section-title">
+            <div><span class="ro-step-no">04</span><h2>发布策略</h2></div>
+            <p>选择全量发布或灰度发布，灰度参数会进入审批和审计记录。</p>
+          </div>
+          <div class="ro-form-grid form-grid">
+            <label>发布方式<select name="release_strategy"><option value="gray">灰度发布（推荐）</option><option value="standard">全量发布</option></select></label>
+            <label>灰度策略<select name="gray_strategy"><option value="ratio">按实例比例</option><option value="canary">金丝雀</option><option value="region">按区域</option></select></label>
+            <label>灰度比例（%）<input name="gray_ratio" type="number" min="1" max="100" placeholder="10"></label>
+            <label>观察时长（分钟）<input name="gray_duration" type="number" min="1" placeholder="30"></label>
+            <label class="span-2">灰度成功后动作<select name="gray_success_action"><option value="automatic">自动放量</option><option value="manual">人工确认后全量</option><option value="hold">保持当前比例</option></select></label>
+            <label class="span-2">目标用户范围<select name="target_audience"><option value="all">全部用户</option><option value="internal">内部测试用户</option><option value="whitelist">白名单用户</option></select></label>
           </div>
         </section>
 
-        <section class="workflow-section order-section-advanced" data-section="strategy">
-          <div class="section-title"><div><span>STEP 04</span><h2>发布策略</h2></div><p>选择全量发布或灰度发布，灰度参数会进入审批和审计记录。</p></div>
-          <div class="form-grid">
-            <label>发布方式<select name="release_strategy"><option value="standard">全量发布</option><option value="gray">灰度发布</option></select></label>
-            <label>目标用户范围<select name="target_audience"><option value="all">全部用户</option><option value="internal">内部测试用户</option><option value="whitelist">白名单用户</option></select></label>
-            <label>灰度比例（%）<input name="gray_ratio" type="number" min="1" max="100" placeholder="例如 10"></label>
-            <label>灰度观察时长（分钟）<input name="gray_duration" type="number" min="1" placeholder="例如 30"></label>
-            <label class="span-2">灰度成功后动作<select name="gray_success_action"><option value="manual">人工确认后全量</option><option value="automatic">自动扩大到全量</option><option value="hold">保持当前比例</option></select></label>
+        <section class="ro-section workflow-section order-section-advanced" data-section="verify">
+          <div class="ro-section-head section-title">
+            <div><span class="ro-step-no">05</span><h2>验证方案</h2></div>
+            <p>发布后必须验证客户端启动、热更、登录和玩家数据拉取。</p>
+          </div>
+          <div class="ro-form-grid form-grid">
+            <label class="span-2 ro-tag-field">验证项<input name="validation_items" placeholder="订单创建流程, 支付结果页跳转" data-tag-field></label>
+            <label class="span-2 ro-tag-field">自动化验证任务<input name="validation_task" placeholder="RC-UI-官网验证" data-tag-field></label>
+            <label class="span-4">验证计划<textarea name="validation_plan" placeholder="列出资源、配置、代码更新，登录服务与玩家数据检查标准"></textarea></label>
           </div>
         </section>
 
-        <section class="workflow-section order-section-advanced" data-section="verify">
-          <div class="section-title"><div><span>STEP 05</span><h2>验证方案</h2></div><p>发布后必须验证客户端启动、热更、登录和玩家数据拉取。</p></div>
-          <div class="form-grid">
-            <label class="span-2">自动验证任务<input name="validation_task" placeholder="例如 client-e2e-login-player-profile"></label>
-            <label class="span-2">验证计划<textarea name="validation_plan" placeholder="列出资源、配置、代码更新，登录服务与玩家数据检查标准"></textarea></label>
+        <section class="ro-section workflow-section order-section-advanced" data-section="rollback">
+          <div class="ro-section-head section-title">
+            <div><span class="ro-step-no">06</span><h2>回滚方案</h2></div>
+            <p>回滚恢复旧 Bundle 的版本、拓扑、网络与服务端快照。</p>
           </div>
-        </section>
-
-        <section class="workflow-section order-section-advanced" data-section="rollback">
-          <div class="section-title"><div><span>STEP 06</span><h2>回滚方案</h2></div><p>回滚恢复旧 Bundle 的版本、拓扑、网络与服务端快照。</p></div>
-          <div class="form-grid">
-            <label>回滚目标<input name="rollback_target" placeholder="默认回滚到上一个已发布 Bundle"></label>
-            <label>回滚方式<select name="rollback_method"><option value="bundle">恢复上一 Bundle 全量快照</option><option value="manual">人工选择 Bundle</option></select></label>
-            <label>回滚超时（分钟）<input name="rollback_timeout_minutes" type="number" min="1" placeholder="例如 15"></label>
-            <label>触发条件<input name="rollback_condition" placeholder="例如登录失败率超过 2%"></label>
+          <div class="ro-form-grid form-grid">
+            <label class="span-2">回滚目标 Bundle<input name="rollback_target" placeholder="默认回滚到上一个已发布 Bundle"></label>
+            <label>触发条件<select name="rollback_condition"><option value="any_verify_fail">任一验证失败</option><option value="error_rate">错误率超阈值</option><option value="manual">人工触发</option></select></label>
+            <label>回滚方式<select name="rollback_method"><option value="bundle">自动回滚</option><option value="manual">人工选择 Bundle</option></select></label>
+            <label>回滚超时（分钟）<input name="rollback_timeout_minutes" type="number" min="1" placeholder="10"></label>
             <label class="span-4">回滚计划<textarea name="rollback_plan" placeholder="说明执行步骤、验证标准与通知范围"></textarea></label>
           </div>
         </section>
       </form>
     </main>
-    <aside class="workflow-rail">
-      <section class="ui-panel"><div class="ui-panel-head"><h2>交付就绪度</h2><strong id="deliveryReadiness">0%</strong></div><div class="completion-track delivery-track"><span id="deliveryReadinessBar"></span></div><p id="deliveryReadinessHint">选择 VersionCode 后评估管线、拓扑与产物。</p></section>
-      <section class="ui-panel"><div class="ui-panel-head"><h2>计划完整度</h2><strong id="planCompleteness">0%</strong></div><div class="completion-track"><span id="planCompletenessBar"></span></div><p id="planCompletenessHint">请先选择精确交付目标。</p></section>
-      <section class="ui-panel" id="orderPipelineGatePanel"><div class="ui-panel-head"><h2>管线门禁</h2></div><p id="orderPipelineGateHint" class="panel-hint">管线未就绪时不可触发构建。</p></section>
-      <section class="ui-panel"><div class="ui-panel-head"><h2>发布门禁</h2></div><ul class="gate-list"><li><img src="/static/project_ui/svg/status_pending.svg" alt="">四类产物已登记且可达</li><li><img src="/static/project_ui/svg/status_pending.svg" alt="">拓扑绑定与 Runtime 一致</li><li><img src="/static/project_ui/svg/status_pending.svg" alt="">Gateway / Login / Game / Ops 探活</li><li><img src="/static/project_ui/svg/status_pending.svg" alt="">生产环境审批已通过</li></ul></section>
-      <section class="ui-panel"><div class="ui-panel-head"><h2>快捷入口</h2></div><div class="rail-actions"><a href="/admin/projects/{{ project_id }}/versions"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本与 VersionCode</a><a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a><a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a></div></section>
+
+    <aside class="ro-form-rail workflow-rail">
+      <section class="ro-rail-card ro-rail-risk">
+        <div class="ro-rail-head"><h2>风险提示</h2><span class="ro-risk-tag" id="orderRiskLevel">—</span></div>
+        <ul class="ro-risk-list" id="orderRiskList"><li>选择交付目标后展示风险摘要</li></ul>
+      </section>
+      <section class="ro-rail-card">
+        <div class="ro-rail-head"><h2>填写指引</h2></div>
+        <ol class="ro-guide-list">
+          <li><b>交付目标</b><span>锁定环境、渠道、平台与 VersionCode</span></li>
+          <li><b>构建计划</b><span>确认 Jenkins 实例、Job 与构建参数</span></li>
+          <li><b>拓扑与运行目标</b><span>确认拓扑绑定与 Runtime 状态</span></li>
+          <li><b>发布策略</b><span>生产环境建议灰度发布</span></li>
+          <li><b>验证方案</b><span>填写验证项与自动化任务</span></li>
+          <li><b>回滚方案</b><span>明确触发条件与回滚 Bundle</span></li>
+        </ol>
+      </section>
+      <section class="ro-rail-card">
+        <div class="ro-rail-head"><h2>快速入口</h2></div>
+        <div class="ro-quick-grid ro-quick-grid--compact">
+          <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">发布单中心</a>
+          <a href="/admin/projects/{{ project_id }}/versions"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本代码</a>
+          <a href="/admin/projects/{{ project_id }}/build-history?scoped=1"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
+        </div>
+      </section>
+      <section class="ro-rail-card">
+        <div class="ro-rail-head"><h2>常用模板</h2></div>
+        <div class="ro-template-links">
+          <button type="button" data-order-template="routine">常规发布模板</button>
+          <button type="button" data-order-template="hotfix">紧急修复模板</button>
+          <button type="button" data-order-template="gray">灰度发布模板</button>
+        </div>
+      </section>
+      <section class="ro-rail-card ro-rail-readiness is-hidden" id="orderReadinessPanel">
+        <div class="ro-rail-head"><h2>交付就绪度</h2><strong id="deliveryReadiness">0%</strong></div>
+        <div class="completion-track delivery-track"><span id="deliveryReadinessBar"></span></div>
+        <p id="deliveryReadinessHint">选择 VersionCode 后评估管线、拓扑与产物。</p>
+        <div class="ro-rail-head" style="margin-top:12px"><h2>计划完整度</h2><strong id="planCompleteness">0%</strong></div>
+        <div class="completion-track"><span id="planCompletenessBar"></span></div>
+        <p id="planCompletenessHint">请先选择精确交付目标。</p>
+        <p id="orderPipelineGateHint" class="panel-hint"></p>
+      </section>
     </aside>
   </div>
-  <div class="workflow-footer">
-    <a class="ui-secondary" href="/admin/projects/{{ project_id }}/release-orders">取消</a>
+
+  <footer class="ro-form-footer workflow-footer">
+    <a class="ui-secondary" href="/admin/projects/{{ project_id }}/versions">取消</a>
     <button class="ui-secondary" data-save-order type="button">保存草稿</button>
-    <a class="ui-primary is-hidden" id="btnConfigurePipeline" href="#">去配置管线</a>
-    <button class="ui-primary" data-save-build type="button" id="btnSaveBuild">保存并触发构建</button>
-    <span id="orderSaveStatus"></span>
-  </div>
+    <button class="ui-primary" data-form-next type="button" id="btnFormNext">下一步</button>
+    <span class="ro-autosave" id="orderAutosave">—</span>
+    <span id="orderSaveStatus" class="is-hidden"></span>
+  </footer>
 </section>

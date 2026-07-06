@@ -624,6 +624,8 @@ PM_UI_CSS = (
     '<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v=20260625-pm9">'
 )
 
+OPS_SHELL_ASSET_VER = "20260630-shell"
+
 
 def _render_ops_page(
     content: str,
@@ -682,6 +684,7 @@ def _render_ops_page(
         extra_css=PM_UI_CSS + extra_css,
         extra_js=extra_js,
         csrf_token=_ops_csrf_token(),
+        ops_shell_asset_ver=OPS_SHELL_ASSET_VER,
     )
 
 

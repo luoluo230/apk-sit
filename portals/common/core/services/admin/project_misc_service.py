@@ -213,6 +213,7 @@ def _project_card_summary(project_id: str, item: Dict[str, Any]) -> Dict[str, An
     if latest_order:
         rel_status = str(latest_order.get("status") or "").strip().lower()
         latest_release = {
+            "release_order_id": str(latest_order.get("release_order_id") or "").strip(),
             "version_name": str(latest_order.get("version_name") or "").strip(),
             "updated_at": str(latest_order.get("updated_at") or latest_order.get("created_at") or "").strip(),
             "status": rel_status,

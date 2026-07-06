@@ -778,5 +778,53 @@
     ],
     "stroke_style": "outline-1.8",
     "usage": "今日构建数"
+  },
+  {
+    "name": "kpi_version",
+    "title_zh": "当前版本",
+    "category": "kpi",
+    "sizes": ["svg", "24png", "48png"],
+    "stroke_style": "outline-1.8",
+    "usage": "当前版本 KPI"
+  },
+  {
+    "name": "env_development",
+    "title_zh": "开发环境",
+    "category": "environment",
+    "sizes": ["svg", "24png", "48png"],
+    "stroke_style": "outline-1.8",
+    "usage": "开发环境卡片"
+  },
+  {
+    "name": "env_testing",
+    "title_zh": "测试环境",
+    "category": "environment",
+    "sizes": ["svg", "24png", "48png"],
+    "stroke_style": "outline-1.8",
+    "usage": "测试环境卡片"
+  },
+  {
+    "name": "env_staging",
+    "title_zh": "预发环境",
+    "category": "environment",
+    "sizes": ["svg", "24png", "48png"],
+    "stroke_style": "outline-1.8",
+    "usage": "预发环境卡片"
+  },
+  {
+    "name": "env_production",
+    "title_zh": "生产环境",
+    "category": "environment",
+    "sizes": ["svg", "24png", "48png"],
+    "stroke_style": "outline-1.8",
+    "usage": "生产环境卡片"
+  },
+  {
+    "name": "view_grid",
+    "title_zh": "卡片视图",
+    "category": "action",
+    "sizes": ["svg", "24png", "48png"],
+    "stroke_style": "outline-1.8",
+    "usage": "环境卡片网格视图"
   }
 ]

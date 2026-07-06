@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260625-pm8">
+<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260706-release-journey-v1">
 <section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}"{% if request.args.get('env_key') %} data-env-scoped="true"{% endif %}>
   <header class="version-head pm-page-head">
     <div class="pm-page-head-copy">
@@ -89,4 +89,5 @@
     <div class="version-dialog-actions pm-modal-foot"><button id="btnCancelVersionDialog" class="version-btn pm-btn" type="button">取消</button><button id="btnSubmitVersionCode" class="version-btn pm-btn pm-btn--primary" type="submit">创建 VersionCode</button></div>
   </form>
 </div>
-<script src="/static/project_versions_workspace.js?v=20260625-pm8"></script>
+<script src="/static/delivery_scope.js?v=20260706-release-journey-v1"></script>
+<script src="/static/project_versions_workspace.js?v=20260706-release-journey-v1"></script>

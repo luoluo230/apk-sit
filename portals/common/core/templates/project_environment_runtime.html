@@ -1,0 +1,165 @@
+<section class="p16-runtime" data-runtime-page data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-project-name="{{ project.name or project_id }}">
+  <header class="p16-head pm-page-head">
+    <div class="p16-head-main pm-page-head-copy">
+      <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
+      <div>
+        <h1>环境运行概览<img class="p16-title-info" src="/static/project_ui/svg/global_help.svg" alt="" title="单环境运行态、资源趋势与告警摘要"></h1>
+      </div>
+    </div>
+  </header>
+
+  <div class="p16-filter-strip pm-filter-bar" id="p16FilterStrip">
+    <div class="p16-filter-item">
+      <span class="p16-filter-label">项目</span>
+      <span class="p16-filter-pill p16-filter-pill--project" id="p16ProjectPill">{{ project.name or project_id }}</span>
+    </div>
+    <div class="p16-filter-item">
+      <span class="p16-filter-label">环境</span>
+      <select class="p16-filter-pill-select p16-filter-pill-select--env" id="p16FilterEnv" aria-label="环境">
+        {% for row in env_options or [] %}
+        <option value="{{ row.env_key }}"{% if row.env_key == env_key %} selected{% endif %}>{{ row.env_label or row.env_key }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="p16-filter-item">
+      <span class="p16-filter-label">渠道</span>
+      <select class="p16-filter-pill-select p16-filter-pill-select--channel" id="p16FilterChannel" aria-label="渠道">
+        <option value="">全部渠道</option>
+      </select>
+    </div>
+    <div class="p16-filter-item">
+      <span class="p16-filter-label">平台</span>
+      <select class="p16-filter-pill-select p16-filter-pill-select--platform" id="p16FilterPlatform" aria-label="平台">
+        <option value="">多平台</option>
+      </select>
+    </div>
+    <div class="p16-filter-meta">
+      <span>数据更新时间：<b id="p16UpdatedAt">--</b></span>
+      <button class="p16-icon-btn" id="p16RefreshBtn" type="button" title="刷新" aria-label="刷新"><img src="/static/project_ui/svg/action_refresh.svg" alt=""></button>
+    </div>
+  </div>
+
+  <div id="p16QualityBanner" class="p16-quality-banner is-hidden" role="status"></div>
+
+  <div class="p16-layout pm-page-layout">
+    <div class="p16-main pm-page-main">
+      <div class="pm-kpi-row" id="p16Kpis">
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--green"><img src="/static/project_ui/svg/kpi_health.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">服务健康度</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--orange"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">在线实例</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--red"><img src="/static/project_ui/svg/global_bell.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">今日告警</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--blue"><img src="/static/project_ui/svg/status_running.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">平均响应</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--violet"><img src="/static/project_ui/svg/status_success.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">错误率</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
+      </div>
+
+      <section class="p16-panel">
+        <div class="p16-panel-head">
+          <div class="p16-panel-title">
+            <h2 id="p16MainTitle">生产环境概览</h2>
+            <span class="p16-runtime-badge" id="p16RuntimeBadge">—</span>
+          </div>
+        </div>
+
+        <div class="p16-dash-top" id="p16DashTop">
+          <article class="p16-widget p16-widget--donut" id="p16ServiceDistribution"></article>
+          <article class="p16-widget p16-widget--donut" id="p16InstanceHealth"></article>
+          <article class="p16-widget p16-widget--stat" id="p16AgentOnline"></article>
+          <article class="p16-widget p16-widget--release" id="p16RecentRelease"></article>
+        </div>
+
+        <div class="p16-trends-section">
+          <div class="p16-trends-head"><h3>资源趋势<span id="p16TrendWindow">（近 1 小时）</span></h3></div>
+          <div class="p16-dash-trends" id="p16ResourceTrends">
+            <article class="p16-widget p16-widget--trend" id="p16TrendCpu"></article>
+            <article class="p16-widget p16-widget--trend" id="p16TrendMemory"></article>
+            <article class="p16-widget p16-widget--trend" id="p16TrendQps"></article>
+          </div>
+        </div>
+
+        <div class="p16-table-section">
+          <div class="p16-table-section-head">
+            <div class="p16-table-title-row">
+              <h3>服务实例列表</h3>
+              <span class="p16-live-badge" id="p16ServiceLiveBadge">Agent 上报 live</span>
+            </div>
+            <div class="p16-table-toolbar" id="p16ServiceToolbar">
+              <label class="p16-table-search">
+                <img src="/static/project_ui/svg/global_search.svg" alt="">
+                <input type="search" id="p16ServiceSearch" placeholder="搜索服务 / 集群 / ID" aria-label="搜索服务">
+              </label>
+              <select class="p16-table-filter" id="p16ServiceCluster" aria-label="集群筛选">
+                <option value="">全部集群</option>
+              </select>
+              <select class="p16-table-filter" id="p16ServiceCategory" aria-label="分类筛选">
+                <option value="">全部分类</option>
+              </select>
+              <select class="p16-table-filter" id="p16ServiceHealth" aria-label="健康度筛选">
+                <option value="">全部健康度</option>
+                <option value="healthy">健康 ≥90%</option>
+                <option value="warn">预警 60–89%</option>
+                <option value="bad">异常 &lt;60%</option>
+              </select>
+              <select class="p16-table-filter" id="p16ServiceStatus" aria-label="运行状态筛选">
+                <option value="">全部状态</option>
+                <option value="running">运行中</option>
+                <option value="degraded">降级</option>
+                <option value="offline">离线</option>
+              </select>
+            </div>
+          </div>
+          <div class="p16-table-wrap">
+            <table class="pm-table p16-service-table">
+              <thead>
+                <tr>
+                  <th>服务</th>
+                  <th>设备 / Agent</th>
+                  <th>集群</th>
+                  <th>分类</th>
+                  <th>在线实例</th>
+                  <th>健康度</th>
+                  <th>CPU%</th>
+                  <th>内存%</th>
+                  <th>QPS</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="p16ServiceTable"><tr><td colspan="11" class="p16-empty">正在加载服务实例...</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pm-table-pagination p16-table-pagination" id="p16ServicePagination"></div>
+          <div class="p16-table-foot">
+            <a class="p16-panel-link" id="p16AllServicesLink" href="/admin/projects/{{ project_id }}/agents?env_key={{ env_key }}">查看全部服务列表<img src="/static/project_ui/svg/action_next.svg" alt=""></a>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="p16-rail pm-page-rail">
+      <section class="p16-rail-panel pm-rail-panel">
+        <div class="p16-rail-head"><h2>值班负责人</h2></div>
+        <div class="p16-oncall" id="p16OnCall"></div>
+      </section>
+
+      <section class="p16-rail-panel pm-rail-panel">
+        <div class="p16-rail-head"><h2>告警摘要</h2></div>
+        <div class="p16-alert-badges" id="p16AlertBadges"></div>
+        <div class="p16-alert-list" id="p16AlertList"><div class="p16-empty">正在加载告警...</div></div>
+      </section>
+
+      <section class="p16-rail-panel pm-rail-panel">
+        <div class="p16-rail-head"><h2>最近变更</h2></div>
+        <div class="p16-rail-changes" id="p16RecentChanges"></div>
+      </section>
+
+      <section class="p16-rail-panel pm-rail-panel">
+        <div class="p16-rail-head"><h2 id="p16RiskTitle">当前风险</h2></div>
+        <div class="p16-rail-risks" id="p16CurrentRisks"></div>
+      </section>
+
+      <section class="p16-rail-panel pm-rail-panel">
+        <div class="p16-rail-head"><h2>快速操作</h2></div>
+        <div class="p16-quick-grid" id="p16QuickLinks"></div>
+      </section>
+    </aside>
+  </div>
+</section>

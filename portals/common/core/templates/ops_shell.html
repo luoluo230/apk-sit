@@ -7,7 +7,7 @@
   <title>{{ title }} - Dev Portal</title>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml">
   <link rel="stylesheet" href="/static/project_ui/design-tokens.css?v=20260613-1">
-  <link rel="stylesheet" href="/static/ops_shell.css?v=20260625-pm10">
+  <link rel="stylesheet" href="/static/ops_shell.css?v={{ ops_shell_asset_ver }}">
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
 </head>
 <body>
@@ -43,7 +43,7 @@
     <section class="ops-shell-content">{{ content|safe }}</section>
   </main>
 </div>
-<script src="/static/ops_shell.js?v=20260625-pm10"></script>
+<script src="/static/ops_shell.js?v={{ ops_shell_asset_ver }}"></script>
 <script>
   (function () {
     var tokenEl = document.querySelector('meta[name="csrf-token"]');

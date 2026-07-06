@@ -24,6 +24,17 @@
   const collapsedGroups = new Set();
   let listPage = 1;
   const listPageSize = 20;
+  let releaseOrderByVersion = new Map();
+  const scopeApi = window.DeliveryScope || {};
+  const buildScopeQuery = (scope = {}, extra = {}) => (scopeApi.buildQuery ? scopeApi.buildQuery(scope, extra) : "");
+  const scopeHref = (path, scope = {}, extra = {}) => (scopeApi.href ? scopeApi.href(path, scope, extra) : path);
+  const startReleaseHref = (row) => scopeHref(`/admin/projects/${projectId}/release-orders/start`, {
+    env_key: normalizedEnv(row),
+    channel_id: channelIdOf(row),
+    platform: row.platform || "",
+    version_id: row.id,
+  });
+  const releaseStatusLabels = { draft: "草稿", building: "构建中", artifacts_ready: "产物就绪", precheck_failed: "预检失败", ready: "待发布", awaiting_approval: "待审批", approved: "已审批", published: "已发布" };
 
   const csrfHeaders = () => {
     const token = document.querySelector('meta[name="csrf-token"]');
@@ -313,8 +324,6 @@
     foot.innerHTML = "";
     drawer.classList.remove("is-hidden");
     drawer.setAttribute("aria-hidden", "false");
-    const context = `env_key=${encodeURIComponent(normalizedEnv(row))}&channel_id=${encodeURIComponent(channelIdOf(row))}&platform=${encodeURIComponent(row.platform || "")}&version_id=${encodeURIComponent(row.id || "")}&version_name=${encodeURIComponent(row.version_name || "")}&version_code=${encodeURIComponent(row.version_code || "")}&scoped=1`;
-    const workflowHref = row.id ? `/admin/projects/${projectId}/versions/${encodeURIComponent(row.id)}/workflow` : `/admin/projects/${projectId}/build-history?${context}`;
     let downloadInfo = row.apk_download || {};
     try {
       const data = await request(`/api/projects/${projectId}/versions/${encodeURIComponent(row.id)}/apk-download-info`);
@@ -326,11 +335,10 @@
     <div class="current-progress" style="height:6px;background:#eef1f6;border-radius:3px;margin:10px 0"><span style="display:block;height:100%;width:${artifactReady ? 100 : 10}%;background:#1677ff;border-radius:3px"></span></div>
     <p class="pm-drawer-hint">${artifactReady ? "产物已归档" : "构建进行中，请稍候刷新"}</p></div>
     <div class="pm-drawer-section"><h3>产物完整性</h3><div class="pm-drawer-meta"><div><span>状态</span><b>${artifactReady ? "完整" : "不完整"}</b></div><div><span>发布</span><b>${row.active_bundle_id ? "已发布" : "未发布"}</b></div></div></div>
-    <div class="pm-drawer-section"><h3>关联发布单</h3><p class="pm-drawer-hint">${row.active_bundle_id ? "已有活跃 Bundle" : "暂无发布单"} · <a href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">查看发布单</a></p></div>`;
-    foot.innerHTML = `<a class="pm-btn" href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">创建发布单</a>
-      <a class="pm-btn pm-btn--primary" href="${workflowHref}">构建</a>
-      <button class="pm-btn" type="button" data-download-apk="${esc(row.id)}">下载</button>
-      <a class="pm-btn" href="/admin/projects/${projectId}/build-history?${context}">构建历史</a>`;
+    <div class="pm-drawer-section"><h3>关联发布单</h3><p class="pm-drawer-hint">${row.active_bundle_id ? "已有活跃 Bundle" : "从版本代码主路径进入"} · <a href="${startReleaseHref(row)}">开始发布</a></p></div>`;
+    foot.innerHTML = `<a class="pm-btn pm-btn--primary" href="${startReleaseHref(row)}">开始发布</a>
+      <button class="pm-btn" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
+      <a class="pm-btn" href="${scopeHref(`/admin/projects/${projectId}/build-history`, { env_key: normalizedEnv(row), channel_id: channelIdOf(row), platform: row.platform || "", version_id: row.id }, { scoped: "1" })}">构建历史</a>`;
   };
 
   const exportCsv = () => {
@@ -372,14 +380,32 @@
     dialog.setAttribute("aria-hidden", "true");
   };
 
-  const childRowHtml = (row) => {
-    const context = `env_key=${encodeURIComponent(normalizedEnv(row))}&channel_id=${encodeURIComponent(channelIdOf(row))}&platform=${encodeURIComponent(row.platform || "")}&version_id=${encodeURIComponent(row.id || "")}&version_name=${encodeURIComponent(row.version_name || "")}&version_code=${encodeURIComponent(row.version_code || "")}&scoped=1`;
+  const readinessBarHtml = (row, group) => {
+    const pipelineOk = Boolean(group?.pipeline_ready || row.pipeline_ready || row.jenkins_job_id || (row.pipeline || {}).jenkins_job_id);
+    const artifactOk = row.apk_status === "found";
+    const order = releaseOrderByVersion.get(String(row.id || ""));
+    const releaseText = row.active_bundle_id ? "已发布" : (order ? (releaseStatusLabels[order.status] || order.status) : "无发布单");
+    return `<div class="version-readiness-bar"><span class="${pipelineOk ? "ok" : "no"}">管线 ${pipelineOk ? "✓" : "✗"}</span><span class="${artifactOk ? "ok" : "no"}">产物 ${artifactOk ? "✓" : "✗"}</span><span class="muted">${esc(releaseText)}</span></div>`;
+  };
+
+  const childRowHtml = (row, group) => {
+    const scope = {
+      env_key: normalizedEnv(row),
+      channel_id: channelIdOf(row),
+      platform: row.platform || "",
+      version_id: row.id,
+      version_name: row.version_name || "",
+      version_code: row.version_code || "",
+    };
+    const context = buildScopeQuery(scope, { scoped: "1" }).replace(/^\?/, "");
     const workflowHref = row.id
       ? `/admin/projects/${projectId}/versions/${encodeURIComponent(row.id)}/workflow`
-      : `/admin/projects/${projectId}/build-history?${context}`;
+      : scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" });
     const platform = row.platform || "android";
+    const startHref = startReleaseHref(row);
+    const moreId = `vc-more-${esc(row.id || "")}`;
     return `<div class="version-row version-row-child pm-table-cols-10" data-version-id="${esc(row.id || "")}" data-open-vc="${esc(row.id || "")}">
-      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">${esc(row.version_name || "")}</span></div>
+      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">${esc(row.version_name || "")}</span>${readinessBarHtml(row, group)}</div>
       <div>${versionNameTagHtml(row, null)}</div>
       <div><span class="version-scope-env">${esc(envLabels[normalizedEnv(row)] || normalizedEnv(row))}</span></div>
       <div><span class="version-scope-meta">${esc(row.channel_name || row.channel_label || channelNameOf(channelIdOf(row)))}</span></div>
@@ -389,10 +415,15 @@
       <div>${latestBuildHtml(row)}</div>
       <div class="version-updated-at">${esc(formatUpdatedAt(row))}</div>
       <div class="version-row-actions">
-        <button class="version-action-link" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
-        <a class="version-action-link primary" href="/admin/projects/${projectId}/release-orders/start?version_id=${encodeURIComponent(row.id)}">创建发布单</a>
-        <a class="version-action-link" href="${workflowHref}">重新构建</a>
-        <a class="version-action-link" href="/admin/projects/${projectId}/build-history?${context}">查看日志</a>
+        <a class="version-action-link primary" href="${startHref}">开始发布</a>
+        <div class="version-action-more-menu">
+          <button class="version-action-more" type="button" data-toggle-vc-more="${moreId}" aria-label="更多操作"><img src="/static/project_ui/svg/action_more.svg" alt=""></button>
+          <div class="version-row-more-dropdown" id="${moreId}">
+            <button class="version-action-link" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
+            <a href="${scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" })}">查看日志</a>
+            <a href="${workflowHref}">重新构建</a>
+          </div>
+        </div>
       </div>
     </div>`;
   };
@@ -446,7 +477,7 @@
         <div class="version-group-dash">—</div>
         <div class="version-row-actions version-group-actions">${groupActions}</div>
       </div>
-      <div class="version-group-children">${emptyHint}${children.map(childRowHtml).join("")}</div>
+      <div class="version-group-children">${emptyHint}${children.map((child) => childRowHtml(child, group)).join("")}</div>
     </div>`;
   };
 
@@ -557,10 +588,20 @@
     });
     document.querySelectorAll("[data-open-vc]").forEach((el) => {
       el.onclick = (event) => {
-        if (event.target.closest("a, button, [data-download-apk]")) return;
+        if (event.target.closest("a, button, [data-download-apk], [data-toggle-vc-more]")) return;
         const id = el.getAttribute("data-open-vc");
         const row = rows.find((item) => String(item.id || "") === String(id));
         if (row) openVcDrawer(row);
+      };
+    });
+    document.querySelectorAll("[data-toggle-vc-more]").forEach((button) => {
+      button.onclick = (event) => {
+        event.stopPropagation();
+        const menu = document.getElementById(button.dataset.toggleVcMore || "");
+        document.querySelectorAll(".version-row-more-dropdown.open").forEach((node) => {
+          if (node !== menu) node.classList.remove("open");
+        });
+        menu?.classList.toggle("open");
       };
     });
     updateBuildHistoryLink();
@@ -777,13 +818,23 @@
     const host = document.getElementById("versionGroups");
     try {
       const envFilterValue = lockEnvKey || document.getElementById("versionEnv")?.value || envKey || "";
-      const [versionData, groupData, context] = await Promise.all([
+      const [versionData, groupData, context, releaseOrdersRes] = await Promise.all([
         request(`/admin/projects/${projectId}/versions/list`),
         request(versionGroupsUrl()),
         request(contextOptionsUrl(envFilterValue)),
+        request(`/api/projects/${projectId}/release-orders`).catch(() => ({ data: [] })),
       ]);
       rows = versionData.versions || [];
       versionGroups = groupData.version_groups || [];
+      releaseOrderByVersion = new Map();
+      (releaseOrdersRes.data || []).forEach((order) => {
+        const vid = String(order.version_id || "");
+        if (!vid) return;
+        const existing = releaseOrderByVersion.get(vid);
+        if (!existing || String(order.updated_at || "") > String(existing.updated_at || "")) {
+          releaseOrderByVersion.set(vid, order);
+        }
+      });
       applyContextOptions(context, {
         env: envFilterValue,
         filterPlatformSelect: document.getElementById("versionPlatform"),
@@ -1022,7 +1073,22 @@
     });
   }
 
+  const showJourneyHint = () => {
+    if (urlParams.get("hint") !== "pick_vc") return;
+    const panel = document.querySelector(".version-panel");
+    if (!panel || document.getElementById("versionJourneyHint")) return;
+    const banner = document.createElement("div");
+    banner.id = "versionJourneyHint";
+    banner.className = "version-hint-banner";
+    const error = urlParams.get("error");
+    banner.textContent = error
+      ? `无法开始发布：${error}。请先在版本组配置管线，再点击对应 VersionCode 的「开始发布」。`
+      : "请在本页选择 VersionCode，点击行内「开始发布」进入发布向导。";
+    panel.insertBefore(banner, panel.firstChild);
+  };
+
   applyEnvScopedUi();
+  showJourneyHint();
 
   ["versionSearch", "versionChannel", "versionPlatform", "versionStatus", "versionArtifactStatus"].forEach((id) => {
     const node = document.getElementById(id);

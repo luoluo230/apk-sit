@@ -10,7 +10,7 @@
     <div class="build-page-actions pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
       <a class="build-btn build-btn-primary" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">
-        <img src="/static/project_ui/svg/kpi_build.svg" alt="">进入版本管理触发构建
+        <img src="/static/project_ui/svg/nav_version_code.svg" alt="">返回版本继续发布
       </a>
       <button class="build-btn" type="button" data-refresh>
         <img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新
@@ -20,10 +20,10 @@
 
   <div class="build-scope-banner is-hidden" data-scope-banner>
     <div>
-      <strong data-scope-title>当前仅显示指定 VersionCode 的构建历史</strong>
+      <strong data-scope-title>构建记录 · 发布请从版本代码开始</strong>
       <p data-scope-desc></p>
     </div>
-    <a class="build-btn" data-scope-back href="/admin/projects/{{ project_id }}/versions">返回版本列表</a>
+    <a class="build-btn" data-scope-back href="/admin/projects/{{ project_id }}/versions">返回版本继续发布</a>
   </div>
 
   <div class="build-kpis pm-kpi-row" data-kpis>

@@ -22,11 +22,11 @@
   </div>
 
   {% if (edit_scope_mode or 'version_group') == 'version_group' %}
-  <div class="build-config-banner" role="note">
+  <div class="build-config-banner build-config-journey-banner" role="note">
     <img src="/static/project_ui/svg/status_info.svg" alt="" onerror="this.style.display='none'">
     <div>
-      <strong>这里是构建管线的唯一源</strong>
-      <span>保存后将作用于本版本组（版本名 × 环境 × 平台）下所有 VersionCode，并被发布单页只读引用。新建 VC 自动继承该模板，无需重复配置。</span>
+      <strong>这是发布前的准备步骤</strong>
+      <span>完成后返回版本代码，点击对应 VersionCode 行的「开始发布」进入发布向导。</span>
     </div>
   </div>
   {% endif %}

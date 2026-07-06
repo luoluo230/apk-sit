@@ -123,8 +123,8 @@
     if (banner) banner.classList.remove('is-hidden');
     if (title) {
       title.textContent = scopeVersionId
-        ? '当前仅显示该 VersionCode 的构建历史'
-        : '当前仅显示指定交付范围的构建历史';
+        ? '构建记录 · 发布请从版本代码开始'
+        : '构建记录 · 发布请从版本代码开始';
     }
     if (desc) {
       desc.textContent = scopeText

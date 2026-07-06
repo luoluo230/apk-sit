@@ -53,14 +53,28 @@
     const token = document.querySelector('meta[name="csrf-token"]');
     return token && token.content ? { "X-CSRFToken": token.content } : {};
   };
+  const scopeApi = window.DeliveryScope || {};
+  const parseScopeQuery = (search = location.search) => (scopeApi.parseQuery ? scopeApi.parseQuery(search) : Object.fromEntries(new URLSearchParams(search)));
+  const buildScopeQuery = (scope = {}, extra = {}) => (scopeApi.buildQuery ? scopeApi.buildQuery(scope, extra) : "");
+  const scopeHref = (path, scope = {}, extra = {}) => (scopeApi.href ? scopeApi.href(path, scope, extra) : `${path}${buildScopeQuery(scope, extra)}`);
+  const currentContext = () => buildScopeQuery(parseScopeQuery());
+  const renderJourneyProgress = (host, phases, phaseIndex, failed = false) => {
+    if (!host || !phases?.length) return;
+    host.innerHTML = phases.map((label, index) => {
+      const cls = index < phaseIndex ? "done" : index === phaseIndex ? (failed ? "failed active" : "active") : "";
+      return `<div class="ro-journey-segment ${cls}" data-phase="${index}"><span>${esc(label)}</span></div>`;
+    }).join("");
+  };
   const matrixActions = (line, envKey) => {
-    const baseQuery = `env_key=${encodeURIComponent(envKey)}&channel_id=${encodeURIComponent(line.channel_id)}&platform=${encodeURIComponent(line.platform)}`;
-    const viewVersionsHref = `/admin/projects/${projectId}/versions?${baseQuery}`;
-    const addVcHref = `${viewVersionsHref}&action=create_vc`;
+    const scope = { env_key: envKey, channel_id: line.channel_id, platform: line.platform };
+    const viewVersionsHref = scopeHref(`/admin/projects/${projectId}/versions`, scope);
+    const addVcHref = scopeHref(`/admin/projects/${projectId}/versions`, scope, { action: "create_vc" });
     const primary = line.configured
-      ? `<a class="matrix-btn primary" href="/admin/projects/${projectId}/release-orders/new?${baseQuery}">发布</a>`
-      : `<a class="matrix-btn primary" href="${addVcHref}">添加 VC</a>`;
-    return `<div class="matrix-actions">${primary}<a class="matrix-btn" href="${viewVersionsHref}">版本</a><a class="matrix-btn" href="/admin/projects/${projectId}/topology-bindings?${baseQuery}">拓扑</a></div>`;
+      ? (line.version_id
+        ? `<a class="matrix-btn" href="${scopeHref(`/admin/projects/${projectId}/release-orders/start`, scope, { version_id: line.version_id })}">配置 VC</a>`
+        : `<a class="matrix-btn primary" href="${viewVersionsHref}">去版本代码</a>`)
+      : `<a class="matrix-btn primary" href="${addVcHref}">新建 VC</a>`;
+    return `${primary}<a class="matrix-btn" href="${viewVersionsHref}">版本</a><a class="matrix-btn" href="${scopeHref(`/admin/projects/${projectId}/topology-bindings`, scope)}">拓扑</a>`;
   };
   const renderChannelList = (host, assigned, { manageable = false } = {}) => {
     if (!host) return;
@@ -493,6 +507,22 @@
       loadOverview().catch((error) => toast(error.message, "error"));
     });
   };
+  const envConfigIconFile = (envKey) => {
+    const k = String(envKey || "").toLowerCase();
+    if (k === "production") return "env_production.svg";
+    if (k === "staging") return "env_staging.svg";
+    if (k === "testing") return "env_testing.svg";
+    if (k === "development") return "env_development.svg";
+    return "nav_environment.svg";
+  };
+  const envConfigIconClass = (envKey) => {
+    const k = String(envKey || "").toLowerCase();
+    if (k === "production") return "prod";
+    if (k === "staging") return "pre";
+    if (k === "testing") return "test";
+    if (k === "development") return "dev";
+    return "custom";
+  };
   const formatEnvScopeSummary = (row) => {
     const scope = row.delivery_scope || {};
     const channelLabels = scope.channel_labels || [];
@@ -531,9 +561,28 @@
             const remove = builtin ? "" : `<button type="button" class="env-remove" data-env-remove="${key}">删除</button>`;
             const scopeBtn = `<button type="button" class="env-scope-config" data-scope-env="${key}">配置</button>`;
             const scopeLink = `<a class="env-scope-link" href="/admin/projects/${encodeURIComponent(projectId)}/environments/${key}#delivery-scope">环境详情</a>`;
-            return `<div class="env-config-item${enabled ? "" : " is-disabled"}"><div class="env-config-main"><strong>${esc(row.label)}</strong><small>${key}${builtin ? " · 内置" : ""}${enabled ? "" : " · 已禁用"}</small>${formatEnvScopeSummary(row)}</div><div class="env-config-actions">${scopeBtn}${scopeLink}${toggle}${remove}</div></div>`;
+            const iconCls = envConfigIconClass(row.env_key);
+            const iconFile = envConfigIconFile(row.env_key);
+            const badgeClass = enabled ? (builtin ? "builtin" : "active") : "disabled";
+            const badgeText = enabled ? (builtin ? "内置" : "启用") : "已禁用";
+            return `<article class="env-config-card${enabled ? "" : " is-disabled"}">
+              <header class="env-config-card-head">
+                <div class="env-config-lead">
+                  <span class="env-config-icon env-config-icon--${iconCls}"><img src="/static/project_ui/svg/${iconFile}" alt=""></span>
+                  <div class="env-config-title">
+                    <strong>${esc(row.label)}</strong>
+                    <small>${key}</small>
+                  </div>
+                </div>
+                <span class="env-config-badge ${badgeClass}">${badgeText}</span>
+              </header>
+              ${formatEnvScopeSummary(row)}
+              <footer class="env-config-card-foot">
+                ${scopeBtn}${scopeLink}${toggle}${remove}
+              </footer>
+            </article>`;
           }).join("")
-        : '<div class="ui-empty">暂无环境配置</div>';
+        : '<div class="env-config-empty">暂无环境配置</div>';
       host.querySelectorAll("[data-scope-env]").forEach((button) => {
         button.onclick = () => openDeliveryScopeDialog({ envKey: button.dataset.scopeEnv });
       });
@@ -579,7 +628,19 @@
       host.innerHTML = `<div class="ui-empty">${esc(error.message || "环境加载失败")}</div>`;
     }
   };
-  let envDeliveryScopeState = null;
+  const platformIcon = (platform) => {
+    const key = String(platform || "").toLowerCase();
+    if (key.includes("ios")) return "file_ios.svg";
+    if (key.includes("win")) return "file_windows.svg";
+    return "file_android.svg";
+  };
+  const formatEnvTime = (raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return "—";
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return text.slice(0, 16).replace("T", " ");
+    return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\//g, "-");
+  };
   let scopeDialogEnvKey = "";
   const renderDeliveryMatrixHtml = (lines, envKey) => {
     if (!lines.length) return '<div class="ui-empty">当前环境暂无交付线，请先在项目中配置渠道并初始化 Scope。</div>';
@@ -589,21 +650,29 @@
       if (!groups.has(cid)) groups.set(cid, { name: line.channel_name || cid, lines: [] });
       groups.get(cid).lines.push(line);
     });
-    let html = `<div class="matrix-head"><span>渠道</span><span>平台</span><span>当前版本</span><span>拓扑</span><span>Bundle</span><span>操作</span></div>`;
+    let html = '<div class="env-line-groups">';
     groups.forEach((group) => {
-      html += `<div class="matrix-group-head"><strong>${esc(group.name)}</strong><span>${group.lines.length} 个平台</span></div>`;
+      html += `<section class="env-line-group"><header class="env-line-group-head"><strong>${esc(group.name)}</strong><span>${group.lines.length} 个平台</span></header><div class="env-line-cards">`;
       group.lines.forEach((line) => {
         const versionText = line.version_name ? `${line.version_name} / ${line.version_code}` : "未配置";
-        html += `<div class="matrix-row ${line.configured ? "" : "unconfigured"}">
-          <div><strong>${esc(line.channel_name)}</strong></div>
-          <div>${esc(line.platform_label || line.platform)}</div>
-          <div>${esc(versionText)}</div>
-          <div>${esc(line.topology_id || "-")}</div>
-          <div>${esc(line.bundle_id || "-")}</div>
-          ${matrixActions(line, envKey)}
-        </div>`;
+        const badgeClass = line.configured ? "ready" : "pending";
+        const badgeText = line.configured ? "已配置" : "未配置";
+        html += `<article class="env-line-card ${line.configured ? "" : "unconfigured"}">
+          <div class="env-line-card-head">
+            <span class="env-line-platform-icon"><img src="/static/project_ui/svg/${platformIcon(line.platform)}" alt=""></span>
+            <div class="env-line-card-title"><span class="env-line-platform">${esc(line.platform_label || line.platform)}</span><span class="env-line-badge ${badgeClass}">${badgeText}</span></div>
+          </div>
+          <dl class="env-line-fields">
+            <div><dt>当前版本</dt><dd class="${line.version_name ? "" : "muted"}">${esc(versionText)}</dd></div>
+            <div><dt>Bundle</dt><dd>${esc(line.bundle_id || "-")}</dd></div>
+            <div class="span-2"><dt>拓扑</dt><dd class="mono">${esc(line.topology_id || "-")}</dd></div>
+          </dl>
+          <footer class="env-line-actions">${matrixActions(line, envKey)}</footer>
+        </article>`;
       });
+      html += "</div></section>";
     });
+    html += "</div>";
     return html;
   };
   const renderDeliveryScopeChips = (scope) => {
@@ -835,13 +904,6 @@
       }
     };
   };
-  const currentContext = () => {
-    const source = new URLSearchParams(location.search);
-    const query = new URLSearchParams();
-    ["env_key","channel_id","platform","version_name","version_code","release_order_id"].forEach(key => source.get(key) && query.set(key, source.get(key)));
-    return query.toString() ? `?${query}` : "";
-  };
-
   const renderOverviewChannelTabs = (channelOptions, activeChannelId) => {
     const host = document.getElementById("overviewChannelTabs");
     if (!host) return;
@@ -903,6 +965,9 @@
   };
 
   async function loadOverview() {
+    if (typeof window.__P02_loadOverview === "function") {
+      return window.__P02_loadOverview();
+    }
     const data = await api(`/api/projects/${encodeURIComponent(projectId)}/overview${overviewQueryString()}`);
     populateOverviewFilters(data);
     const activeChannelId = overviewFilterParams().channel_id || "";
@@ -975,20 +1040,16 @@
   async function loadEnvironmentDetail() {
     const envKey = page.dataset.envKey;
     const data = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`);
-    const summary = data.summary || {};
     document.getElementById("envDetailTitle").textContent = data.env_label || envKey;
-    document.getElementById("envDetailSummary").innerHTML = [
-      ["交付线", `${summary.configured_line_count || 0} / ${summary.delivery_line_count || 0}`],
-      ["未配置", summary.unconfigured_line_count || 0],
-      ["阻断发布单", summary.failed_count || 0],
-      ["进行中", summary.processing_count || 0],
-      ["待审批", summary.pending_approval_count || 0],
-    ].map(([label, value]) => `<article class="kpi-card"><div><span>${label}</span><strong>${value}</strong></div></article>`).join("");
     const lines = data.delivery_lines || [];
     document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey);
     const orders = data.release_orders || [];
     document.getElementById("envOrders").innerHTML = orders.length
-      ? orders.slice(0, 6).map((item) => `<a class="activity-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span>${status(item.status)}</span><strong>${esc(item.version_name)} / ${esc(item.version_code)}</strong><span>${esc(item.updated_at)}</span></a>`).join("")
+      ? orders.slice(0, 6).map((item) => {
+          const label = statusLabels[item.status] || item.status || "—";
+          const tone = String(item.status || "").includes("failed") ? "blocked" : ["building", "prechecking", "publishing", "verifying"].includes(item.status) ? "processing" : item.status === "awaiting_approval" ? "warning" : item.status === "draft" ? "draft" : "ready";
+          return `<a class="env-order-row" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}"><span class="status-pill ${tone}">${esc(label)}</span><div class="env-order-main"><strong>${esc(item.version_name)} / ${esc(item.version_code)}</strong><small>${esc(item.channel_name || "")} · ${esc(item.platform || "")}</small></div><span class="env-order-time">${esc(formatEnvTime(item.updated_at))}</span></a>`;
+        }).join("")
       : '<div class="ui-empty">本环境暂无进行中的发布单</div>';
     const manifest = data.manifest || {};
     document.getElementById("manifestStatus").textContent = manifest.project_id ? `Manifest 已注册（${manifest.channels?.length || 0} 个渠道）` : "尚未注册 Manifest";
@@ -1014,7 +1075,10 @@
 
   const renderOrderTable = (items) => {
     const host = document.getElementById("releaseOrderList");
-    host.innerHTML = `<div class="order-table-head"><span>发布单 / 版本</span><span>目标</span><span>状态</span><span>拓扑 / Runtime</span><span>更新时间</span><span>操作</span></div>` + (items.length ? items.map(item=>{const context=`?env_key=${encodeURIComponent(item.env_key)}&channel_id=${encodeURIComponent(item.channel_id)}&platform=${encodeURIComponent(item.platform)}&version_name=${encodeURIComponent(item.version_name)}&version_code=${encodeURIComponent(item.version_code)}&release_order_id=${encodeURIComponent(item.release_order_id)}`;return `<div class="order-table-row"><div><strong>${esc(item.release_order_id)}</strong><small>${esc(item.version_name)} / ${esc(item.version_code)}</small></div><div>${esc(envLabels[item.env_key])}<small>${esc(item.channel_name)} / ${esc(item.platform)}</small></div><div>${status(item.status)}</div><div>${esc(item.topology_id || "待解析")}<small>${esc(item.runtime_run_id || "未运行")}</small></div><div>${esc(item.updated_at)}</div><div class="row-actions"><a class="ui-secondary" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}${context}">详情</a>${["draft","artifacts_ready","precheck_failed"].includes(item.status)?`<a class="ui-secondary" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}/edit${context}">编辑</a>`:""}</div></div>`;}).join("") : '<div class="ui-empty">当前筛选条件下暂无发布单</div>');
+    host.innerHTML = `<div class="order-table-head"><span>发布单 / 版本</span><span>目标</span><span>状态</span><span>拓扑 / Runtime</span><span>更新时间</span><span>操作</span></div>` + (items.length ? items.map(item=>{
+      const context=buildScopeQuery({env_key:item.env_key,channel_id:item.channel_id,platform:item.platform,version_id:item.version_id,version_name:item.version_name,version_code:item.version_code,release_order_id:item.release_order_id});
+      return `<div class="order-table-row"><div><strong>${esc(item.release_order_id)}</strong><small>${esc(item.version_name)} / ${esc(item.version_code)}</small></div><div>${esc(envLabels[item.env_key])}<small>${esc(item.channel_name)} / ${esc(item.platform)}</small></div><div>${status(item.status)}</div><div>${esc(item.topology_id || "待解析")}<small>${esc(item.runtime_run_id || "未运行")}</small></div><div>${esc(item.updated_at)}</div><div class="row-actions"><a class="ui-secondary" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}${context}">详情</a>${["draft","artifacts_ready","precheck_failed"].includes(item.status)?`<a class="ui-secondary" href="/admin/projects/${projectId}/release-orders/${item.release_order_id}/edit${context}">编辑</a>`:""}</div></div>`;
+    }).join("") : '<div class="ui-empty">当前筛选条件下暂无发布单</div>');
   };
   async function setupOrders() {
     const options = await api(`/api/projects/${projectId}/context-options`);
@@ -1040,6 +1104,150 @@
     const form=document.getElementById("releaseOrderForm"), orderId=page.dataset.orderId;
     const search=new URLSearchParams(location.search);
     const envFromUrl=search.get("env_key")||"";
+    const draftKey=`release-order-draft:${projectId}:${orderId||"new"}`;
+    const formatTime=()=>{const d=new Date();return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;};
+    const touchAutosave=(saved=false)=>{
+      const el=document.getElementById("orderAutosave");
+      if(!el)return;
+      el.textContent=saved?`已自动保存于 ${formatTime()}`:"编辑中…";
+      el.classList.toggle("saved",saved);
+    };
+    const bindTagField=(input)=>{
+      if(!input||input.dataset.tagBound)return;
+      input.dataset.tagBound="1";
+      const wrap=document.createElement("div");
+      wrap.className="ro-tag-wrap";
+      input.parentElement.appendChild(wrap);
+      const render=()=>{
+        const tags=String(input.value||"").split(/[,，;；\n]/).map(x=>x.trim()).filter(Boolean);
+        wrap.innerHTML=tags.map((tag,i)=>`<span class="ro-tag">${esc(tag)}<button type="button" data-tag-remove="${i}" aria-label="移除">×</button></span>`).join("");
+        wrap.querySelectorAll("[data-tag-remove]").forEach(btn=>btn.addEventListener("click",()=>{
+          const idx=Number(btn.dataset.tagRemove);
+          const next=tags.filter((_,j)=>j!==idx);
+          input.value=next.join(", ");
+          render();
+          input.dispatchEvent(new Event("input",{bubbles:true}));
+        }));
+      };
+      input.addEventListener("input",render);
+      input.addEventListener("blur",render);
+      render();
+    };
+    page.querySelectorAll("[data-tag-field]").forEach(bindTagField);
+    const descArea=form.release_description;
+    const descCount=document.getElementById("orderDescCount");
+    const syncDescCount=()=>{if(descCount&&descArea)descCount.textContent=`${(descArea.value||"").length} / 500`;};
+    if(descArea){descArea.addEventListener("input",syncDescCount);syncDescCount();}
+    const updateRiskPanel=()=>{
+      const levelEl=document.getElementById("orderRiskLevel");
+      const listEl=document.getElementById("orderRiskList");
+      if(!levelEl||!listEl)return;
+      const env=form.env_key.value;
+      const channel=form.channel_id.selectedOptions[0]?.textContent||form.channel_id.value;
+      const platform=form.platform.selectedOptions[0]?.textContent||form.platform.value;
+      const strategy=form.release_strategy?.value||"standard";
+      const audience=form.target_audience?.selectedOptions[0]?.textContent||"全部用户";
+      const isProd=env==="production";
+      levelEl.textContent=isProd?"高风险":env==="staging"?"中风险":"低风险";
+      levelEl.className=`ro-risk-tag ${isProd?"high":env==="staging"?"medium":"low"}`;
+      const items=[
+        `目标环境：${form.env_key.selectedOptions[0]?.textContent||env}${isProd?"（生产）":""}`,
+        `影响范围：${audience}`,
+        `渠道 / 平台：${channel} / ${platform}`,
+        strategy==="gray"?"发布方式：灰度发布（推荐）":"发布方式：全量发布",
+      ];
+      const version=selectedVersion();
+      if(version?.version_name)items.push(`VersionCode：${version.version_name} / ${version.version_code||""}`);
+      listEl.innerHTML=items.map(x=>`<li>${esc(x)}</li>`).join("");
+      form.env_key.dataset.risk=isProd?"production":"";
+    };
+    const updateRuntimeStats=()=>{
+      const badge=document.getElementById("orderRuntimeBadge");
+      const countEl=document.getElementById("orderInstanceCount");
+      const topoVer=document.getElementById("orderTopologyVersion");
+      const delivery=formContext.delivery_readiness||{};
+      const checks=delivery.checks||{};
+      if(badge){
+        const ready=Boolean(checks.topology);
+        badge.textContent=ready?"运行中":"待解析";
+        badge.className=`ro-runtime-badge ${ready?"running":"unknown"}`;
+      }
+      if(countEl){
+        const inst=delivery.runtime_instances;
+        countEl.textContent=typeof inst==="object"&&inst?`${inst.ready||0} / ${inst.total||0} 台`:checks.topology?"— / — 台":"—";
+      }
+      if(topoVer&&!topoVer.value)topoVer.placeholder=checks.topology?"保存后解析":"保存后按绑定规则解析";
+    };
+    const updateJenkinsDisplay=(version, buildLinks={})=>{
+      const instSel=document.getElementById("orderJenkinsDisplay");
+      const jobSel=document.getElementById("orderJobDisplay");
+      const paramsInput=document.getElementById("orderJenkinsParamsDisplay");
+      const inst=version?.jenkins_instance_id||form.jenkins_instance_id?.value||"";
+      const job=version?.jenkins_job_id||version?.jenkins_job||form.jenkins_job?.value||"";
+      const ensureFieldLink=(selectEl,href,label)=>{
+        if(!selectEl?.parentElement)return;
+        let hint=selectEl.parentElement.querySelector(".ro-field-config-link");
+        if(!href){hint?.remove();return;}
+        if(!hint){
+          hint=document.createElement("a");
+          hint.className="ro-field-config-link ro-config-link";
+          selectEl.parentElement.appendChild(hint);
+        }
+        hint.href=href;
+        hint.textContent=label;
+      };
+      if(instSel){
+        instSel.innerHTML=inst?`<option>${esc(inst)}</option>`:'<option>未配置</option>';
+        ensureFieldLink(instSel,inst?"":(buildLinks.jenkinsInstance||buildLinks.jenkinsJob||""),"去配置 Jenkins 实例 →");
+      }
+      if(jobSel){
+        jobSel.innerHTML=job?`<option>${esc(job)}</option>`:'<option>未配置</option>';
+        ensureFieldLink(jobSel,job?"":(buildLinks.jenkinsJob||""),"去配置 Job / 任务 →");
+      }
+      if(paramsInput){
+        const envKey=form.env_key.value||"prod";
+        const channel=form.channel_id.value||"release";
+        const platform=form.platform.value||"all";
+        const existing=String(paramsInput.value||"").trim();
+        if(!existing){
+          paramsInput.value=`ENV=${envKey}, CHANNEL=${channel}, PLATFORM=${platform}`;
+        }
+        bindTagField(paramsInput);
+      }
+    };
+    const applyOrderTemplate=(kind)=>{
+      const templates={
+        routine:{release_reason_type:"feature",release_strategy:"standard",gray_ratio:"",validation_items:"订单创建流程, 支付结果页跳转",validation_task:"RC-UI-官网验证"},
+        hotfix:{release_reason_type:"hotfix",release_strategy:"standard",gray_ratio:"5",gray_duration:"15",validation_items:"核心链路回归",validation_task:""},
+        gray:{release_reason_type:"feature",release_strategy:"gray",gray_strategy:"ratio",gray_ratio:"10",gray_duration:"30",gray_success_action:"automatic",validation_items:"订单创建流程, 支付结果页跳转, 消息推送验证"},
+      };
+      const preset=templates[kind]||{};
+      Object.entries(preset).forEach(([key,val])=>{if(form[key])form[key].value=val;});
+      page.querySelectorAll("[data-tag-field]").forEach((input)=>{if(input.dataset.tagBound){input.dispatchEvent(new Event("input",{bubbles:true}));}});
+      syncDescCount();
+      updateRiskPanel();
+      updateCompleteness();
+      touchAutosave(false);
+      toast(kind==="hotfix"?"已应用紧急修复模板":kind==="gray"?"已应用灰度发布模板":"已应用常规发布模板");
+    };
+    page.querySelectorAll("[data-order-template]").forEach(btn=>btn.addEventListener("click",()=>applyOrderTemplate(btn.dataset.orderTemplate)));
+    document.getElementById("btnCopyPlan")?.addEventListener("click",async()=>{
+      try{
+        await navigator.clipboard.writeText(JSON.stringify(payload(),null,2));
+        toast("发布计划已复制到剪贴板");
+      }catch(_e){toast("复制失败，请手动复制表单内容","error");}
+    });
+    let autosaveTimer=null;
+    const scheduleDraft=()=>{
+      touchAutosave(false);
+      clearTimeout(autosaveTimer);
+      autosaveTimer=setTimeout(()=>{
+        try{localStorage.setItem(draftKey,JSON.stringify(payload()));touchAutosave(true);}catch(_e){/* ignore quota */}
+      },1200);
+    };
+    form.addEventListener("input",scheduleDraft);
+    form.addEventListener("change",scheduleDraft);
+    touchAutosave(false);
     const options=await api(`/api/projects/${projectId}/context-options${envFromUrl?`?env_key=${encodeURIComponent(envFromUrl)}`:""}`);
     try {
       const listResponse=await fetch(`/admin/projects/${projectId}/versions/list`,{credentials:"same-origin"});
@@ -1079,6 +1287,7 @@
         formContext=data||formContext;
         applyReleaseDefaults(formContext.release_defaults||{});
         applyFormDepth(formContext.form_depth||formContext.release_policy?.form_depth||"standard");
+        syncDescCount();
       }catch(_error){/* keep defaults */}
       updateCompleteness();
       updatePipelineGate();
@@ -1090,6 +1299,51 @@
         if(!String(form[key].value||"").trim()&&String(value||"").trim())form[key].value=String(value);
       });
     };
+    const sectionJumpMap={target:"target",build:"build",runtime:"runtime",strategy:"strategy",verify:"verify",rollback:"rollback"};
+    const unfoldSection=(key)=>{
+      const section=form.querySelector(`[data-section="${sectionJumpMap[key]||key}"]`);
+      if(!section)return null;
+      section.classList.remove("is-folded");
+      section.scrollIntoView({behavior:"smooth",block:"start"});
+      return section;
+    };
+    const bindSectionNavigation=()=>{
+      form.querySelectorAll(".ro-section .ro-section-head").forEach((head)=>{
+        const section=head.closest(".ro-section");
+        if(!section)return;
+        const titleRow=head.querySelector(":scope > div")||head;
+        let toggle=titleRow.querySelector(".ro-section-toggle");
+        if(section.dataset.section!=="target"){
+          if(!toggle){
+            toggle=document.createElement("span");
+            toggle.className="ro-section-toggle";
+            titleRow.appendChild(toggle);
+          }
+          toggle.textContent=section.classList.contains("is-folded")?"展开查看":"收起";
+          if(!head.dataset.sectionNavBound){
+            head.dataset.sectionNavBound="1";
+            head.addEventListener("click",()=>{
+              section.classList.toggle("is-folded");
+              toggle.textContent=section.classList.contains("is-folded")?"展开查看":"收起";
+            });
+          }
+        }else if(toggle)toggle.remove();
+      });
+      const guideItems=page.querySelectorAll(".ro-guide-list li");
+      const guideKeys=["target","build","runtime","strategy","verify","rollback"];
+      guideItems.forEach((item,index)=>{
+        item.classList.add("is-link");
+        item.addEventListener("click",()=>unfoldSection(guideKeys[index]||"target"));
+      });
+      document.getElementById("orderFormJourneyProgress")?.querySelectorAll("[data-jump]").forEach((node)=>{
+        node.addEventListener("click",()=>{
+          const jump=node.dataset.jump||"target";
+          if(jump==="plan")unfoldSection("build");
+          else if(jump==="execute")unfoldSection("strategy");
+          else unfoldSection("target");
+        });
+      });
+    };
     const applyFormDepth=(depth)=>{
       const root=page.querySelector(".order-form-app")||page;
       const minimal=depth==="minimal";
@@ -1099,40 +1353,38 @@
       const subtitle=document.getElementById("orderFormSubtitle");
       if(subtitle){
         subtitle.textContent=minimal
-          ? "开发/测试快捷发布：交付目标已锁定，填写发布原因与负责人即可保存或触发构建。"
+          ? "开发/测试快捷发布：填写发布原因与负责人；构建/策略等区块可点击下方标题或右侧指引展开查看。"
           : standard
-            ? "标准发布：补充发布说明与策略；管线在版本组模板维护。"
+            ? "标准发布：补充发布说明与策略；各区块可点击标题展开或收起。"
             : "完整发布计划：含验证、回滚与审批所需全部信息。";
       }
-      page.querySelectorAll(".workflow-steps [data-form-step]").forEach((btn)=>{
-        const step=btn.dataset.formStep;
-        const advanced=step==="runtime"||step==="strategy"||step==="verify"||step==="rollback";
-        const hideBuild=minimal&&step==="build";
-        if((minimal&&advanced)||hideBuild)btn.classList.add("is-collapsed-step");
-        else btn.classList.remove("is-collapsed-step");
+      form.querySelectorAll(".ro-section").forEach((section)=>{
+        section.classList.remove("is-collapsed-section");
+        const key=section.dataset.section||"";
+        if(key==="target"){section.classList.remove("is-folded");return;}
+        if(minimal|| (standard&&key==="rollback"))section.classList.add("is-folded");
+        else section.classList.remove("is-folded");
+        const toggle=section.querySelector(".ro-section-toggle");
+        if(toggle)toggle.textContent=section.classList.contains("is-folded")?"展开查看":"收起";
       });
-      page.querySelectorAll(".order-section-advanced").forEach((section)=>{
-        if(minimal)section.classList.add("is-collapsed-section");
-        else if(standard&&section.dataset.section==="rollback")section.classList.add("is-collapsed-section");
-        else section.classList.remove("is-collapsed-section");
-      });
-      const buildSection=page.querySelector(".order-section-build");
-      if(buildSection){
-        if(minimal)buildSection.classList.add("is-collapsed-section");
-        else buildSection.classList.remove("is-collapsed-section");
-      }
       page.querySelectorAll(".order-field-optional").forEach((el)=>{
         el.classList.toggle("is-hidden-field",minimal);
       });
       const miniSummary=document.getElementById("orderMinimalBuildSummary");
       if(miniSummary)miniSummary.hidden=!minimal;
+      bindSectionNavigation();
     };
     const updatePipelineGate=()=>{
       const delivery=formContext.delivery_readiness||{};
       const pipelineReady=Boolean(delivery.pipeline_ready);
-      const btnBuild=document.getElementById("btnSaveBuild");
+      const btnNext=document.getElementById("btnFormNext");
       const btnConfig=document.getElementById("btnConfigurePipeline");
-      if(btnBuild)btnBuild.disabled=!pipelineReady;
+      const artifactsReady=Boolean(delivery.checks?.artifacts);
+      if(btnNext){
+        btnNext.disabled=!pipelineReady;
+        btnNext.textContent=pipelineReady?(artifactsReady?"下一步：保存并预检":"下一步：保存并触发构建"):"下一步：先配置管线";
+        btnNext.title=pipelineReady?"":(delivery.blocker_hint||"请先在版本组配置 Jenkins 实例、Job 与四步管线。");
+      }
       if(btnConfig){
         const href=formContext.build_config_href||"";
         if(!pipelineReady&&href){
@@ -1147,18 +1399,74 @@
     };
     const versionContextQuery=(version)=>{
       if(!version||(!version.id&&!version.version_name))return "";
-      const params=new URLSearchParams();
-      if(version.env_key)params.set("env_key",version.env_key);
-      if(version.channel_id)params.set("channel_id",version.channel_id);
-      if(version.platform)params.set("platform",version.platform);
-      if(version.version_name)params.set("version_name",version.version_name);
-      if(version.version_code)params.set("version_code",version.version_code);
-      return params.toString();
+      return buildScopeQuery({
+        env_key:version.env_key,
+        channel_id:version.channel_id,
+        platform:version.platform,
+        version_id:version.id,
+        version_name:version.version_name,
+        version_code:version.version_code,
+      }).replace(/^\?/,"");
     };
-    const previewCard=(icon,label,value,detail="",href="",linkLabel="去配置",sameWindow=false)=>{
+    const updateFormJourney=()=>{
+      const delivery=formContext.delivery_readiness||{};
+      const pipelineReady=Boolean(delivery.pipeline_ready);
+      const planPercent=Number(document.getElementById("planCompleteness")?.textContent?.replace("%","")||0);
+      const phaseIndex=pipelineReady?(planPercent>=100?2:1):0;
+      renderJourneyProgress(document.getElementById("orderFormJourneyProgress"), ["准备","计划","执行"], phaseIndex);
+    };
+    const previewCard=(icon,label,value,detail="",href="",linkLabel="去配置",sameWindow=false,missing=false)=>{
       const targetAttr=sameWindow?"":" target=\"_blank\" rel=\"noopener noreferrer\"";
       const link=href?`<a class="preview-card-link" href="${href}"${targetAttr}>${esc(linkLabel)}</a>`:"";
-      return `<div class="preview-card"><img src="/static/project_ui/svg/${icon}.svg" alt=""><div><span>${esc(label)}</span><strong>${esc(value||"未配置")}</strong>${detail?`<small>${esc(detail)}</small>`:""}${link}</div></div>`;
+      const display=missing&&href?`<a class="ro-config-link" href="${esc(href)}">${esc(value||"未配置")}</a>`:esc(value||"未配置");
+      return `<div class="preview-card"><img src="/static/project_ui/svg/${icon}.svg" alt=""><div><span>${esc(label)}</span><strong>${display}</strong>${detail?`<small>${esc(detail)}</small>`:""}${link}</div></div>`;
+    };
+    const isMissingConfigValue=(value)=>!value||value==="未配置"||value==="管线未配置"||value==="尚未登记";
+    const resolveMissingPipelineSection=(pipeline={},jenkins={})=>{
+      if(!String(jenkins.jenkins_instance_id||"").trim())return "jenkins";
+      if(!String(jenkins.jenkins_job_id||jenkins.jenkins_job||"").trim())return "jenkins";
+      if(!(pipeline.config_export||{}).enabled)return "config_export";
+      if(!(pipeline.resource_build||{}).enabled)return "resource_build";
+      if(!(pipeline.hot_release||{}).enabled)return "hot_release";
+      if(!(pipeline.apk_build||{}).enabled)return "artifact";
+      return "jenkins";
+    };
+    const setSummaryField=(cell,value,href)=>{
+      if(!cell)return;
+      const text=String(value||"").trim()||"未配置";
+      if(isMissingConfigValue(text)&&href){
+        cell.innerHTML=`<a class="ro-config-link" href="${esc(href)}">${esc(text)}</a>`;
+      }else{
+        cell.textContent=text;
+      }
+    };
+    const formatPipelinePillLabel=(readiness)=>{
+      if(!readiness||typeof readiness!=="object")return {label:"管线未配置",isReady:false};
+      const status=String(readiness.status||"").trim();
+      const missingSteps=Array.isArray(readiness.missing_pipeline_steps)?readiness.missing_pipeline_steps:[];
+      const missing=Array.isArray(readiness.missing)?readiness.missing:[];
+      const infraMissing=missing.filter((x)=>x==="Jenkins 实例"||x==="Jenkins Job");
+      if(status==="ready"||(!status&&readiness.ready&&!missingSteps.length)){
+        return {label:"版本组管线模板",isReady:true};
+      }
+      const stepMissing=missingSteps.length?missingSteps:missing.filter((x)=>!["Jenkins 实例","Jenkins Job","管线四步配置"].includes(x));
+      const parts=[...infraMissing,...stepMissing];
+      if(!parts.length){
+        if(readiness.ready)return {label:"版本组管线模板",isReady:true};
+        return {label:"管线未配置",isReady:false};
+      }
+      return {label:`待完善：${parts.join("、")}`,isReady:false};
+    };
+    const setSourcePill=(pillEl,readiness,href)=>{
+      if(!pillEl)return;
+      const {label,isReady}=formatPipelinePillLabel(readiness);
+      pillEl.classList.toggle("ready",isReady);
+      pillEl.classList.toggle("missing",!isReady);
+      if(!isReady&&href){
+        pillEl.innerHTML=`<a class="ro-config-link" href="${esc(href)}">${esc(label)}</a>`;
+      }else{
+        pillEl.textContent=label;
+      }
     };
     const lockTargetFields=()=>{
       [form.env_key,form.channel_id,form.platform,form.version_id].forEach((field)=>{
@@ -1234,35 +1542,38 @@
       const jenkinsInstance=version.jenkins_instance_id||form.jenkins_instance_id.value;
       const jenkinsJob=version.jenkins_job_id||version.jenkins_job||form.jenkins_job.value;
       const jenkinsHref=jenkinsInstance?`/admin/jenkins/edit?instance_id=${encodeURIComponent(jenkinsInstance)}`:"/admin/jenkins";
+      const jenkinsConfigHref=buildConfigHref("jenkins");
+      const pipelineConfigHref=buildConfigHref(resolveMissingPipelineSection(pipeline,{jenkins_instance_id:jenkinsInstance,jenkins_job_id:jenkinsJob}));
+      const buildLinks={jenkinsInstance:jenkinsConfigHref,jenkinsJob:jenkinsConfigHref,pipeline:pipelineConfigHref||jenkinsConfigHref};
       const summaryCard=document.getElementById("orderPipelineSummaryCard");
       if(summaryCard){
         const instCell=summaryCard.querySelector("[data-field='jenkins_instance_id']");
         const jobCell=summaryCard.querySelector("[data-field='jenkins_job']");
         const pipelineCell=summaryCard.querySelector("[data-field='pipeline_summary']");
-        if(instCell)instCell.textContent=jenkinsInstance||"未配置";
-        if(jobCell)jobCell.textContent=jenkinsJob||"未配置";
-        if(pipelineCell)pipelineCell.textContent=pipelineSummary||"管线未配置";
+        setSummaryField(instCell,jenkinsInstance||"未配置",!jenkinsInstance?jenkinsConfigHref:"");
+        setSummaryField(jobCell,jenkinsJob||"未配置",!jenkinsJob?jenkinsConfigHref:"");
+        setSummaryField(pipelineCell,pipelineSummary,isMissingConfigValue(pipelineSummary)?pipelineConfigHref:"");
         const sourcePill=document.getElementById("orderPipelineSourcePill");
-        if(sourcePill){
-          const ready=Boolean(formContext.delivery_readiness?.pipeline_ready);
-          sourcePill.textContent=ready?"版本组管线模板":"管线未配置";
-          sourcePill.classList.toggle("ready",ready);
-          sourcePill.classList.toggle("missing",!ready);
-        }
+        const pipelineReadiness=formContext.delivery_readiness?.pipeline||{
+          ready:Boolean(formContext.delivery_readiness?.pipeline_ready),
+          checks:formContext.delivery_readiness?.checks||{},
+        };
+        setSourcePill(sourcePill,pipelineReadiness,pipelineReadiness.ready?"":(formContext.build_config_href||pipelineConfigHref||jenkinsConfigHref));
         const cta=document.getElementById("orderGoConfigurePipelineBtn");
         if(cta){
-          const href=formContext.build_config_href||buildConfigHref("jenkins");
+          const href=formContext.build_config_href||jenkinsConfigHref;
           if(href){cta.href=href;cta.removeAttribute("hidden");}
           else cta.setAttribute("hidden","");
         }
       }
       const resourceReady=version.resource_url||version.resource_path||version.config_url||version.config_path;
       const artifactReady=version.apk_url||version.apk_path||version.apk_status==="found";
+      updateJenkinsDisplay(version,buildLinks);
       document.getElementById("buildPlanPreview").innerHTML=[
-        previewCard("nav_build_artifact","Jenkins 实例",jenkinsInstance||"未配置","维护 Jenkins 实例连接",jenkinsHref,"管理实例"),
-        previewCard("nav_execute","构建任务",jenkinsJob||"未配置","Job 与四步开关在版本组管线模板维护",buildConfigHref("jenkins"),"配置版本组模板",true),
-        previewCard("nav_download_center","管线摘要",pipelineSummary,"配置导出、资源打包与热更",buildConfigHref("hot_release"),"配置管线",true),
-        previewCard("file_android","APK 产物",artifactReady?"已登记":"尚未登记","查看构建历史与产物",buildHistoryHref,"查看产物"),
+        previewCard("nav_build_artifact","Jenkins 实例",jenkinsInstance||"未配置","维护 Jenkins 实例连接",!jenkinsInstance?jenkinsConfigHref:jenkinsHref,!jenkinsInstance?"去配置实例":"管理实例",!jenkinsInstance,!jenkinsInstance),
+        previewCard("nav_execute","构建任务",jenkinsJob||"未配置","Job 与四步开关在版本组管线模板维护",jenkinsConfigHref,"配置版本组模板",true,!jenkinsJob),
+        previewCard("nav_download_center","管线摘要",pipelineSummary,"配置导出、资源打包与热更",pipelineConfigHref,"配置管线",true,isMissingConfigValue(pipelineSummary)),
+        previewCard("file_android","APK 产物",artifactReady?"已登记":"尚未登记","查看构建历史与产物",buildHistoryHref,"查看产物",false,!artifactReady),
       ].join("");
       const miniSummary=document.getElementById("orderMinimalBuildSummary");
       if(miniSummary){
@@ -1284,23 +1595,40 @@
             (eff.apk_build||{}).enabled?"安装包":"",
           ].filter(Boolean).join(" · ")||"管线未配置";
           const j=data.jenkins||{};
+          const effBuildConfigHref=(section)=>{
+            const base=data.build_config_href||buildConfigBase;
+            if(!base)return "";
+            const params=new URLSearchParams(buildConfigParams);
+            params.set("section",section);
+            return `${base.split("?")[0]}?${params.toString()}`;
+          };
+          const effJenkinsHref=effBuildConfigHref("jenkins");
+          const effPipelineHref=effBuildConfigHref(resolveMissingPipelineSection(eff,j));
           const pillEl=document.getElementById("orderPipelineSourcePill");
-          if(pillEl){
-            const ready=Boolean(data.readiness?.ready);
-            pillEl.textContent=ready?"版本组管线模板":"管线未配置";
-            pillEl.classList.toggle("ready",ready);
-            pillEl.classList.toggle("missing",!ready);
+          const readiness=data.readiness||{};
+          const pillHref=readiness.ready?"":(data.build_config_href||effPipelineHref||effJenkinsHref);
+          setSourcePill(pillEl,readiness,pillHref);
+          if(readiness&&typeof readiness==="object"){
+            formContext.delivery_readiness=formContext.delivery_readiness||{};
+            formContext.delivery_readiness.pipeline_ready=Boolean(readiness.ready);
+            formContext.delivery_readiness.pipeline={...readiness};
+            if(readiness.checks){
+              formContext.delivery_readiness.checks={
+                ...(formContext.delivery_readiness.checks||{}),
+                ...readiness.checks,
+              };
+            }
+            if(data.build_config_href)formContext.build_config_href=data.build_config_href;
+            updateCompleteness();
           }
-          const instCell=card.querySelector("[data-field='jenkins_instance_id']");
-          const jobCell=card.querySelector("[data-field='jenkins_job']");
-          const pipelineCell=card.querySelector("[data-field='pipeline_summary']");
-          if(instCell)instCell.textContent=j.jenkins_instance_id||"未配置";
-          if(jobCell)jobCell.textContent=j.jenkins_job_id||"未配置";
-          if(pipelineCell)pipelineCell.textContent=summary;
+          setSummaryField(card.querySelector("[data-field='jenkins_instance_id']"),j.jenkins_instance_id||"未配置",!j.jenkins_instance_id?effJenkinsHref:"");
+          setSummaryField(card.querySelector("[data-field='jenkins_job']"),j.jenkins_job_id||"未配置",!j.jenkins_job_id?effJenkinsHref:"");
+          setSummaryField(card.querySelector("[data-field='pipeline_summary']"),summary,isMissingConfigValue(summary)?effPipelineHref:"");
           if(data.build_config_href){
             const cta=document.getElementById("orderGoConfigurePipelineBtn");
             if(cta){cta.href=data.build_config_href;cta.removeAttribute("hidden");}
           }
+          updateJenkinsDisplay(version,{jenkinsInstance:effJenkinsHref,jenkinsJob:effJenkinsHref,pipeline:effPipelineHref});
           const instInput=form.jenkins_instance_id;
           const jobInput=form.jenkins_job;
           if(instInput&&j.jenkins_instance_id)instInput.value=j.jenkins_instance_id;
@@ -1340,15 +1668,17 @@
         delHint.textContent=delivery.pipeline_ready?"交付链路基本就绪。":(missing.length?`待完成：${missing.join("、")}`:"选择 VersionCode 后评估就绪度。");
       }
       updatePipelineGate();
+      updateRuntimeStats();
+      updateFormJourney();
+      const readinessPanel=document.getElementById("orderReadinessPanel");
+      if(readinessPanel)readinessPanel.classList.toggle("is-hidden",!form.version_id.value);
     };
-    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());const prod=document.getElementById("orderProductionBanner");if(prod)prod.classList.toggle("is-hidden",form.env_key.value!=="production");}));
+    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());updateRiskPanel();const prod=document.getElementById("orderProductionBanner");if(prod)prod.classList.toggle("is-hidden",form.env_key.value!=="production");}));
     const prodBanner=document.getElementById("orderProductionBanner");if(prodBanner&&form.env_key.value==="production")prodBanner.classList.remove("is-hidden");
-    form.version_id.addEventListener("change",()=>{renderPlanPreview();loadFormContext(selectedVersion());});
+    form.version_id.addEventListener("change",()=>{renderPlanPreview();loadFormContext(selectedVersion());updateRiskPanel();});
+    form.release_strategy?.addEventListener("change",updateRiskPanel);
+    form.target_audience?.addEventListener("change",updateRiskPanel);
     form.addEventListener("input",updateCompleteness);
-    page.querySelectorAll("[data-form-step]").forEach(button=>button.addEventListener("click",()=>{
-      page.querySelectorAll("[data-form-step]").forEach(item=>item.classList.toggle("active",item===button));
-      page.querySelector(`[data-section="${button.dataset.formStep}"]`)?.scrollIntoView({behavior:"smooth",block:"start"});
-    }));
 
     if(orderId){
       const order=await api(`/api/projects/${projectId}/release-orders/${orderId}`);
@@ -1367,7 +1697,20 @@
       ["env_key","channel_id","platform"].forEach((key)=>{if(search.get(key))form[key].value=search.get(key);});
       renderVersions();
       loadFormContext(selectedVersion());
+      if(!orderId){
+        try{
+          const raw=localStorage.getItem(draftKey);
+          if(raw){
+            const draft=JSON.parse(raw);
+            Object.entries(draft||{}).forEach(([key,val])=>{if(form[key]&&String(form[key].value||"").trim()==="")form[key].value=String(val??"");});
+            page.querySelectorAll("[data-tag-field]").forEach((input)=>input.dispatchEvent(new Event("input",{bubbles:true})));
+            syncDescCount();
+            touchAutosave(true);
+          }
+        }catch(_e){/* ignore bad draft */}
+      }
     }
+    updateRiskPanel();
     updateCompleteness();
     const payload=()=>{
       const data=Object.fromEntries(new FormData(form).entries());
@@ -1383,35 +1726,59 @@
           return;
         }
         if(!form.reportValidity())return;
-        page.querySelectorAll("[data-save-order],[data-save-build]").forEach(button=>button.disabled=true);
+        page.querySelectorAll("[data-save-order],[data-form-next]").forEach(button=>button.disabled=true);
         let order;
         if(orderId)order=await api(`/api/projects/${projectId}/release-orders/${orderId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
         else order=await api(`/api/projects/${projectId}/release-orders`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
         document.getElementById("orderSaveStatus").textContent="草稿已保存";
         toast("发布单计划已保存");
-        const context=`?env_key=${encodeURIComponent(order.env_key)}&channel_id=${encodeURIComponent(order.channel_id)}&platform=${encodeURIComponent(order.platform)}&version_name=${encodeURIComponent(order.version_name)}&version_code=${encodeURIComponent(order.version_code)}&release_order_id=${encodeURIComponent(order.release_order_id)}`;
+        try{localStorage.removeItem(draftKey);}catch(_e){}
+        touchAutosave(true);
+        const context=buildScopeQuery({env_key:order.env_key,channel_id:order.channel_id,platform:order.platform,version_id:order.version_id,version_name:order.version_name,version_code:order.version_code,release_order_id:order.release_order_id});
         if(buildAfter){
-          await api(`/api/projects/${projectId}/release-orders/${order.release_order_id}/build`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+          const artifactsReady=Boolean(formContext.delivery_readiness?.checks?.artifacts);
+          if(artifactsReady){
+            await api(`/api/projects/${projectId}/release-orders/${order.release_order_id}/precheck`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+          }else{
+            await api(`/api/projects/${projectId}/release-orders/${order.release_order_id}/build`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+          }
           location.href=`/admin/projects/${projectId}/release-orders/${order.release_order_id}${context}`;
         }else if(!orderId)location.href=`/admin/projects/${projectId}/release-orders/${order.release_order_id}/edit${context}`;
       }catch(error){toast(error.message,"error");}
-      finally{page.querySelectorAll("[data-save-order],[data-save-build]").forEach(button=>button.disabled=false);}
+      finally{page.querySelectorAll("[data-save-order],[data-form-next]").forEach(button=>button.disabled=false);}
     };
     page.querySelector("[data-save-order]").addEventListener("click",()=>save(false));
-    page.querySelector("[data-save-build]").addEventListener("click",()=>save(true));
+    page.querySelector("[data-form-next]")?.addEventListener("click",()=>save(true));
   }
 
   async function loadOrderDetail(){
-    const orderId=page.dataset.orderId,item=await api(`/api/projects/${projectId}/release-orders/${orderId}`);
-    document.getElementById("orderTitle").innerHTML=`发布单详情 ${status(item.status)}`;document.getElementById("orderSubtitle").textContent=`发布单编号：${item.release_order_id}`;
-    const actions=[["edit","编辑计划"],["build","触发构建"],["precheck","执行预检"],["approve","审批通过"],["publish","执行发布"],["verify","执行验证"],["rollback","回滚"],["cancel","取消发布单"]];
-    const allowed={edit:["draft","artifacts_ready","precheck_failed"].includes(item.status),build:!["published","verified","rolled_back","cancelled"].includes(item.status),precheck:["draft","artifacts_ready","precheck_failed","ready"].includes(item.status),approve:item.status==="awaiting_approval",publish:["ready","approved"].includes(item.status),verify:["published","verify_failed"].includes(item.status),rollback:Boolean(item.bundle_id&&item.active_bundle_id&&item.bundle_id!==item.active_bundle_id),cancel:!["published","verified","rolled_back","cancelled"].includes(item.status)};
-    document.getElementById("orderActions").innerHTML=actions.filter(([key])=>allowed[key]).map(([key,label])=>key==="edit"?`<a class="ui-secondary" href="/admin/projects/${projectId}/release-orders/${orderId}/edit${currentContext()}">${label}</a>`:`<button class="${["publish","verify"].includes(key)?"ui-primary":"ui-secondary"}" data-action="${key}">${label}</button>`).join("");
-    document.getElementById("orderMeta").innerHTML=[["目标环境",envLabels[item.env_key]],["版本",`${item.version_name} / ${item.version_code}`],["渠道与平台",`${item.channel_name} / ${item.platform}`],["负责人",item.created_by],["总体状态",statusLabels[item.status]]].map(([label,value])=>`<div class="meta-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
-    const stages=["计划摘要","构建与产物","拓扑与运行态","预检结果","审批","发布执行","验证结果","Bundle 与回滚"];const index={draft:0,building:1,artifacts_ready:1,prechecking:3,precheck_failed:3,ready:3,awaiting_approval:4,approved:4,publishing:5,published:5,verifying:6,verified:7,verify_failed:6,rolled_back:7,cancelled:0}[item.status]??0;document.getElementById("orderSteps").innerHTML=`<div class="pm-stepper-horizontal">${stages.map((label,i)=>`<div class="pm-step ${i<index?"done":""} ${i===index?"active":""} ${i===index&&String(item.status).includes("failed")?"failed":""}"><b>${i+1}</b><span>${label}</span></div>${i<stages.length-1?'<span class="pm-step-line"></span>':""}`).join("")}</div>`;
-    const check=item.latest_precheck||{},payload=check.payload||{};const artifactProblems=(item.artifacts||[]).filter(x=>["missing","unreachable","invalid"].includes(String(x.status||"").toLowerCase())).map(x=>`${x.artifact_type} ${artifactStatusLabels[x.status]||x.status}`);const problems=[...artifactProblems,...(payload.missing_client_fields||[]),...(payload.missing_profile_fields||[]),...(payload.missing_artifact_fields||[])];payload.runtime_error&&problems.push(payload.runtime_error);
-    const nextAction=allowed.build?"触发构建":allowed.precheck?"执行预检":allowed.approve?"提交审批":allowed.publish?"执行发布":allowed.verify?"执行验证":"查看详情";
-    document.getElementById("orderAlerts").innerHTML=`<div class="order-alert-grid"><div class="alert-card ${problems.length?"danger":"success"}"><strong>${problems.length?"阻断项":"无阻断"}</strong><p>${problems.length?esc(problems.slice(0,3).join("；")):"当前无阻断问题"}</p></div><div class="alert-card warning"><strong>风险提示</strong><p>${item.env_key==="production"?"生产环境发布，请确认审批与验证方案":esc(item.reason||"关注产物与拓扑一致性")}</p></div><div class="alert-card info"><strong>下一步</strong><p>${nextAction}</p></div></div>`;
+    const orderId=page.dataset.orderId;
+    const [item, nextAction]=await Promise.all([
+      api(`/api/projects/${projectId}/release-orders/${orderId}`),
+      api(`/api/projects/${projectId}/release-orders/${orderId}/next-action`),
+    ]);
+    document.getElementById("orderTitle").innerHTML=`发布单详情 ${status(item.status)}`;
+    document.getElementById("orderSubtitle").textContent=`发布单编号：${item.release_order_id}`;
+    const primary=nextAction.primary||{};
+    const more=nextAction.more||[];
+    const failed=String(item.status||"").includes("failed");
+    renderJourneyProgress(document.getElementById("orderJourneyProgress"), nextAction.phases||["准备","计划","执行"], nextAction.phase_index??0, failed);
+    const actionsHost=document.getElementById("orderActions");
+    const primaryHtml=primary.href
+      ? `<a class="ui-primary" href="${esc(primary.href)}">${esc(primary.label)}</a>`
+      : `<button class="ui-primary" data-next-action="${esc(primary.api_action||primary.action||"")}" ${primary.disabled?"disabled":""} title="${esc(primary.reason||"")}">${esc(primary.label)}</button>`;
+    const moreHtml=more.length?`<div class="order-more-menu"><button class="ui-secondary" type="button" data-toggle-order-more>更多操作 ▾</button><div class="order-more-dropdown" data-order-more>${more.map(action=>{
+      if(action.href)return `<a href="${esc(action.href)}">${esc(action.label)}</a>`;
+      return `<button type="button" data-next-action="${esc(action.api_action||action.action||"")}">${esc(action.label)}</button>`;
+    }).join("")}</div></div>`:"";
+    actionsHost.innerHTML=primaryHtml+moreHtml;
+    document.getElementById("orderMeta").innerHTML=[["目标环境",envLabels[item.env_key]],["版本",`${item.version_name} / ${item.version_code}`],["渠道与平台",`${item.channel_name} / ${item.platform}`],["负责人",item.created_by],["总体状态",releaseLabel(item.status)]].map(([label,value])=>`<div class="meta-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
+    const check=item.latest_precheck||{},payload=check.payload||{};
+    const artifactProblems=(item.artifacts||[]).filter(x=>["missing","unreachable","invalid"].includes(String(x.status||"").toLowerCase())).map(x=>`${x.artifact_type} ${artifactStatusLabels[x.status]||x.status}`);
+    const problems=[...artifactProblems,...(payload.missing_client_fields||[]),...(payload.missing_profile_fields||[]),...(payload.missing_artifact_fields||[])];
+    payload.runtime_error&&problems.push(payload.runtime_error);
+    const blockerText=problems.length?problems.slice(0,3).join("；"):(primary.reason||"当前无阻断问题");
+    document.getElementById("orderAlerts").innerHTML=`<div class="order-alert-grid"><div class="alert-card ${problems.length?"danger":"success"}"><strong>${problems.length?"阻断项":"无阻断"}</strong><p>${esc(blockerText)}</p></div><div class="alert-card warning"><strong>风险提示</strong><p>${item.env_key==="production"?"生产环境发布，请确认审批与验证方案":esc(item.reason||"关注产物与拓扑一致性")}</p></div></div>`;
     document.getElementById("orderArtifacts").innerHTML=(item.artifacts||[]).map(x=>row(artifactTypeLabels[x.artifact_type]||x.artifact_type,x.artifact_url||x.artifact_path,artifactStatusLabels[x.status]||x.status)).join("")||'<div class="ui-empty">暂无产物</div>';
     document.getElementById("orderRuntime").innerHTML=row("拓扑",item.topology_id,bindingSourceLabels[item.topology_binding_source]||item.topology_binding_source)+row("Runtime",item.runtime_run_id,item.runtime_run_id?"运行中":"未运行");
     document.getElementById("orderPrecheck").innerHTML=check.created_at?row(check.ok?"预检通过":"预检阻断",check.created_at,check.ok?"通过":"失败"):'<div class="ui-empty">尚未执行预检</div>';
@@ -1424,18 +1791,44 @@
     const executeAction=async(action,operationReason="")=>{try{await api(`/api/projects/${projectId}/release-orders/${orderId}/${action}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason:operationReason})});toast("操作已提交");loadOrderDetail();}catch(error){toast(error.message,"error");}};
     document.getElementById("orderActionDialogClose").onclick=closeDialog;document.getElementById("orderActionDialogCancel").onclick=closeDialog;
     document.getElementById("orderActionDialogConfirm").onclick=async()=>{const action=pendingAction,operationReason=reason.value.trim();if(["publish","rollback","cancel"].includes(action)&&!operationReason){toast("请填写操作原因","error");return;}closeDialog();await executeAction(action,operationReason);};
-    document.querySelectorAll("[data-action]").forEach(button=>button.addEventListener("click",async()=>{const action=button.dataset.action;if(["build","precheck","verify"].includes(action)){await executeAction(action);return;}pendingAction=action;document.getElementById("orderActionDialogTitle").textContent=`确认${button.textContent}`;document.getElementById("orderActionDialogHint").textContent=["publish","rollback","cancel"].includes(action)?"该操作会改变发布状态，请填写原因后确认。":"请确认本次操作影响范围。";dialog.classList.remove("is-hidden");dialog.setAttribute("aria-hidden","false");}));
+    const handleNextAction=async(button)=>{
+      const action=button.dataset.nextAction;
+      if(!action||button.disabled)return;
+      if(action==="view_build"||action==="edit"||action==="view")return;
+      if(["build","precheck","verify"].includes(action)){await executeAction(action);return;}
+      pendingAction=action;
+      document.getElementById("orderActionDialogTitle").textContent=`确认${button.textContent.trim()}`;
+      document.getElementById("orderActionDialogHint").textContent=["publish","rollback","cancel"].includes(action)?"该操作会改变发布状态，请填写原因后确认。":"请确认本次操作影响范围。";
+      dialog.classList.remove("is-hidden");dialog.setAttribute("aria-hidden","false");
+    };
+    actionsHost.querySelectorAll("[data-next-action]").forEach(button=>button.addEventListener("click",()=>handleNextAction(button)));
+    const moreToggle=actionsHost.querySelector("[data-toggle-order-more]");
+    const moreMenu=actionsHost.querySelector("[data-order-more]");
+    if(moreToggle&&moreMenu){
+      moreToggle.onclick=(event)=>{event.stopPropagation();moreMenu.classList.toggle("open");};
+      document.addEventListener("click",()=>moreMenu.classList.remove("open"),{once:true});
+      moreMenu.querySelectorAll("[data-next-action]").forEach(button=>button.addEventListener("click",(event)=>{event.stopPropagation();moreMenu.classList.remove("open");handleNextAction(button);}));
+    }
   }
   const type=page.dataset.deliveryPage;
   if(type==="overview"){
-    initOverviewTabs();
-    bindOverviewFilters();
-    bindOverviewActivityTabs();
-    bindDeliveryScopeDialog();
-    bindProjectEnvAdd();
-    loadOverview().catch(error=>toast(error.message,"error"));
-    page.querySelector("[data-refresh-overview]")?.addEventListener("click",()=>loadOverview().catch(error=>toast(error.message,"error")));
-    document.addEventListener("pm-shell-search",(e)=>{const q=e.detail?.query||"";if(!q)return;const cards=document.querySelectorAll(".environment-card,.activity-row");cards.forEach(el=>{el.style.display=el.textContent?.toLowerCase().includes(q.toLowerCase())?"":"none";});});
+    if(window.__P02_OVERVIEW__){
+      bindDeliveryScopeDialog();
+      bindProjectEnvAdd();
+      var tab=new URLSearchParams(location.search).get("tab");
+      if(tab==="channels"){loadProjectChannels();bindProjectChannelAdd();bindManifestBootstrap();}
+      else if(tab==="platforms"){loadProjectPlatforms();bindProjectPlatformAdd();}
+      else if(tab==="environments"){loadProjectEnvironments();}
+    }else{
+      initOverviewTabs();
+      bindOverviewFilters();
+      bindOverviewActivityTabs();
+      bindDeliveryScopeDialog();
+      bindProjectEnvAdd();
+      loadOverview().catch(error=>toast(error.message,"error"));
+      page.querySelector("[data-refresh-overview]")?.addEventListener("click",()=>loadOverview().catch(error=>toast(error.message,"error")));
+    }
+    document.addEventListener("pm-shell-search",(e)=>{const q=e.detail?.query||"";if(!q)return;const cards=document.querySelectorAll(".p02-env-card,.p02-activity-item");cards.forEach(el=>{el.style.display=el.textContent?.toLowerCase().includes(q.toLowerCase())?"":"none";});});
   }
   if(type==="environment"){loadEnvironmentDetail().catch(error=>toast(error.message,"error"));page.querySelector("[data-refresh-env]")?.addEventListener("click",loadEnvironmentDetail);}
   if(type==="orders")setupOrders().catch(error=>toast(error.message,"error"));

@@ -366,7 +366,7 @@ def _current_username():
     return session.get('user') or ''
 
 
-PROJECT_LIST_ASSET_VER = "20260625-pm14"
+PROJECT_LIST_ASSET_VER = "20260701-p01-modal-v2"
 
 
 @bp.route('/admin/projects')
@@ -377,6 +377,7 @@ def admin_projects_page():
 
     content = render_template('project_list.html', **projects_page_context())
     css = (
+        f'<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v={PROJECT_LIST_ASSET_VER}">'
         f'<link rel="stylesheet" href="/static/project_ui/pm-project-card.css?v={PROJECT_LIST_ASSET_VER}">'
         f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={PROJECT_LIST_ASSET_VER}">'
         f'<link rel="stylesheet" href="/static/project_list.css?v={PROJECT_LIST_ASSET_VER}">'

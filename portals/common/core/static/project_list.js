@@ -75,6 +75,41 @@
     return DL.healthTone ? DL.healthTone(pct, archived) : "muted";
   }
 
+  function projectCardLinks(id) {
+    var enc = encodeURIComponent(id);
+    var base = "/admin/projects/" + enc;
+    return {
+      health: base + "/overview?tab=environments",
+      version: base + "/versions",
+      pending: "/admin/approval?project_id=" + enc,
+      blockers: base + "/overview?tab=channels",
+      releaseOrders: base + "/release-orders",
+    };
+  }
+
+  function releaseLink(p, archived) {
+    if (archived) return "";
+    var links = projectCardLinks(p.id);
+    var rel = p.latest_release || null;
+    if (rel && rel.release_order_id) {
+      return links.releaseOrders + "/" + encodeURIComponent(rel.release_order_id) + "/edit";
+    }
+    if (rel && rel.version_name) return links.releaseOrders;
+    return "";
+  }
+
+  function setMetricHref(node, key, href, archived) {
+    var metric = node.querySelector('[data-metric="' + key + '"]');
+    if (!metric) return;
+    if (!archived && href) {
+      metric.setAttribute("href", href);
+      metric.classList.remove("is-disabled");
+    } else {
+      metric.removeAttribute("href");
+      metric.classList.add("is-disabled");
+    }
+  }
+
   function fillProjectCard(node, p) {
     var archived = p.status === "archived" || p.card_status === "archived";
     var statusKey = archived ? "archived" : p.card_status || "running";
@@ -90,7 +125,7 @@
       iconImg.src = p.icon || "/static/project_ui/svg/nav_project_overview.svg";
       iconImg.alt = "";
     }
-    var title = node.querySelector(".pm-project-card__title h3");
+    var title = node.querySelector(".pm-project-card__title-row h3") || node.querySelector(".pm-project-card__title h3");
     if (title) title.textContent = p.name || p.id || "—";
 
     var statusEl = node.querySelector(".pm-project-card__status");
@@ -126,9 +161,23 @@
     var blockerNum = archived ? "—" : String(p.blocker_count || 0);
     setMetric(node, "blockers", blockerNum, archived ? "muted" : Number(blockerNum) > 0 ? "bad" : "", "");
 
+    var links = projectCardLinks(p.id);
+    setMetricHref(node, "health", links.health, archived);
+    setMetricHref(node, "version", links.version, archived);
+    setMetricHref(node, "pending", links.pending, archived);
+    setMetricHref(node, "blockers", links.blockers, archived);
+
     var releaseHost = node.querySelector(".pm-project-card__release");
     if (releaseHost) {
       releaseHost.innerHTML = buildReleaseHtml(p, archived);
+      var releaseHref = releaseLink(p, archived);
+      if (releaseHref) {
+        releaseHost.setAttribute("href", releaseHref);
+        releaseHost.classList.remove("is-disabled");
+      } else {
+        releaseHost.removeAttribute("href");
+        releaseHost.classList.add("is-disabled");
+      }
     }
 
     var overview = node.querySelector(".pm-project-card__overview");
@@ -194,6 +243,53 @@
     if (node) node.classList.add("is-hidden");
   }
 
+  function closeTopModal() {
+    var open = document.querySelector(".p01-modal-root.delivery-dialog:not(.is-hidden)");
+    if (open && open.id) closeModal(open.id);
+  }
+
+  function resetCreateForm() {
+    ["newProjectId", "newProjectName", "newProjectIntro", "newProjectIcon", "newProjectGameId", "newProjectGameKey", "newParticipantUser"].forEach(function (id) {
+      var node = el(id);
+      if (node) node.value = "";
+    });
+    var phaseEl = el("newProjectPhase");
+    if (phaseEl) phaseEl.selectedIndex = 0;
+    var iconFile = el("newProjectIconFile");
+    if (iconFile) iconFile.value = "";
+    setIconPreview("newProjectIconPreview", "");
+    newParticipants = [];
+    renderNewParticipants();
+    setAddFeedback("", false);
+  }
+
+  function openCreateModal() {
+    resetCreateForm();
+    openModal("createProjectModal");
+    if (!String((el("newProjectGameId") || {}).value || "").trim()) generateProjectCredentials();
+  }
+
+  function bindModalControls() {
+    document.querySelectorAll("[data-close-modal]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        closeModal(btn.getAttribute("data-close-modal"));
+      });
+    });
+    document.querySelectorAll(".p01-modal-root.delivery-dialog").forEach(function (modal) {
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) closeModal(modal.id);
+      });
+    });
+    document.querySelectorAll("[data-path-picker]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openPathPicker(btn.getAttribute("data-path-picker"), btn.getAttribute("data-path-mode"), btn);
+      });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeTopModal();
+    });
+  }
+
   function setAddFeedback(msg, isError) {
     var node = el("addProjectFeedback");
     if (!node) return;
@@ -210,9 +306,15 @@
       .filter(Boolean);
   }
 
-  function openPathPicker(inputId, mode) {
+  function openPathPicker(inputId, mode, triggerBtn) {
     var field = el(inputId);
     var start = field && field.value ? String(field.value).trim() : "";
+    var btn = triggerBtn || null;
+    var prevLabel = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "正在打开…";
+    }
     fetch("/admin/fs/native-pick", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -228,6 +330,12 @@
       })
       .catch(function () {
         alert("调用系统选择框失败");
+      })
+      .finally(function () {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prevLabel || "浏览";
+        }
       });
   }
 
@@ -309,46 +417,47 @@
     setVal(prefix + "GitBranches", Array.isArray(branches) ? branches.join("\n") : String(branches || ""));
   }
 
+  function participantItemHtml(ctx, p) {
+    return (
+      "<li class='p01-participant-item'><span class='p01-participant-item__who'>" +
+      escapeHtml(p.user) +
+      " <em>" +
+      escapeHtml(p.role) +
+      "</em></span><span class='p01-participant-item__actions'><button type='button' data-edit-participant='" +
+      ctx +
+      "' data-user='" +
+      escapeHtml(p.user) +
+      "'>编辑</button><button type='button' data-remove-participant='" +
+      ctx +
+      "' data-user='" +
+      escapeHtml(p.user) +
+      "'>删除</button></span></li>"
+    );
+  }
+
   function renderNewParticipants() {
     var ul = el("newParticipantsList");
     if (!ul) return;
     ul.innerHTML =
-      newParticipants
-        .map(function (p) {
-          return (
-            "<li><span>" +
-            escapeHtml(p.user) +
-            " <em>(" +
-            escapeHtml(p.role) +
-            ")</em></span><span><button type='button' data-edit-participant='new' data-user='" +
-            escapeHtml(p.user) +
-            "'>编辑</button><button type='button' data-remove-participant='new' data-user='" +
-            escapeHtml(p.user) +
-            "'>删除</button></span></li>"
-          );
-        })
-        .join("") || "<li class='p01-hint'>暂无参与人员</li>";
+      newParticipants.map(function (p) {
+        return participantItemHtml("new", p);
+      }).join("") || "<li class='p01-participant-empty'>暂无参与人员，可在上方添加</li>";
   }
 
   function renderEditParticipants() {
     var ul = el("editParticipantsList");
     if (!ul) return;
     ul.innerHTML =
-      editParticipants
-        .map(function (p) {
-          return (
-            "<li><span>" +
-            escapeHtml(p.user) +
-            " <em>(" +
-            escapeHtml(p.role) +
-            ")</em></span><span><button type='button' data-edit-participant='edit' data-user='" +
-            escapeHtml(p.user) +
-            "'>编辑</button><button type='button' data-remove-participant='edit' data-user='" +
-            escapeHtml(p.user) +
-            "'>删除</button></span></li>"
-          );
-        })
-        .join("") || "<li class='p01-hint'>暂无参与人员</li>";
+      editParticipants.map(function (p) {
+        return participantItemHtml("edit", p);
+      }).join("") || "<li class='p01-participant-empty'>暂无参与人员，可在上方添加</li>";
+  }
+
+  function setIconPreview(previewId, url) {
+    var prev = el(previewId);
+    if (!prev) return;
+    if (url) prev.innerHTML = "<img src='" + escapeHtml(url) + "' alt=''>";
+    else prev.innerHTML = "<span class='p01-icon-upload__placeholder'>图标</span>";
   }
 
   function addNewParticipant() {
@@ -465,8 +574,7 @@
         if (d.url) {
           var h = el(hiddenId);
           if (h) h.value = d.url;
-          var prev = el(previewId);
-          if (prev) prev.innerHTML = "<img src='" + d.url + "' alt='' style='height:40px;width:40px;border-radius:8px'>";
+          setIconPreview(previewId, d.url);
         } else alert(d.error || "上传失败");
       });
   }
@@ -503,7 +611,6 @@
         btn.textContent = "提交中…";
       }
       setAddFeedback("提交中…", false);
-      var viewers = parseUserList((el("newProjectViewers") || {}).value);
       var phaseEl = el("newProjectPhase");
       var phase = phaseEl ? phaseEl.value : "kickoff";
       var editors = newParticipants.map(function (p) {
@@ -516,22 +623,15 @@
       var payload = {
         id: String((el("newProjectId") || {}).value || "").trim(),
         name: String((el("newProjectName") || {}).value || "").trim(),
-        name_en: String((el("newProjectNameEn") || {}).value || "").trim(),
         phase: phase,
         icon: String((el("newProjectIcon") || {}).value || "").trim(),
         intro: String((el("newProjectIntro") || {}).value || "").trim(),
-        detail: String((el("newProjectDetail") || {}).value || "").trim(),
-        network_connection: String((el("newProjectNetwork") || {}).value || "").trim(),
-        player_public_url: String((el("newProjectPlayerPublicUrl") || {}).value || "").trim(),
-        forum_public_url: String((el("newProjectForumPublicUrl") || {}).value || "").trim(),
-        admin_public_url: String((el("newProjectAdminPublicUrl") || {}).value || "").trim(),
-        viewers: viewers,
+        viewers: [],
         editors: editors,
         member_roles: member_roles,
         game_id: String((el("newProjectGameId") || {}).value || "").trim(),
         game_key: String((el("newProjectGameKey") || {}).value || "").trim(),
       };
-      Object.assign(payload, projectBuildPayload("newProject"));
       if (!payload.id || !payload.name) {
         setAddFeedback("请填写项目ID和名称", true);
         if (btn) {
@@ -576,7 +676,7 @@
             setAddFeedback(d.error || "添加失败（" + res.status + "）", true);
             return;
           }
-          setAddFeedback("添加成功，已刷新列表", false);
+          setAddFeedback("添加成功。构建集成可在编辑项目或版本代码页配置。", false);
           closeModal("createProjectModal");
           loadProjects();
         })
@@ -856,7 +956,7 @@
           chWrap.innerHTML = ALL_CHANNELS
             .map(function (c) {
               return (
-                "<label><input type='checkbox' class='edit-channel-cb' value='" +
+                "<label class='p01-channel-chip'><input type='checkbox' class='edit-channel-cb' value='" +
                 escapeHtml(c.id) +
                 "'" +
                 (projChans.indexOf(c.id) >= 0 ? " checked" : "") +
@@ -874,8 +974,7 @@
         if (el("editProjectPlayerPublicUrl")) el("editProjectPlayerPublicUrl").value = p.player_public_url || "";
         if (el("editProjectForumPublicUrl")) el("editProjectForumPublicUrl").value = p.forum_public_url || "";
         if (el("editProjectAdminPublicUrl")) el("editProjectAdminPublicUrl").value = p.admin_public_url || "";
-        var prev = el("editProjectIconPreview");
-        prev.innerHTML = p.icon ? "<img src='" + p.icon + "' alt='' style='height:40px;width:40px;border-radius:8px'>" : "";
+        setIconPreview("editProjectIconPreview", p.icon || "");
         el("editProjectIconFile").value = "";
         openModal("editProjectModal");
       });
@@ -1106,12 +1205,7 @@
   }
 
   function bindEvents() {
-    if (el("p01CreateBtn")) el("p01CreateBtn").onclick = function () {
-      newParticipants = [];
-      renderNewParticipants();
-      setAddFeedback("", false);
-      openModal("createProjectModal");
-    };
+    if (el("p01CreateBtn")) el("p01CreateBtn").onclick = openCreateModal;
     if (el("p01QuickCreate")) el("p01QuickCreate").onclick = function () {
       el("p01CreateBtn").click();
     };
@@ -1173,9 +1267,6 @@
     if (el("btnSaveEditProject")) el("btnSaveEditProject").onclick = saveEditProject;
     if (el("btnResetChannelForm")) el("btnResetChannelForm").onclick = resetChannelForm;
     if (el("btnSubmitChannelForm")) el("btnSubmitChannelForm").onclick = submitChannelForm;
-    if (el("newProjectValidateGitBtn")) el("newProjectValidateGitBtn").onclick = function () {
-      validateProjectGit("newProject", "newProjectGitValidateResult");
-    };
     if (el("editProjectValidateGitBtn")) el("editProjectValidateGitBtn").onclick = function () {
       validateProjectGit("editProject", "editProjectGitValidateResult");
     };
@@ -1188,16 +1279,9 @@
       uploadProjectIcon(this, "editProjectIcon", "editProjectIconPreview");
     };
 
+    bindModalControls();
+
     document.addEventListener("click", function (e) {
-      var closeBtn = e.target.closest("[data-close-modal]");
-      if (closeBtn) {
-        closeModal(closeBtn.getAttribute("data-close-modal"));
-        return;
-      }
-      if (e.target.classList.contains("delivery-dialog")) {
-        e.target.classList.add("is-hidden");
-        return;
-      }
       var pageBtn = e.target.closest("[data-page]");
       if (pageBtn && pageBtn.closest("#p01Pagination")) {
         var action = pageBtn.getAttribute("data-page");
@@ -1265,11 +1349,6 @@
       var gotoOverview = e.target.closest("[data-goto-overview]");
       if (gotoOverview) {
         location.href = "/admin/projects/" + encodeURIComponent(gotoOverview.getAttribute("data-goto-overview")) + "/overview";
-        return;
-      }
-      var pathPicker = e.target.closest("[data-path-picker]");
-      if (pathPicker) {
-        openPathPicker(pathPicker.getAttribute("data-path-picker"), pathPicker.getAttribute("data-path-mode"));
         return;
       }
       var editParticipant = e.target.closest("[data-edit-participant]");
