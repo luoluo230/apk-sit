@@ -90,15 +90,21 @@ echo ""
 echo "======= 可插拔版本构建流水线 ======="
 [ -n "$JENKINS_HOME" ] && [ -f "${JENKINS_HOME}/.apk-site-env" ] && . "${JENKINS_HOME}/.apk-site-env"
 
+_resolve_python_cmd() {
+  local py_cmd=""
+  if command -v py >/dev/null 2>&1; then py_cmd="py -3"
+  elif command -v python >/dev/null 2>&1; then py_cmd="python"
+  elif command -v python3 >/dev/null 2>&1; then py_cmd="python3"
+  fi
+  echo "$py_cmd"
+}
+
 _resolve_unity_exe() {
   local ver="${UNITY_VERSION:-6000.3.8f1}"
   local map_file="${UNITY_PATH_MAP_FILE:-${JENKINS_HOME}/unity_paths.json}"
   local resolved=""
-  local py_cmd=""
-  if command -v python3 >/dev/null 2>&1; then py_cmd="python3"
-  elif command -v python >/dev/null 2>&1; then py_cmd="python"
-  elif command -v py >/dev/null 2>&1; then py_cmd="py -3"
-  fi
+  local py_cmd
+  py_cmd="$(_resolve_python_cmd)"
   if [ -f "$map_file" ] && [ -n "$py_cmd" ]; then
     resolved=$($py_cmd -c "import json,os; m=json.load(open(os.environ['UNITY_PATH_MAP_FILE'],encoding='utf-8')); print((m.get(os.environ.get('UNITY_VERSION','')) or '').strip())" 2>/dev/null || echo "")
   fi
@@ -542,7 +548,12 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export VERSION_CHANNEL_ID="${VERSION_CHANNEL_ID:-${CHANNEL:-}}"
   export OSS_APK_REMOTE_KEY="${RELEASE_PROJECT_ROOT:-MyGame1}/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-wechat}/${RELEASE_PLATFORM:-android}/apk/${APP_NAME}_${VERSION_NAME:-1.0.0}_vc${VERSION_CODE}.apk"
   export BUILD_NUMBER="${BUILD_NUMBER:-}"
-  python3 "$ARCHIVE_SCRIPT" || { echo "ERROR: APK 本地归档失败"; exit 1; }
+  _py_cmd="$(_resolve_python_cmd)"
+  if [ -z "$_py_cmd" ]; then
+    echo "ERROR: 未找到 Python 可执行文件，无法运行 archive_apk_after_build.py"
+    exit 1
+  fi
+  $_py_cmd "$ARCHIVE_SCRIPT" || { echo "ERROR: APK 本地归档失败"; exit 1; }
   else
     echo "ERROR: 未找到 archive_apk_after_build.py，无法写入版本落盘"
     exit 1

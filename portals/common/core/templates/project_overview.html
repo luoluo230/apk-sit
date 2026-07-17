@@ -10,17 +10,14 @@
 
   <div class="p02-filter-strip pm-filter-bar" id="overviewFilterStrip">
     <div class="p02-filter-item">
-      <span class="p02-filter-label">项目</span>
-      <span class="p02-filter-pill p02-filter-pill--project" id="overviewProjectPill">{{ project.name or project_id }}</span>
+      <span class="p02-filter-pill p02-filter-pill--project" id="overviewProjectPill" title="项目">{{ project.name or project_id }}</span>
     </div>
     <div class="p02-filter-item">
-      <span class="p02-filter-label">环境</span>
       <select class="p02-filter-pill-select p02-filter-pill-select--env" id="filterEnvKey" aria-label="环境">
         <option value="">全部环境</option>
       </select>
     </div>
     <div class="p02-filter-item">
-      <span class="p02-filter-label">渠道</span>
       <select class="p02-filter-pill-select p02-filter-pill-select--channel" id="overviewFilterChannel" aria-label="渠道">
         <option value="">全部渠道</option>
       </select>
@@ -32,7 +29,7 @@
       </select>
     </div>
     <div class="p02-filter-meta">
-      <span>数据更新时间：<b id="overviewUpdatedAt">--</b></span>
+      <b id="overviewUpdatedAt" title="更新时间">--</b>
       <button class="p02-icon-btn" data-refresh-overview type="button" title="刷新" aria-label="刷新"><img src="/static/project_ui/svg/action_refresh.svg" alt=""></button>
     </div>
   </div>
@@ -45,7 +42,6 @@
         <div class="p02-panel-head">
           <div class="p02-panel-title">
             <h2>环境运行概览</h2>
-            <button type="button" class="p02-icon-btn p02-icon-btn--ghost" title="说明" aria-label="说明"><img src="/static/project_ui/svg/global_help.svg" alt=""></button>
           </div>
           <div class="p02-panel-actions">
             <div class="p02-view-toggle p01-view-toggle" role="group" aria-label="环境视图">
@@ -60,7 +56,7 @@
       <section class="p02-panel p02-list-panel">
         <div class="p02-panel-head">
           <h2>最近动态</h2>
-          <a class="p02-panel-link" href="/admin/projects/{{ project_id }}/release-orders">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a>
+          <a class="p02-panel-link" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a>
         </div>
         <nav class="p02-activity-tabs" id="overviewActivityTabs" aria-label="动态类型">
           <button type="button" class="p02-activity-tab active" data-activity-tab="all">全部</button>
@@ -111,8 +107,8 @@
       <section class="p02-rail-panel pm-rail-panel">
         <div class="p02-rail-head"><h2>快捷入口</h2></div>
         <div class="p02-quick-grid">
-          <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/nav_release_order.svg" alt=""><span>发布单</span></a>
-          <a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""><span>构建与产物</span></a>
+          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""><span>版本代码</span></a>
+          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""><span>版本代码</span></a>
           <a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt=""><span>拓扑资产</span></a>
           <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/nav_task.svg" alt=""><span>项目任务</span></a>
         </div>

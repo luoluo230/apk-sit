@@ -131,6 +131,15 @@ class FieldOwnershipTests(unittest.TestCase):
         self.assertEqual(boot.get("catalog_file_name"), "catalog_1.0.0.bin")
         self.assertEqual(int(boot.get("rollout_percentage") or 0), 100)
 
+    def test_resolve_effective_bootstrap_uses_default_resource_server(self):
+        row = {"version_name": "9.9.9", "stage": "dev", "platform": "android"}
+        boot = version_service.resolve_effective_bootstrap_fields(PROJECT_ID, row)
+        from services.commercial_release_plan import DEFAULT_RESOURCE_SERVER
+
+        self.assertEqual(boot.get("resource_server_url"), DEFAULT_RESOURCE_SERVER)
+        self.assertEqual(boot.get("catalog_file_name"), "catalog_9.9.9.bin")
+        self.assertEqual(boot.get("min_client_version"), "9.9.9")
+
     def test_resolve_jenkins_uses_group_meta_first(self):
         versions = versions_repo.list_versions(PROJECT_ID)
         vc = next(v for v in versions if v["id"] == "vc-aa")

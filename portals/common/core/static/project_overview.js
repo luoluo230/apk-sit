@@ -92,12 +92,6 @@
   }
 
   function renderKpiCard(opts) {
-    var trendHtml = opts.trend
-      ? '<span class="pm-kpi-trend ' + (opts.trendDir || "up") + '">' + esc(opts.trend) + "</span>"
-      : "";
-    var linkHtml = opts.link
-      ? '<a class="pm-kpi-footlink" href="' + esc(opts.link) + '">' + esc(opts.linkText) + " &gt;</a>"
-      : "";
     return (
       '<article class="pm-kpi-card">' +
       '<span class="pm-kpi-icon pm-kpi-icon--' +
@@ -109,11 +103,7 @@
       esc(opts.label) +
       '</span><div class="pm-kpi-value-row"><strong>' +
       esc(opts.value) +
-      "</strong>" +
-      trendHtml +
-      "</div>" +
-      linkHtml +
-      "</div></article>"
+      "</strong></div></div></article>"
     );
   }
 
@@ -130,91 +120,55 @@
     var pending = cards.reduce(function (s, x) {
       return s + (x.failed_count || 0) + (x.pending_approval_count || 0);
     }, 0);
-    var failed = cards.reduce(function (s, x) {
-      return s + (x.failed_count || 0);
-    }, 0);
-    var healthTrend =
-      healthPct !== "—" && Number(healthPct) > 0
-        ? "↑ " + Math.max(0.1, Math.min(9.9, 100 - Number(healthPct))).toFixed(1) + "%"
-        : "";
-    var buildTrend = failed > 0 ? "↓ " + failed : builds > 0 ? "↑ " + builds : "";
     var kpis = [
       renderKpiCard({
         icon: "kpi_version.svg",
         label: "当前版本",
         value: latestOrder && latestOrder.version_name ? latestOrder.version_name : "—",
         tone: "violet",
-        link: "/admin/projects/" + projectId + "/versions",
-        linkText: "版本详情",
       }),
       renderKpiCard({
         icon: "kpi_health.svg",
         label: "服务健康度",
         value: healthPct === "—" ? "—" : healthPct + "%",
         tone: "green",
-        trend: healthTrend,
-        trendDir: "up",
-        link: "/admin/projects/" + projectId + "/overview",
-        linkText: "健康概览",
       }),
       renderKpiCard({
         icon: "kpi_build.svg",
         label: "今日构建次数",
         value: String(builds),
         tone: "violet",
-        trend: buildTrend,
-        trendDir: failed > 0 ? "down" : "up",
-        link: "/admin/projects/" + projectId + "/build-history",
-        linkText: "构建与产物",
       }),
       renderKpiCard({
         icon: "kpi_change.svg",
         label: "待处理变更",
         value: String(pending),
         tone: "orange",
-        link: "/admin/projects/" + projectId + "/change-governance",
-        linkText: "变更治理",
       }),
       renderKpiCard({
         icon: "kpi_member.svg",
         label: "项目成员",
         value: String(memberCount),
         tone: "cyan",
-        link: "/admin/projects/" + projectId + "/settings",
-        linkText: "成员管理",
       }),
     ];
     host.innerHTML = kpis.join("");
   }
 
-  function renderEnvCards(data, cards, activeChannelId) {
+  function renderEnvCards(data, cards) {
     var host = document.getElementById("environmentCards");
     if (!host) return;
-    var channelNameMap = Object.fromEntries(
-      (data.channel_options || []).map(function (row) {
-        return [row.channel_id, row.channel_name];
-      })
-    );
     var visible = cards.filter(function (item) {
       return STANDARD_ENVS.indexOf(String(item.env_key || "").toLowerCase()) >= 0;
     });
     if (!visible.length) {
-      host.innerHTML = '<div class="p02-empty">当前筛选下无匹配环境</div>';
+      host.innerHTML = '<div class="p02-empty">—</div>';
       return;
     }
     host.innerHTML = visible
       .map(function (item) {
-        var channelText = activeChannelId
-          ? channelNameMap[activeChannelId] || activeChannelId
-          : item.channel_ids && item.channel_ids.length
-            ? item.channel_ids.length + " 个渠道"
-            : "全部渠道";
         var hp = healthPercent(item);
         var instances = (item.configured_line_count || 0) + " / " + (item.delivery_line_count || 0);
-        var agentOk = item.health === "healthy" || item.health === "processing";
-        var agentText = agentOk ? (item.configured_line_count || 0) + " 在线" : "异常";
-        var agentCls = agentOk ? "agent-good" : "agent-bad";
-        var updatedAt = new Date().toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" });
         var badgeClass =
           item.env_key === "production"
             ? "production"
@@ -244,45 +198,22 @@
           '<div class="p02-env-card-names">' +
           "<h3>" +
           esc(item.env_label) +
-          "</h3>" +
-          '<p class="p02-env-card-sub"><span class="p02-env-kv__label">在线实例</span> <strong class="p02-env-card-sub__val">' +
-          esc(instances) +
-          "</strong></p></div></div>" +
+          "</h3></div></div>" +
           '<span class="p02-env-badge ' +
           badgeClass +
           '">' +
           esc(badgeText) +
           "</span></header>" +
-          '<div class="p02-env-fields">' +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">环境</span><strong class="p02-env-kv__value p02-env-kv__value--env p02-env-kv__value--env-' +
-          iconCls +
-          '">' +
-          esc(envShortKey(item.env_key)) +
-          "</strong></div>" +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">渠道</span><strong class="p02-env-kv__value p02-env-kv__value--channel">' +
-          esc(channelText) +
-          "</strong></div>" +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">平台</span><strong class="p02-env-kv__value p02-env-kv__value--platform">' +
-          esc(formatPlatforms(item.platforms)) +
-          "</strong></div></div>" +
           '<div class="p02-env-metrics">' +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">服务健康度</span><strong class="p02-env-kv__value health ' +
+          '<div class="p02-env-kv"><span class="p02-env-kv__label">健康度</span><strong class="p02-env-kv__value health ' +
           hp.cls +
           '">' +
           esc(hp.text) +
           "</strong></div>" +
-          '<div class="p02-env-kv p02-env-kv--instances"><span class="p02-env-kv__label">在线实例</span><strong class="p02-env-kv__value p02-env-kv__value--instances">' +
+          '<div class="p02-env-kv p02-env-kv--instances"><span class="p02-env-kv__label">实例</span><strong class="p02-env-kv__value p02-env-kv__value--instances">' +
           esc(instances) +
-          "</strong></div>" +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">Agent 状态</span><strong class="p02-env-kv__value ' +
-          agentCls +
-          '">' +
-          esc(agentText) +
-          "</strong></div>" +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">更新时间</span><strong class="p02-env-kv__value p02-env-kv__value--muted">' +
-          esc(updatedAt) +
           "</strong></div></div>" +
-            '<footer class="p16-env-footer p02-env-footer"><a href="/admin/projects/' +
+          '<footer class="p16-env-footer p02-env-footer"><a href="/admin/projects/' +
           encodeURIComponent(projectId) +
           "/environments/" +
           encodeURIComponent(item.env_key) +
@@ -317,15 +248,13 @@
               esc(item.typeLabel) +
               '</span><div class="p02-activity-body"><strong>' +
               esc(item.title) +
-              '</strong></div><span class="p02-activity-meta"><img src="/static/project_ui/svg/global_user.svg" alt="">' +
-              esc(item.actor) +
-              " " +
+              '</strong></div><span class="p02-activity-meta">' +
               esc(item.time) +
               "</span></a>"
             );
           })
           .join("")
-      : '<div class="p02-empty">暂无最近动态</div>';
+      : '<div class="p02-empty">—</div>';
   }
 
   function populateFilters(data) {
@@ -420,7 +349,7 @@
     renderKpis(data, cards.filter(function (c) {
       return STANDARD_ENVS.indexOf(String(c.env_key || "").toLowerCase()) >= 0;
     }), latestOrder);
-    renderEnvCards(data, cards, activeChannelId);
+    renderEnvCards(data, cards);
     activityEvents = allOrders.map(function (item) {
       return {
         kind: "release",

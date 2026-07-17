@@ -459,18 +459,43 @@ def project_versions_page(project_id):
         abort(404)
     if not can_view_project(project_id, _current_username()):
         abort(403)
+    from urllib.parse import urlencode
+    from flask import redirect
+
+    env_key = str(request.args.get("env_key") or "").strip()
+    if not env_key:
+        last_env = str(session.get("ops_last_env") or "").strip()
+        if last_env:
+            params = {"env_key": last_env}
+            channel_id = str(request.args.get("channel_id") or "").strip()
+            platform = str(request.args.get("platform") or "").strip().lower()
+            if channel_id:
+                params["channel_id"] = channel_id
+            if platform:
+                params["platform"] = platform
+            return redirect(f"/admin/projects/{project_id}/versions?{urlencode(params)}")
+        return redirect(f"/admin/projects/{project_id}/overview?{urlencode({'tab': 'environments', 'hint': 'pick_env'})}")
+    channel_filter = str(request.args.get("channel_id") or "").strip()
+    if not channel_filter:
+        return redirect(f"/admin/projects/{project_id}/environments/{env_key}")
     can_edit = can_edit_project(project_id, _current_username())
-    env_key = str(request.args.get("env_key") or "production")
     platform_filter = str(request.args.get("platform") or "").strip().lower()
     from services.ops.helpers import _render_ops_page
-    content = render_template("project_versions_workspace.html", project_id=project_id, env_key=env_key, platform_filter=platform_filter, can_edit=can_edit)
+    content = render_template(
+        "project_versions_workspace.html",
+        project_id=project_id,
+        env_key=env_key,
+        platform_filter=platform_filter,
+        channel_filter=channel_filter,
+        can_edit=can_edit,
+    )
     return _render_ops_page(
         content,
         "版本与 VersionCode",
-        active_page="versions",
+        active_page="",
         project_id=project_id,
         env_key=env_key,
-        breadcrumb_module="交付管理",
+        breadcrumb_module="环境详情",
     )
 
 
@@ -486,6 +511,7 @@ def project_version_group_build_config_page(project_id):
     from urllib.parse import urlencode
     from flask import redirect, request
     from services.release.env_registry import normalize_release_env_key
+    from services.commercial_release_plan import DEFAULT_RESOURCE_SERVER
     from services.ops.helpers import _render_ops_page
 
     entry_from = (request.args.get("from") or "").strip().lower()
@@ -539,7 +565,7 @@ def project_version_group_build_config_page(project_id):
         else:
             return_url = f"/admin/projects/{project_id}/release-orders/new?{urlencode({k: v for k, v in return_params.items() if v})}"
             return_label = "返回新建发布单"
-        active_page = "release-orders"
+        active_page = "versions"
     else:
         return_url = f"/admin/projects/{project_id}/versions?{urlencode({k: v for k, v in return_params.items() if v})}"
         return_label = "返回版本工作台"
@@ -560,6 +586,7 @@ def project_version_group_build_config_page(project_id):
         version_name=version_name,
         platform=platform,
         workflow_url="",
+        default_resource_server_url=DEFAULT_RESOURCE_SERVER,
     )
     return _render_ops_page(
         content,
@@ -569,6 +596,7 @@ def project_version_group_build_config_page(project_id):
         env_key=env_key,
         extra_css=(
             '<link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">'
+            '<link rel="stylesheet" href="/static/release_focus.css?v=20260706-focus-v1">'
             '<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260625-bc-layered1">'
         ),
     )
@@ -586,6 +614,7 @@ def project_version_build_config_page(project_id, version_id):
     from urllib.parse import urlencode
     from flask import redirect, request
     from services.release.env_registry import normalize_release_env_key, stage_to_env_key
+    from services.commercial_release_plan import DEFAULT_RESOURCE_SERVER
     from services.ops.helpers import _render_ops_page
 
     versions = (project_versions_db.get(project_id) or [])
@@ -636,7 +665,7 @@ def project_version_build_config_page(project_id, version_id):
         else:
             return_url = f"/admin/projects/{project_id}/release-orders/new{f'?{return_qs}' if return_qs else ''}"
             return_label = "返回新建发布单"
-        active_page = "release-orders"
+        active_page = "versions"
         page_title = "构建参数摘要"
     else:
         return_url = f"/admin/projects/{project_id}/versions{f'?{return_qs}' if return_qs else ''}"
@@ -665,6 +694,7 @@ def project_version_build_config_page(project_id, version_id):
         version_name=vn,
         platform=(version.get("platform") or "").strip(),
         workflow_url=f"/admin/projects/{project_id}/versions/{version_id}/workflow",
+        default_resource_server_url=DEFAULT_RESOURCE_SERVER,
     )
     return _render_ops_page(
         content,
@@ -674,6 +704,7 @@ def project_version_build_config_page(project_id, version_id):
         env_key=env_key,
         extra_css=(
             '<link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">'
+            '<link rel="stylesheet" href="/static/release_focus.css?v=20260706-focus-v1">'
             '<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260625-bc-layered1">'
         ),
     )
@@ -686,6 +717,15 @@ def project_build_history_page(project_id):
         abort(404)
     if not can_view_project(project_id, _current_username()):
         abort(403)
+    scoped = request.args.get('scoped') == '1'
+    scope_version_id = (request.args.get('version_id') or '').strip()
+    scope_env_key = (request.args.get('env_key') or '').strip()
+    if not scoped or (not scope_version_id and not scope_env_key):
+        from flask import redirect
+        from urllib.parse import urlencode
+        if scope_env_key:
+            return redirect(f"/admin/projects/{project_id}/versions?{urlencode({'env_key': scope_env_key})}")
+        return redirect(f"/admin/projects/{project_id}/overview?{urlencode({'tab': 'environments', 'hint': 'pick_env'})}")
     proj = projects_db[project_id]
     from services.ops.helpers import _render_ops_page
 
@@ -695,8 +735,8 @@ def project_build_history_page(project_id):
         project_name=proj.get('name') or project_id,
         can_edit=can_edit_project(project_id, _current_username()),
         env_key=request.args.get('env_key') or 'production',
-        scope_version_id=(request.args.get('version_id') or '').strip(),
-        scope_env_key=(request.args.get('env_key') or '').strip(),
+        scope_version_id=scope_version_id,
+        scope_env_key=scope_env_key,
         scope_platform=(request.args.get('platform') or '').strip(),
         scope_version_name=(request.args.get('version_name') or '').strip(),
         scope_version_code=(request.args.get('version_code') or '').strip(),
@@ -705,11 +745,11 @@ def project_build_history_page(project_id):
     return _render_ops_page(
         content,
         '构建与产物',
-        active_page='builds',
+        active_page='versions',
         project_id=project_id,
         env_key=request.args.get('env_key') or 'production',
         breadcrumb_module='交付管理',
-        extra_css='<link rel="stylesheet" href="/static/project_build_history.css?v=20260625-pm1">',
+        extra_css='<link rel="stylesheet" href="/static/project_build_history.css?v=20260708-bh9">',
     )
 
 def _user_project_role(project_id, username):

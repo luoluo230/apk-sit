@@ -3,7 +3,7 @@
   if (!page) return;
   const projectId = page.dataset.projectId;
   const envLabels = {development:"开发环境",testing:"测试环境",staging:"预发环境",production:"生产环境"};
-  const statusLabels = {draft:"草稿",building:"构建中",artifacts_ready:"部分成功",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
+  const statusLabels = {draft:"草稿",building:"构建中",artifacts_ready:"产物就绪",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
   const releaseLabel = (value) => {
     if (window.PmDisplayLabels && window.PmDisplayLabels.releaseStatus) {
       return window.PmDisplayLabels.releaseStatus(value).label;
@@ -48,7 +48,345 @@
     const node = document.createElement("div"); node.className = `toast ${type}`; node.textContent = message; host.append(node); setTimeout(() => node.remove(), 3500);
   };
   const status = (value) => `<span class="status-pill ${esc(value)}">${esc(releaseLabel(value))}</span>`;
-  const row = (label, value, extra="") => `<div class="detail-row"><strong>${esc(label)}</strong><span>${esc(value || "-")}</span><b>${extra}</b></div>`;
+  const detailRow = (label, value, extra = "", opts = {}) => {
+    const tone = opts.tone ? `detail-tone ${opts.tone}` : "";
+    const href = opts.href || "";
+    const apiAction = opts.apiAction || "";
+    let display;
+    if (apiAction) {
+      display = `<button type="button" class="ro-config-link" data-next-action="${esc(apiAction)}" style="border:0;background:transparent;padding:0;cursor:pointer">${esc(opts.linkLabel || "去处理")}</button>`;
+    } else if (href && (!value || value === "-")) {
+      display = `<a class="ro-config-link" href="${esc(href)}">${esc(opts.linkLabel || "去处理")}</a>`;
+    } else {
+      display = esc(value || "-");
+    }
+    const extraHtml = extra ? `<b class="${tone}">${esc(extra)}</b>` : "<b></b>";
+    return `<div class="detail-row"><strong>${esc(label)}</strong><span>${display}</span>${extraHtml}</div>`;
+  };
+  const row = (label, value, extra = "") => detailRow(label, value, extra);
+  const buildReleaseFocusUrl = (href, { section = "", highlightFields = [], focusReason = "", releaseOrderId = "" } = {}) => {
+    if (!href) return "";
+    try {
+      const url = new URL(href, window.location.origin);
+      if (section) url.searchParams.set("section", section);
+      const fields = Array.isArray(highlightFields) ? highlightFields : String(highlightFields || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (fields.length) url.searchParams.set("highlight", fields.join(","));
+      if (focusReason) url.searchParams.set("focus_reason", focusReason);
+      if (releaseOrderId) url.searchParams.set("release_order_id", releaseOrderId);
+      if (!url.searchParams.get("from")) url.searchParams.set("from", "release-order");
+      return `${url.pathname}${url.search}`;
+    } catch (_error) {
+      if (!section && !highlightFields.length) return href;
+      const join = href.includes("?") ? "&" : "?";
+      const parts = [];
+      if (section) parts.push(`section=${encodeURIComponent(section)}`);
+      if (highlightFields.length) parts.push(`highlight=${encodeURIComponent(highlightFields.join(","))}`);
+      if (focusReason) parts.push(`focus_reason=${encodeURIComponent(focusReason)}`);
+      if (releaseOrderId) parts.push(`release_order_id=${encodeURIComponent(releaseOrderId)}`);
+      parts.push("from=release-order");
+      return `${href}${join}${parts.join("&")}`;
+    }
+  };
+  const orderScopeLinks = (item) => {
+    const scope = {
+      env_key: item.env_key,
+      channel_id: item.channel_id,
+      platform: item.platform,
+      version_id: item.version_id,
+      version_name: item.version_name,
+      version_code: item.version_code,
+    };
+    const ctx = buildScopeQuery(scope);
+    const vid = item.version_id ? encodeURIComponent(item.version_id) : "";
+    return {
+      edit: buildReleaseFocusUrl(`/admin/projects/${projectId}/release-orders/${item.release_order_id}/edit${ctx}`, { releaseOrderId: item.release_order_id }),
+      buildHistory: scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" }),
+      buildConfig: vid ? buildReleaseFocusUrl(`/admin/projects/${projectId}/versions/${vid}/build-config${buildScopeQuery(scope, { from: "release-order", release_order_id: item.release_order_id })}`, { releaseOrderId: item.release_order_id }) : "",
+      versions: scopeHref(`/admin/projects/${projectId}/versions`, scope),
+      topology: scopeHref(`/admin/projects/${projectId}/topology-bindings`, scope),
+      runtime: buildReleaseFocusUrl(scopeHref(`/admin/projects/${projectId}/overview/runtime`, { env_key: item.env_key }), { releaseOrderId: item.release_order_id, highlightFields: ["runtime_topology"], focusReason: "请确认并启动目标拓扑的运行态" }),
+      network: buildReleaseFocusUrl(`/admin/projects/${projectId}/environments/${encodeURIComponent(item.env_key || "development")}${ctx}`, { releaseOrderId: item.release_order_id, highlightFields: ["gateway_ws", "login_http", "game_ws", "ops_http"], focusReason: "请补充环境网络接入配置" }),
+    };
+  };
+  const FIX_LINK_LABELS = { buildHistory: "查看构建历史", buildConfig: "配置管线", trigger_build: "触发 Jenkins 构建", network: "配置网络", topology: "配置拓扑", runtime: "启动运行态", edit: "编辑计划", versions: "版本代码" };
+  const appendBuildConfigSection = (href, section, extra = {}) => buildReleaseFocusUrl(href, { section, ...extra });
+  const issueFocusParams = (issue, item) => ({
+    section: issue.fix_section || issue.fixSection || "",
+    highlightFields: issue.highlight_fields || issue.highlightFields || [],
+    focusReason: issue.focus_reason || issue.focusReason || "",
+    releaseOrderId: item?.release_order_id || "",
+  });
+  const resolveIssueFixHref = (issue, links, pipelineInfo, item) => {
+    const focus = issueFocusParams(issue, item);
+    const fix = issue.fix || "edit";
+    if (fix === "buildConfig") {
+      const base = pipelineInfo?.build_config_href || links.buildConfig;
+      return buildReleaseFocusUrl(base, focus);
+    }
+    if (fix === "network") {
+      return buildReleaseFocusUrl(links.network, focus);
+    }
+    if (fix === "runtime") {
+      return buildReleaseFocusUrl(links.runtime, focus);
+    }
+    if (fix === "edit") {
+      return buildReleaseFocusUrl(links.edit, { ...focus, highlightFields: focus.highlightFields.length ? focus.highlightFields : ["reason"] });
+    }
+    const fixMap = { buildHistory: links.buildHistory, topology: links.topology, versions: links.versions };
+    return fixMap[fix] || links.edit || "";
+  };
+  const resolveIssueFixLabel = (issue) => issue.fix_label || issue.fixLabel || FIX_LINK_LABELS[issue.fix] || "去处理";
+  const canonicalFailingKey = (key) => {
+    const k = String(key || "").trim().toLowerCase();
+    if (!k) return "";
+    if (k === "code" || k === "code_url" || k === "code_manifest_url" || k.includes("code_manifest")) return "code";
+    if (["apk", "apk_url", "apk_version", "catalog", "catalog_url"].includes(k) || k.startsWith("apk")) return "apk";
+    if (["resource", "resource_url", "resource_version"].includes(k) || k.includes("resource")) return "resource";
+    if (["config", "config_url", "config_version", "config_manifest_url"].includes(k) || k.includes("config")) return "config";
+    if (["gateway_ws", "login_http", "game_ws", "ops_http"].includes(k)) return "network";
+    if (["scope_id", "env_key", "channel_id"].includes(k)) return "scope";
+    return k;
+  };
+  const summarizeOrderIssuesClient = (item, payload = {}, pipelineInfo = null) => {
+    const pipeline = pipelineInfo?.effective_pipeline || {};
+    const pipelineReady = Boolean(pipelineInfo?.readiness?.ready);
+    const stepEnabled = (key) => Boolean((pipeline[key] || {}).enabled);
+    const artifactRow = (type) => (item.artifacts || []).find((x) => String(x.artifact_type || "").toLowerCase() === type);
+    const artifactPath = (type) => {
+      const row = artifactRow(type);
+      return Boolean(String(row?.artifact_path || row?.artifact_url || "").trim());
+    };
+    const artifactMissing = (type) => {
+      const row = artifactRow(type);
+      const status = String(row?.status || "").toLowerCase();
+      return !row || ["missing", "unreachable", "invalid"].includes(status) || !artifactPath(type);
+    };
+    const highlightBySection = {
+      hot_release: ["hot_release_enabled", "code_enabled"],
+      artifact: ["apk_build_enabled"],
+      resource_build: ["resource_build_enabled"],
+      config_export: ["config_export_enabled"],
+      client_policy: ["resource_server_url"],
+    };
+    const bootstrapConfigured = (payload) => {
+      const targets = payload.artifact_targets || {};
+      return Boolean(String(targets.catalog_url || targets.config_manifest_url || "").trim());
+    };
+    const artifactUnreachable = (groupId, payload) => {
+      const keyMap = {
+        code: ["code_manifest_url"],
+        apk: ["apk_url", "catalog_url"],
+        resource: ["resource_url", "catalog_url"],
+        config: ["config_url", "config_manifest_url"],
+      };
+      const checks = payload.artifact_checks || {};
+      const targets = payload.artifact_targets || {};
+      const keys = keyMap[groupId] || [];
+      let hasTarget = false;
+      for (const key of keys) {
+        const url = String(targets[key] || "").trim();
+        if (!url) continue;
+        hasTarget = true;
+        if (!(checks[key] || {}).ok) return true;
+      }
+      return false;
+    };
+    const hintUnreachable = {
+      code: "下载地址已配置，但 code manifest 不可达（404），需 Jenkins 构建并 upload",
+      apk: "下载地址已配置，但 OSS 远程产物不可达（404），需 Jenkins 构建并 upload",
+      resource: "下载地址已配置，但 OSS 远程产物不可达（404），需 Jenkins 构建并 upload",
+      config: "下载地址已配置，但 OSS manifest 不可达（404），需 Jenkins 构建并 upload",
+    };
+    const resolveClientFix = (groupId) => {
+      const stepMap = {
+        code: { step: "hot_release", section: "hot_release", label: "开启热更发布", reason: "请开启热更发布并保存，然后返回发布单触发 Jenkins 构建" },
+        apk: { step: "apk_build", section: "artifact", label: "配置安装包", reason: "请启用安装包步骤并保存，然后返回发布单触发构建" },
+        resource: { step: "resource_build", section: "resource_build", label: "配置资源打包", reason: "请启用资源打包并保存，然后返回发布单触发构建" },
+        config: { step: "config_export", section: "config_export", label: "配置导出", reason: "请启用配置导出并保存，然后返回发布单触发构建" },
+      };
+      const meta = stepMap[groupId];
+      if (!meta) return { fix: "edit", fix_section: "", fix_label: "去处理", highlight_fields: [], focus_reason: "" };
+      if (artifactMissing(groupId)) {
+        if (stepEnabled(meta.step) && pipelineReady) return { fix: "trigger_build", fix_section: "", fix_label: "触发 Jenkins 构建", highlight_fields: [], focus_reason: "" };
+        return { fix: "buildConfig", fix_section: meta.section, fix_label: meta.label, highlight_fields: highlightBySection[meta.section] || [], focus_reason: meta.reason };
+      }
+      if (bootstrapConfigured(payload) && artifactUnreachable(groupId, payload)) {
+        if (groupId === "code" && stepEnabled("hot_release") && pipelineReady) {
+          return { fix: "trigger_build", fix_section: "", fix_label: "触发 Jenkins 构建", highlight_fields: [], focus_reason: "客户端策略已配置，需完成 code 包构建并 upload 到 OSS" };
+        }
+        return { fix: "buildHistory", fix_section: "", fix_label: "查看构建历史", highlight_fields: [], focus_reason: "下载地址已生成，但 OSS 上产物不可达，需 Jenkins 构建并 upload" };
+      }
+      if (bootstrapConfigured(payload)) {
+        if (groupId === "code" && stepEnabled("hot_release") && pipelineReady) {
+          return { fix: "trigger_build", fix_section: "", fix_label: "触发 Jenkins 构建", highlight_fields: [], focus_reason: "客户端策略已配置，需完成 code 包构建并 upload 到 OSS" };
+        }
+        return { fix: "buildHistory", fix_section: "", fix_label: "查看构建历史", highlight_fields: [], focus_reason: "下载地址已生成，但 OSS 上产物不可达，需 Jenkins 构建并 upload" };
+      }
+      return { fix: "buildConfig", fix_section: "client_policy", fix_label: "补充下载地址", highlight_fields: ["resource_server_url"], focus_reason: "请填写资源服务器 URL 并保存，以生成对外下载地址" };
+    };
+    const groups = [
+      { id: "code", label: "代码热更包", hintReady: "代码产物路径已登记，需在「客户端策略」补充下载基址", hintMissing: "需开启热更发布步骤、完成构建并登记 code 包", priority: 1 },
+      { id: "apk", label: "APK 安装包", hintReady: "安装包路径已登记，需在「客户端策略」补充 resource_server_url / catalog", hintMissing: "需完成安装包构建并登记 APK 与 Catalog", priority: 2 },
+      { id: "resource", label: "资源包", hintReady: "资源路径已登记，需在「客户端策略」补充 resource_server_url", hintMissing: "需完成资源打包并登记资源包 URL", priority: 3 },
+      { id: "config", label: "配置包", hintReady: "配置路径已登记，需在「客户端策略」补充下载基址与 manifest", hintMissing: "需完成配置导出并登记配置包 URL", priority: 4 },
+      { id: "network", label: "网络接入配置", hintMissing: "环境网络接入字段未配置完整", priority: 10 },
+      { id: "scope", label: "交付范围对齐", hintMissing: "VersionCode 与发布单环境/渠道/Scope 不一致", priority: 11 },
+    ];
+    const failing = new Set();
+    (payload.missing_client_fields || []).forEach((key) => { const c = canonicalFailingKey(key); if (c) failing.add(c); });
+    (payload.missing_profile_fields || []).forEach((key) => { const c = canonicalFailingKey(key); if (c) failing.add(c); });
+    (payload.missing_artifact_fields || []).forEach((key) => { const c = canonicalFailingKey(key); if (c) failing.add(c); });
+    (payload.alignment_errors || []).forEach((key) => { const c = canonicalFailingKey(key); if (c) failing.add(c); });
+    (item.artifacts || []).forEach((row) => {
+      const status = String(row.status || "").toLowerCase();
+      if (["missing", "unreachable", "invalid"].includes(status)) {
+        const c = canonicalFailingKey(row.artifact_type);
+        if (c) failing.add(c);
+      }
+    });
+    const issues = [];
+    groups.sort((a, b) => a.priority - b.priority).forEach((group) => {
+      if (!failing.has(group.id)) return;
+      let hint = group.hintMissing;
+      if (["code", "apk", "resource", "config"].includes(group.id) && artifactPath(group.id)) {
+        hint = bootstrapConfigured(payload)
+          ? (hintUnreachable[group.id] || group.hintReady)
+          : group.hintReady;
+      }
+      const fixMeta = group.id === "network"
+        ? { fix: "network", fix_section: "", fix_label: "配置网络接入", highlight_fields: ["gateway_ws", "login_http", "game_ws", "ops_http"], focus_reason: "请补充环境网络接入配置" }
+        : group.id === "scope"
+          ? { fix: "edit", fix_section: "", fix_label: "编辑发布计划", highlight_fields: [], focus_reason: "请核对发布单与 VersionCode 交付范围" }
+          : resolveClientFix(group.id);
+      issues.push({ id: group.id, label: group.label, hint, ...fixMeta, fields: [group.id] });
+    });
+    if (payload.topology_runtime_aligned === false || payload.runtime_error) {
+      let runtimeHint = String(payload.runtime_error || "").trim();
+      if (payload.topology_runtime_aligned === false) {
+        const topoHint = `设计拓扑 ${payload.topology_id || "-"}，运行拓扑 ${payload.runtime_topology_id || "-"}`;
+        runtimeHint = runtimeHint ? `${runtimeHint}；${topoHint}` : topoHint;
+      }
+      issues.push({ id: "runtime", label: "Runtime 运行态", hint: runtimeHint || "目标拓扑未运行，需启动 Runtime", fix: "runtime", fix_section: "", fix_label: "启动运行态", highlight_fields: ["runtime_topology"], focus_reason: "请启动目标拓扑运行态后返回发布单重新预检", fields: ["runtime"] });
+    }
+    return issues;
+  };
+  const resolveOrderIssues = (item, links, pipelineInfo = null) => {
+    const payload = item.latest_precheck?.payload || {};
+    const raw = (item.diagnostic_issues && item.diagnostic_issues.length)
+      ? item.diagnostic_issues
+      : summarizeOrderIssuesClient(item, payload, pipelineInfo || item.pipeline_snapshot || null);
+    return raw.map((issue) => ({
+      key: issue.id || issue.label,
+      label: issue.label || issue.id,
+      hint: issue.hint || "预检未通过",
+      href: issue.fix === "trigger_build" ? "" : resolveIssueFixHref(issue, links, pipelineInfo || item.pipeline_snapshot || null, item),
+      fix: issue.fix || "edit",
+      fixLabel: resolveIssueFixLabel(issue),
+      apiAction: issue.fix === "trigger_build" ? "build" : "",
+    }));
+  };
+  const renderIssueAction = (issue) => {
+    if (issue.apiAction) {
+      return `<button type="button" class="rod-issue-action" data-next-action="${esc(issue.apiAction)}">${esc(issue.fixLabel || FIX_LINK_LABELS[issue.fix] || "去处理")}</button>`;
+    }
+    if (issue.href) {
+      return `<a class="rod-issue-action" href="${esc(issue.href)}">${esc(issue.fixLabel || FIX_LINK_LABELS[issue.fix] || "去处理")}</a>`;
+    }
+    return "";
+  };
+  const renderOrderIssues = (issues, primary) => {
+    const focus = document.getElementById("orderFocus");
+    if (!focus) return;
+    const tone = issues.length ? "danger" : "ok";
+    focus.className = `rod-focus-card rod-focus-card--${tone}`;
+    const cards = issues.length
+      ? `<div class="rod-issue-stack">${issues.map((issue) => `<article class="rod-issue-card"><div class="rod-issue-icon">!</div><div class="rod-issue-body"><strong>${esc(issue.label)}</strong><p>${esc(issue.hint)}</p></div>${renderIssueAction(issue)}</article>`).join("")}</div>`
+      : `<p class="rod-focus-summary">${esc(primary.reason || "当前无阻断项，可继续下一步。")}</p>`;
+    document.getElementById("orderIssues").innerHTML = `
+      <div class="rod-focus-head">${issues.length ? `<span class="rod-focus-count">${issues.length}</span>` : ""}<h2>${issues.length ? "待处理问题" : "预检就绪"}</h2></div>
+      ${issues.length ? `<p class="rod-focus-summary">预检未通过，请按下列 ${issues.length} 类问题逐项修复，右侧可快速跳转。</p>` : ""}
+      ${cards}`;
+  };
+  const renderOrderFixRail = (item, links, pipelineInfo = null) => {
+    const host = document.getElementById("orderFixRail");
+    if (!host) return;
+    const fixActions = [
+      item.status === "precheck_failed" && (item.artifacts || []).some((x) => String(x.status || "").toLowerCase() === "missing") && (pipelineInfo?.readiness?.ready)
+        ? { action: "build", label: "触发 Jenkins 构建", primary: true }
+        : null,
+      { href: links.edit, label: "编辑发布计划", primary: item.status === "precheck_failed" && !(item.artifacts || []).some((x) => String(x.status || "").toLowerCase() === "missing") },
+      { href: links.buildHistory, label: "查看构建历史" },
+      { href: links.buildConfig, label: "配置版本组管线" },
+      item.status === "precheck_failed" ? { action: "precheck", label: "重新预检", primary: !(item.artifacts || []).some((x) => String(x.status || "").toLowerCase() === "missing") } : null,
+    ].filter(Boolean);
+    const fixHtml = fixActions.length
+      ? `<div class="rod-fix-stack">${fixActions.map((action) => action.href
+        ? `<a class="rod-fix-btn${action.primary ? " primary" : ""}" href="${esc(action.href)}">${esc(action.label)}</a>`
+        : `<button type="button" class="rod-fix-btn${action.primary ? " primary" : ""}" data-next-action="${esc(action.action)}">${esc(action.label)}</button>`).join("")}</div>`
+      : `<p>暂无可用修复动作。</p>`;
+    host.innerHTML = `<h3>修复指引</h3>${fixHtml}`;
+  };
+  const renderOrderRiskRail = (issues, item) => {
+    const host = document.getElementById("orderRiskRail");
+    if (!host) return;
+    const riskText = item.env_key === "production"
+      ? "生产环境发布：请确认审批、灰度策略与回滚方案。"
+      : issues.length
+        ? `共 ${issues.length} 类问题待处理，修复后请重新预检。`
+        : (item.reason || "关注产物、拓扑与 Runtime 一致性。");
+    host.innerHTML = `<h3>风险提示</h3><p>${esc(riskText)}</p>`;
+  };
+  const ORDER_DETAIL_BUILD_KEYS = new Set(["code", "apk", "resource", "config"]);
+  const ORDER_DETAIL_ENV_KEYS = new Set(["network", "runtime", "scope"]);
+  let orderDetailTabsBound = false;
+  const activateOrderDetailTab = (tabId) => {
+    const root = document.getElementById("orderDetailTabs");
+    if (!root || !tabId) return;
+    root.querySelectorAll("[data-rod-tab]").forEach((btn) => {
+      const active = btn.dataset.rodTab === tabId;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    root.querySelectorAll("[data-rod-panel]").forEach((panel) => {
+      const active = panel.dataset.rodPanel === tabId;
+      panel.classList.toggle("active", active);
+      if (active) panel.removeAttribute("hidden");
+      else panel.setAttribute("hidden", "");
+    });
+    page.dataset.orderDetailTab = tabId;
+  };
+  const bindOrderDetailTabs = () => {
+    if (orderDetailTabsBound) return;
+    const root = document.getElementById("orderDetailTabs");
+    if (!root) return;
+    orderDetailTabsBound = true;
+    root.querySelectorAll("[data-rod-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => activateOrderDetailTab(btn.dataset.rodTab || "plan"));
+    });
+  };
+  const updateOrderDetailTabBadges = (issues) => {
+    const buildCount = issues.filter((issue) => ORDER_DETAIL_BUILD_KEYS.has(String(issue.key))).length;
+    const envCount = issues.filter((issue) => ORDER_DETAIL_ENV_KEYS.has(String(issue.key))).length;
+    const paintBadge = (name, count) => {
+      const badge = document.querySelector(`[data-tab-badge="${name}"]`);
+      if (!badge) return;
+      if (count > 0) {
+        badge.textContent = String(count);
+        badge.classList.remove("is-hidden");
+      } else {
+        badge.textContent = "";
+        badge.classList.add("is-hidden");
+      }
+    };
+    paintBadge("build", buildCount);
+    paintBadge("env", envCount);
+  };
+  const defaultOrderDetailTab = (issues, item) => {
+    if (issues.some((issue) => ORDER_DETAIL_BUILD_KEYS.has(String(issue.key)))) return "build";
+    if (String(item.status || "").includes("precheck_failed") || issues.some((issue) => ORDER_DETAIL_ENV_KEYS.has(String(issue.key)))) return "env";
+    if (["published", "verified", "verify_failed", "approved"].includes(String(item.status || ""))) return "release";
+    return "plan";
+  };
   const csrfHeaders = () => {
     const token = document.querySelector('meta[name="csrf-token"]');
     return token && token.content ? { "X-CSRFToken": token.content } : {};
@@ -66,15 +404,23 @@
     }).join("");
   };
   const matrixActions = (line, envKey) => {
-    const scope = { env_key: envKey, channel_id: line.channel_id, platform: line.platform };
-    const viewVersionsHref = scopeHref(`/admin/projects/${projectId}/versions`, scope);
-    const addVcHref = scopeHref(`/admin/projects/${projectId}/versions`, scope, { action: "create_vc" });
-    const primary = line.configured
-      ? (line.version_id
-        ? `<a class="matrix-btn" href="${scopeHref(`/admin/projects/${projectId}/release-orders/start`, scope, { version_id: line.version_id })}">配置 VC</a>`
-        : `<a class="matrix-btn primary" href="${viewVersionsHref}">去版本代码</a>`)
-      : `<a class="matrix-btn primary" href="${addVcHref}">新建 VC</a>`;
-    return `${primary}<a class="matrix-btn" href="${viewVersionsHref}">版本</a><a class="matrix-btn" href="${scopeHref(`/admin/projects/${projectId}/topology-bindings`, scope)}">拓扑</a>`;
+    const scopeApi = window.DeliveryScope || {};
+    const scope = {
+      env_key: envKey,
+      channel_id: line.channel_id,
+      platform: line.platform,
+      version_id: line.version_id,
+      version_name: line.version_name,
+      version_code: line.version_code,
+      release_order_id: line.release_order_id,
+    };
+    if (!line.configured || !line.version_id) {
+      const addVcHref = scopeHref(`/admin/projects/${projectId}/versions`, scope, { action: "create_vc" });
+      return `<a class="matrix-btn primary" href="${addVcHref}">新建 VC</a>`;
+    }
+    const actions = line.delivery_actions || {};
+    const links = actions.links || {};
+    return scopeApi.renderMatrixActions ? scopeApi.renderMatrixActions(actions, links, scope, projectId) : "";
   };
   const renderChannelList = (host, assigned, { manageable = false } = {}) => {
     if (!host) return;
@@ -556,16 +902,17 @@
             const builtin = Boolean(row.builtin);
             const enabled = Boolean(row.enabled);
             const toggle = enabled
-              ? `<button type="button" class="env-disable" data-env-toggle="${key}" data-enabled="0">禁用</button>`
-              : `<button type="button" class="env-enable" data-env-toggle="${key}" data-enabled="1">启用</button>`;
-            const remove = builtin ? "" : `<button type="button" class="env-remove" data-env-remove="${key}">删除</button>`;
-            const scopeBtn = `<button type="button" class="env-scope-config" data-scope-env="${key}">配置</button>`;
-            const scopeLink = `<a class="env-scope-link" href="/admin/projects/${encodeURIComponent(projectId)}/environments/${key}#delivery-scope">环境详情</a>`;
+              ? `<button type="button" class="env-btn warn" data-env-toggle="${key}" data-enabled="0">禁用</button>`
+              : `<button type="button" class="env-btn release" data-env-toggle="${key}" data-enabled="1">启用</button>`;
+            const remove = builtin ? "" : `<button type="button" class="env-btn warn env-btn-full" data-env-remove="${key}">删除</button>`;
+            const scopeBtn = `<button type="button" class="env-btn build" data-scope-env="${key}">配置</button>`;
+            const scopeLink = `<a class="env-btn neutral" href="/admin/projects/${encodeURIComponent(projectId)}/environments/${key}#delivery-scope">环境详情</a>`;
             const iconCls = envConfigIconClass(row.env_key);
             const iconFile = envConfigIconFile(row.env_key);
             const badgeClass = enabled ? (builtin ? "builtin" : "active") : "disabled";
             const badgeText = enabled ? (builtin ? "内置" : "启用") : "已禁用";
-            return `<article class="env-config-card${enabled ? "" : " is-disabled"}">
+            const cardState = enabled ? " is-ready" : " is-pending is-disabled";
+            return `<article class="env-config-card${cardState}">
               <header class="env-config-card-head">
                 <div class="env-config-lead">
                   <span class="env-config-icon env-config-icon--${iconCls}"><img src="/static/project_ui/svg/${iconFile}" alt=""></span>
@@ -642,32 +989,43 @@
     return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(/\//g, "-");
   };
   let scopeDialogEnvKey = "";
-  const renderDeliveryMatrixHtml = (lines, envKey) => {
+  const renderDeliveryMatrixHtml = (lines, envKey, channelJourneys = []) => {
     if (!lines.length) return '<div class="ui-empty">当前环境暂无交付线，请先在项目中配置渠道并初始化 Scope。</div>';
+    const journeyMap = new Map((channelJourneys || []).map((row) => [String(row.channel_id || ""), row]));
     const groups = new Map();
     lines.forEach((line) => {
       const cid = String(line.channel_id || "").trim();
       if (!groups.has(cid)) groups.set(cid, { name: line.channel_name || cid, lines: [] });
       groups.get(cid).lines.push(line);
     });
+    const scopeApi = window.DeliveryScope || {};
     let html = '<div class="env-line-groups">';
-    groups.forEach((group) => {
-      html += `<section class="env-line-group"><header class="env-line-group-head"><strong>${esc(group.name)}</strong><span>${group.lines.length} 个平台</span></header><div class="env-line-cards">`;
+    groups.forEach((group, cid) => {
+      html += `<section class="env-line-group"><header class="env-line-group-head"><div><strong>${esc(group.name)}</strong><span>${group.lines.length} 个平台</span></div></header><div class="env-line-cards">`;
       group.lines.forEach((line) => {
         const versionText = line.version_name ? `${line.version_name} / ${line.version_code}` : "未配置";
         const badgeClass = line.configured ? "ready" : "pending";
         const badgeText = line.configured ? "已配置" : "未配置";
-        html += `<article class="env-line-card ${line.configured ? "" : "unconfigured"}">
+        const cardVersionLink = scopeApi.renderCardVersionEntry
+          ? scopeApi.renderCardVersionEntry(projectId, envKey, cid, line.platform)
+          : `<a class="matrix-btn version" href="${esc(scopeApi.versionsPageHref ? scopeApi.versionsPageHref(projectId, { env_key: envKey, channel_id: cid, platform: line.platform }) : scopeHref(`/admin/projects/${projectId}/versions`, { env_key: envKey, channel_id: cid, platform: line.platform }))}">版本</a>`;
+        const cardBuildHref = scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "build", line.platform) : "#";
+        const cardReleaseHref = scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "release", line.platform) : "#";
+        html += `<article class="env-line-card ${line.configured ? "configured" : "unconfigured"} env-line-card-readonly" data-platform-card="${esc(line.platform || "")}">
           <div class="env-line-card-head">
             <span class="env-line-platform-icon"><img src="/static/project_ui/svg/${platformIcon(line.platform)}" alt=""></span>
-            <div class="env-line-card-title"><span class="env-line-platform">${esc(line.platform_label || line.platform)}</span><span class="env-line-badge ${badgeClass}">${badgeText}</span></div>
+            <div class="env-line-card-title">
+              <span class="env-line-platform">${esc(line.platform_label || line.platform)}</span>
+              <span class="env-line-badge ${badgeClass}">${badgeText}</span>
+            </div>
           </div>
+          <p class="env-line-status-hint">${esc(line.status_hint || (line.configured ? "产物就绪" : "未配置 VersionCode"))}</p>
           <dl class="env-line-fields">
-            <div><dt>当前版本</dt><dd class="${line.version_name ? "" : "muted"}">${esc(versionText)}</dd></div>
-            <div><dt>Bundle</dt><dd>${esc(line.bundle_id || "-")}</dd></div>
-            <div class="span-2"><dt>拓扑</dt><dd class="mono">${esc(line.topology_id || "-")}</dd></div>
+            <div><dt>版本</dt><dd class="${line.version_name ? "" : "muted"}" title="${esc(versionText)}">${esc(versionText)}</dd></div>
+            <div><dt>Bundle</dt><dd class="mono" title="${esc(line.bundle_id || "-")}">${esc(line.bundle_id || "-")}</dd></div>
+            <div><dt>拓扑</dt><dd class="mono" title="${esc(line.topology_id || "-")}">${esc(line.topology_id || "-")}</dd></div>
           </dl>
-          <footer class="env-line-actions">${matrixActions(line, envKey)}</footer>
+          <footer class="env-line-actions env-line-card-links">${cardVersionLink}<a class="matrix-btn build" href="${esc(cardBuildHref)}">构建</a><a class="matrix-btn release" href="${esc(cardReleaseHref)}">发版</a></footer>
         </article>`;
       });
       html += "</div></section>";
@@ -771,7 +1129,7 @@
       if (page.dataset.deliveryPage === "environment" && page.dataset.envKey === envKey) {
         const summary = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`);
         const lines = summary.delivery_lines || [];
-        document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey);
+        document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey, data.channel_journeys || []);
       }
       if (page.dataset.deliveryPage === "overview") await loadOverview();
     } catch (error) {
@@ -981,9 +1339,9 @@
     const pendingChanges = cards.reduce((s, x) => s + (x.failed_count || 0) + (x.pending_approval_count || 0), 0);
     const memberCount = Number(page.dataset.memberCount || 0);
     const kpis = [
-      ["file_bundle.svg", "当前版本", latestOrder?.version_name || "—", "blue", "", `/admin/projects/${projectId}/versions`],
+      ["kpi_version.svg", "当前版本", latestOrder?.version_name || "—", "blue", "", scopeHref(`/admin/projects/${projectId}/versions`, { env_key: overviewFilterParams().env_key || "production" })],
       ["kpi_health.svg", "服务健康度", `${healthPct}%`, "green", healthyCount > 0 ? `↑ ${healthyCount} 环境正常` : "", `/admin/projects/${projectId}/overview`],
-      ["kpi_build.svg", "今日构建次数", processingTotal, "violet", "", `/admin/projects/${projectId}/build-history`],
+      ["kpi_build.svg", "今日构建次数", processingTotal, "violet", "", `/admin/projects/${projectId}/versions?env_key=${encodeURIComponent(scope?.env_key || "production")}`],
       ["kpi_change.svg", "待处理变更", pendingChanges, "orange", "", `/admin/projects/${projectId}/change-governance`],
       ["kpi_member.svg", "项目成员", memberCount, "cyan", "", `/admin/projects/${projectId}/settings`],
     ];
@@ -1042,7 +1400,7 @@
     const data = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`);
     document.getElementById("envDetailTitle").textContent = data.env_label || envKey;
     const lines = data.delivery_lines || [];
-    document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey);
+    document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey, data.channel_journeys || []);
     const orders = data.release_orders || [];
     document.getElementById("envOrders").innerHTML = orders.length
       ? orders.slice(0, 6).map((item) => {
@@ -1070,6 +1428,33 @@
     await loadEnvDeliveryScope();
     bindDeliveryScopeDialog();
     await loadProjectPlatforms();
+    const scopeApi = window.DeliveryScope || {};
+    if (scopeApi.bindQuickBuild) {
+      scopeApi.bindQuickBuild(page, {
+        projectId,
+        request: api,
+        onSuccess: (order) => {
+          toast(order.status === "building" ? "构建已触发" : "操作已提交");
+          const oid = order.release_order_id;
+          if (oid) {
+            const qs = buildScopeQuery({
+              env_key: order.env_key,
+              channel_id: order.channel_id,
+              platform: order.platform,
+              version_id: order.version_id,
+              version_name: order.version_name,
+              version_code: order.version_code,
+              release_order_id: oid,
+            });
+            location.href = `/admin/projects/${projectId}/release-orders/${oid}${qs}`;
+            return;
+          }
+          loadEnvironmentDetail().catch((error) => toast(error.message, "error"));
+        },
+        onError: (error) => toast(error.message || "操作失败", "error"),
+      });
+    }
+    if (scopeApi.bindMatrixMoreMenus) scopeApi.bindMatrixMoreMenus(page);
     if (location.hash === "#delivery-scope") openDeliveryScopeDialog();
   }
 
@@ -1275,6 +1660,7 @@
     }
 
     const selectedVersion=()=>options.versions.find(item=>String(item.id)===String(form.version_id.value))||{};
+    const effectivePipelineCache=new Map();
     let formContext={required_fields:["reason","owner"],release_policy:{form_depth:"minimal"},delivery_readiness:{ready:false,pipeline_ready:false,percent:0},build_config_href:""};
     const loadFormContext=async(version)=>{
       const params=new URLSearchParams();
@@ -1291,6 +1677,7 @@
       }catch(_error){/* keep defaults */}
       updateCompleteness();
       updatePipelineGate();
+      refreshPipelineSourcePill();
     };
     const applyReleaseDefaults=(defaults)=>{
       if(!defaults||typeof defaults!=="object")return;
@@ -1394,7 +1781,16 @@
       }
       const gateHint=document.getElementById("orderPipelineGateHint");
       if(gateHint){
-        gateHint.textContent=pipelineReady?"管线已就绪，可保存并触发构建。":"管线未就绪：请先在版本组配置 Jenkins 实例、Job 与四步管线。";
+        const pipeline=delivery.pipeline||{};
+        const hint=String(pipeline.blocker_hint||"").trim();
+        if(pipelineReady){
+          gateHint.textContent="管线已就绪，可保存并触发构建。";
+        }else if(hint){
+          gateHint.textContent=`${hint.startsWith("待")?hint:`待完善：${hint}`}。`;
+        }else{
+          const {label}=formatPipelinePillLabel(pipeline.ready?pipeline:buildLocalPipelineReadiness(selectedVersion())||pipeline);
+          gateHint.textContent=`${label}。`;
+        }
       }
     };
     const versionContextQuery=(version)=>{
@@ -1413,7 +1809,7 @@
       const pipelineReady=Boolean(delivery.pipeline_ready);
       const planPercent=Number(document.getElementById("planCompleteness")?.textContent?.replace("%","")||0);
       const phaseIndex=pipelineReady?(planPercent>=100?2:1):0;
-      renderJourneyProgress(document.getElementById("orderFormJourneyProgress"), ["准备","计划","执行"], phaseIndex);
+      renderJourneyProgress(document.getElementById("orderFormJourneyProgress"), ["准备","构建","发版"], phaseIndex);
     };
     const previewCard=(icon,label,value,detail="",href="",linkLabel="去配置",sameWindow=false,missing=false)=>{
       const targetAttr=sameWindow?"":" target=\"_blank\" rel=\"noopener noreferrer\"";
@@ -1441,21 +1837,34 @@
       }
     };
     const formatPipelinePillLabel=(readiness)=>{
-      if(!readiness||typeof readiness!=="object")return {label:"管线未配置",isReady:false};
+      if(!readiness||typeof readiness!=="object"){
+        return {label:"待配置：Jenkins 实例、Jenkins Job、管线四步",isReady:false};
+      }
       const status=String(readiness.status||"").trim();
       const missingSteps=Array.isArray(readiness.missing_pipeline_steps)?readiness.missing_pipeline_steps:[];
       const missing=Array.isArray(readiness.missing)?readiness.missing:[];
+      const checks=readiness.checks||{};
       const infraMissing=missing.filter((x)=>x==="Jenkins 实例"||x==="Jenkins Job");
       if(status==="ready"||(!status&&readiness.ready&&!missingSteps.length)){
         return {label:"版本组管线模板",isReady:true};
       }
-      const stepMissing=missingSteps.length?missingSteps:missing.filter((x)=>!["Jenkins 实例","Jenkins Job","管线四步配置"].includes(x));
-      const parts=[...infraMissing,...stepMissing];
+      let stepMissing=missingSteps.length?missingSteps:missing.filter((x)=>!["Jenkins 实例","Jenkins Job","管线四步配置"].includes(x));
+      let parts=[...infraMissing,...stepMissing];
+      if(!parts.length){
+        if(checks.jenkins_instance===false)parts.push("Jenkins 实例");
+        if(checks.jenkins_job===false)parts.push("Jenkins Job");
+        if(checks.pipeline===false)parts.push("管线四步配置");
+      }
       if(!parts.length){
         if(readiness.ready)return {label:"版本组管线模板",isReady:true};
-        return {label:"管线未配置",isReady:false};
+        if(String(readiness.blocker_hint||"").trim()){
+          const hint=String(readiness.blocker_hint).trim();
+          return {label:hint.startsWith("待")?hint:`待完善：${hint}`,isReady:false};
+        }
+        return {label:"待完善：请检查版本组管线模板",isReady:false};
       }
-      return {label:`待完善：${parts.join("、")}`,isReady:false};
+      const prefix=status==="unconfigured"&&!checks.jenkins_instance&&!checks.jenkins_job&&!checks.pipeline?"待配置":"待完善";
+      return {label:`${prefix}：${parts.join("、")}`,isReady:false};
     };
     const setSourcePill=(pillEl,readiness,href)=>{
       if(!pillEl)return;
@@ -1467,6 +1876,71 @@
       }else{
         pillEl.textContent=label;
       }
+      const hintEl=document.getElementById("orderPipelineStatusHint");
+      if(hintEl){
+        if(isReady){
+          hintEl.textContent="Jenkins、Job 与管线四步已齐，可进入下一步。";
+          hintEl.classList.add("is-ready");
+          hintEl.classList.remove("is-missing");
+        }else{
+          hintEl.textContent=`${label}。点击状态标签可跳转对应配置页。`;
+          hintEl.classList.remove("is-ready");
+          hintEl.classList.add("is-missing");
+        }
+      }
+    };
+    const buildLocalPipelineReadiness=(version)=>{
+      if(!version||(!version.id&&!version.version_name))return null;
+      const cached=effectivePipelineCache.get(version.id);
+      if(cached?.readiness)return cached.readiness;
+      const pipeline=version.pipeline&&typeof version.pipeline==="object"?version.pipeline:{};
+      const stepDefs=[
+        ["config_export","配置导出"],
+        ["resource_build","资源打包"],
+        ["hot_release","热更发布"],
+        ["apk_build","安装包"],
+      ];
+      const jenkinsInstance=String(version.jenkins_instance_id||form.jenkins_instance_id?.value||"").trim();
+      const jenkinsJob=String(version.jenkins_job_id||version.jenkins_job||form.jenkins_job?.value||"").trim();
+      const enabledSteps=stepDefs.filter(([key])=>Boolean((pipeline[key]||{}).enabled));
+      const missingSteps=stepDefs.filter(([key])=>!(pipeline[key]||{}).enabled).map(([,label])=>label);
+      const hasPipeline=enabledSteps.length>0;
+      const checks={
+        jenkins_instance:Boolean(jenkinsInstance),
+        jenkins_job:Boolean(jenkinsJob),
+        pipeline:hasPipeline,
+      };
+      const missing=[];
+      if(!checks.jenkins_instance)missing.push("Jenkins 实例");
+      if(!checks.jenkins_job)missing.push("Jenkins Job");
+      if(!checks.pipeline)missing.push("管线四步配置");
+      else if(missingSteps.length)missing.push(...missingSteps);
+      const ready=Object.values(checks).every(Boolean);
+      let status="partial";
+      if(!checks.jenkins_instance&&!checks.jenkins_job&&!checks.pipeline)status="unconfigured";
+      else if(ready&&!missingSteps.length)status="ready";
+      return {
+        ready,
+        status,
+        checks,
+        missing,
+        missing_pipeline_steps:hasPipeline?missingSteps:stepDefs.map(([,label])=>label),
+        jenkins_instance_id:jenkinsInstance,
+        jenkins_job_id:jenkinsJob,
+        pipeline_summary:enabledSteps.map(([,label])=>label).join(" · "),
+        source:"local",
+      };
+    };
+    let lastPipelineConfigHref="";
+    const refreshPipelineSourcePill=(readinessOverride=null,hrefOverride="")=>{
+      const pillEl=document.getElementById("orderPipelineSourcePill");
+      if(!pillEl)return;
+      const version=selectedVersion();
+      const readiness=readinessOverride
+        ||formContext.delivery_readiness?.pipeline
+        ||buildLocalPipelineReadiness(version);
+      const href=(readiness&&readiness.ready)?"":(hrefOverride||formContext.build_config_href||lastPipelineConfigHref||"");
+      setSourcePill(pillEl,readiness,href);
     };
     const lockTargetFields=()=>{
       [form.env_key,form.channel_id,form.platform,form.version_id].forEach((field)=>{
@@ -1501,7 +1975,6 @@
       renderPlanPreview();
       return Boolean(match||vn||vc||vid);
     };
-    const effectivePipelineCache=new Map();
     const loadEffectivePipeline=async(vid)=>{
       if(!vid)return null;
       if(effectivePipelineCache.has(vid))return effectivePipelineCache.get(vid);
@@ -1544,6 +2017,7 @@
       const jenkinsHref=jenkinsInstance?`/admin/jenkins/edit?instance_id=${encodeURIComponent(jenkinsInstance)}`:"/admin/jenkins";
       const jenkinsConfigHref=buildConfigHref("jenkins");
       const pipelineConfigHref=buildConfigHref(resolveMissingPipelineSection(pipeline,{jenkins_instance_id:jenkinsInstance,jenkins_job_id:jenkinsJob}));
+      lastPipelineConfigHref=formContext.build_config_href||pipelineConfigHref||jenkinsConfigHref;
       const buildLinks={jenkinsInstance:jenkinsConfigHref,jenkinsJob:jenkinsConfigHref,pipeline:pipelineConfigHref||jenkinsConfigHref};
       const summaryCard=document.getElementById("orderPipelineSummaryCard");
       if(summaryCard){
@@ -1553,12 +2027,7 @@
         setSummaryField(instCell,jenkinsInstance||"未配置",!jenkinsInstance?jenkinsConfigHref:"");
         setSummaryField(jobCell,jenkinsJob||"未配置",!jenkinsJob?jenkinsConfigHref:"");
         setSummaryField(pipelineCell,pipelineSummary,isMissingConfigValue(pipelineSummary)?pipelineConfigHref:"");
-        const sourcePill=document.getElementById("orderPipelineSourcePill");
-        const pipelineReadiness=formContext.delivery_readiness?.pipeline||{
-          ready:Boolean(formContext.delivery_readiness?.pipeline_ready),
-          checks:formContext.delivery_readiness?.checks||{},
-        };
-        setSourcePill(sourcePill,pipelineReadiness,pipelineReadiness.ready?"":(formContext.build_config_href||pipelineConfigHref||jenkinsConfigHref));
+        refreshPipelineSourcePill(null,lastPipelineConfigHref);
         const cta=document.getElementById("orderGoConfigurePipelineBtn");
         if(cta){
           const href=formContext.build_config_href||jenkinsConfigHref;
@@ -1604,10 +2073,9 @@
           };
           const effJenkinsHref=effBuildConfigHref("jenkins");
           const effPipelineHref=effBuildConfigHref(resolveMissingPipelineSection(eff,j));
-          const pillEl=document.getElementById("orderPipelineSourcePill");
+          lastPipelineConfigHref=data.build_config_href||effPipelineHref||effJenkinsHref||lastPipelineConfigHref;
           const readiness=data.readiness||{};
-          const pillHref=readiness.ready?"":(data.build_config_href||effPipelineHref||effJenkinsHref);
-          setSourcePill(pillEl,readiness,pillHref);
+          const pillHref=readiness.ready?"":lastPipelineConfigHref;
           if(readiness&&typeof readiness==="object"){
             formContext.delivery_readiness=formContext.delivery_readiness||{};
             formContext.delivery_readiness.pipeline_ready=Boolean(readiness.ready);
@@ -1619,8 +2087,9 @@
               };
             }
             if(data.build_config_href)formContext.build_config_href=data.build_config_href;
-            updateCompleteness();
           }
+          refreshPipelineSourcePill(readiness,pillHref);
+          updateCompleteness();
           setSummaryField(card.querySelector("[data-field='jenkins_instance_id']"),j.jenkins_instance_id||"未配置",!j.jenkins_instance_id?effJenkinsHref:"");
           setSummaryField(card.querySelector("[data-field='jenkins_job']"),j.jenkins_job_id||"未配置",!j.jenkins_job_id?effJenkinsHref:"");
           setSummaryField(card.querySelector("[data-field='pipeline_summary']"),summary,isMissingConfigValue(summary)?effPipelineHref:"");
@@ -1757,12 +2226,19 @@
       api(`/api/projects/${projectId}/release-orders/${orderId}`),
       api(`/api/projects/${projectId}/release-orders/${orderId}/next-action`),
     ]);
+    const links=orderScopeLinks(item);
+    let pipelineInfo=item.pipeline_snapshot||null;
+    if(!pipelineInfo&&item.version_id){
+      try{
+        pipelineInfo=await api(`/api/projects/${projectId}/versions/${encodeURIComponent(item.version_id)}/effective-pipeline`);
+      }catch(_e){pipelineInfo=null;}
+    }
     document.getElementById("orderTitle").innerHTML=`发布单详情 ${status(item.status)}`;
-    document.getElementById("orderSubtitle").textContent=`发布单编号：${item.release_order_id}`;
+    document.getElementById("orderSubtitle").textContent=`发布单编号：${item.release_order_id} · 更新于 ${item.updated_at || item.created_at || "-"}`;
     const primary=nextAction.primary||{};
     const more=nextAction.more||[];
     const failed=String(item.status||"").includes("failed");
-    renderJourneyProgress(document.getElementById("orderJourneyProgress"), nextAction.phases||["准备","计划","执行"], nextAction.phase_index??0, failed);
+    renderJourneyProgress(document.getElementById("orderJourneyProgress"), nextAction.phases||["准备","构建","发版"], nextAction.phase_index??0, failed);
     const actionsHost=document.getElementById("orderActions");
     const primaryHtml=primary.href
       ? `<a class="ui-primary" href="${esc(primary.href)}">${esc(primary.label)}</a>`
@@ -1774,18 +2250,79 @@
     actionsHost.innerHTML=primaryHtml+moreHtml;
     document.getElementById("orderMeta").innerHTML=[["目标环境",envLabels[item.env_key]],["版本",`${item.version_name} / ${item.version_code}`],["渠道与平台",`${item.channel_name} / ${item.platform}`],["负责人",item.created_by],["总体状态",releaseLabel(item.status)]].map(([label,value])=>`<div class="meta-item"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
     const check=item.latest_precheck||{},payload=check.payload||{};
-    const artifactProblems=(item.artifacts||[]).filter(x=>["missing","unreachable","invalid"].includes(String(x.status||"").toLowerCase())).map(x=>`${x.artifact_type} ${artifactStatusLabels[x.status]||x.status}`);
-    const problems=[...artifactProblems,...(payload.missing_client_fields||[]),...(payload.missing_profile_fields||[]),...(payload.missing_artifact_fields||[])];
-    payload.runtime_error&&problems.push(payload.runtime_error);
-    const blockerText=problems.length?problems.slice(0,3).join("；"):(primary.reason||"当前无阻断问题");
-    document.getElementById("orderAlerts").innerHTML=`<div class="order-alert-grid"><div class="alert-card ${problems.length?"danger":"success"}"><strong>${problems.length?"阻断项":"无阻断"}</strong><p>${esc(blockerText)}</p></div><div class="alert-card warning"><strong>风险提示</strong><p>${item.env_key==="production"?"生产环境发布，请确认审批与验证方案":esc(item.reason||"关注产物与拓扑一致性")}</p></div></div>`;
-    document.getElementById("orderArtifacts").innerHTML=(item.artifacts||[]).map(x=>row(artifactTypeLabels[x.artifact_type]||x.artifact_type,x.artifact_url||x.artifact_path,artifactStatusLabels[x.status]||x.status)).join("")||'<div class="ui-empty">暂无产物</div>';
-    document.getElementById("orderRuntime").innerHTML=row("拓扑",item.topology_id,bindingSourceLabels[item.topology_binding_source]||item.topology_binding_source)+row("Runtime",item.runtime_run_id,item.runtime_run_id?"运行中":"未运行");
-    document.getElementById("orderPrecheck").innerHTML=check.created_at?row(check.ok?"预检通过":"预检阻断",check.created_at,check.ok?"通过":"失败"):'<div class="ui-empty">尚未执行预检</div>';
-    document.getElementById("orderApprovals").innerHTML=(item.approvals||[]).map(x=>row(x.status,x.approved_by||x.requested_by,x.note)).join("")||'<div class="ui-empty">暂无审批记录</div>';
-    document.getElementById("orderExecution").innerHTML=row("发布时间",item.published_at,statusLabels[item.status]||item.status)+row("验证状态",statusLabels[item.status],statusLabels[item.status]||item.status);
-    document.getElementById("orderBundle").innerHTML=row("Bundle",item.bundle_id,item.bundle_id?"已生成":"未生成")+row("Active Bundle",item.active_bundle_id,item.bundle_id===item.active_bundle_id&&item.bundle_id?"当前生效":"");
-    document.getElementById("orderEvents").innerHTML=(item.events||[]).map(x=>`<div class="timeline-row"><strong>${esc(x.event_type)} · ${esc(statusLabels[x.to_status]||x.to_status||"")}</strong><span>${esc(x.actor)} · ${esc(x.created_at)}</span></div>`).join("");
+    const issues=resolveOrderIssues(item, links, pipelineInfo);
+    renderOrderIssues(issues, primary);
+    renderOrderFixRail(item, links, pipelineInfo);
+    renderOrderRiskRail(issues, item);
+    const payloadData=item.payload||{};
+    document.getElementById("orderPlan").innerHTML=[
+      detailRow("发布原因", item.reason || "-", "", { tone: item.reason ? "success" : "muted" }),
+      detailRow("负责人", payloadData.owner || item.created_by || "-"),
+      detailRow("发布窗口", payloadData.release_window || "未设置", "", { tone: payloadData.release_window ? "success" : "muted" }),
+      detailRow("验证计划", payloadData.validation_plan ? "已填写" : "未填写", payloadData.validation_plan ? "已填写" : "待补充", { tone: payloadData.validation_plan ? "success" : "warning", href: !payloadData.validation_plan ? links.edit : "", linkLabel: "去补充" }),
+      detailRow("回滚计划", payloadData.rollback_plan ? "已填写" : "未填写", payloadData.rollback_plan ? "已填写" : "待补充", { tone: payloadData.rollback_plan ? "success" : "warning", href: !payloadData.rollback_plan ? links.edit : "", linkLabel: "去补充" }),
+    ].join("");
+    const readiness=pipelineInfo?.readiness||{};
+    const jenkins=pipelineInfo?.jenkins||{};
+    const eff=pipelineInfo?.effective_pipeline||{};
+    const pipelineSummary=[
+      (eff.config_export||{}).enabled?"配置导出":"",
+      (eff.resource_build||{}).enabled?"资源打包":"",
+      (eff.hot_release||{}).enabled?"热更发布":"",
+      (eff.apk_build||{}).enabled?"安装包":"",
+    ].filter(Boolean).join(" · ")||"未配置";
+    const pipelineTone=readiness.status==="ready"?"success":readiness.status==="partial"?"warning":"danger";
+    document.getElementById("orderPipeline").innerHTML=[
+      detailRow("Jenkins 实例", jenkins.jenkins_instance_id || "-", readiness.checks?.jenkins_instance?"已配置":"缺失", { tone: readiness.checks?.jenkins_instance?"success":"danger", href: !jenkins.jenkins_instance_id ? (pipelineInfo?.build_config_href || links.buildConfig) : "", linkLabel: "去配置" }),
+      detailRow("Job / 任务", jenkins.jenkins_job_id || "-", readiness.checks?.jenkins_job?"已配置":"缺失", { tone: readiness.checks?.jenkins_job?"success":"danger", href: !jenkins.jenkins_job_id ? (pipelineInfo?.build_config_href || links.buildConfig) : "", linkLabel: "去配置" }),
+      detailRow("管线四步", pipelineSummary, readiness.blocker_hint || (readiness.ready?"就绪":"待完善"), { tone: pipelineTone, href: links.buildConfig, linkLabel: "配置管线" }),
+      detailRow("产物登记", `${(item.artifacts||[]).filter(x=>x.status==="registered").length}/${(item.artifacts||[]).length||4}`, item.status==="artifacts_ready"||item.status==="precheck_failed"?"查看构建历史":"", { tone: (item.artifacts||[]).some(x=>x.status==="missing")?"warning":"success", href: links.buildHistory, linkLabel: "查看构建" }),
+    ].join("");
+    const artifactTone=(value)=>value==="registered"||value==="reachable"||value==="available"?"success":value==="missing"?"danger":"warning";
+    document.getElementById("orderArtifacts").innerHTML=(item.artifacts||[]).map((x)=>{
+      const label=artifactTypeLabels[x.artifact_type]||x.artifact_type;
+      const statusText=artifactStatusLabels[x.status]||x.status;
+      const missing=["missing","unreachable","invalid"].includes(String(x.status||"").toLowerCase());
+      const needsUrl=Boolean(String(x.artifact_path||"").trim())&&!missing;
+      const artifactLinkLabel=missing?(pipelineInfo?.readiness?.ready?"触发 Jenkins 构建":"配置管线"):needsUrl?"补充下载地址":"";
+      const artifactAction=missing&&pipelineInfo?.readiness?.ready?"build":"";
+      const artifactHref=missing
+        ? (artifactAction ? "" : buildReleaseFocusUrl(pipelineInfo?.build_config_href||links.buildConfig, { section: x.artifact_type==="code"?"hot_release":x.artifact_type==="apk"?"artifact":x.artifact_type==="resource"?"resource_build":"config_export", highlightFields: x.artifact_type==="code"?["hot_release_enabled","code_enabled"]:x.artifact_type==="apk"?["apk_build_enabled"]:x.artifact_type==="resource"?["resource_build_enabled"]:["config_export_enabled"], focusReason: "请完成对应管线步骤并保存", releaseOrderId: item.release_order_id }))
+        : needsUrl
+          ? buildReleaseFocusUrl(pipelineInfo?.build_config_href||links.buildConfig, { section: "client_policy", highlightFields: ["resource_server_url"], focusReason: "请填写资源服务器 URL 并保存", releaseOrderId: item.release_order_id })
+          : "";
+      return detailRow(label, x.artifact_url||x.artifact_path||"-", statusText, {
+        tone: artifactTone(String(x.status||"").toLowerCase()),
+        href: artifactHref,
+        apiAction: artifactAction,
+        linkLabel: artifactLinkLabel,
+      });
+    }).join("")||'<div class="ui-empty">暂无产物</div>';
+    document.getElementById("orderRuntime").innerHTML=[
+      detailRow("拓扑", item.topology_id || "-", bindingSourceLabels[item.topology_binding_source]||item.topology_binding_source||"-", { tone: item.topology_id?"success":"warning", href: links.topology, linkLabel: "配置拓扑" }),
+      detailRow("Runtime", item.runtime_run_id || "未运行", item.runtime_run_id?"运行中":"未运行", { tone: item.runtime_run_id?"success":"muted", href: links.runtime, linkLabel: "查看运行态" }),
+      detailRow("Scope", item.scope_id || "-", payload.scope_alignment_ok===false?"不一致":"已对齐", { tone: payload.scope_alignment_ok===false?"danger":"success" }),
+    ].join("");
+    const precheckItems=[
+      { ok: !issues.some((issue)=>["code","apk","resource","config"].includes(issue.key)), label: "构建产物与对外 URL", detail: issues.filter((issue)=>["code","apk","resource","config"].includes(issue.key)).map((issue)=>`${issue.label}${issue.key==="code"?"未构建":"缺下载地址"}`).join("；") || "齐全", href: links.buildHistory, apiAction: issues.some((issue)=>issue.key==="code"&&(issue.fix==="trigger_build"||issue.apiAction==="build"))?"build":"" },
+      { ok: !issues.some((issue)=>issue.key==="network"), label: "网络接入配置", detail: issues.some((issue)=>issue.key==="network")?"未配置完整":"齐全", href: links.network },
+      { ok: !issues.some((issue)=>issue.key==="runtime"), label: "Runtime 运行态", detail: issues.some((issue)=>issue.key==="runtime")?"未运行或不一致":"一致", href: links.runtime },
+      { ok: !issues.some((issue)=>issue.key==="scope"), label: "交付范围对齐", detail: issues.some((issue)=>issue.key==="scope")?"不一致":"一致", href: links.edit },
+    ];
+    document.getElementById("orderPrecheck").innerHTML=check.created_at
+      ? `${detailRow(check.ok?"预检通过":"预检阻断", check.created_at, check.ok?"通过":"失败", { tone: check.ok?"success":"danger" })}<ul class="precheck-checklist">${precheckItems.map((entry)=>`<li><span class="mark ${entry.ok?"ok":"fail"}">${entry.ok?"✓":"!"}</span><span><strong>${esc(entry.label)}</strong><small>${esc(entry.detail)}</small></span>${entry.ok?"":entry.apiAction?`<button type="button" data-next-action="${esc(entry.apiAction)}">触发构建</button>`:entry.href?`<a href="${esc(entry.href)}">查看历史</a>`:""}</li>`).join("")}</ul>`
+      : `<div class="ui-empty">尚未执行预检<button class="ui-secondary" type="button" data-next-action="precheck" style="margin-left:8px">执行预检</button></div>`;
+    document.getElementById("orderExecutionBundle").innerHTML=[
+      (item.approvals||[]).length
+        ? (item.approvals||[]).map(x=>detailRow("审批",x.status,x.approved_by||x.requested_by||"-")).join("")
+        : detailRow("审批", "暂无记录", "-", { tone: "muted" }),
+      detailRow("发布时间", item.published_at || "-", statusLabels[item.status]||item.status, { tone: item.published_at?"success":"muted" }),
+      detailRow("验证状态", statusLabels[item.status]||item.status, item.status==="verified"?"通过":item.status==="verify_failed"?"失败":"待验证", { tone: item.status==="verified"?"success":item.status==="verify_failed"?"danger":"warning" }),
+      detailRow("Bundle", item.bundle_id || "-", item.bundle_id?"已生成":"未生成", { tone: item.bundle_id?"success":"muted" }),
+      detailRow("Active Bundle", item.active_bundle_id || "-", item.bundle_id===item.active_bundle_id&&item.bundle_id?"当前生效":"", { tone: item.bundle_id===item.active_bundle_id&&item.bundle_id?"success":"muted" }),
+    ].join("");
+    const eventLabels={created:"创建",draft_updated:"草稿更新",build_completed:"构建完成",prechecked:"预检",approved:"审批",published:"发布",verified:"验证",cancelled:"取消",rolled_back:"回滚"};
+    document.getElementById("orderEvents").innerHTML=(item.events||[]).map(x=>`<div class="timeline-row"><strong>${esc(eventLabels[x.event_type]||x.event_type)} · ${esc(statusLabels[x.to_status]||x.to_status||"")}</strong><span>${esc(x.actor)} · ${esc(x.created_at)}</span></div>`).join("")||'<div class="ui-empty">暂无事件</div>';
     const dialog=document.getElementById("orderActionDialog"),reason=document.getElementById("orderActionReason");let pendingAction="";
     const closeDialog=()=>{pendingAction="";reason.value="";dialog.classList.add("is-hidden");dialog.setAttribute("aria-hidden","true");};
     const executeAction=async(action,operationReason="")=>{try{await api(`/api/projects/${projectId}/release-orders/${orderId}/${action}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason:operationReason})});toast("操作已提交");loadOrderDetail();}catch(error){toast(error.message,"error");}};
@@ -1802,13 +2339,20 @@
       dialog.classList.remove("is-hidden");dialog.setAttribute("aria-hidden","false");
     };
     actionsHost.querySelectorAll("[data-next-action]").forEach(button=>button.addEventListener("click",()=>handleNextAction(button)));
+    page.querySelectorAll("#orderIssues [data-next-action], #orderFixRail [data-next-action], #orderArtifacts [data-next-action], #orderPrecheck [data-next-action]").forEach(button=>button.addEventListener("click",()=>handleNextAction(button)));
     const moreToggle=actionsHost.querySelector("[data-toggle-order-more]");
     const moreMenu=actionsHost.querySelector("[data-order-more]");
     if(moreToggle&&moreMenu){
       moreToggle.onclick=(event)=>{event.stopPropagation();moreMenu.classList.toggle("open");};
-      document.addEventListener("click",()=>moreMenu.classList.remove("open"),{once:true});
+      const closeMoreMenu=(event)=>{if(!moreMenu.contains(event.target)&&event.target!==moreToggle)moreMenu.classList.remove("open");};
+      document.addEventListener("click",closeMoreMenu);
       moreMenu.querySelectorAll("[data-next-action]").forEach(button=>button.addEventListener("click",(event)=>{event.stopPropagation();moreMenu.classList.remove("open");handleNextAction(button);}));
     }
+    bindOrderDetailTabs();
+    updateOrderDetailTabBadges(issues);
+    const tabIds = new Set(["plan", "build", "env", "release"]);
+    const savedTab = page.dataset.orderDetailTab || "";
+    activateOrderDetailTab(tabIds.has(savedTab) ? savedTab : defaultOrderDetailTab(issues, item));
   }
   const type=page.dataset.deliveryPage;
   if(type==="overview"){

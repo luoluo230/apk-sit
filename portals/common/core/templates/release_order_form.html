@@ -1,6 +1,6 @@
 <section class="delivery-app order-form-app ro-form-app" data-delivery-page="order-form" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
   <header class="ro-form-head">
-    <a class="ro-form-back" href="/admin/projects/{{ project_id }}/release-orders" aria-label="返回发布单中心"><img src="/static/project_ui/svg/action_back.svg" alt=""></a>
+    <a class="ro-form-back" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}" aria-label="返回版本代码"><img src="/static/project_ui/svg/action_back.svg" alt=""></a>
     <div class="ro-form-head-copy">
       <h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1>
       <p id="orderFormSubtitle" class="ro-form-subtitle">填写完整发布计划后保存或进入构建。</p>
@@ -67,7 +67,10 @@
           <div class="pipeline-readonly-card ro-pipeline-card" id="orderPipelineSummaryCard" data-pipeline-source="version_group">
             <div class="pipeline-readonly-head">
               <strong>管线摘要</strong>
-              <span class="pipeline-source-pill" id="orderPipelineSourcePill">版本组管线模板</span>
+              <div class="pipeline-readonly-status">
+                <span class="pipeline-source-pill" id="orderPipelineSourcePill">版本组管线模板</span>
+                <p class="pipeline-status-hint" id="orderPipelineStatusHint">选择 VersionCode 后评估管线就绪度。</p>
+              </div>
             </div>
             <ul class="pipeline-readonly-rows" id="orderPipelineSummaryRows">
               <li><code>Jenkins 实例</code><span data-field="jenkins_instance_id">-</span></li>
@@ -159,9 +162,9 @@
       <section class="ro-rail-card">
         <div class="ro-rail-head"><h2>快速入口</h2></div>
         <div class="ro-quick-grid ro-quick-grid--compact">
-          <a href="/admin/projects/{{ project_id }}/release-orders"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">发布单中心</a>
-          <a href="/admin/projects/{{ project_id }}/versions"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本代码</a>
-          <a href="/admin/projects/{{ project_id }}/build-history?scoped=1"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
+          <a href="/admin/projects/{{ project_id }}/release-orders?scoped=1&amp;env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">环境发布单</a>
+          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本代码</a>
+          <a href="/admin/projects/{{ project_id }}/build-history?scoped=1&amp;env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
         </div>
       </section>
       <section class="ro-rail-card">
@@ -185,7 +188,7 @@
   </div>
 
   <footer class="ro-form-footer workflow-footer">
-    <a class="ui-secondary" href="/admin/projects/{{ project_id }}/versions">取消</a>
+    <a class="ui-secondary" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}">取消</a>
     <button class="ui-secondary" data-save-order type="button">保存草稿</button>
     <button class="ui-primary" data-form-next type="button" id="btnFormNext">下一步</button>
     <span class="ro-autosave" id="orderAutosave">—</span>

@@ -9,11 +9,12 @@
   const statusLabels = { active: "有效", testing: "测试中", draft: "草稿", disabled: "失效", archived: "归档" };
   const groupModeLabels = { general: "通用", commercial: "商业化" };
   const urlParams = new URLSearchParams(location.search);
-  const lockChannelId = urlParams.get("channel_id") || "";
-  const lockPlatform = urlParams.get("platform") || "";
-  const lockEnvKey = urlParams.get("env_key") || "";
+  const lockChannelId = urlParams.get("channel_id") || root.dataset.channelFilter || "";
+  const lockPlatform = urlParams.get("platform") || root.dataset.platformFilter || "";
+  const lockEnvKey = urlParams.get("env_key") || root.dataset.envKey || envKey || "";
+  const lockChannelScoped = Boolean(lockChannelId);
   const lockDeliveryLine = urlParams.get("action") === "create_vc" && lockChannelId && lockPlatform;
-  const envScoped = Boolean(lockEnvKey);
+  const envScoped = true;
   const createVcAction = urlParams.get("action") === "create_vc";
   let rows = [];
   let versionGroups = [];
@@ -25,6 +26,7 @@
   let listPage = 1;
   const listPageSize = 20;
   let releaseOrderByVersion = new Map();
+  let deliveryActionsByVersion = new Map();
   const scopeApi = window.DeliveryScope || {};
   const buildScopeQuery = (scope = {}, extra = {}) => (scopeApi.buildQuery ? scopeApi.buildQuery(scope, extra) : "");
   const scopeHref = (path, scope = {}, extra = {}) => (scopeApi.href ? scopeApi.href(path, scope, extra) : path);
@@ -33,7 +35,39 @@
     channel_id: channelIdOf(row),
     platform: row.platform || "",
     version_id: row.id,
+    intent: "release",
   });
+  const continueReleaseHref = (row) => scopeHref(`/admin/projects/${projectId}/release-orders/start`, {
+    env_key: normalizedEnv(row),
+    channel_id: channelIdOf(row),
+    platform: row.platform || "",
+    version_id: row.id,
+    intent: "release",
+  });
+  const releaseOrderDetailHref = (row, order) => {
+    if (!order?.release_order_id) return continueReleaseHref(row);
+    return scopeHref(`/admin/projects/${projectId}/release-orders/${order.release_order_id}`, {
+      env_key: normalizedEnv(row),
+      channel_id: channelIdOf(row),
+      platform: row.platform || "",
+      version_id: row.id,
+      version_name: row.version_name || "",
+      version_code: row.version_code || "",
+      release_order_id: order.release_order_id,
+    });
+  };
+  const triggerBuildHref = (row) => scopeHref(`/admin/projects/${projectId}/release-orders/start`, {
+    env_key: normalizedEnv(row),
+    channel_id: channelIdOf(row),
+    platform: row.platform || "",
+    version_id: row.id,
+    intent: "build",
+  });
+  const isMinimalEnv = (row) => ["development", "testing"].includes(normalizedEnv(row));
+  const releaseOrderForRow = (row) => releaseOrderByVersion.get(String(row.id || "")) || null;
+  const isBuildInProgress = (row) => releaseOrderForRow(row)?.status === "building";
+  const pipelineReadyOf = (row, group) => Boolean(group?.pipeline_ready || row.pipeline_ready || row.jenkins_job_id || (row.pipeline || {}).jenkins_job_id);
+  const RELEASE_CONTINUE_STATUSES = new Set(["artifacts_ready", "precheck_failed", "ready", "awaiting_approval", "approved", "published"]);
   const releaseStatusLabels = { draft: "草稿", building: "构建中", artifacts_ready: "产物就绪", precheck_failed: "预检失败", ready: "待发布", awaiting_approval: "待审批", approved: "已审批", published: "已发布" };
 
   const csrfHeaders = () => {
@@ -120,7 +154,38 @@
     const qs = urlParams.toString();
     history.replaceState(null, "", `${location.pathname}${qs ? `?${qs}` : ""}`);
   };
-  const useAllEnvChannels = () => Boolean(activeEnvKey() && activePlatform() && !lockDeliveryLine);
+  const useAllEnvChannels = () => false;
+  const currentScope = () => ({
+    env_key: activeEnvKey() || envKey || "production",
+    channel_id: document.getElementById("versionChannel")?.value || lockChannelId || "",
+    platform: activePlatform(),
+  });
+
+  const updateScopeBanner = () => {
+    const title = document.getElementById("versionScopeTitle");
+    const desc = document.getElementById("versionScopeDesc");
+    const subtitle = document.getElementById("versionPageSubtitle");
+    const env = activeEnvKey() || envKey || "production";
+    const platform = activePlatform();
+    const channel = lockChannelId || document.getElementById("versionChannel")?.value || "";
+    const channelLabel = channel ? channelNameOf(channel) : "—";
+    const parts = [envLabels[env] || env, channelLabel];
+    if (platform) parts.push(platformLabelOf(platform));
+    const text = parts.join(" · ");
+    if (title) title.textContent = `版本代码 · ${envLabels[env] || env}`;
+    if (desc) desc.textContent = `当前：${text}。环境/渠道/平台见顶部页签，表格仅展示版本组与 VC 明细。`;
+    if (subtitle) subtitle.textContent = `渠道 ${channelLabel} · 按平台页签管理 VersionCode。`;
+    const envLink = document.getElementById("versionScopeEnvLink");
+    if (envLink) envLink.href = `/admin/projects/${projectId}/environments/${encodeURIComponent(env)}`;
+  };
+
+  const updateBuildHistoryLink = () => {
+    const link = document.getElementById("versionBuildHistoryLink");
+    if (!link) return;
+    const scope = currentScope();
+    link.href = scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" });
+  };
+
   const scopeSummaryText = () => {
     const env = activeEnvKey();
     const platform = activePlatform();
@@ -136,68 +201,11 @@
     return parts.join(" · ");
   };
 
-  const formatFileSize = (bytes) => {
-    const n = Number(bytes || 0);
-    if (!n) return "";
-    if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`;
-    if (n >= 1024) return `${Math.round(n / 1024)} KB`;
-    return `${n} B`;
-  };
-
-  const openDownloadDialog = (row, downloadInfo = null) => {
-    const dialog = document.getElementById("versionDownloadDialog");
-    const body = document.getElementById("versionDownloadBody");
-    const title = document.getElementById("versionDownloadTitle");
-    const subtitle = document.getElementById("versionDownloadSubtitle");
-    if (!dialog || !body) {
-      toast("下载弹窗未加载，请刷新页面后重试", "error");
-      return;
-    }
-    const apkDl = downloadInfo && typeof downloadInfo === "object"
-      ? downloadInfo
-      : (row?.apk_download && typeof row.apk_download === "object" ? row.apk_download : {});
-    const publicUrl = apkDl.public_download_url || apkDl.oss_download_url || "";
-    const publicQr = apkDl.public_qr_dataurl || apkDl.oss_qr_dataurl || "";
-    const localUrl = apkDl.local_download_url || "";
-    const localQr = apkDl.local_qr_dataurl || "";
-    const publicHint = apkDl.public_download_hint || "";
-    const publicReachable = Boolean(apkDl.public_download_reachable);
-    const scope = row
-      ? [
-        envLabels[normalizedEnv(row)] || normalizedEnv(row),
-        row.channel_name || row.channel_label || channelNameOf(channelIdOf(row)),
-        row.platform_label || row.platform || "-",
-      ].join(" · ")
-      : "";
-    title.textContent = row
-      ? `${row.version_name || "-"} · VC ${row.version_code || "-"}`
-      : "安装包下载";
-    subtitle.textContent = scope ? `${scope} · 外网下载与扫码安装` : "外网下载链接与二维码（可分享给他人）";
-    if (!publicUrl && !localUrl) {
-      body.innerHTML = `<div class="version-download-empty"><strong>暂无可下载的安装包</strong><p>请先完成构建并成功归档 APK。</p></div>`;
-    } else if (!publicUrl) {
-      body.innerHTML = `<div class="version-download-empty"><strong>外网下载暂不可用</strong><p>${esc(publicHint || "请配置 ADMIN_PUBLIC_URL 或 OSS_CUSTOM_DOMAIN")}</p>${localUrl ? `<p class="version-download-meta">本机测试：<a href="${esc(localUrl)}" target="_blank" rel="noopener">${esc(localUrl)}</a></p>` : ""}</div>`;
-    } else {
-      const cards = [
-        `<article class="version-download-tile version-download-tile-primary"><h3>外网下载</h3><p class="version-download-url">${esc(publicUrl)}</p><div class="version-download-actions"><a class="version-btn primary" href="${esc(publicUrl)}" target="_blank" rel="noopener">打开链接</a>${publicQr ? `<img class="version-download-qr" src="${esc(publicQr)}" alt="外网下载二维码">` : ""}</div>${publicHint ? `<p class="version-download-meta">${esc(publicHint)}</p>` : ""}</article>`,
-      ];
-      if (localUrl && localUrl !== publicUrl) {
-        cards.push(`<article class="version-download-tile"><h3>本机 / 内网测试</h3><p class="version-download-url">${esc(localUrl)}</p><div class="version-download-actions"><a class="version-btn" href="${esc(localUrl)}" target="_blank" rel="noopener">打开链接</a>${localQr ? `<img class="version-download-qr" src="${esc(localQr)}" alt="本机下载二维码">` : ""}</div></article>`);
-      }
-      const meta = [
-        apkDl.build_time ? `归档 ${apkDl.build_time}` : "",
-        apkDl.build_number ? `构建 #${apkDl.build_number}` : "",
-        formatFileSize(apkDl.size_bytes),
-        publicReachable ? "外网可达" : "外网未配置",
-      ].filter(Boolean).join(" · ");
-      body.innerHTML = `<div class="version-download-grid">${cards.join("")}</div>${meta ? `<p class="version-download-meta">${esc(meta)}</p>` : ""}`;
-    }
-    dialog.classList.remove("is-hidden");
-    dialog.setAttribute("aria-hidden", "false");
-    if (dialog.parentElement !== document.body) {
-      document.body.appendChild(dialog);
-    }
-  };
+  const downloadLabels = (row = {}) => ({
+    env: envLabels[normalizedEnv(row)] || normalizedEnv(row),
+    channel: row.channel_name || row.channel_label || channelNameOf(channelIdOf(row)),
+    platform: row.platform_label || row.platform || "",
+  });
 
   const handleDownloadClick = async (versionId) => {
     const vid = String(versionId || "").trim();
@@ -205,60 +213,21 @@
       toast("缺少 VersionCode 标识，无法下载", "error");
       return;
     }
-    let row = rows.find((item) => String(item.id || "") === vid);
-    const dialog = document.getElementById("versionDownloadDialog");
-    const body = document.getElementById("versionDownloadBody");
-    if (dialog && body) {
-      document.getElementById("versionDownloadTitle").textContent = row
-        ? `${row.version_name || "-"} · VC ${row.version_code || "-"}`
-        : "安装包下载";
-      document.getElementById("versionDownloadSubtitle").textContent = "正在加载下载信息…";
-      body.innerHTML = `<div class="version-download-empty"><strong>正在加载下载信息</strong><p>请稍候…</p></div>`;
-      dialog.classList.remove("is-hidden");
-      dialog.setAttribute("aria-hidden", "false");
-      if (dialog.parentElement !== document.body) document.body.appendChild(dialog);
+    const row = rows.find((item) => String(item.id || "") === vid) || { id: vid };
+    const adl = window.ArtifactDownload;
+    if (!adl) {
+      toast("下载组件未加载，请刷新页面后重试", "error");
+      return;
     }
     try {
-      const data = await request(`/api/projects/${projectId}/versions/${encodeURIComponent(vid)}/apk-download-info`);
-      const info = data && typeof data === "object" ? data : {};
-      if (!info.local_download_url && !info.oss_download_url && !info.public_download_url) {
-        if (body) {
-          body.innerHTML = `<div class="version-download-empty"><strong>暂无可下载的安装包</strong><p>请先完成构建并成功归档 APK。</p></div>`;
-        }
-        toast("暂无可下载的安装包，请先完成构建归档", "error");
-        return;
-      }
-      if (row) {
-        row.apk_download = {
-          ...(row.apk_download || {}),
-          local_download_url: info.local_download_url || row.apk_download?.local_download_url,
-          oss_download_url: info.oss_download_url || row.apk_download?.oss_download_url,
-          local_qr_dataurl: info.local_qr_dataurl || row.apk_download?.local_qr_dataurl,
-          oss_qr_dataurl: info.oss_qr_dataurl || row.apk_download?.oss_qr_dataurl,
-          build_time: info.build_time || row.apk_download?.build_time,
-          build_number: info.build_number || row.apk_download?.build_number,
-          size_bytes: info.size_bytes || row.apk_download?.size_bytes,
-        };
-      } else {
-        row = {
-          id: vid,
-          version_name: info.version_name || "",
-          version_code: info.version_code || "",
-          channel_name: info.channel_name || "",
-          platform_label: info.platform_label || info.platform || "",
-          env_key: info.env_key || "",
-          apk_download: info,
-        };
-      }
-      openDownloadDialog(row, info);
+      await adl.open({
+        projectId,
+        versionId: vid,
+        row,
+        request: (url) => request(url),
+        labels: downloadLabels(row),
+      });
     } catch (error) {
-      if (row && row.apk_status === "found") {
-        openDownloadDialog(row);
-        return;
-      }
-      if (body) {
-        body.innerHTML = `<div class="version-download-empty"><strong>下载信息加载失败</strong><p>${esc(error.message || "请稍后重试")}</p></div>`;
-      }
       toast(error.message || "下载信息加载失败", "error");
     }
   };
@@ -278,19 +247,31 @@
   };
   const versionStatusHtml = (row) => {
     if (row.active_bundle_id) return '<span class="version-pill active">已发布</span>';
-    if ((row.jenkins_job_id || (row.pipeline || {}).jenkins_job_id) && row.apk_status !== "found") return '<span class="version-pill building">构建中</span>';
+    if (isBuildInProgress(row)) return '<span class="version-pill building">构建中</span>';
     if (row.version_status === "disabled" || row.version_status === "archived") return '<span class="version-pill failed">构建失败</span>';
     const st = row.version_status || "draft";
     return `<span class="version-pill ${esc(st)}">${esc(row.version_status_label || statusLabels[st] || st)}</span>`;
   };
   const artifactStatusHtml = (row) => {
     if (row.apk_status === "found") return '<span class="version-artifact-status ready">完整</span>';
-    if (row.jenkins_job_id) return '<span class="version-artifact-status pending">构建中</span>';
+    if (isBuildInProgress(row)) return '<span class="version-artifact-status pending">构建中</span>';
     return '<span class="version-artifact-status missing">产物不完整</span>';
   };
   const latestBuildHtml = (row) => {
     const num = row.build_number || row.jenkins_build_number || (row.pipeline || {}).last_build_number;
-    if (num) return `<a class="version-build-link" href="/admin/projects/${projectId}/build-history?env_key=${encodeURIComponent(normalizedEnv(row))}&channel_id=${encodeURIComponent(channelIdOf(row))}&platform=${encodeURIComponent(row.platform || "")}&scoped=1">#${esc(num)}</a>`;
+    if (num) {
+      const qs = new URLSearchParams({
+        env_key: normalizedEnv(row),
+        channel_id: channelIdOf(row),
+        platform: row.platform || "",
+        version_id: row.id || "",
+        version_name: row.version_name || "",
+        version_code: row.version_code || "",
+        build_number: String(num),
+        scoped: "1",
+      });
+      return `<a class="version-build-link" href="/admin/projects/${projectId}/build-history?${qs.toString()}">#${esc(num)}</a>`;
+    }
     return '<span class="version-group-dash">—</span>';
   };
   const versionNameTagHtml = (row, group) => {
@@ -329,14 +310,31 @@
       const data = await request(`/api/projects/${projectId}/versions/${encodeURIComponent(row.id)}/apk-download-info`);
       downloadInfo = { ...downloadInfo, ...data };
     } catch (_) { /* keep row data */ }
+    if (!deliveryActionsByVersion.has(String(row.id || ""))) {
+      await loadDeliveryActions([row.id]);
+    }
+    const cached = deliveryActionsByVersion.get(String(row.id || "")) || {};
+    const building = isBuildInProgress(row);
     const artifactReady = row.apk_status === "found" || downloadInfo.public_download_url || downloadInfo.local_download_url;
+    const buildHeadLabel = artifactReady ? "已完成" : (building ? "构建中" : "未构建");
+    const statusHint = cached.status_hint || (artifactReady ? "产物已归档" : (building ? "构建进行中，请稍候刷新" : "暂无产物，可触发构建"));
+    const progressWidth = artifactReady ? 100 : (building ? 55 : 0);
+    const progressHtml = progressWidth > 0
+      ? `<div class="current-progress" style="height:6px;background:#eef1f6;border-radius:3px;margin:10px 0"><span style="display:block;height:100%;width:${progressWidth}%;background:#1677ff;border-radius:3px"></span></div>`
+      : "";
     body.innerHTML = `<div class="pm-drawer-tags">${versionNameTagHtml(row, null)}<span class="pm-tag pm-tag--muted">${esc(row.version_name || "")}</span><span class="pm-tag pm-tag--muted">${esc(normalizedEnv(row))}</span><span class="pm-tag pm-tag--muted">${esc(row.channel_name || channelNameOf(channelIdOf(row)))}</span><span class="pm-tag pm-tag--muted">${esc(row.platform_label || row.platform || "")}</span></div>
-    <div class="pm-drawer-section"><h3>当前构建</h3><div class="pm-drawer-build-head"><strong>${artifactReady ? "已完成" : "构建中"}</strong>${latestBuildHtml(row)}</div>
-    <div class="current-progress" style="height:6px;background:#eef1f6;border-radius:3px;margin:10px 0"><span style="display:block;height:100%;width:${artifactReady ? 100 : 10}%;background:#1677ff;border-radius:3px"></span></div>
-    <p class="pm-drawer-hint">${artifactReady ? "产物已归档" : "构建进行中，请稍候刷新"}</p></div>
+    <div class="pm-drawer-section"><h3>当前构建</h3><div class="pm-drawer-build-head"><strong>${buildHeadLabel}</strong>${latestBuildHtml(row)}</div>
+    ${progressHtml}
+    <p class="pm-drawer-hint">${esc(statusHint)}</p></div>
     <div class="pm-drawer-section"><h3>产物完整性</h3><div class="pm-drawer-meta"><div><span>状态</span><b>${artifactReady ? "完整" : "不完整"}</b></div><div><span>发布</span><b>${row.active_bundle_id ? "已发布" : "未发布"}</b></div></div></div>
-    <div class="pm-drawer-section"><h3>关联发布单</h3><p class="pm-drawer-hint">${row.active_bundle_id ? "已有活跃 Bundle" : "从版本代码主路径进入"} · <a href="${startReleaseHref(row)}">开始发布</a></p></div>`;
-    foot.innerHTML = `<a class="pm-btn pm-btn--primary" href="${startReleaseHref(row)}">开始发布</a>
+    <div class="pm-drawer-section"><h3>关联发布单</h3><p class="pm-drawer-hint">${row.active_bundle_id ? "已有活跃 Bundle" : "构建与发版从版本代码行内操作"}</p></div>`;
+    const primary = cached.primary || {};
+    const drawerPrimary = primary.api_action === "quick_build" && primary.version_id
+      ? `<button class="pm-btn pm-btn--primary" type="button" data-quick-build="${esc(primary.version_id)}">${esc(primary.label || "触发构建")}</button>`
+      : primary.href
+        ? `<a class="pm-btn pm-btn--primary" href="${esc(primary.href)}">${esc(primary.label || "继续发版")}</a>`
+        : `<a class="pm-btn pm-btn--primary" href="${releaseOrderDetailHref(row, releaseOrderByVersion.get(String(row.id || "")))}">继续发版</a>`;
+    foot.innerHTML = `${drawerPrimary}
       <button class="pm-btn" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
       <a class="pm-btn" href="${scopeHref(`/admin/projects/${projectId}/build-history`, { env_key: normalizedEnv(row), channel_id: channelIdOf(row), platform: row.platform || "", version_id: row.id }, { scoped: "1" })}">构建历史</a>`;
   };
@@ -373,22 +371,79 @@
     URL.revokeObjectURL(a.href);
   };
 
-  const closeDownloadDialog = () => {
-    const dialog = document.getElementById("versionDownloadDialog");
-    if (!dialog) return;
-    dialog.classList.add("is-hidden");
-    dialog.setAttribute("aria-hidden", "true");
+  const openDownloadPicker = (candidates = []) => {
+    const adl = window.ArtifactDownload;
+    if (!adl) {
+      toast("下载组件未加载，请刷新页面后重试", "error");
+      return;
+    }
+    adl.openPicker({
+      items: candidates,
+      projectId,
+      request: (url) => request(url),
+      formatPickLabel: (row) => ({
+        main: `VC ${row.version_code || "-"}`,
+        sub: `${row.version_name || ""}${formatUpdatedAt(row) !== "—" ? ` · ${formatUpdatedAt(row)}` : ""}`,
+      }),
+      labels: downloadLabels(candidates[0] || {}),
+    }).catch((error) => toast(error.message || "暂无可下载的产物", "error"));
   };
 
-  const readinessBarHtml = (row, group) => {
-    const pipelineOk = Boolean(group?.pipeline_ready || row.pipeline_ready || row.jenkins_job_id || (row.pipeline || {}).jenkins_job_id);
-    const artifactOk = row.apk_status === "found";
+  const buildConfigHrefForRow = (row) => {
+    const params = new URLSearchParams();
+    params.set("from", "version-group");
+    params.set("version_name", row.version_name || "");
+    if (normalizedEnv(row)) params.set("env_key", normalizedEnv(row));
+    if (row.platform) params.set("platform", row.platform);
+    return `/admin/projects/${projectId}/versions/${encodeURIComponent(row.id || "")}/build-config?${params}`;
+  };
+
+  const resolveLocalRowActions = (row, group) => {
     const order = releaseOrderByVersion.get(String(row.id || ""));
-    const releaseText = row.active_bundle_id ? "已发布" : (order ? (releaseStatusLabels[order.status] || order.status) : "无发布单");
-    return `<div class="version-readiness-bar"><span class="${pipelineOk ? "ok" : "no"}">管线 ${pipelineOk ? "✓" : "✗"}</span><span class="${artifactOk ? "ok" : "no"}">产物 ${artifactOk ? "✓" : "✗"}</span><span class="muted">${esc(releaseText)}</span></div>`;
+    const orderStatus = order?.status || "";
+    const artifactOk = row.apk_status === "found";
+    const pipelineOk = pipelineReadyOf(row, group);
+    const buildHistoryHref = scopeHref(
+      `/admin/projects/${projectId}/build-history`,
+      {
+        env_key: normalizedEnv(row),
+        channel_id: channelIdOf(row),
+        platform: row.platform || "",
+        version_id: row.id,
+      },
+      { scoped: "1" },
+    );
+    if (orderStatus === "building") {
+      return {
+        primary: { action: "view_build", label: "查看构建", href: releaseOrderDetailHref(row, order) },
+        secondary: [{ action: "build_history", label: "构建日志", href: buildHistoryHref }],
+      };
+    }
+    if (artifactOk || RELEASE_CONTINUE_STATUSES.has(orderStatus)) {
+      return {
+        primary: { action: "continue_release", label: "继续发版", href: releaseOrderDetailHref(row, order) },
+        secondary: [{ action: "build_history", label: "构建产物", href: buildHistoryHref }],
+      };
+    }
+    if (!pipelineOk) {
+      return {
+        primary: { action: "configure_pipeline", label: "配置管线", href: buildConfigHrefForRow(row) },
+        secondary: [],
+      };
+    }
+    if (isMinimalEnv(row)) {
+      return {
+        primary: { action: "trigger_build", label: "触发构建", api_action: "quick_build", version_id: row.id },
+        secondary: [{ action: "build_history", label: "构建产物", href: buildHistoryHref }],
+      };
+    }
+    return {
+      primary: { action: "edit_plan", label: "填写计划", href: triggerBuildHref(row) },
+      secondary: [{ action: "build_history", label: "构建产物", href: buildHistoryHref }],
+    };
   };
 
-  const childRowHtml = (row, group) => {
+  const rowActionsHtml = (row, group) => {
     const scope = {
       env_key: normalizedEnv(row),
       channel_id: channelIdOf(row),
@@ -396,41 +451,56 @@
       version_id: row.id,
       version_name: row.version_name || "",
       version_code: row.version_code || "",
+      release_order_id: releaseOrderByVersion.get(String(row.id || ""))?.release_order_id || "",
+      artifact_ready: row.apk_status === "found",
     };
-    const context = buildScopeQuery(scope, { scoped: "1" }).replace(/^\?/, "");
-    const workflowHref = row.id
-      ? `/admin/projects/${projectId}/versions/${encodeURIComponent(row.id)}/workflow`
-      : scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" });
-    const platform = row.platform || "android";
-    const startHref = startReleaseHref(row);
-    const moreId = `vc-more-${esc(row.id || "")}`;
-    return `<div class="version-row version-row-child pm-table-cols-10" data-version-id="${esc(row.id || "")}" data-open-vc="${esc(row.id || "")}">
-      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">${esc(row.version_name || "")}</span>${readinessBarHtml(row, group)}</div>
-      <div>${versionNameTagHtml(row, null)}</div>
-      <div><span class="version-scope-env">${esc(envLabels[normalizedEnv(row)] || normalizedEnv(row))}</span></div>
-      <div><span class="version-scope-meta">${esc(row.channel_name || row.channel_label || channelNameOf(channelIdOf(row)))}</span></div>
-      <div class="version-platform-cell"><img src="/static/project_ui/svg/${platformIconOf(platform)}" alt="">${esc(row.platform_label || platform)}</div>
-      <div>${versionStatusHtml(row)}</div>
-      <div>${artifactStatusHtml(row)}</div>
+    const cached = deliveryActionsByVersion.get(String(row.id || ""));
+    const actionsPayload = cached && cached.primary
+      ? { primary: cached.primary, secondary: cached.secondary || [] }
+      : resolveLocalRowActions(row, group);
+    const links = (cached && cached.links) || {};
+    if (scopeApi.renderRowActions) {
+      return scopeApi.renderRowActions(actionsPayload, links, scope, projectId);
+    }
+    const order = releaseOrderByVersion.get(String(row.id || ""));
+    return `<div class="version-row-actions"><a class="version-action-link primary" href="${releaseOrderDetailHref(row, order)}">继续发版</a></div>`;
+  };
+
+  const loadDeliveryActions = async (versionIds = []) => {
+    const ids = [...new Set((versionIds || []).map((id) => String(id || "").trim()).filter(Boolean))];
+    await Promise.all(ids.map(async (vid) => {
+      if (deliveryActionsByVersion.has(vid)) return;
+      try {
+        const data = await request(`/api/projects/${projectId}/versions/${encodeURIComponent(vid)}/delivery-actions`);
+        deliveryActionsByVersion.set(vid, data.data || data);
+      } catch (_error) {
+        deliveryActionsByVersion.set(vid, null);
+      }
+    }));
+  };
+
+  const TABLE_COLS = "pm-table-cols-7";
+
+  const readinessBarHtml = (row, group) => {
+    const pipelineOk = pipelineReadyOf(row, group);
+    const artifactOk = row.apk_status === "found";
+    const order = releaseOrderByVersion.get(String(row.id || ""));
+    const releaseText = row.active_bundle_id ? "已发布" : (order ? (releaseStatusLabels[order.status] || order.status) : "无发布单");
+    return `<div class="version-readiness-bar"><span class="${pipelineOk ? "ok" : "no"}">管线${pipelineOk ? "✓" : "✗"}</span><span class="${artifactOk ? "ok" : "no"}">产物${artifactOk ? "✓" : "✗"}</span><span class="muted">${esc(releaseText)}</span></div>`;
+  };
+
+  const childRowHtml = (row, group) => `<div class="version-row version-row-child ${TABLE_COLS}" data-version-id="${esc(row.id || "")}" data-open-vc="${esc(row.id || "")}">
+      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">${esc(row.version_name || "")}</span></div>
+      <div>${versionNameTagHtml(row, group)}</div>
+      <div class="version-status-stack">${versionStatusHtml(row)}${artifactStatusHtml(row)}</div>
+      <div>${readinessBarHtml(row, group)}</div>
       <div>${latestBuildHtml(row)}</div>
       <div class="version-updated-at">${esc(formatUpdatedAt(row))}</div>
-      <div class="version-row-actions">
-        <a class="version-action-link primary" href="${startHref}">开始发布</a>
-        <div class="version-action-more-menu">
-          <button class="version-action-more" type="button" data-toggle-vc-more="${moreId}" aria-label="更多操作"><img src="/static/project_ui/svg/action_more.svg" alt=""></button>
-          <div class="version-row-more-dropdown" id="${moreId}">
-            <button class="version-action-link" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
-            <a href="${scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" })}">查看日志</a>
-            <a href="${workflowHref}">重新构建</a>
-          </div>
-        </div>
-      </div>
+      ${rowActionsHtml(row, group)}
     </div>`;
-  };
 
   const groupRowHtml = (group, children) => {
     const groupName = group.version_name;
-    const activeCount = children.filter((x) => x.version_status === "active").length;
     const collapsed = collapsedGroups.has(groupName);
     const buildConfigParams = new URLSearchParams();
     buildConfigParams.set("from", "version-group");
@@ -441,51 +511,49 @@
     const buildConfigHref = anchorId
       ? `/admin/projects/${projectId}/versions/${encodeURIComponent(anchorId)}/build-config?${buildConfigParams}`
       : `/admin/projects/${projectId}/version-groups/build-config?${buildConfigParams}`;
-    const envLabel = envLabels[group.env_key] || group.env_key || "";
     const pipelineBadge = group.pipeline_ready
       ? `<span class="version-pill pipeline-ready">管线就绪</span>`
-      : `<span class="version-pill pipeline-missing">未配置${envLabel ? ` · ${esc(envLabel)}` : ""}</span>`;
-    const configuredBuilds = children.filter((x) => x.jenkins_job_id || (x.pipeline || {}).jenkins_job_id).length;
-    const publishedCount = children.filter((x) => x.active_bundle_id).length;
+      : `<span class="version-pill pipeline-missing">管线未配置</span>`;
+    const downloadable = children.filter((row) => row.apk_status === "found");
+    const groupDownloadBtn = downloadable.length === 1
+      ? `<button class="version-btn neutral compact" type="button" data-download-apk="${esc(downloadable[0].id || "")}">下载</button>`
+      : downloadable.length > 1
+        ? `<button class="version-btn neutral compact" type="button" data-download-pick="${esc(groupName)}">下载</button>`
+        : "";
     const groupActions = canEdit
-      ? `<a class="version-btn compact primary" href="${buildConfigHref}">配置管线</a>
-         <button class="version-btn compact" type="button" data-add-vc="${esc(groupName)}">添加 VC</button>
-         <button class="version-btn compact ghost" type="button" data-edit-group="${esc(groupName)}">编辑</button>
-         <button class="version-btn compact ghost danger" type="button" data-delete-group="${esc(groupName)}">删除</button>`
-      : `<a class="version-btn compact" href="${buildConfigHref}">查看管线</a>`;
+      ? `${groupDownloadBtn}<a class="version-btn build compact" href="${buildConfigHref}">配置管线</a>
+         <button class="version-btn neutral compact" type="button" data-add-vc="${esc(groupName)}">添加 VC</button>
+         <button class="version-btn neutral compact" type="button" data-edit-group="${esc(groupName)}">编辑</button>
+         <button class="version-btn warn compact" type="button" data-delete-group="${esc(groupName)}">删除</button>`
+      : `${groupDownloadBtn}<a class="version-btn build compact" href="${buildConfigHref}">查看管线</a>`;
     const emptyHint = children.length
       ? ""
-      : `<div class="version-empty-inline">尚无 VersionCode · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button></div>`;
-    return `<div class="version-group${collapsed ? " is-collapsed" : ""}" data-group="${esc(groupName)}">
-      <div class="version-row version-row-group pm-table-cols-10">
+      : `<div class="version-empty-inline ${TABLE_COLS}">尚无 VersionCode · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button></div>`;
+    return `<section class="version-group-card${collapsed ? " is-collapsed" : ""}" data-group="${esc(groupName)}">
+      <div class="version-row version-row-group ${TABLE_COLS}">
         <div class="version-group-title">
           <button class="version-group-toggle" type="button" data-toggle-group="${esc(groupName)}" aria-expanded="${collapsed ? "false" : "true"}">
             <img src="/static/project_ui/svg/action_next.svg" alt="">
           </button>
           <div class="version-group-head">
-            <div class="version-group-name-line"><strong>${esc(groupName)}</strong><span class="pm-tag pm-tag--muted">默认分组</span>${pipelineBadge}</div>
-            <div class="version-group-meta-line"><span>${children.length} VC</span><span>${activeCount} 有效</span><span>${configuredBuilds} 已配构建</span><span>${publishedCount} 已发布</span>${group.notes ? `<span class="group-notes-inline">${esc(group.notes)}</span>` : ""}</div>
+            <div class="version-group-name-line"><strong>${esc(groupName)}</strong><span class="pm-tag pm-tag--muted">版本组</span></div>
           </div>
         </div>
         <div>${versionNameTagHtml(children[0] || {}, group)}</div>
-        <div class="version-group-dash">${envLabel ? esc(envLabel) : "—"}</div>
-        <div class="version-group-dash">—</div>
-        <div class="version-group-dash">—</div>
         <div><span class="version-pill ${esc(group.status || "active")}">${esc(statusLabels[group.status] || group.status || "有效")}</span></div>
-        <div class="version-group-dash">${configuredBuilds} / ${children.length}</div>
+        <div>${pipelineBadge}</div>
         <div class="version-group-dash">—</div>
         <div class="version-group-dash">—</div>
         <div class="version-row-actions version-group-actions">${groupActions}</div>
       </div>
       <div class="version-group-children">${emptyHint}${children.map((child) => childRowHtml(child, group)).join("")}</div>
-    </div>`;
+    </section>`;
   };
 
   const render = () => {
     const query = (document.getElementById("versionSearch")?.value || "").trim().toLowerCase();
     const filterEnv = document.getElementById("versionEnv");
     const filterChannel = document.getElementById("versionChannel");
-    const filterPlatform = document.getElementById("versionPlatform");
     const filterStatus = document.getElementById("versionStatus");
     const artifactFilter = document.getElementById("versionArtifactStatus");
     const platformGate = activePlatform();
@@ -498,7 +566,6 @@
         (!envGate || normalizedEnv(row) === envGate) &&
         (!channelGate || rowChannel === channelGate) &&
         (!platformGate || row.platform === platformGate) &&
-        (!filterPlatform?.value || !platformTabsVisible() || row.platform === filterPlatform.value) &&
         (!filterStatus?.value || row.version_status === filterStatus.value) &&
         (!artifactGate || (artifactGate === "ready" ? row.apk_status === "found" : row.apk_status !== "found")) &&
         (!filterVersionName || (row.version_name || "") === filterVersionName) &&
@@ -514,20 +581,6 @@
       return filtered.some((row) => (row.version_name || "") === group.version_name);
     });
     const groupNames = visibleGroups.map((group) => group.version_name);
-    const buildingCount = filtered.filter((x) => (x.jenkins_job_id || (x.pipeline || {}).jenkins_job_id) && x.apk_status !== "found").length;
-    const artifactReadyCount = filtered.filter((x) => x.apk_status === "found").length;
-    const publishedKpiCount = filtered.filter((x) => x.active_bundle_id).length;
-    const activeVcCount = filtered.filter((x) => x.version_status === "active").length;
-    const completeRate = filtered.length ? ((artifactReadyCount / filtered.length) * 100).toFixed(1) : "0.0";
-    document.getElementById("versionKpis").innerHTML = [
-      ["nav_version_code.svg", "版本组数", groupNames.length, "blue", "", `/admin/projects/${projectId}/versions`],
-      ["nav_version_code.svg", "有效 VersionCode", activeVcCount, "cyan", "", ""],
-      ["kpi_build.svg", "构建中", buildingCount, "orange", "", `/admin/projects/${projectId}/build-history?scoped=1`],
-      ["file_bundle.svg", "产物完整", artifactReadyCount, "green", `完整率 ${completeRate}%`, ""],
-      ["nav_release_order.svg", "已发布", publishedKpiCount, "violet", "", `/admin/projects/${projectId}/release-orders`],
-    ]
-      .map(([icon, label, value, tone, sub, link]) => `<article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--${tone}"><img src="/static/project_ui/svg/${icon}" alt=""></span><div class="pm-kpi-body"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="pm-kpi-sub">${sub}</span>` : ""}${link ? `<a class="pm-kpi-footlink" href="${link}">查看详情 &gt;</a>` : ""}</div></article>`)
-      .join("");
     const pages = Math.max(1, Math.ceil(visibleGroups.length / listPageSize));
     listPage = Math.min(listPage, pages);
     const pageGroups = visibleGroups.slice((listPage - 1) * listPageSize, listPage * listPageSize);
@@ -565,9 +618,16 @@
     document.querySelectorAll("[data-toggle-group]").forEach((button) => {
       button.onclick = () => {
         const name = button.dataset.toggleGroup;
-        if (collapsedGroups.has(name)) collapsedGroups.delete(name);
-        else collapsedGroups.add(name);
-        render();
+        const card = button.closest(".version-group-card");
+        if (card?.classList.contains("is-collapsed")) {
+          collapsedGroups.delete(name);
+          card.classList.remove("is-collapsed");
+          button.setAttribute("aria-expanded", "true");
+        } else {
+          collapsedGroups.add(name);
+          card?.classList.add("is-collapsed");
+          button.setAttribute("aria-expanded", "false");
+        }
       };
     });
     document.querySelectorAll("[data-edit-group]").forEach((button) => {
@@ -586,38 +646,33 @@
         handleDownloadClick(button.getAttribute("data-download-apk") || "");
       };
     });
+    document.querySelectorAll("[data-download-pick]").forEach((button) => {
+      button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const groupName = button.getAttribute("data-download-pick") || "";
+        const platformGate = activePlatform();
+        const channelGate = document.getElementById("versionChannel")?.value || lockChannelId || "";
+        const picks = rows.filter((row) => {
+          if ((row.version_name || "") !== groupName) return false;
+          if (row.apk_status !== "found") return false;
+          if (platformGate && row.platform !== platformGate) return false;
+          if (channelGate && channelIdOf(row) !== channelGate) return false;
+          return true;
+        });
+        openDownloadPicker(picks);
+      };
+    });
     document.querySelectorAll("[data-open-vc]").forEach((el) => {
       el.onclick = (event) => {
-        if (event.target.closest("a, button, [data-download-apk], [data-toggle-vc-more]")) return;
+        if (event.target.closest("a, button, [data-download-apk], [data-download-pick], [data-toggle-vc-more], .version-row-more-dropdown")) return;
         const id = el.getAttribute("data-open-vc");
         const row = rows.find((item) => String(item.id || "") === String(id));
         if (row) openVcDrawer(row);
       };
     });
-    document.querySelectorAll("[data-toggle-vc-more]").forEach((button) => {
-      button.onclick = (event) => {
-        event.stopPropagation();
-        const menu = document.getElementById(button.dataset.toggleVcMore || "");
-        document.querySelectorAll(".version-row-more-dropdown.open").forEach((node) => {
-          if (node !== menu) node.classList.remove("open");
-        });
-        menu?.classList.toggle("open");
-      };
-    });
     updateBuildHistoryLink();
-  };
-
-  const updateBuildHistoryLink = () => {
-    const link = document.getElementById("versionBuildHistoryLink");
-    if (!link) return;
-    const params = new URLSearchParams();
-    const env = activeEnvKey() || envKey || "production";
-    params.set("env_key", env);
-    params.set("scoped", "1");
-    const platform = activePlatform();
-    if (platform) params.set("platform", platform);
-    if (filterVersionName) params.set("version_name", filterVersionName);
-    link.href = `/admin/projects/${projectId}/build-history?${params.toString()}`;
+    updateScopeBanner();
   };
 
   const contextOptionsUrl = (env) => {
@@ -638,16 +693,12 @@
 
   const applyEnvironmentOptions = (environments) => {
     const envs = environments || [];
-    const syncSelect = (select, includeAll = false) => {
-      if (!select) return;
-      const current = select.value;
-      const head = includeAll ? "<option value=\"\">全部环境</option>" : "";
-      select.innerHTML =
-        head + envs.map((item) => `<option value="${esc(item.env_key)}">${esc(item.label || envLabels[item.env_key] || item.env_key)}</option>`).join("");
-      if (current && [...select.options].some((option) => option.value === current)) select.value = current;
-    };
-    syncSelect(document.getElementById("versionEnv"), true);
-    syncSelect(document.getElementById("versionFormEnv"), false);
+    const formEnv = document.getElementById("versionFormEnv");
+    if (!formEnv) return;
+    const current = formEnv.value;
+    formEnv.innerHTML = envs.map((item) => `<option value="${esc(item.env_key)}">${esc(item.label || envLabels[item.env_key] || item.env_key)}</option>`).join("");
+    if (current && [...formEnv.options].some((option) => option.value === current)) formEnv.value = current;
+    else if (lockEnvKey) formEnv.value = lockEnvKey;
   };
 
   const applyContextOptions = (contextPayload, { env, channelSelect, platformSelect, filterPlatformSelect } = {}) => {
@@ -675,10 +726,12 @@
     }
     const filterChannel = document.getElementById("versionChannel");
     if (filterChannel && env) {
-      const current = filterChannel.value;
-      filterChannel.innerHTML =
-        '<option value="">全部渠道</option>' + channels.map((x) => `<option value="${esc(x.channel_id)}">${esc(x.channel_name)}</option>`).join("");
+      const current = lockChannelId || filterChannel.value;
+      filterChannel.innerHTML = channels.map((x) => `<option value="${esc(x.channel_id)}">${esc(x.channel_name)}</option>`).join("");
       if (current && channels.some((x) => x.channel_id === current)) filterChannel.value = current;
+      else if (lockChannelId && channels.some((x) => x.channel_id === lockChannelId)) filterChannel.value = lockChannelId;
+      else if (channels.length) filterChannel.value = channels[0].channel_id;
+      if (lockChannelScoped) filterChannel.disabled = true;
     }
   };
 
@@ -724,25 +777,11 @@
   };
 
   const applyEnvScopedUi = () => {
-    if (!envScoped) return;
-    root.classList.add("is-env-scoped");
-    const envSelect = document.getElementById("versionEnv");
-    if (envSelect) {
-      envSelect.value = lockEnvKey;
-      envSelect.disabled = true;
-      envSelect.classList.add("is-locked");
-      const toolbar = envSelect.closest(".version-toolbar");
-      if (toolbar) {
-        const envLabel = document.createElement("span");
-        envLabel.className = "version-env-badge";
-        envLabel.textContent = envLabels[lockEnvKey] || lockEnvKey;
-        envSelect.insertAdjacentElement("afterend", envLabel);
-        envSelect.style.display = "none";
-      }
-    }
-    const subtitle = root.querySelector(".version-head-copy p");
-    if (subtitle) {
-      subtitle.textContent = `当前环境：${envLabels[lockEnvKey] || lockEnvKey}。按平台页签管理 VersionCode，渠道在工具栏筛选。`;
+    root.classList.add("is-env-scoped", "is-channel-scoped");
+    const channelSelect = document.getElementById("versionChannel");
+    if (channelSelect && lockChannelId) {
+      channelSelect.disabled = true;
+      channelSelect.classList.add("is-locked");
     }
   };
 
@@ -835,6 +874,8 @@
           releaseOrderByVersion.set(vid, order);
         }
       });
+      deliveryActionsByVersion = new Map();
+      await loadDeliveryActions(rows.map((row) => row.id));
       applyContextOptions(context, {
         env: envFilterValue,
         filterPlatformSelect: document.getElementById("versionPlatform"),
@@ -971,14 +1012,10 @@
   document.getElementById("btnResetVersionFilters")?.addEventListener("click", () => {
     const search = document.getElementById("versionSearch");
     if (search) search.value = "";
-    ["versionChannel", "versionPlatform", "versionStatus", "versionArtifactStatus"].forEach((id) => {
+    ["versionChannel", "versionStatus", "versionArtifactStatus"].forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.value = "";
+      if (el && id !== "versionChannel") el.value = "";
     });
-    if (!envScoped) {
-      const envEl = document.getElementById("versionEnv");
-      if (envEl) envEl.value = "";
-    }
     listPage = 1;
     render();
   });
@@ -1061,57 +1098,49 @@
     }
   });
 
-  const envFilter = document.getElementById("versionEnv");
-  if (envFilter && !envScoped) {
-    if (envKey) envFilter.value = envKey;
-    envFilter.addEventListener("change", async () => {
-      try {
-        await load();
-      } catch (error) {
-        toast(error.message, "error");
-      }
-    });
-  }
-
   const showJourneyHint = () => {
-    if (urlParams.get("hint") !== "pick_vc") return;
+    const hint = urlParams.get("hint") || "";
+    if (!hint) return;
     const panel = document.querySelector(".version-panel");
     if (!panel || document.getElementById("versionJourneyHint")) return;
     const banner = document.createElement("div");
     banner.id = "versionJourneyHint";
     banner.className = "version-hint-banner";
     const error = urlParams.get("error");
-    banner.textContent = error
-      ? `无法开始发布：${error}。请先在版本组配置管线，再点击对应 VersionCode 的「开始发布」。`
-      : "请在本页选择 VersionCode，点击行内「开始发布」进入发布向导。";
+    if (hint === "pick_env") {
+      banner.textContent = "请先在「环境配置」中选择要操作的交付环境，再进入版本代码工作台。";
+    } else if (hint === "use_versions_hub") {
+      banner.textContent = "下载与产物管理已并入版本代码页。请在本环境筛选 VersionCode，使用行内「下载」或顶部「构建与产物」。";
+    } else if (hint === "pick_vc") {
+      banner.textContent = error
+        ? `无法继续：${error}。请先配置版本组管线，再使用行内「触发构建」或「继续发版」。`
+        : "请在本页选择 VersionCode，使用行内「触发构建」或「继续发版」。";
+    } else {
+      return;
+    }
     panel.insertBefore(banner, panel.firstChild);
   };
 
   applyEnvScopedUi();
   showJourneyHint();
 
-  ["versionSearch", "versionChannel", "versionPlatform", "versionStatus", "versionArtifactStatus"].forEach((id) => {
+  ["versionSearch", "versionStatus", "versionArtifactStatus"].forEach((id) => {
     const node = document.getElementById(id);
     if (!node) return;
     if (id === "versionSearch") {
       node.addEventListener("input", () => { listPage = 1; render(); });
       return;
     }
-    if (id === "versionChannel") {
-      node.addEventListener("change", async () => {
-        syncScopeUrl();
-        listPage = 1;
-        render();
-      });
-      return;
-    }
     node.addEventListener("change", () => { listPage = 1; render(); });
   });
+
+  const envFilter = document.getElementById("versionEnv");
+  if (envFilter) envFilter.value = lockEnvKey || envKey || "";
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!canEdit) return;
-  const versionNameSelect = document.getElementById("versionNameSelect");
+    const versionNameSelect = document.getElementById("versionNameSelect");
     if (versionNameSelect?.value === "__new__") {
       toast("请先创建版本组", "error");
       return;
@@ -1149,13 +1178,36 @@
         const row = rows.find((item) => String(item.id || "") === drawerId);
         if (row) openVcDrawer(row);
       }
+      const downloadVc = urlParams.get("download_vc");
+      if (downloadVc) {
+        await handleDownloadClick(downloadVc);
+        urlParams.delete("download_vc");
+        const qs = urlParams.toString();
+        history.replaceState(null, "", `${location.pathname}${qs ? `?${qs}` : ""}`);
+      }
     })
     .catch((error) => toast(error.message, "error"));
 
-  document.getElementById("btnCloseVersionDownloadDialog")?.addEventListener("click", closeDownloadDialog);
-  document.getElementById("btnCancelVersionDownloadDialog")?.addEventListener("click", closeDownloadDialog);
-  document.getElementById("versionDownloadDialog")?.addEventListener("click", (event) => {
-    if (event.target?.id === "versionDownloadDialog") closeDownloadDialog();
+  root.addEventListener("click", (event) => {
+    const moreBtn = event.target.closest("[data-toggle-vc-more]");
+    if (moreBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const menuId = moreBtn.getAttribute("data-toggle-vc-more") || "";
+      const menu = menuId ? document.getElementById(menuId) : null;
+      const willOpen = !menu?.classList.contains("open");
+      document.querySelectorAll(".version-row-more-dropdown.open").forEach((node) => node.classList.remove("open"));
+      document.querySelectorAll("[data-toggle-vc-more]").forEach((node) => node.setAttribute("aria-expanded", "false"));
+      if (willOpen && menu) {
+        menu.classList.add("open");
+        moreBtn.setAttribute("aria-expanded", "true");
+      }
+      return;
+    }
+    if (!event.target.closest(".version-action-more-menu")) {
+      document.querySelectorAll(".version-row-more-dropdown.open").forEach((node) => node.classList.remove("open"));
+      document.querySelectorAll("[data-toggle-vc-more]").forEach((node) => node.setAttribute("aria-expanded", "false"));
+    }
   });
   root.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-download-apk]");
@@ -1164,4 +1216,44 @@
     event.stopPropagation();
     handleDownloadClick(btn.getAttribute("data-download-apk") || "");
   });
+  root.addEventListener("click", (event) => {
+    const pickBtn = event.target.closest("[data-download-pick]");
+    if (!pickBtn) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const groupName = pickBtn.getAttribute("data-download-pick") || "";
+    const platformGate = activePlatform();
+    const channelGate = document.getElementById("versionChannel")?.value || lockChannelId || "";
+    const picks = rows.filter((row) => {
+      if ((row.version_name || "") !== groupName) return false;
+      if (row.apk_status !== "found") return false;
+      if (platformGate && row.platform !== platformGate) return false;
+      if (channelGate && channelIdOf(row) !== channelGate) return false;
+      return true;
+    });
+    openDownloadPicker(picks);
+  });
+  if (scopeApi.bindQuickBuild) {
+    scopeApi.bindQuickBuild(root, {
+      projectId,
+      request,
+      onSuccess: (order, versionId) => {
+        toast(order.status === "building" ? "构建已触发" : order.status === "artifacts_ready" ? "产物已就绪，可继续发版" : "操作已提交");
+        deliveryActionsByVersion.delete(String(versionId || order.version_id || ""));
+        if (order.release_order_id) {
+          const row = rows.find((item) => String(item.id || "") === String(versionId || order.version_id || ""));
+          location.href = releaseOrderDetailHref(row || { id: order.version_id, env_key: order.env_key, channel_id: order.channel_id, platform: order.platform }, order);
+          return;
+        }
+        load().catch((error) => toast(error.message, "error"));
+      },
+      onError: (error, versionId) => {
+        toast(error.message || "操作失败", "error");
+        if (/发布计划/.test(error.message || "")) {
+          const row = rows.find((item) => String(item.id || "") === String(versionId || ""));
+          if (row) location.href = startReleaseHref(row);
+        }
+      },
+    });
+  }
 })();

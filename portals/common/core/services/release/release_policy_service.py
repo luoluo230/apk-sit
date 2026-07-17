@@ -272,6 +272,11 @@ def assess_pipeline_readiness(
         "missing": missing,
         "missing_pipeline_steps": missing_steps,
         "source": source,
+        "blocker_hint": (
+            ""
+            if ready and not missing_steps
+            else ("待完善：" + "、".join(missing) if missing else "请检查版本组管线模板")
+        ),
     }
 
 

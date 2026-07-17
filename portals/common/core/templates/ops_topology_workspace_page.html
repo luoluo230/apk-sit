@@ -1,77 +1,58 @@
-<section class="topology-assets-page" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
-  <style>
-    .ta-btn img{width:16px;height:16px}
-    .topology-assets-page{display:flex;flex-direction:column;gap:16px;color:#173057}
-    .ta-card{border:1px solid #dbe5ff;border-radius:18px;background:#fff;box-shadow:0 10px 28px rgba(58,76,122,.07)}
-    .ta-pad{padding:18px 20px}.ta-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-    .ta-title{font-size:22px;font-weight:800}.ta-sub{margin-top:5px;font-size:13px;color:#7186aa}
-    .ta-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ta-btn{height:38px;padding:0 14px;border:1px solid #d7e4ff;border-radius:11px;background:#fff;color:#35507a;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:7px;text-decoration:none;cursor:pointer}
-    .ta-btn.primary{border-color:#2f6cff;background:linear-gradient(180deg,#3d79ff,#1f61ff);color:#fff;box-shadow:0 9px 20px rgba(47,108,255,.18)}
-    .ta-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.ta-kpi{padding:15px 16px;border:1px solid #dbe5ff;border-radius:16px;background:#fff}.ta-kpi span{font-size:12px;color:#7186aa}.ta-kpi strong{display:block;margin-top:5px;font-size:24px}
-    .ta-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ta-filter{height:38px;border:1px solid #d7e4ff;border-radius:11px;background:#fff;padding:0 12px;color:#35507a;font-size:13px}.ta-search{min-width:260px;flex:1}
-    .ta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:15px}.ta-asset{min-width:0;padding:15px;border:1px solid #dbe5ff;border-radius:16px;background:linear-gradient(180deg,#fff,#f8fbff);transition:.18s ease}.ta-asset:hover{transform:translateY(-1px);border-color:#a9c0ff;box-shadow:0 10px 24px rgba(64,105,190,.10)}
-    .ta-asset-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.ta-asset-title{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ta-id{margin-top:4px;font-size:11px;color:#8da0c0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .ta-status{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}.ta-status:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.ta-status.running,.ta-status.validated{background:#e9fbf1;color:#16a66a}.ta-status.draft{background:#fff6df;color:#d68b00}.ta-status.stopped,.ta-status.archived{background:#fff0f1;color:#e34f61}.ta-status.unknown{background:#eef3fb;color:#7186aa}
-    .ta-desc{height:36px;margin-top:11px;font-size:12px;line-height:18px;color:#667fa7;overflow:hidden}.ta-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.ta-tag{padding:4px 7px;border-radius:8px;background:#eef4ff;color:#46658f;font-size:11px;font-weight:700}.ta-tag.default{background:#e9fbf1;color:#168a59}
-    .ta-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid #e9effc}.ta-meta span{display:block;font-size:10px;color:#91a2bf}.ta-meta b{display:block;margin-top:3px;font-size:12px;color:#29466f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .ta-row-actions{display:flex;gap:8px;margin-top:13px}.ta-row-actions .ta-btn{height:34px;padding:0 11px;font-size:12px}
-    .ta-bindings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}.ta-binding{padding:13px 14px;border:1px solid #dbe5ff;border-radius:14px;background:#f8fbff}.ta-binding strong{font-size:13px}.ta-binding p{margin-top:5px;font-size:12px;color:#7186aa}.ta-empty{grid-column:1/-1;padding:38px 16px;border:1px dashed #cbd9fb;border-radius:15px;background:#fbfdff;text-align:center;color:#8295b7;font-size:13px}
-    .ta-dialog{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:24px;background:rgba(15,31,58,.48);backdrop-filter:blur(3px)}.ta-dialog[hidden]{display:none}.ta-dialog-card{width:min(620px,100%);border:1px solid #dbe5ff;border-radius:18px;background:#fff;box-shadow:0 28px 72px rgba(23,48,87,.25);overflow:hidden}.ta-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px;border-bottom:1px solid #e9effc}.ta-dialog-head h2{margin:0;font-size:19px}.ta-dialog-head p{margin:5px 0 0;color:#7186aa;font-size:12px}.ta-icon-btn{width:34px;height:34px;border:1px solid #d7e4ff;border-radius:10px;background:#fff;display:grid;place-items:center;cursor:pointer}.ta-icon-btn img{width:15px;height:15px}.ta-dialog-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:20px}.ta-field{display:grid;gap:6px;font-size:12px;color:#35507a}.ta-field.wide{grid-column:1/-1}.ta-field input,.ta-field select,.ta-field textarea{width:100%;padding:10px 11px;border:1px solid #d7e4ff;border-radius:10px;background:#fff;color:#29466f;outline:0}.ta-field input:focus,.ta-field select:focus,.ta-field textarea:focus{border-color:#2f6cff;box-shadow:0 0 0 3px rgba(47,108,255,.09)}.ta-dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding:0 20px 20px}.ta-feedback{min-height:20px;padding:0 20px;color:#d94163;font-size:12px}
-    @media(max-width:1400px){.ta-grid,.ta-bindings{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:900px){.ta-kpis,.ta-grid,.ta-bindings{grid-template-columns:1fr}}
-  </style>
-
-  <div class="ta-card ta-pad">
-    <div class="ta-head">
-      <div><div class="ta-title">项目拓扑资产</div><div class="ta-sub">拓扑资产独立管理；画布编辑通过卡片进入，不再挤占资产列表页面。</div></div>
-      <div class="ta-actions">
-        <a class="ta-btn" href="/admin/projects/{{ project_id }}/topology-bindings?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定矩阵</a>
-        <button class="ta-btn primary" id="taCreate" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建拓扑</button>
-      </div>
+<section class="ops-workspace-app topology-assets-page" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
+  <header class="ops-page-head">
+    <div class="ops-page-head-main">
+      <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_topology.svg" alt=""></span>
+      <div class="ops-page-head-text"><h1>项目拓扑资产</h1></div>
     </div>
-  </div>
+    <div class="ops-page-head-actions">
+      <a class="pm-btn pm-btn--compact" href="/admin/projects/{{ project_id }}/topology-bindings?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a>
+      <button class="pm-btn pm-btn--primary pm-btn--compact" id="taCreate" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建拓扑</button>
+    </div>
+  </header>
 
-  <div class="ta-dialog" id="taCreateDialog" hidden>
-    <form class="ta-dialog-card" id="taCreateForm">
-      <div class="ta-dialog-head">
-        <div><h2>新建拓扑资产</h2><p>创建草稿拓扑后进入独立画布编辑，不会影响当前运行拓扑。</p></div>
-        <button class="ta-icon-btn" id="taCreateClose" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+  <section class="env-panel ops-panel">
+    <div class="env-panel-head">
+      <h2>拓扑资产</h2>
+      <span class="ops-panel-meta" id="taContext"></span>
+    </div>
+    <div class="ops-filter-bar pm-filter-bar">
+      <label class="pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="taSearch" type="search" placeholder="搜索名称 / ID"></label>
+      <select id="taEnv" aria-label="环境"><option value="">全部环境</option></select>
+      <select id="taStatus" aria-label="状态"><option value="">全部状态</option><option value="running">运行中</option><option value="validated">已验证</option><option value="draft">草稿</option><option value="stopped">已停止</option><option value="archived">已归档</option></select>
+      <button class="pm-btn pm-btn--compact" id="taRefresh" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+    </div>
+    <div class="env-line-cards-wrap">
+      <div class="env-line-cards" id="taGrid"><div class="ops-workspace-empty">正在加载…</div></div>
+    </div>
+  </section>
+
+  <section class="env-panel ops-panel">
+    <div class="env-panel-head">
+      <h2>绑定摘要</h2>
+      <span class="ops-panel-meta" id="taBindingMeta"></span>
+    </div>
+    <div class="env-line-cards-wrap">
+      <div class="env-line-cards" id="taBindings"><div class="ops-workspace-empty">正在加载…</div></div>
+    </div>
+  </section>
+
+  <div class="ops-dialog" id="taCreateDialog" hidden>
+    <form class="ops-dialog-card" id="taCreateForm">
+      <div class="ops-dialog-head">
+        <h2>新建拓扑</h2>
+        <button class="pm-btn pm-btn--compact" id="taCreateClose" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
       </div>
-      <div class="ta-dialog-body">
-        <label class="ta-field"><span>拓扑名称</span><input name="name" required maxlength="80" placeholder="例如：测试环境灰度拓扑"></label>
-        <label class="ta-field"><span>所属环境</span><select name="env_key"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
-        <label class="ta-field wide"><span>说明</span><textarea name="description" rows="4" placeholder="说明该拓扑的用途、服务范围与变更原因"></textarea></label>
+      <div class="ops-dialog-body">
+        <label class="ops-dialog-field"><span>名称</span><input name="name" required maxlength="80" placeholder="测试环境灰度拓扑"></label>
+        <label class="ops-dialog-field"><span>环境</span><select name="env_key"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
+        <label class="ops-dialog-field wide"><span>说明</span><textarea name="description" rows="2" placeholder="可选"></textarea></label>
       </div>
-      <div class="ta-feedback" id="taCreateFeedback"></div>
-      <div class="ta-dialog-actions"><button class="ta-btn" id="taCreateCancel" type="button">取消</button><button class="ta-btn primary" type="submit"><img src="/static/project_ui/svg/action_add.svg" alt="">创建并打开画布</button></div>
+      <div class="ops-dialog-feedback" id="taCreateFeedback"></div>
+      <div class="ops-dialog-actions">
+        <button class="pm-btn pm-btn--compact" id="taCreateCancel" type="button">取消</button>
+        <button class="pm-btn pm-btn--primary pm-btn--compact" type="submit">创建并打开画布</button>
+      </div>
     </form>
-  </div>
-
-  <div class="ta-kpis">
-    <div class="ta-kpi"><span>拓扑资产</span><strong id="taCount">--</strong></div>
-    <div class="ta-kpi"><span>运行中</span><strong id="taRunning">--</strong></div>
-    <div class="ta-kpi"><span>绑定规则</span><strong id="taBindingCount">--</strong></div>
-    <div class="ta-kpi"><span>当前环境</span><strong style="font-size:18px">{% if env_key == 'development' %}开发环境{% elif env_key == 'testing' %}测试环境{% elif env_key == 'staging' %}预发布环境{% else %}生产环境{% endif %}</strong></div>
-  </div>
-
-  <div class="ta-card ta-pad">
-    <div class="ta-head">
-      <div><div class="ta-title" style="font-size:16px">拓扑资产列表</div><div class="ta-sub">状态、节点、连线、更新时间与入口集中在小卡片中。</div></div>
-      <div class="ta-toolbar">
-        <input class="ta-filter ta-search" id="taSearch" placeholder="搜索拓扑名称 / ID">
-        <select class="ta-filter" id="taEnv"><option value="">全部环境</option></select>
-        <select class="ta-filter" id="taStatus"><option value="">全部状态</option><option value="running">运行中</option><option value="validated">已验证</option><option value="draft">草稿</option><option value="stopped">已停止</option><option value="archived">已归档</option></select>
-        <button class="ta-btn" id="taRefresh" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
-      </div>
-    </div>
-    <div class="ta-grid" id="taGrid"><div class="ta-empty">正在加载拓扑资产...</div></div>
-  </div>
-
-  <div class="ta-card ta-pad">
-    <div class="ta-head">
-      <div><div class="ta-title" style="font-size:16px">绑定关系摘要</div><div class="ta-sub">按环境、渠道和大版本展示当前项目已配置的指向关系。</div></div>
-      <a class="ta-btn" href="/admin/projects/{{ project_id }}/topology-bindings?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">管理全部绑定</a>
-    </div>
-    <div class="ta-bindings" id="taBindings"><div class="ta-empty">正在加载绑定关系...</div></div>
   </div>
 
   <script>
@@ -79,30 +60,41 @@
     var root=document.querySelector('.topology-assets-page'); if(!root)return;
     var projectId=root.dataset.projectId||'', currentEnv=root.dataset.envKey||'production';
     var state={topologies:[],bindings:[],channels:[]};
-    var envNames={development:'开发环境',testing:'测试环境',staging:'预发布环境',production:'生产环境'};
+    var envNames={development:'开发',testing:'测试',staging:'预发',production:'生产'};
     var statusNames={running:'运行中',validated:'已验证',draft:'草稿',stopped:'已停止',archived:'已归档'};
     function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-    function stage(env){return env==='testing'?'test':(env==='development'?'dev':'production')}
+    function cardClass(st){return st==='running'||st==='validated'?'configured':(st==='draft'||st==='stopped'?'unconfigured':'neutral')}
+    function badgeClass(st){return st==='running'||st==='validated'?'ready':(st==='draft'||st==='stopped'?'pending':'neutral')}
+    function renderContext(){
+      var host=document.getElementById('taContext'); if(!host)return;
+      var running=state.topologies.filter(function(x){return x.status==='running'||x.status==='validated'}).length;
+      host.textContent=state.topologies.length?('共 '+state.topologies.length+' · 运行 '+running):'';
+    }
+    function renderCard(x){
+      var st=x.status||'unknown', cls=cardClass(st), badge=badgeClass(st);
+      var canvas='/admin/projects/'+encodeURIComponent(projectId)+'/topologies/canvas?env_key='+encodeURIComponent(x.env_key||currentEnv)+'&topology_id='+encodeURIComponent(x.topology_id||'');
+      return '<article class="env-line-card '+cls+'"><div class="env-line-card-head"><span class="env-line-platform-icon"><img src="/static/project_ui/svg/nav_topology.svg" alt=""></span><div class="env-line-card-title"><span class="env-line-platform">'+esc(x.name||x.topology_id)+'</span><span class="env-line-badge '+badge+'">'+esc(statusNames[st]||st)+'</span></div></div>'
+        +'<p class="env-line-status-hint" title="'+esc(x.topology_id)+'">'+esc(envNames[x.env_key]||x.env_key||'-')+'</p>'
+        +'<dl class="env-line-fields"><div><dt>节点</dt><dd>'+esc(x.node_count||0)+'</dd></div><div><dt>连线</dt><dd>'+esc(x.edge_count||0)+'</dd></div><div><dt>更新</dt><dd>'+esc(String(x.updated_at||'-').slice(0,10))+'</dd></div></dl>'
+        +'<footer class="env-line-actions env-line-card-links"><a class="matrix-btn build" href="'+canvas+'">画布</a><a class="matrix-btn version" href="/admin/projects/'+encodeURIComponent(projectId)+'/topology-bindings?env_key='+encodeURIComponent(x.env_key||currentEnv)+'">绑定</a></footer></article>';
+    }
     function render(){
       var kw=(document.getElementById('taSearch').value||'').trim().toLowerCase(), env=document.getElementById('taEnv').value, status=document.getElementById('taStatus').value;
       var rows=state.topologies.filter(function(x){return(!kw||[x.name,x.topology_id].join(' ').toLowerCase().includes(kw))&&(!env||x.env_key===env)&&(!status||x.status===status)});
-      document.getElementById('taCount').textContent=state.topologies.length;
-      document.getElementById('taRunning').textContent=state.topologies.filter(function(x){return x.status==='running'||x.status==='validated'}).length;
-      document.getElementById('taBindingCount').textContent=state.bindings.length;
-      document.getElementById('taGrid').innerHTML=rows.length?rows.map(function(x){
-        var st=x.status||'unknown', canvas='/admin/projects/'+encodeURIComponent(projectId)+'/topologies/canvas?env_key='+encodeURIComponent(x.env_key||currentEnv)+'&topology_id='+encodeURIComponent(x.topology_id||'');
-        return '<article class="ta-asset"><div class="ta-asset-top"><div class="min-w-0"><div class="ta-asset-title">'+esc(x.name||x.topology_id)+'</div><div class="ta-id">'+esc(x.topology_id)+'</div></div><span class="ta-status '+esc(st)+'">'+esc(statusNames[st]||st)+'</span></div>'
-          +'<div class="ta-desc">'+esc(x.description||'暂无说明')+'</div><div class="ta-tags"><span class="ta-tag">'+esc(envNames[x.env_key]||x.env_key||'-')+'</span>'+(x.is_default?'<span class="ta-tag default">默认拓扑</span>':'')+'</div>'
-          +'<div class="ta-meta"><div><span>节点</span><b>'+esc(x.node_count||0)+'</b></div><div><span>连线</span><b>'+esc(x.edge_count||0)+'</b></div><div><span>更新时间</span><b>'+esc(String(x.updated_at||'-').slice(0,10))+'</b></div></div>'
-          +'<div class="ta-row-actions"><a class="ta-btn primary" href="'+canvas+'">打开画布</a><a class="ta-btn" href="/admin/projects/'+encodeURIComponent(projectId)+'/topology-bindings?env_key='+encodeURIComponent(x.env_key||currentEnv)+'">查看绑定</a></div></article>'
-      }).join(''):'<div class="ta-empty">没有匹配的拓扑资产</div>';
+      renderContext();
+      document.getElementById('taGrid').innerHTML=rows.length?rows.map(renderCard).join(''):'<div class="ops-workspace-empty">无匹配拓扑</div>';
     }
     function renderBindings(){
       var cmap={};state.channels.forEach(function(x){cmap[x.channel_id]=x.channel_name||x.channel_key||x.channel_id});
+      var meta=document.getElementById('taBindingMeta');
+      if(meta) meta.textContent=state.bindings.length?('共 '+state.bindings.length+' 条'):'';
       document.getElementById('taBindings').innerHTML=state.bindings.length?state.bindings.map(function(x){
-        var scope=[x.env_key?(envNames[x.env_key]||x.env_key):'全部环境',x.channel_id?(cmap[x.channel_id]||x.channel_id):'全部渠道',x.version_name||'全部大版本'].join(' / ');
-        return '<div class="ta-binding"><strong>'+esc(x.level_label||'绑定规则')+'</strong><p>'+esc(scope)+'</p><p>指向：'+esc(x.topology_id||'-')+'</p></div>'
-      }).join(''):'<div class="ta-empty">尚未配置拓扑绑定规则</div>';
+        var scope=[x.env_key?(envNames[x.env_key]||x.env_key):'全部',x.channel_id?(cmap[x.channel_id]||x.channel_id):'全部',x.version_name||'全部'].join(' / ');
+        return '<article class="env-line-card configured"><div class="env-line-card-head"><span class="env-line-platform-icon"><img src="/static/project_ui/svg/nav_binding.svg" alt=""></span><div class="env-line-card-title"><span class="env-line-platform">'+esc(x.level_label||'绑定')+'</span><span class="env-line-badge ready">绑定</span></div></div>'
+          +'<p class="env-line-status-hint" title="'+esc(scope)+'">'+esc(scope)+'</p>'
+          +'<dl class="env-line-fields"><div><dt>拓扑</dt><dd class="mono" title="'+esc(x.topology_id||'-')+'">'+esc(x.topology_id||'-')+'</dd></div></dl>'
+          +'<footer class="env-line-actions env-line-card-links"><a class="matrix-btn version" href="/admin/projects/'+encodeURIComponent(projectId)+'/topology-bindings?env_key='+encodeURIComponent(x.env_key||currentEnv)+'">管理</a></footer></article>';
+      }).join(''):'<div class="ops-workspace-empty">暂无绑定</div>';
     }
     function load(){
       Promise.all([
@@ -112,7 +104,7 @@
         state.topologies=all[0].topologies||[];state.bindings=all[1].bindings||[];state.channels=all[1].channels||[];
         var envs=all[0].environments||[];document.getElementById('taEnv').innerHTML='<option value="">全部环境</option>'+envs.map(function(x){return '<option value="'+esc(x.env_key)+'">'+esc(x.label)+'</option>'}).join('');
         render();renderBindings();
-      }).catch(function(){document.getElementById('taGrid').innerHTML='<div class="ta-empty">拓扑资产加载失败，请刷新重试</div>'});
+      }).catch(function(){document.getElementById('taGrid').innerHTML='<div class="ops-workspace-empty">加载失败</div>'});
     }
     ['taSearch','taEnv','taStatus'].forEach(function(id){document.getElementById(id).addEventListener(id==='taSearch'?'input':'change',render)});
     document.getElementById('taRefresh').addEventListener('click',load);
@@ -126,9 +118,9 @@
       event.preventDefault();createFeedback.textContent='';
       var payload=Object.fromEntries(new FormData(createForm).entries());
       fetch('/api/projects/'+encodeURIComponent(projectId)+'/topologies',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(function(r){return r.json()}).then(function(d){
-        if(!d.ok){createFeedback.textContent=d.error||'创建失败，请检查输入后重试';return}
+        if(!d.ok){createFeedback.textContent=d.error||'创建失败';return}
         location.href='/admin/projects/'+encodeURIComponent(projectId)+'/topologies/canvas?env_key='+encodeURIComponent(payload.env_key)+'&topology_id='+encodeURIComponent((d.data||{}).topology_id||'');
-      }).catch(function(){createFeedback.textContent='创建请求失败，请稍后重试'});
+      }).catch(function(){createFeedback.textContent='请求失败'});
     });
     load();
   })();

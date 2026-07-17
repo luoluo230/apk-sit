@@ -360,6 +360,37 @@ def _resolve_build_status(record: dict, recent_cache: Optional[dict] = None, det
     return item
 
 
+def _try_finalize_missing_apk(project_id: str, version_id: str, records: list, cache: dict) -> None:
+    """Archive Jenkins output for the newest SUCCESS build when the version has no local APK yet."""
+    pid = (project_id or "").strip()
+    vid = (version_id or "").strip()
+    if not pid or not vid or not records:
+        return
+    from repositories.admin import versions_repo
+
+    meta = _version_meta(pid, vid)
+    if meta and versions_repo.has_apk(pid, meta):
+        return
+    for rec in records:
+        item = _resolve_build_status(rec, cache, detail_mode=False)
+        if item.get("building"):
+            continue
+        if str(item.get("result") or "").upper() != "SUCCESS":
+            continue
+        iid = (rec.get("instance_id") or "").strip()
+        bn = int(rec.get("build_number") or 0)
+        if not iid or not bn:
+            continue
+        try:
+            from services.apk_artifact_service import finalize_apk_from_jenkins_build
+
+            fin = finalize_apk_from_jenkins_build(iid, bn)
+            if fin.get("ok"):
+                return
+        except Exception:
+            return
+
+
 def builds_for_version_enriched(version_id: str, instance_id: str = "") -> list:
     records = list_records_for_version(version_id, instance_id=instance_id)
     cache: dict = {}
@@ -380,6 +411,8 @@ def builds_for_version_enriched(version_id: str, instance_id: str = "") -> list:
                 break
     if pid and version_id and not meta:
         meta = _version_meta(pid, version_id)
+    _try_finalize_missing_apk(pid, version_id, records, cache)
+    meta = _version_meta(pid, version_id) if pid and version_id else meta
     from repositories.admin import versions_repo
 
     apk_download = meta.get("apk_download") if isinstance(meta.get("apk_download"), dict) else {}
@@ -409,16 +442,72 @@ def builds_for_version_enriched(version_id: str, instance_id: str = "") -> list:
     env_key = stage_to_env_key(meta.get("env_key") or meta.get("stage") or "development")
     platform = str(meta.get("platform") or "").strip()
     channel_id = str(meta.get("channel") or "").strip()
+    channel = get_channel_by_id(channel_id) or {}
+    channel_name = str(channel.get("name") or channel_id or "未配置渠道")
     out = []
     for rec in records:
         item = _resolve_build_status(rec, cache, detail_mode=False)
         item["env_key"] = env_key
         item["platform"] = platform
         item["channel_id"] = channel_id
+        item["channel_name"] = channel_name
         item["apk_download"] = apk_download
         item["apk_status"] = apk_status
         out.append(item)
     return out
+
+
+def latest_build_for_version(version_id: str, project_id: str = "", instance_id: str = "") -> dict:
+    """Return the newest build snapshot for a VersionCode, with release-order fallback."""
+    vid = (version_id or "").strip()
+    if not vid:
+        return {}
+    builds = builds_for_version_enriched(vid, instance_id=instance_id)
+    if builds:
+        return dict(builds[0])
+    pid = (project_id or "").strip()
+    if not pid:
+        for rec in list_records_for_version(vid, instance_id=instance_id):
+            pid = (rec.get("project_id") or "").strip()
+            if pid:
+                break
+    if not pid:
+        for cand, versions in project_versions_db.items():
+            if not isinstance(versions, list):
+                continue
+            if any(isinstance(x, dict) and (x.get("id") or "") == vid for x in versions):
+                pid = str(cand)
+                break
+    if not pid:
+        return {}
+    try:
+        from services.release.release_order_service import find_release_order_for_version
+
+        order = find_release_order_for_version(pid, vid)
+    except Exception:
+        order = None
+    if not order:
+        return {}
+    payload = dict(order.get("payload") or {})
+    bn_raw = str(payload.get("build_job_id") or "").strip()
+    iid = str(payload.get("jenkins_instance_id") or "").strip()
+    if not (bn_raw.isdigit() and iid):
+        return {}
+    rec = {
+        "instance_id": iid,
+        "build_number": int(bn_raw),
+        "version_id": vid,
+        "project_id": pid,
+        "version_name": str(order.get("version_name") or ""),
+        "version_code": str(order.get("version_code") or ""),
+        "triggered_by": str(order.get("created_by") or ""),
+        "created_at": str(order.get("updated_at") or order.get("created_at") or ""),
+    }
+    item = _resolve_build_status(rec, {}, detail_mode=False)
+    item["env_key"] = stage_to_env_key(order.get("env_key") or "development")
+    item["platform"] = str(order.get("platform") or "")
+    item["channel_id"] = str(order.get("channel_id") or "")
+    return item
 
 
 def builds_grouped_by_project(project_id: str) -> dict:

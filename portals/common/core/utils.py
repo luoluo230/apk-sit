@@ -20,6 +20,23 @@ def _json_document_key(filepath):
     return rel.replace('\\', '/')
 
 
+_sqlite_json_store = None
+
+
+def _sqlite_json_module():
+    """Load SQLite JSON helpers without importing models package __init__."""
+    global _sqlite_json_store
+    if _sqlite_json_store is not None:
+        return _sqlite_json_store
+    import importlib.util
+    db_path = os.path.join(os.path.dirname(__file__), 'models', 'db.py')
+    spec = importlib.util.spec_from_file_location('_apk_site_sqlite_json', db_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    _sqlite_json_store = mod
+    return mod
+
+
 def html_escape(text):
     """安全地转义 HTML 特殊字符"""
     return str(escape(text))
@@ -34,7 +51,10 @@ def load_json(filepath, default=None):
     ).lower() in ('true', '1', 'yes')
     if use_sqlite:
         try:
-            from models.db import get_json_document, has_json_document, set_json_document
+            db = _sqlite_json_module()
+            get_json_document = db.get_json_document
+            has_json_document = db.has_json_document
+            set_json_document = db.set_json_document
             key = _json_document_key(filepath)
             if has_json_document(key):
                 data = get_json_document(key, default)
@@ -85,10 +105,10 @@ def save_json(filepath, data):
     use_sqlite = getattr(Config, 'USE_SQLITE', False) or str(os.getenv('USE_SQLITE') or '').lower() in ('true', '1', 'yes')
     if use_sqlite:
         try:
-            from models.db import set_json_document
-            set_json_document(_json_document_key(filepath), data)
+            db = _sqlite_json_module()
+            db.set_json_document(_json_document_key(filepath), data)
         except Exception:
-            pass
+            logging.getLogger(__name__).exception('save_json sqlite write failed: %s', filepath)
     if use_sqlite and not getattr(Config, 'SQLITE_MIRROR_JSON', False):
         return
     import tempfile

@@ -98,6 +98,10 @@
 .ro-field-config-link:hover{color:#0958d9;border-bottom-color:#1677ff}
 .pipeline-source-pill.missing .ro-config-link{color:#cf1322;border-bottom-color:#ffa39e}
 .pipeline-source-pill.missing .ro-config-link:hover{color:#a8071a}
+.pipeline-readonly-status{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:min(100%,420px)}
+.pipeline-status-hint{margin:0;font-size:11px;line-height:1.45;color:#8c8c8c;text-align:right}
+.pipeline-status-hint.is-missing{color:#cf1322}
+.pipeline-status-hint.is-ready{color:#389e0d}
 .ro-build-grid label{position:relative}
 .ro-field-config-link{display:inline-block;margin-top:4px;font-size:11px}
 .ro-form-layout--no-steps{grid-template-columns:minmax(0,1fr) 280px}

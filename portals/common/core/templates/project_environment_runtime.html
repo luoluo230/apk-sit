@@ -3,18 +3,16 @@
     <div class="p16-head-main pm-page-head-copy">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
       <div>
-        <h1>环境运行概览<img class="p16-title-info" src="/static/project_ui/svg/global_help.svg" alt="" title="单环境运行态、资源趋势与告警摘要"></h1>
+        <h1>环境运行概览</h1>
       </div>
     </div>
   </header>
 
   <div class="p16-filter-strip pm-filter-bar" id="p16FilterStrip">
     <div class="p16-filter-item">
-      <span class="p16-filter-label">项目</span>
-      <span class="p16-filter-pill p16-filter-pill--project" id="p16ProjectPill">{{ project.name or project_id }}</span>
+      <span class="p16-filter-pill p16-filter-pill--project" id="p16ProjectPill" title="项目">{{ project.name or project_id }}</span>
     </div>
     <div class="p16-filter-item">
-      <span class="p16-filter-label">环境</span>
       <select class="p16-filter-pill-select p16-filter-pill-select--env" id="p16FilterEnv" aria-label="环境">
         {% for row in env_options or [] %}
         <option value="{{ row.env_key }}"{% if row.env_key == env_key %} selected{% endif %}>{{ row.env_label or row.env_key }}</option>
@@ -22,19 +20,17 @@
       </select>
     </div>
     <div class="p16-filter-item">
-      <span class="p16-filter-label">渠道</span>
       <select class="p16-filter-pill-select p16-filter-pill-select--channel" id="p16FilterChannel" aria-label="渠道">
         <option value="">全部渠道</option>
       </select>
     </div>
     <div class="p16-filter-item">
-      <span class="p16-filter-label">平台</span>
       <select class="p16-filter-pill-select p16-filter-pill-select--platform" id="p16FilterPlatform" aria-label="平台">
         <option value="">多平台</option>
       </select>
     </div>
     <div class="p16-filter-meta">
-      <span>数据更新时间：<b id="p16UpdatedAt">--</b></span>
+      <b id="p16UpdatedAt" title="更新时间">--</b>
       <button class="p16-icon-btn" id="p16RefreshBtn" type="button" title="刷新" aria-label="刷新"><img src="/static/project_ui/svg/action_refresh.svg" alt=""></button>
     </div>
   </div>
@@ -67,7 +63,7 @@
         </div>
 
         <div class="p16-trends-section">
-          <div class="p16-trends-head"><h3>资源趋势<span id="p16TrendWindow">（近 1 小时）</span></h3></div>
+          <div class="p16-trends-head"><h3>资源趋势</h3></div>
           <div class="p16-dash-trends" id="p16ResourceTrends">
             <article class="p16-widget p16-widget--trend" id="p16TrendCpu"></article>
             <article class="p16-widget p16-widget--trend" id="p16TrendMemory"></article>
@@ -79,7 +75,7 @@
           <div class="p16-table-section-head">
             <div class="p16-table-title-row">
               <h3>服务实例列表</h3>
-              <span class="p16-live-badge" id="p16ServiceLiveBadge">Agent 上报 live</span>
+              <span class="p16-live-badge" id="p16ServiceLiveBadge"></span>
             </div>
             <div class="p16-table-toolbar" id="p16ServiceToolbar">
               <label class="p16-table-search">

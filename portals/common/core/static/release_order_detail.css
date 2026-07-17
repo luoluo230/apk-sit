@@ -1,0 +1,131 @@
+/* P19 Release order detail — layout shell */
+.order-detail-app.rod-page{max-width:1560px;margin:0 auto;color:#25324a}
+
+/* Header */
+.rod-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+.rod-header h1{margin:0;font-size:22px;line-height:30px;color:#17243d;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rod-header p{margin:4px 0 0;font-size:12px;color:#71809a}
+.rod-header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.rod-header-actions .ui-primary,.rod-header-actions .ui-secondary{white-space:nowrap;flex-shrink:0}
+
+/* Meta + stepper */
+.rod-meta-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:12px;background:#fff;border:1px solid #e5eaf3;border-radius:10px;overflow:hidden}
+.rod-meta-strip .meta-item{padding:12px 16px;border-right:1px solid #eef1f5}
+.rod-meta-strip .meta-item:last-child{border-right:0}
+.rod-meta-strip .meta-item span{display:block;color:#8a96a8;font-size:11px}
+.rod-meta-strip .meta-item strong{display:block;margin-top:4px;font-size:13px;color:#17243d;font-weight:600}
+
+.rod-stepper.ro-journey-progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 14px;padding:10px 12px;background:#fff;border:1px solid #e5eaf3;border-radius:10px}
+.rod-stepper .ro-journey-segment{text-align:center;padding:10px 12px;border-radius:8px;background:#f4f7fb;color:#8a96a8;font-size:13px;font-weight:600;line-height:1.2;writing-mode:horizontal-tb;min-width:0}
+.rod-stepper .ro-journey-segment span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rod-stepper .ro-journey-segment.done{background:#edf9f0;color:#389e0d}
+.rod-stepper .ro-journey-segment.active{background:#eaf2ff;color:#1677ff;box-shadow:inset 0 0 0 1px #adc6ff}
+.rod-stepper .ro-journey-segment.failed.active{background:#fff1f0;color:#cf1322;box-shadow:inset 0 0 0 1px #ffa39e}
+
+/* Body: main + rail */
+.rod-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.rod-main{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* Focus card — issues only, full width */
+.rod-focus-card{background:#fff;border:1px solid #e5eaf3;border-radius:12px;padding:16px 18px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.rod-focus-card.rod-focus-card--danger{border-color:#ffccc7;background:linear-gradient(180deg,#fffafa 0%,#fff 40%)}
+.rod-focus-card.rod-focus-card--ok{border-color:#b7eb8f;background:linear-gradient(180deg,#fafff5 0%,#fff 40%)}
+.rod-focus-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.rod-focus-head h2{margin:0;font-size:15px;font-weight:700;color:#17243d}
+.rod-focus-count{min-width:24px;height:24px;padding:0 7px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;font-weight:700;background:#ff4d4f;color:#fff}
+.rod-focus-card--ok .rod-focus-count{background:#52c41a}
+.rod-focus-summary{margin:0 0 12px;font-size:12px;line-height:1.55;color:#667085}
+.rod-issue-stack{display:flex;flex-direction:column;gap:8px}
+.rod-issue-card{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px;border-radius:10px;background:#fafbfc;border:1px solid #eef1f6}
+.rod-issue-icon{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-size:14px;font-weight:700;background:#fde0e0;color:#cf1322}
+.rod-issue-body strong{display:block;font-size:13px;color:#17243d}
+.rod-issue-body p{margin:4px 0 0;font-size:12px;line-height:1.45;color:#667085}
+.rod-issue-action{min-height:32px;padding:0 12px;border-radius:8px;border:1px solid #1677ff;background:#1677ff;color:#fff!important;font-size:12px;font-weight:600;text-decoration:none!important;white-space:nowrap;display:inline-flex;align-items:center}
+.rod-issue-action:hover{background:#0958d9;border-color:#0958d9}
+
+/* Tabbed detail — one focus area at a time */
+.rod-tabs{background:#fff;border:1px solid #e5eaf3;border-radius:12px;box-shadow:0 1px 2px rgba(16,24,40,.04);overflow:hidden}
+.rod-tab-bar{display:flex;align-items:stretch;gap:0;border-bottom:1px solid #eef1f6;background:#fafbfc;padding:0 8px;overflow-x:auto}
+.rod-tab{position:relative;flex:0 0 auto;min-height:44px;padding:0 16px;border:0;border-bottom:2px solid transparent;background:transparent;color:#667085;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.rod-tab:hover{color:#1677ff;background:#f8fbff}
+.rod-tab.active{color:#1677ff;border-bottom-color:#1677ff;background:#fff}
+.rod-tab-badge{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#ff4d4f;color:#fff;font-size:10px;font-weight:700;line-height:18px;text-align:center}
+.rod-tab-badge.is-hidden{display:none}
+.rod-tab-panels{min-height:220px}
+.rod-tab-panel{display:none;padding:0}
+.rod-tab-panel.active{display:block}
+.rod-tab-section{padding:0 0 4px}
+.rod-tab-section+.rod-tab-section{border-top:1px solid #eef1f6;margin-top:2px;padding-top:2px}
+.rod-tab-section-title{margin:0;padding:10px 16px 4px;font-size:12px;font-weight:700;color:#8a96a8;letter-spacing:.02em}
+.rod-tab-panel .rod-panel-body{padding:2px 0 8px}
+
+/* Legacy panel (rail timeline head) */
+.rod-panel-head{padding:12px 16px;border-bottom:1px solid #eef1f6;flex-shrink:0}
+.rod-panel-head h2{margin:0;font-size:14px;font-weight:700;color:#17243d}
+.rod-panel-body{flex:1;padding:2px 0 6px}
+
+/* Right rail */
+.rod-rail{display:flex;flex-direction:column;gap:12px;position:sticky;top:12px}
+.rod-rail-card{background:#fff;border:1px solid #e5eaf3;border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.rod-rail-card--warn{background:linear-gradient(180deg,#fffbe6 0%,#fff 55%);border-color:#ffe58f}
+.rod-rail-card--actions{background:linear-gradient(180deg,#f0f5ff 0%,#fff 55%);border-color:#adc6ff}
+.rod-rail-card h3{margin:0 0 10px;font-size:13px;font-weight:700;color:#17243d}
+.rod-rail-card p{margin:0;font-size:12px;line-height:1.55;color:#667085}
+.rod-fix-stack{display:flex;flex-direction:column;gap:8px}
+.rod-fix-btn,.rod-fix-stack a,.rod-fix-stack button{display:flex;align-items:center;justify-content:center;min-height:36px;padding:0 12px;border-radius:8px;border:1px solid #dce4f2;background:#fff;color:#344054!important;font-size:12px;font-weight:600;text-decoration:none!important;cursor:pointer;width:100%}
+.rod-fix-btn.primary,.rod-fix-stack .primary{background:#1677ff;border-color:#1677ff;color:#fff!important}
+.rod-fix-btn.primary:hover,.rod-fix-stack .primary:hover{background:#0958d9}
+
+/* Actions bar + dropdown (must live here — detail page does not load form css) */
+.order-actions-bar{display:flex;align-items:center;gap:8px;position:relative;flex-wrap:wrap}
+.order-more-menu{position:relative}
+.order-more-menu>button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px}
+.order-more-dropdown{position:absolute;top:calc(100% + 6px);right:0;min-width:168px;padding:6px;background:#fff;border:1px solid #e5eaf3;border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.12);z-index:30;display:none!important}
+.order-more-dropdown.open{display:block!important}
+.order-more-dropdown a,.order-more-dropdown button{display:block;width:100%;padding:8px 12px;border:0;background:transparent;color:#344054;font-size:12px;text-align:left;cursor:pointer;text-decoration:none}
+.order-more-dropdown a:hover,.order-more-dropdown button:hover{background:#f8fbff;color:#1677ff}
+
+/* Detail rows */
+.order-detail-app .detail-row{display:grid;grid-template-columns:108px minmax(0,1fr) 80px;align-items:center;gap:10px;min-height:42px;padding:8px 16px;border-top:1px solid #eef1f6;font-size:12px}
+.order-detail-app .detail-row:first-child{border-top:0}
+.order-detail-app .detail-row strong{color:#667085;font-weight:600}
+.order-detail-app .detail-row span{color:#17243d;word-break:break-word}
+.order-detail-app .detail-row b{font-size:11px;font-weight:700;text-align:right}
+.order-detail-app .detail-tone.success{color:#389e0d}
+.order-detail-app .detail-tone.warning{color:#d48806}
+.order-detail-app .detail-tone.danger{color:#cf1322}
+.order-detail-app .detail-tone.muted{color:#98a2b3}
+.order-detail-app .ro-config-link{color:#1677ff;font-weight:600;text-decoration:none;border-bottom:1px dashed #91caff}
+.order-detail-app .ui-empty{padding:16px;color:#98a2b3;font-size:12px}
+
+/* Precheck + timeline */
+.precheck-checklist{margin:0;padding:0;list-style:none}
+.precheck-checklist li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid #eef1f6;font-size:12px}
+.precheck-checklist li:first-child{border-top:0}
+.precheck-checklist .mark{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700}
+.precheck-checklist .mark.ok{background:#d9f3e1;color:#389e0d}
+.precheck-checklist .mark.fail{background:#fde0e0;color:#cf1322}
+.precheck-checklist small{display:block;margin-top:2px;color:#8a96a8;font-size:11px}
+.precheck-checklist a{font-size:11px;color:#1677ff;font-weight:600;text-decoration:none}
+
+.rod-timeline{max-height:420px;overflow:auto}
+.rod-rail-card--timeline .rod-panel-head{padding:0 0 10px;border-bottom:1px solid #eef1f6;margin-bottom:4px}
+.rod-rail-card--timeline .rod-panel-head h2{margin:0;font-size:14px;font-weight:700}
+.timeline-row{padding:10px 0;border-bottom:1px solid #eef1f6;font-size:12px}
+.timeline-row:last-child{border-bottom:0}
+.timeline-row strong{display:block;color:#17243d;margin-bottom:3px;font-weight:600}
+.timeline-row span{color:#8a96a8;font-size:11px}
+
+@media(max-width:1280px){
+  .rod-body{grid-template-columns:1fr}
+  .rod-rail{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .rod-rail-card--timeline{grid-column:1/-1}
+}
+@media(max-width:900px){
+  .rod-meta-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rod-tab-bar{padding:0 4px}
+  .rod-tab{padding:0 12px;font-size:12px}
+  .rod-rail{grid-template-columns:1fr}
+  .rod-issue-card{grid-template-columns:32px minmax(0,1fr);grid-template-rows:auto auto}
+  .rod-issue-action{grid-column:2;justify-self:start}
+}

@@ -1,0 +1,26 @@
+<section class="delivery-app channel-journey-app" data-journey="build" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-channel-id="{{ channel_id }}">
+  <header class="cj-header">
+    <a class="cj-back" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}"><img src="/static/project_ui/svg/action_back.svg" alt="">返回环境详情</a>
+    <div class="cj-header-copy">
+      <h1 id="cjBuildTitle">构建流程</h1>
+      <p id="cjBuildSubtitle">选择版本组与 VersionCode，触发 Jenkins 构建并验收产物</p>
+    </div>
+  </header>
+  <div class="cj-toolbar">
+    <div class="cj-context" id="cjBuildContext" aria-label="当前上下文"></div>
+    <div class="cj-platform-tabs" id="cjBuildPlatforms"></div>
+  </div>
+  <main class="cj-main">
+    <section class="cj-target-card">
+      <div class="cj-target-head">
+        <h2>构建目标</h2>
+        <p>先选版本组，再选该组下的 VersionCode（默认最新）</p>
+      </div>
+      <div class="cj-version-picker-host" id="cjBuildVersionPicker" aria-label="构建目标选择"></div>
+    </section>
+    <section class="cj-activity-card" id="cjBuildActivity" hidden aria-label="构建活动">
+      <div id="cjBuildActivityInner"></div>
+    </section>
+    <section class="cj-workspace" id="cjBuildMain"><div class="ui-skeleton">加载构建流程...</div></section>
+  </main>
+</section>

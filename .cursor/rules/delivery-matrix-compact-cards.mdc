@@ -1,0 +1,112 @@
+---
+description: 交付线矩阵与构建/发版流程 — 窄小卡片、状态色、构建蓝/发版绿按钮（用户已验收 PASS）
+globs: portals/common/core/static/project_environment_detail.css,portals/common/core/static/project_channel_journey.css,portals/common/core/static/project_build_history.css,portals/common/core/static/project_overview.css,portals/common/core/static/project_channel_build_journey.js,portals/common/core/static/project_channel_release_journey.js,portals/common/core/static/project_delivery.js,portals/common/core/static/project_build_history.js,docs/design_specs/project_environment_detail_p18.md,docs/design_specs/build_journey_channel.md,docs/design_specs/release_journey_channel.md
+alwaysApply: false
+---
+
+# 交付线矩阵 · 窄小卡片规范（P18 · 已验收）
+
+> **用户 2026-07-07 明确验收通过的风格。** 修改环境详情交付线矩阵时必须保持，禁止回退为表格/列表条/双列撑满大卡片。
+
+## 形态（写死）
+
+| 必须 | 禁止 |
+|------|------|
+| **小卡片** + `repeat(auto-fill, minmax(200px, 220px))` 多列自动排列 | 表格 `<table>`、全宽列表条、双列 `1fr` 撑满半屏 |
+| 单卡 `max-width: 220px`，内容纵向紧凑 | `min-height: 196px` 等大固定高度、大块留白 |
+| 平台图标 **44×44** 容器 / **26×26** SVG | 16px 小图标 |
+
+## 卡片 DOM 结构
+
+```
+article.env-line-card.{configured|unconfigured}
+  .env-line-card-head → .env-line-platform-icon + .env-line-card-title（平台名 + badge）
+  p.env-line-status-hint
+  dl.env-line-fields → 版本 / Bundle / 拓扑（标签+值同行，ellipsis + title）
+  footer.env-line-actions.env-line-card-links → a.matrix-btn.version + a.matrix-btn.build + a.matrix-btn.release
+```
+
+Markup 由 `project_delivery.js` → `renderDeliveryMatrixHtml()` 生成；样式 scoped 在 `project_environment_detail.css`。
+
+## 状态色（语义区分 · 必须）
+
+### 已配置 `.env-line-card.configured`
+
+- 浅绿渐变背景 `#f6ffed → #fff`
+- 边框 `#b7eb8f`，左侧强调线 `#52c41a`
+- 图标底 `#e8f8e8`；状态 hint `#389e0d`
+- Badge：`.env-line-badge.ready`（绿）
+
+### 未配置 `.env-line-card.unconfigured`
+
+- 浅橙渐变背景 `#fff7e6 → #fff`
+- 边框 `#ffd591`，左侧强调线 `#faad14`
+- 图标底 `#fff7e6`；状态 hint `#d48806`
+- Badge：`.env-line-badge.pending`（橙）
+
+## 按钮语义色（必须不同底色）
+
+| 按钮 | 类名 | 已配置卡 | 未配置卡（降饱和/警示） |
+|------|------|----------|-------------------------|
+| 构建 | `.matrix-btn.build` | 蓝底 `#e6f4ff` / 字 `#0958d9` | 橙底 `#fff7e6` / 字 `#ad6800` |
+| 发版 | `.matrix-btn.release` | 绿底 `#f6ffed` / 字 `#237804` | 浅红 `#fff1f0` / 字 `#cf1322` |
+
+禁止构建/发版共用 `.subtle` 白底无区分。
+
+## 三按钮工作流（平台卡 · 唯一入口）
+
+| 按钮 | 入口 | 流程 |
+|------|------|------|
+| **版本** | `/versions?env_key&channel_id&platform` | 创建/编辑版本组与 VersionCode |
+| **构建** | 渠道构建 journey | 选择已创建 VC（默认最新）→ Jenkins 构建 |
+| **发版** | 渠道发版 journey | 选择产物完整 VC → 发版计划 |
+
+渠道头**不再**放「版本与 VersionCode」；三个并列按钮只在平台卡 footer（`renderCardVersionEntry` + journey href）。
+
+## 构建/发版流程页（同风格 · 2026-07-07）
+
+- 页面左强调线：构建页蓝色、发版页绿色
+- 上下文 chip / 步骤面板 / KV 小卡：`is-ready` 绿、`is-pending` 橙
+- 按钮：`.cj-btn.build` 蓝底、`.cj-btn.release` 绿底、`.cj-btn.neutral` 白底、`.cj-btn.warn` 浅红（回滚/下线）
+- 顶栏切换：构建页「进入发版流程」用 release 绿；发版页「进入构建流程」用 build 蓝
+- CSS：`project_channel_journey.css`；JS：`project_channel_build_journey.js` / `project_channel_release_journey.js`
+
+## 构建与产物页（同风格 · 2026-07-08）
+
+- 页面顶栏 / 构建记录面板：左侧蓝色强调线（构建语义）
+- 范围 banner：绿色 ready 渐变 + `.build-btn.release` 返回版本
+- KPI 卡片：左侧语义色条（蓝/绿/紫/橙/红）
+- 状态 badge：成功绿、进行中橙、失败红
+- 按钮：`.build-btn.build` 蓝、`.build-btn.release` 绿、`.build-btn.neutral` 白、`.build-btn.warn` 浅红
+- 右侧详情 KV：`.build-kv-grid` 小卡；快捷操作 hover 按语义色
+- 安装包下载弹窗：`.build-download-card` 蓝左线 + 紧凑 tile 小卡
+- CSS/JS：`project_build_history.css` / `project_build_history.js`；模板 `project_build_history_content.html`
+
+## 环境配置页（同风格 · 2026-07-08）
+
+- 环境卡网格：`repeat(auto-fill, minmax(200px, 220px))`，max-width 220px
+- 启用 `.is-ready` 绿渐变；禁用 `.is-pending` 橙渐变
+- 图标 44×44 / SVG 26×26
+- 按钮：`.env-btn.build` 配置蓝、`.env-btn.neutral` 环境详情、`.env-btn.release` 启用、`.env-btn.warn` 禁用/删除
+- 交付范围弹窗 `.delivery-dialog-card` 蓝左线 + 语义按钮
+- CSS/JS：`project_overview.css` / `project_delivery.js`；模板 `project_overview_config_envs.html`
+
+## 环境运行概览页（同风格 · 2026-07-08）
+
+- 页面顶栏 / 主面板：左侧蓝色强调线（监控语义）
+- KPI 卡片：左侧语义色条（绿/蓝/红/橙/紫）；标签 11px、数值 22px
+- 字体：`var(--font-family)`，正文 13px，次级 12px/11px
+- 仪表盘 widget / 右栏 / 表格：8px 圆角、紧凑间距、状态 badge 绿/橙/红
+- CSS：`project_environment_runtime.css`；模板 `project_environment_runtime.html`
+
+## 改完必做
+
+1. bump `DELIVERY_ASSET_VER`（`project_delivery.py`）
+2. 浏览器验收环境详情 `/environments/{env}` — 确认仍为**小卡片网格**，非列表
+3. 更新 `docs/design_specs/project_environment_detail_p18.md` 若 token 有变
+
+## 参考实现
+
+- CSS：`portals/common/core/static/project_environment_detail.css`（`.env-line-cards` … `.matrix-btn.release`）
+- JS：`portals/common/core/static/project_delivery.js`（`renderDeliveryMatrixHtml`）
+- Spec：`docs/design_specs/project_environment_detail_p18.md`

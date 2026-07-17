@@ -1,0 +1,18 @@
+{
+  "steps": [
+    {
+      "step": "trigger_build",
+      "ok": true,
+      "detail": {
+        "build_number": 119
+      }
+    },
+    {
+      "step": "jenkins_build",
+      "ok": false,
+      "error": "FAILURE"
+    }
+  ],
+  "order_id": "ro-20260629143411-a84827",
+  "finished_at": "2026-07-07T14:06:14.322403"
+}

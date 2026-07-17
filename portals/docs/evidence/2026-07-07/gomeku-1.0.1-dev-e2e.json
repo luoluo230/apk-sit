@@ -1,0 +1,62 @@
+{
+  "project_id": "GomeKu",
+  "order_id": "ro-20260629143411-a84827",
+  "steps": [
+    {
+      "step": "order_exists",
+      "ok": true,
+      "detail": {
+        "status": "building",
+        "resource_server_url": "https://wlhotupdate1.oss-cn-beijing.aliyuncs.com/MyGame1"
+      }
+    },
+    {
+      "step": "jenkins_reachable",
+      "ok": true,
+      "detail": {
+        "url": "http://127.0.0.1:8082"
+      }
+    },
+    {
+      "step": "trigger_build",
+      "ok": true,
+      "detail": {
+        "build_number": 117
+      }
+    },
+    {
+      "step": "jenkins_build",
+      "ok": false,
+      "error": "超时 1800s，最后状态 {'building': False, 'status': 'FAILURE'}"
+    },
+    {
+      "step": "runtime_active",
+      "ok": true,
+      "detail": {
+        "run_id": "run-5768438d1267",
+        "topology_id": "topology-design-gomeku-development"
+      }
+    },
+    {
+      "step": "precheck",
+      "ok": false,
+      "error": "[{\"label\": \"代码热更包\", \"hint\": \"需开启热更发布步骤、完成构建并登记 code 包\"}, {\"label\": \"APK 安装包\", \"hint\": \"下载地址已配置，但 OSS 远程产物不可达（404），需 Jenkins 构建并 upload\"}, {\"label\": \"资源包\", \"hint\": \"下载地址已配置，但 OSS 远程产物不可达（404），需 Jenkins 构建并 upload\"}, {\"label\": \"配置包\", \"hint\": \"下载地址已配置，但 OSS manifest 不可达（404），需 Jenkins 构建并 upload\"}]"
+    },
+    {
+      "step": "publish",
+      "ok": false,
+      "error": "预检未通过，跳过发布"
+    },
+    {
+      "step": "runtime_bootstrap",
+      "ok": false,
+      "error": "HTTP Error 404: NOT FOUND"
+    }
+  ],
+  "started_at": "2026-07-07T11:41:04.679238",
+  "summary": {
+    "passed": 4,
+    "failed": 4,
+    "finished_at": "2026-07-07T12:11:06.817767"
+  }
+}

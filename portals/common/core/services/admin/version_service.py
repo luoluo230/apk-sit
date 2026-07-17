@@ -270,6 +270,8 @@ def resolve_effective_bootstrap_fields(project_id: str, version_row: Dict[str, A
     """
     if not isinstance(version_row, dict):
         return {}
+    from services.commercial_release_plan import DEFAULT_RESOURCE_SERVER
+
     version_name = str(version_row.get("version_name") or "").strip()
     env_key = _version_row_env_key(version_row, project_id) if version_name else ""
     platform = _version_row_platform(version_row) if version_name else ""
@@ -281,7 +283,59 @@ def resolve_effective_bootstrap_fields(project_id: str, version_row: Dict[str, A
             out[key] = meta_val
         elif version_row.get(key) is not None:
             out[key] = version_row.get(key)
+    if not str(out.get("resource_server_url") or "").strip():
+        out["resource_server_url"] = DEFAULT_RESOURCE_SERVER
+    if not str(out.get("catalog_file_name") or "").strip() and version_name:
+        out["catalog_file_name"] = f"catalog_{version_name}.bin"
+    if out.get("min_client_version") is None or str(out.get("min_client_version") or "").strip() == "":
+        if version_name:
+            out["min_client_version"] = version_name
     return out
+
+
+def enrich_version_client_urls(project_id: str, version_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge effective bootstrap defaults and derive external URLs from OSS base + paths."""
+    if not isinstance(version_row, dict):
+        return {}
+    row = dict(version_row)
+    bootstrap = resolve_effective_bootstrap_fields(project_id, row)
+    for key, value in bootstrap.items():
+        if value is None:
+            continue
+        if key in {"rollout_percentage", "force_update", "is_revoked"}:
+            if row.get(key) is None:
+                row[key] = value
+            continue
+        if not str(row.get(key) or "").strip() and str(value).strip():
+            row[key] = value
+
+    base = str(row.get("resource_server_url") or "").strip().rstrip("/")
+    if not base:
+        from services.commercial_release_plan import DEFAULT_RESOURCE_SERVER
+
+        base = DEFAULT_RESOURCE_SERVER
+        row["resource_server_url"] = base
+
+    derived_paths = _derive_runtime_paths(row, project_id)
+    for path_key in ("resource_path", "config_path", "code_path", "apk_path"):
+        if not str(row.get(path_key) or "").strip() and derived_paths.get(path_key):
+            row[path_key] = derived_paths[path_key]
+
+    def _url_from_path(path_key: str, url_key: str) -> None:
+        path = str(row.get(path_key) or "").strip().strip("/")
+        if path and not str(row.get(url_key) or "").strip():
+            row[url_key] = f"{base}/{path}"
+
+    _url_from_path("apk_path", "apk_url")
+    _url_from_path("resource_path", "resource_url")
+    _url_from_path("config_path", "config_url")
+    _url_from_path("code_path", "code_url")
+
+    version_name = str(row.get("version_name") or "").strip()
+    for version_key in ("apk_version", "resource_version", "config_version"):
+        if not str(row.get(version_key) or "").strip() and version_name:
+            row[version_key] = version_name
+    return row
 
 
 def resolve_effective_jenkins(project_id: str, version_row: Dict[str, Any]) -> Dict[str, str]:
@@ -453,6 +507,21 @@ def _propagate_pipeline_to_group_scope(
                 row["apk_path"] = default_version_apk_rel_path(project_id, row)
             except Exception:
                 pass
+        enriched = enrich_version_client_urls(project_id, row)
+        for url_key in (
+            "resource_server_url",
+            "catalog_file_name",
+            "min_client_version",
+            "apk_url",
+            "resource_url",
+            "config_url",
+            "code_url",
+            "apk_version",
+            "resource_version",
+            "config_version",
+        ):
+            if enriched.get(url_key):
+                row[url_key] = enriched[url_key]
         row["updated_at"] = updated_at
         for legacy_field in ("deprecated", "status", "commercial_release", "jenkins_params"):
             row.pop(legacy_field, None)
@@ -591,6 +660,7 @@ def _derive_runtime_paths(version_row: Dict[str, Any], project_id: str = "") -> 
     out = {
         "resource_path": runtime_paths.get("resource_relative_path") or "",
         "config_path": runtime_paths.get("config_relative_path") or "",
+        "code_path": runtime_paths.get("code_relative_path") or "",
     }
     if apk_path:
         out["apk_path"] = apk_path

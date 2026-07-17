@@ -98,12 +98,14 @@
 
   function renderKpiCard(opts) {
     var trendHtml = "";
-    if (opts.trendLabel && opts.trendLabel !== "—") {
+    var trendLabel = String(opts.trendLabel || "");
+    var trendDir = opts.trendDir || "flat";
+    if (trendLabel && trendLabel !== "—" && trendDir !== "flat" && trendLabel.indexOf("持平") < 0) {
       trendHtml =
         '<span class="pm-kpi-trend ' +
-        esc(opts.trendDir || "flat") +
+        esc(trendDir) +
         '">' +
-        esc(opts.trendLabel) +
+        esc(trendLabel) +
         "</span>";
     }
     return (
@@ -223,9 +225,7 @@
             esc(seg.label || "") +
             "</span><b>" +
             esc(String(seg.count || 0)) +
-            " · " +
-            esc(String(seg.pct != null ? seg.pct : 0)) +
-            "%</b></div>"
+            "</b></div>"
           );
         })
         .join("") +
@@ -237,20 +237,14 @@
     if (!host) return;
     agent = agent || {};
     host.innerHTML =
-      '<div class="p16-widget-head"><h3>Agent 在线情况</h3></div><div class="p16-stat-list">' +
+      '<div class="p16-widget-head"><h3>Agent</h3></div><div class="p16-stat-list">' +
       '<div class="p16-stat-row"><span>在线</span><strong>' +
       esc(String(agent.online != null ? agent.online : 0)) +
       " / " +
       esc(String(agent.total != null ? agent.total : 0)) +
       "</strong></div>" +
-      '<div class="p16-stat-row"><span>离线</span><strong>' +
-      esc(String(agent.offline != null ? agent.offline : 0)) +
-      "</strong></div>" +
-      '<div class="p16-stat-rate">在线率 <b>' +
-      esc(agent.rate_pct != null ? agent.rate_pct + "%" : "—") +
-      "</b></div>" +
       (agent.link
-        ? '<a class="p16-widget-link" href="' + esc(agent.link) + '">' + esc(agent.link_text || "查看 Agent 列表") + " &gt;</a>"
+        ? '<a class="p16-widget-link" href="' + esc(agent.link) + '">Agent</a>'
         : "") +
       "</div>";
   }
@@ -261,7 +255,7 @@
     bundle = bundle || {};
     if (!bundle.version) {
       host.innerHTML =
-        '<div class="p16-widget-head"><h3>最近发布版本</h3></div><div class="p16-empty">暂无发布记录</div>';
+        '<div class="p16-widget-head"><h3>最近发布</h3></div><div class="p16-empty">—</div>';
       return;
     }
     var publisher = bundle.publisher || "";
@@ -270,25 +264,12 @@
       ? esc(bundle.released_at.replace("T", " ").replace("Z", "").slice(0, 19))
       : "";
     host.innerHTML =
-      '<div class="p16-widget-head"><h3>最近发布版本</h3></div><div class="p16-release-body">' +
+      '<div class="p16-widget-head"><h3>最近发布</h3></div><div class="p16-release-body">' +
       '<div class="p16-release-head"><div class="p16-release-version">' +
       esc(bundle.version) +
-      "</div>" +
-      (bundle.released_at ? '<span class="p16-release-tag">已发布</span>' : "") +
-      "</div>" +
-      '<div class="p16-release-meta">' +
-      (bundle.order_id ? "<span>发布单 " + esc(bundle.order_id) + "</span>" : "") +
-      (releasedAt ? "<span>" + releasedAt + "</span>" : "") +
-      (publisher
-        ? '<span class="p16-release-publisher"><span class="p16-release-avatar">' +
-          esc(publisherInitial) +
-          "</span>发布人 " +
-          esc(publisher) +
-          "</span>"
-        : "") +
-      "</div>" +
+      "</div></div>" +
       (bundle.link
-        ? '<a class="p16-widget-link" href="' + esc(bundle.link) + '">' + esc(bundle.link_text || "查看发布详情") + " &gt;</a>"
+        ? '<a class="p16-widget-link" href="' + esc(bundle.link) + '">详情</a>'
         : "") +
       "</div>";
   }
@@ -331,18 +312,20 @@
         points +
         '"></polyline></svg>';
     } else {
-      sparkHtml = '<div class="p16-sparkline-empty">暂无采样曲线</div>';
+      sparkHtml = '<div class="p16-sparkline-empty">—</div>';
     }
+    var deltaHtml =
+      deltaClass !== "flat" && deltaText !== "—"
+        ? '<div class="p16-trend-delta ' + deltaClass + '">' + esc(deltaText) + "</div>"
+        : "";
     host.innerHTML =
       '<div class="p16-trend-head"><div><h3>' +
       esc(trend.label || "") +
       '</h3><div class="p16-trend-value">' +
       esc(formatMetric(trend.value, trend.unit || "")) +
-      '</div></div><div class="p16-trend-delta ' +
-      deltaClass +
-      '">' +
-      esc(deltaText) +
       "</div></div>" +
+      deltaHtml +
+      "</div>" +
       sparkHtml;
   }
 
@@ -360,15 +343,12 @@
               esc(item.type_label || "变更") +
               "</b><span>" +
               esc(item.title || "") +
-              "<br>" +
-              esc(item.time || "") +
-              " · " +
-              esc(item.actor || "") +
+              (item.time ? " · " + esc(item.time) : "") +
               "</span></div></div>"
             );
           })
           .join("")
-      : '<div class="p16-empty">暂无变更记录</div>';
+      : '<div class="p16-empty">—</div>';
   }
 
   function renderRisks(items) {
@@ -376,7 +356,7 @@
     var title = document.getElementById("p16RiskTitle");
     if (!host) return;
     items = items || [];
-    if (title) title.textContent = "当前风险 (" + String(items.length) + ")";
+    if (title) title.textContent = items.length ? ("当前风险 " + String(items.length)) : "当前风险";
     host.innerHTML = items.length
       ? items
           .map(function (item) {
@@ -391,15 +371,13 @@
               href +
               "><b>" +
               esc(item.title || "") +
-              "</b><span>" +
-              esc(item.detail || "") +
-              "</span></" +
+              "</b></" +
               tag +
               ">"
             );
           })
           .join("")
-      : '<div class="p16-empty">暂无风险项</div>';
+      : '<div class="p16-empty">—</div>';
   }
 
   function renderDashboard(data) {
@@ -409,8 +387,6 @@
     renderAgentOnline(dash.agent_online);
     renderRecentRelease(data.bundle);
     var trends = dash.resource_trends || {};
-    var windowHost = document.getElementById("p16TrendWindow");
-    if (windowHost) windowHost.textContent = "（" + (trends.window_label || "近 1 小时") + "）";
     renderTrend("p16TrendCpu", trends.cpu);
     renderTrend("p16TrendMemory", trends.memory);
     renderTrend("p16TrendQps", trends.qps);
@@ -722,7 +698,7 @@
     if (!host) return;
     onCall = onCall || {};
     if (!onCall.name && !onCall.configured) {
-      host.innerHTML = '<div class="p16-empty">未配置值班负责人</div>';
+      host.innerHTML = '<div class="p16-empty">—</div>';
       return;
     }
     var initial = String(onCall.name || "?").slice(0, 1);
@@ -762,9 +738,7 @@
             pair[2] +
             '" alt=""></span><strong>' +
             esc(String(counts[pair[0]] || 0)) +
-            "</strong><span>" +
-            esc(pair[1]) +
-            "</span></div>"
+            "</strong></div>"
           );
         })
         .join("");
@@ -782,14 +756,12 @@
                 "</b>" +
                 (item.env_label ? '<span class="p16-env-tag">' + esc(item.env_label) + "</span>" : "") +
                 "</div><span>" +
-                esc(item.message || "") +
-                " · " +
-                esc(item.time) +
+                esc(item.time || "") +
                 "</span></div>"
               );
             })
             .join("")
-        : '<div class="p16-empty">暂无告警</div>';
+        : '<div class="p16-empty">—</div>';
     }
     if (quickHost) {
       quickHost.innerHTML = (sidebar.quick_links || [])
@@ -820,33 +792,12 @@
     if (!banner) return;
     var q = data.data_quality || {};
     if (!q.can_ops) {
-      banner.textContent = "当前账号无运维读取权限，仅展示交付上下文；运行指标不可用。";
+      banner.textContent = "无运维读取权限，运行指标不可用";
       banner.classList.remove("is-hidden");
       return;
     }
-    if (q.metrics_missing) {
-      banner.textContent =
-        "运行探针未就绪（" +
-        (q.probe_source || "unknown") +
-        "）。页面仅展示 Agent 注册信息，无 live 指标采样。";
-      banner.classList.remove("is-hidden");
-      return;
-    }
-    var parts = ["全页数据均来自 Agent / 探针实时上报，无设计参考填充。"];
-    if (q.primary_device_id || q.primary_agent_id) {
-      parts.push(
-        "当前环境主 Agent：" +
-          (q.primary_agent_id || "—") +
-          " · 设备 " +
-          (q.primary_device_id || "—") +
-          (q.primary_host ? " @" + q.primary_host : "")
-      );
-    }
-    if (q.sparse_metrics) {
-      parts.push("部分服务尚未上报 CPU / 内存 / QPS，对应项显示 —。");
-    }
-    banner.textContent = parts.join(" ");
-    banner.classList.remove("is-hidden");
+    banner.textContent = "";
+    banner.classList.add("is-hidden");
   }
 
   function renderHeader(data) {
@@ -1019,6 +970,35 @@
   readServiceFiltersFromUrl();
   bindFilters();
   bindServiceTableFilters();
+
+  function applyReleaseOrderFocus() {
+    var params = new URLSearchParams(location.search);
+    if (params.get("from") !== "release-order") return;
+    var reason = params.get("focus_reason") || "请确认并启动目标拓扑的运行态。";
+    var releaseOrderId = params.get("release_order_id") || "";
+    var banner = document.getElementById("p16ReleaseFocusBanner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "p16ReleaseFocusBanner";
+      banner.className = "release-focus-banner";
+      var head = document.querySelector(".p16-head");
+      if (head) head.insertAdjacentElement("afterend", banner);
+    }
+    var returnHref = releaseOrderId
+      ? "/admin/projects/" + encodeURIComponent(projectId) + "/release-orders/" + encodeURIComponent(releaseOrderId)
+      : "";
+    banner.innerHTML =
+      "<div><strong>来自发布单 · 待启动运行态</strong><p>" +
+      esc(reason) +
+      "</p></div>" +
+      (returnHref ? '<a class="release-focus-return" href="' + returnHref + '">返回发布单</a>' : "");
+    ["p16RuntimeBadge", "p16MainTitle", "p16DashTop"].forEach(function (id) {
+      var node = document.getElementById(id);
+      if (node) node.classList.add("field-highlight-target");
+    });
+  }
+
+  applyReleaseOrderFocus();
   document.addEventListener("click", function (event) {
     if (!event.target.closest(".p16-row-menu-wrap")) {
       openRowMenuId = "";

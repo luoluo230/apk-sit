@@ -86,6 +86,70 @@ def _check_remote_artifact(url: str, *, timeout: float = 5.0) -> Dict[str, Any]:
     return {"ok": False, "status": 0, "error": "artifact probe failed"}
 
 
+_DIRECTORY_PROBE_KEYS = frozenset({"resource_url", "config_url"})
+_PROBE_FALLBACKS = {
+    "resource_url": "catalog_url",
+    "config_url": "config_manifest_url",
+}
+
+
+def _unity_project_path_from_version(version_row: Dict[str, Any]) -> str:
+    pipeline = version_row.get("pipeline") if isinstance(version_row.get("pipeline"), dict) else {}
+    apk_build = pipeline.get("apk_build") if isinstance(pipeline.get("apk_build"), dict) else {}
+    return str(apk_build.get("unity_project_path") or "").strip()
+
+
+def _oss_object_exists(object_key: str, unity_project_path: str = "") -> Dict[str, Any]:
+    key = str(object_key or "").strip().lstrip("/")
+    if not key:
+        return {"ok": False, "status": 0, "error": "missing oss key"}
+    try:
+        from services.oss_client_helper import get_bucket
+
+        bucket, _ = get_bucket(unity_project_path or None)
+        bucket.head_object(key)
+        return {"ok": True, "status": 200, "method": "oss-head"}
+    except Exception as exc:
+        return {"ok": False, "status": 0, "method": "oss-head", "error": str(exc)}
+
+
+def _resolve_apk_oss_key(version_row: Dict[str, Any], apk_url: str) -> str:
+    apk_dl = version_row.get("apk_download") if isinstance(version_row.get("apk_download"), dict) else {}
+    key = str(apk_dl.get("oss_remote_key") or "").strip().lstrip("/")
+    if key:
+        return key
+    text = str(apk_url or "").strip()
+    if ".aliyuncs.com/" in text:
+        return text.split(".aliyuncs.com/", 1)[1].split("?", 1)[0].lstrip("/")
+    return ""
+
+
+def _evaluate_artifact_checks(
+    targets: Dict[str, str],
+    version_row: Dict[str, Any],
+) -> tuple[Dict[str, Any], List[str]]:
+    checks = {key: _check_remote_artifact(value) for key, value in targets.items()}
+    for prefix_key, fallback_key in _PROBE_FALLBACKS.items():
+        if prefix_key not in checks or checks[prefix_key].get("ok"):
+            continue
+        if fallback_key and checks.get(fallback_key, {}).get("ok"):
+            checks[prefix_key] = {
+                "ok": True,
+                "status": checks[fallback_key].get("status", 200),
+                "method": "fallback",
+                "verified_via": fallback_key,
+            }
+    apk_url = str(targets.get("apk_url") or "")
+    if apk_url and not checks.get("apk_url", {}).get("ok"):
+        oss_key = _resolve_apk_oss_key(version_row, apk_url)
+        if oss_key:
+            oss_check = _oss_object_exists(oss_key, _unity_project_path_from_version(version_row))
+            if oss_check.get("ok"):
+                checks["apk_url"] = oss_check
+    missing = [key for key, result in checks.items() if not bool(result.get("ok"))]
+    return checks, missing
+
+
 def build_client_bootstrap_snapshot(
     version_row: Dict[str, Any],
     scope: Optional[Dict[str, Any]] = None,
@@ -188,7 +252,7 @@ def _artifact_probe_targets(scope: Dict[str, Any], version_row: Dict[str, Any]) 
         version_code=str(version_row.get("version_code") or ""),
     )
     resource_relative_path = str(version_row.get("resource_path") or runtime_paths.get("resource_relative_path") or "").strip("/")
-    resource_base = str(version_row.get("resource_server_url") or "").strip().rstrip("/")
+    resource_base = str(version_row.get("resource_server_url") or "").strip().rstrip("/") or DEFAULT_RESOURCE_SERVER
     catalog_file_name = str(version_row.get("catalog_file_name") or runtime_paths.get("catalog_file_name") or "").strip().lstrip("/")
     catalog_url = ""
     if resource_base and resource_relative_path and catalog_file_name:
@@ -263,8 +327,7 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
     missing_artifacts: List[str] = []
     if validate_artifacts:
         artifact_urls = _artifact_probe_targets(scope, version_row)
-        artifact_checks = {key: _check_remote_artifact(value) for key, value in artifact_urls.items()}
-        missing_artifacts = [key for key, result in artifact_checks.items() if not bool(result.get("ok"))]
+        artifact_checks, missing_artifacts = _evaluate_artifact_checks(artifact_urls, version_row)
     ok = not missing_client and not missing_profile and runtime_aligned and not alignment_errors and not missing_artifacts
     return {
         "ok": ok,
@@ -286,3 +349,36 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
         "network_profile_preview": network_profile,
         "checked_at": _now_iso(),
     }
+
+
+def list_publishable_bundles(scope_id: str, *, platform: str = "") -> List[Dict[str, Any]]:
+    """Bundles that can be activated on a scope (published history + superseded)."""
+    sid = str(scope_id or "").strip()
+    if not sid:
+        return []
+    plat = str(platform or "").strip().lower()
+    active = find_active_bundle(sid, platform=plat if plat in {"android", "ios"} else "")
+    active_id = str(active.get("bundle_id") or "")
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in list_bundles(scope_id=sid, platform=plat if plat in {"android", "ios"} else ""):
+        bid = str(row.get("bundle_id") or "").strip()
+        if not bid or bid in seen:
+            continue
+        seen.add(bid)
+        status = str(row.get("publish_status") or "")
+        if status not in {"published", "superseded", "revoked"}:
+            continue
+        client = row.get("client") if isinstance(row.get("client"), dict) else {}
+        out.append({
+            "bundle_id": bid,
+            "release_order_id": str(row.get("release_order_id") or ""),
+            "version_name": str(client.get("version_name") or row.get("version_name") or ""),
+            "version_code": str(client.get("version_code") or row.get("version_code") or ""),
+            "platform": str(client.get("platform") or row.get("platform") or plat),
+            "publish_status": status,
+            "published_at": str(row.get("published_at") or ""),
+            "published_by": str(row.get("published_by") or ""),
+            "is_active": bid == active_id,
+        })
+    return out

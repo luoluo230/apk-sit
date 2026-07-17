@@ -15,6 +15,7 @@ from services.authz import admin_required
 from services.ops.environment_runtime_service import build_environment_runtime_overview
 from services.ops.helpers import _render_ops_page
 from services.release.release_order_service import (
+    activate_bundle_on_scope,
     approve_release_order,
     cancel_release_order,
     context_options,
@@ -26,17 +27,24 @@ from services.release.release_order_service import (
     precheck_release_order,
     project_overview,
     publish_release_order,
+    quick_build_version,
+    resolve_channel_build_journey,
+    resolve_channel_release_journey,
+    resolve_delivery_actions,
     resolve_release_order_next_action,
     request_build,
     rollback_release_order,
+    rollback_scope_to_bundle,
+    unpublish_scope,
     update_release_order,
     verify_release_order,
 )
+from services.release.bundle_service import list_publishable_bundles
 from services.release.release_policy_service import release_order_form_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
 
-DELIVERY_ASSET_VER = "20260706-release-journey-v4"
+DELIVERY_ASSET_VER = "20260708-journey-v26"
 
 bp = Blueprint("project_delivery", __name__)
 
@@ -120,10 +128,23 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
             f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
         )
+    elif template_name in ("project_channel_build_journey.html", "project_channel_release_journey.html"):
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_channel_journey.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js_name = (
+            "project_channel_build_journey.js"
+            if template_name == "project_channel_build_journey.html"
+            else "project_channel_release_journey.js"
+        )
+        js = f'<script src="/static/{js_name}?v={DELIVERY_ASSET_VER}"></script>'
     elif template_name == "project_environment_detail.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/project_environment_detail.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/release_focus.css?v={DELIVERY_ASSET_VER}">'
         )
         js = (
             f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
@@ -132,6 +153,7 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
     elif template_name == "release_order_detail.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/release_order_detail.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
         )
         js = (
@@ -242,6 +264,47 @@ def environment_detail_page(project_id: str, env_key: str):
         project_id,
         "project-home",
         page_env_key=env_key,
+    )
+
+
+def _normalize_channel_route_id(project_id: str, channel_id: str) -> str:
+    raw = str(channel_id or "").strip()
+    return resolve_channel_id(project_id, raw) or raw
+
+
+@bp.route("/admin/projects/<project_id>/environments/<env_key>/channels/<channel_id>/build")
+@admin_required("projects")
+def channel_build_journey_page(project_id: str, env_key: str, channel_id: str):
+    if project_id not in projects_db:
+        return "项目不存在", 404
+    ek = normalize_release_env_key(env_key, project_id=project_id)
+    cid = _normalize_channel_route_id(project_id, channel_id)
+    return _page(
+        "project_channel_build_journey.html",
+        "构建流程",
+        project_id,
+        "project-home",
+        breadcrumb_module="交付管理",
+        page_env_key=ek,
+        channel_id=cid,
+    )
+
+
+@bp.route("/admin/projects/<project_id>/environments/<env_key>/channels/<channel_id>/release")
+@admin_required("projects")
+def channel_release_journey_page(project_id: str, env_key: str, channel_id: str):
+    if project_id not in projects_db:
+        return "项目不存在", 404
+    ek = normalize_release_env_key(env_key, project_id=project_id)
+    cid = _normalize_channel_route_id(project_id, channel_id)
+    return _page(
+        "project_channel_release_journey.html",
+        "发版流程",
+        project_id,
+        "project-home",
+        breadcrumb_module="交付管理",
+        page_env_key=ek,
+        channel_id=cid,
     )
 
 
@@ -420,14 +483,28 @@ def release_order_start_page(project_id: str):
     if project_id not in projects_db:
         return "项目不存在", 404
     version_id = str(request.args.get("version_id") or "").strip()
+    intent = str(request.args.get("intent") or "").strip().lower()
     if not version_id:
         qs = urlencode({"hint": "pick_vc", "env_key": str(request.args.get("env_key") or "").strip()})
         return redirect(f"/admin/projects/{project_id}/versions?{qs}")
-    draft = find_draft_release_order(project_id, version_id)
     versions = project_versions_db.get(project_id) or []
     version = next((row for row in versions if str(row.get("id") or "") == version_id), None)
     if not version:
         return "VersionCode 不存在", 404
+    if intent in ("build", "release"):
+        from services.release.release_context import apply_scope_fields_to_version_row
+
+        vrow = apply_scope_fields_to_version_row(dict(version), project_id)
+        ch_raw = str(vrow.get("channel_id") or vrow.get("channel") or "").strip()
+        channel_id = resolve_channel_id(project_id, ch_raw) or ch_raw
+        env_key = normalize_release_env_key(vrow.get("env_key") or "development", project_id=project_id)
+        platform = str(vrow.get("platform") or "android").strip().lower()
+        qs = urlencode({"platform": platform, "version_id": version_id})
+        journey = "build" if intent == "build" else "release"
+        return redirect(
+            f"/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/{journey}?{qs}"
+        )
+    draft = find_draft_release_order(project_id, version_id)
     if not draft:
         from services.release.release_context import apply_scope_fields_to_version_row
 
@@ -720,6 +797,137 @@ def project_environment_delivery_scope_api(project_id: str, env_key: str):
         project_id, env_key, request.get_json(silent=True) or {}
     )
     return jsonify(payload), status
+
+
+@bp.route("/api/projects/<project_id>/environments/<env_key>/channels/<channel_id>/build-journey")
+@admin_required("projects")
+def channel_build_journey_api(project_id: str, env_key: str, channel_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    try:
+        data = resolve_channel_build_journey(
+            project_id,
+            env_key,
+            _normalize_channel_route_id(project_id, channel_id),
+            platform=str(request.args.get("platform") or "").strip().lower(),
+            version_id=str(request.args.get("version_id") or "").strip(),
+        )
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/environments/<env_key>/channels/<channel_id>/release-journey")
+@admin_required("projects")
+def channel_release_journey_api(project_id: str, env_key: str, channel_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    try:
+        data = resolve_channel_release_journey(
+            project_id,
+            env_key,
+            _normalize_channel_route_id(project_id, channel_id),
+            platform=str(request.args.get("platform") or "").strip().lower(),
+            version_id=str(request.args.get("version_id") or "").strip(),
+            bundle_id=str(request.args.get("bundle_id") or "").strip(),
+        )
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/versions/<version_id>/delivery-actions", methods=["GET"])
+@admin_required("projects")
+def version_delivery_actions_api(project_id: str, version_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    try:
+        data = resolve_delivery_actions(project_id, version_id)
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/versions/<version_id>/quick-build", methods=["POST"])
+@admin_required("projects")
+def version_quick_build_api(project_id: str, version_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    try:
+        data = quick_build_version(project_id, version_id, _actor())
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/scopes/<scope_id>/publishable-bundles")
+@admin_required("projects")
+def scope_publishable_bundles_api(project_id: str, scope_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    bundles = list_publishable_bundles(
+        scope_id,
+        platform=str(request.args.get("platform") or "").strip().lower(),
+    )
+    return jsonify({"ok": True, "data": bundles})
+
+
+@bp.route("/api/projects/<project_id>/scopes/<scope_id>/publish-bundle", methods=["POST"])
+@admin_required("projects")
+def scope_publish_bundle_api(project_id: str, scope_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    payload = request.get_json(silent=True) or {}
+    try:
+        data = activate_bundle_on_scope(
+            project_id,
+            scope_id,
+            str(payload.get("bundle_id") or "").strip(),
+            _actor(),
+            mode=str(payload.get("mode") or "full"),
+            gray_ratio=str(payload.get("gray_ratio") or ""),
+            reason=str(payload.get("reason") or ""),
+        )
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/scopes/<scope_id>/rollback", methods=["POST"])
+@admin_required("projects")
+def scope_rollback_api(project_id: str, scope_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    payload = request.get_json(silent=True) or {}
+    try:
+        data = rollback_scope_to_bundle(
+            project_id,
+            scope_id,
+            str(payload.get("bundle_id") or "").strip(),
+            _actor(),
+            reason=str(payload.get("reason") or ""),
+        )
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/scopes/<scope_id>/unpublish", methods=["POST"])
+@admin_required("projects")
+def scope_unpublish_api(project_id: str, scope_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    payload = request.get_json(silent=True) or {}
+    try:
+        data = unpublish_scope(
+            project_id,
+            scope_id,
+            _actor(),
+            reason=str(payload.get("reason") or ""),
+        )
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
 
 @bp.route("/api/projects/<project_id>/release-orders", methods=["GET", "POST"])

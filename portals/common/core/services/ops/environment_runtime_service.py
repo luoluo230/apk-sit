@@ -870,7 +870,7 @@ def build_environment_runtime_overview(
                 "severity": "critical",
                 "title": "存在失败发布单",
                 "message": f"{delivery_card.get('failed_count')} 个发布单失败",
-                "href": f"/admin/projects/{project_id}/release-orders?env_key={env}&status=failed",
+                "href": f"/admin/projects/{project_id}/release-orders?scoped=1&env_key={env}&status=failed",
             }
         )
     if can_ops and not runtime_info.get("active") and runtime_info.get("topology_id"):
@@ -931,7 +931,7 @@ def build_environment_runtime_overview(
             "order_id": str(latest_order.get("order_id") or latest_order.get("id") or ""),
             "released_at": str(latest_order.get("published_at") or latest_order.get("updated_at") or ""),
             "publisher": str(latest_order.get("created_by") or latest_order.get("publisher") or ""),
-            "link": f"/admin/projects/{project_id}/release-orders?env_key={env}",
+            "link": f"/admin/projects/{project_id}/release-orders?scoped=1&env_key={env}",
             "link_text": "查看发布详情",
         },
         latest_order if isinstance(latest_order, dict) else {},
@@ -1055,7 +1055,7 @@ def build_environment_runtime_overview(
                 },
                 {
                     "label": "进入发布单",
-                    "href": f"/admin/projects/{project_id}/release-orders?env_key={env}",
+                    "href": f"/admin/projects/{project_id}/release-orders?scoped=1&env_key={env}",
                     "icon": "nav_release_order",
                 },
                 {

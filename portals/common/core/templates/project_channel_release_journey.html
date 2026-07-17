@@ -1,0 +1,23 @@
+<section class="delivery-app channel-journey-app" data-journey="release" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-channel-id="{{ channel_id }}">
+  <header class="cj-header">
+    <a class="cj-back" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}"><img src="/static/project_ui/svg/action_back.svg" alt="">返回环境详情</a>
+    <div class="cj-header-copy">
+      <h1 id="cjReleaseTitle">发版流程</h1>
+      <p id="cjReleaseSubtitle">选择产物就绪的版本组与 VersionCode，完成发版计划、预检与发布</p>
+    </div>
+  </header>
+  <div class="cj-toolbar">
+    <div class="cj-context" id="cjReleaseContext" aria-label="当前上下文"></div>
+    <div class="cj-platform-tabs" id="cjReleasePlatforms"></div>
+  </div>
+  <main class="cj-main">
+    <section class="cj-target-card">
+      <div class="cj-target-head">
+        <h2>发版目标</h2>
+        <p>仅列出产物就绪的 VersionCode，用于发版计划与监测</p>
+      </div>
+      <div class="cj-version-picker-host" id="cjReleaseVersionPicker" aria-label="发版目标选择"></div>
+    </section>
+    <section class="cj-workspace" id="cjReleaseMain"><div class="ui-skeleton">加载发版流程...</div></section>
+  </main>
+</section>

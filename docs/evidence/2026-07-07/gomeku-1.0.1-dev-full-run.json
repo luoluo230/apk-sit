@@ -1,0 +1,49 @@
+{
+  "steps": [
+    {
+      "step": "trigger_build",
+      "ok": true,
+      "detail": {
+        "build_number": 120
+      }
+    },
+    {
+      "step": "jenkins_build",
+      "ok": true,
+      "detail": {
+        "build_number": 120
+      }
+    },
+    {
+      "step": "precheck",
+      "ok": true,
+      "detail": {
+        "status": "ready"
+      }
+    },
+    {
+      "step": "publish",
+      "ok": true,
+      "detail": {
+        "bundle_id": "rb-20260707-gomeku-development-1001-android-97ab41",
+        "status": "published"
+      }
+    },
+    {
+      "step": "active_bundle",
+      "ok": true,
+      "detail": {
+        "bundle_id": "rb-20260707-gomeku-development-1001-android-97ab41"
+      }
+    },
+    {
+      "step": "runtime_bootstrap",
+      "ok": true,
+      "detail": {
+        "active_bundle_id": "rb-20260707-gomeku-development-1001-android-97ab41"
+      }
+    }
+  ],
+  "order_id": "ro-20260629143411-a84827",
+  "finished_at": "2026-07-07T14:13:46.904859"
+}

@@ -1,5 +1,5 @@
 (function () {
-  const root = document.querySelector(".agent-screen--control");
+  const root = document.querySelector(".ops-agent-app");
   if (!root || !window.OpsApi) return;
 
   let queryProject = "";
@@ -35,7 +35,7 @@
   };
 
   const nodes = {
-    summary: document.getElementById("agentSummaryCards"),
+    summary: document.getElementById("agentPanelMeta"),
     cards: document.getElementById("agentCards"),
     list: document.getElementById("agentList"),
     meta: document.getElementById("agentResultsMeta"),
@@ -305,33 +305,14 @@
 
   function renderSummary() {
     const online = state.rows.filter(function (row) { return row.status === "ONLINE"; }).length;
-    const cards = [
-      { tone: "blue", icon: "nav_agent_server", title: "在线 Agent", value: online, desc: "实时在线设备数", href: "" },
-      { tone: "green", icon: "kpi_member", title: "注册 Agent", value: state.rows.length, desc: "已注册设备总数", href: "" },
-      { tone: "orange", icon: "status_pending", title: "待执行任务", value: state.summaryExtra.pending, desc: "等待执行的任务数", href: queueHref("PENDING") },
-      { tone: "purple", icon: "nav_execute", title: "运行任务", value: state.summaryExtra.running, desc: "正在运行的任务数", href: queueHref("RUNNING") },
-    ];
-    nodes.summary.innerHTML = cards.map(function (card) {
-      return "" +
-        '<article class="agent-summary-card' + (card.href ? " is-clickable" : "") + '" data-tone="' + esc(card.tone) + '"' + (card.href ? (' data-summary-href="' + esc(card.href) + '"') : "") + '>' +
-          '<div class="agent-summary-icon"><img src="/static/project_ui/svg/' + esc(card.icon) + '.svg" alt=""></div>' +
-          "<div>" +
-            '<div class="agent-summary-label">' + esc(card.title) + "</div>" +
-            '<div class="agent-summary-value">' + esc(card.value) + "</div>" +
-            '<div class="agent-summary-desc">' + esc(card.desc) + "</div>" +
-          "</div>" +
-        "</article>";
-    }).join("");
+    if (!nodes.summary) return;
+    nodes.summary.textContent = state.rows.length
+      ? ("共 " + state.rows.length + " · 在线 " + online + " · 待执行 " + state.summaryExtra.pending)
+      : "";
   }
 
   function bindSummaryCards() {
-    nodes.summary.querySelectorAll("[data-summary-href]").forEach(function (node) {
-      node.onclick = function () {
-        const href = String(node.getAttribute("data-summary-href") || "");
-        if (!href) return;
-        window.location.href = href;
-      };
-    });
+    /* panel meta is text-only */
   }
 
   function renderServiceList(row) {
@@ -477,12 +458,10 @@
 
   function updateMeta() {
     const totalPages = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
-    nodes.meta.innerHTML = "" +
-      "<div><strong>" + esc(state.filteredRows.length) + "</strong> 个 Agent 符合当前筛选条件</div>" +
-      "<div>视图：" + (state.view === "card" ? "卡片视图" : "列表视图") + " · 第 " + esc(state.page) + " / " + esc(totalPages) + " 页</div>";
+    if (nodes.meta) nodes.meta.textContent = "";
     nodes.paginationMeta.textContent = "共 " + state.filteredRows.length + " 条";
     nodes.pageIndicator.textContent = String(state.page);
-    nodes.selectedCount.textContent = "已选择 " + state.selectedIds.size + " 项";
+    nodes.selectedCount.textContent = String(state.selectedIds.size) + " 项";
     const pageRows = currentPageRows();
     nodes.selectPage.checked = pageRows.length > 0 && pageRows.every(function (row) {
       return state.selectedIds.has(row.rowId);

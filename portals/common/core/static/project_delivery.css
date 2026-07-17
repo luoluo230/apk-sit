@@ -47,6 +47,28 @@
 .production-banner strong{color:#ad6800}
 .order-alert-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px}
 .order-alert-grid .alert-card.info{background:#f0f5ff;border-color:#adc6ff}
+.order-issue-list{max-height:220px;overflow:auto;margin:8px 0 0;padding:0;list-style:none}
+.order-issue-list li{padding:8px 0;border-top:1px solid rgba(0,0,0,.06);font-size:12px;line-height:1.5}
+.order-issue-list li:first-child{border-top:0;padding-top:0}
+.order-issue-list strong{display:block;color:#17243d;font-size:12px}
+.order-issue-list small{display:block;margin-top:2px;color:#8a96a8}
+.order-issue-list a{color:#1677ff;font-weight:600;text-decoration:none}
+.order-issue-list a:hover{text-decoration:underline}
+.order-fix-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.order-fix-actions a,.order-fix-actions button{min-height:28px;padding:0 10px;border:1px solid #dce4f2;border-radius:6px;background:#fff;color:#344054;font-size:11px;font-weight:600;text-decoration:none;cursor:pointer}
+.order-fix-actions a.primary,.order-fix-actions button.primary{background:#1677ff;border-color:#1677ff;color:#fff}
+.detail-row .detail-tone.danger{color:#cf1322}
+.detail-row .detail-tone.warning{color:#d48806}
+.detail-row .detail-tone.success{color:#389e0d}
+.detail-row .detail-tone.muted{color:#8a96a8}
+.detail-row a.ro-config-link{color:#1677ff;font-weight:600;text-decoration:none;border-bottom:1px dashed #91caff}
+.precheck-checklist{margin:0;padding:0;list-style:none}
+.precheck-checklist li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:8px;align-items:start;padding:8px 0;border-top:1px solid #eef1f6;font-size:12px}
+.precheck-checklist li:first-child{border-top:0}
+.precheck-checklist .mark{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700}
+.precheck-checklist .mark.ok{background:#d9f3e1;color:#389e0d}
+.precheck-checklist .mark.fail{background:#fde0e0;color:#cf1322}
+.precheck-checklist a{font-size:11px;color:#1677ff;font-weight:600;text-decoration:none}
 .order-detail-grid .ui-panel{border-radius:var(--radius-lg,16px)}
 .timeline-panel .timeline-row{padding:10px 0;border-bottom:1px solid #eef1f6}
 @media(max-width:1100px){.order-alert-grid{grid-template-columns:1fr}}

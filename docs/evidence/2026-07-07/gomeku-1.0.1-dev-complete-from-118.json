@@ -1,0 +1,43 @@
+{
+  "steps": [
+    {
+      "step": "archive_apk",
+      "ok": true,
+      "detail": {
+        "pub_download_path": "wechat/dev/GomeKu_1.0.1_vc1.apk"
+      }
+    },
+    {
+      "step": "artifacts_ready",
+      "ok": true,
+      "detail": {
+        "artifact_count": 4
+      }
+    },
+    {
+      "step": "precheck",
+      "ok": true,
+      "detail": {
+        "status": "ready"
+      }
+    },
+    {
+      "step": "publish",
+      "ok": true,
+      "detail": {
+        "bundle_id": "rb-20260707-gomeku-development-1001-android-3c3ff6",
+        "status": "published"
+      }
+    },
+    {
+      "step": "runtime_bootstrap",
+      "ok": true,
+      "detail": {
+        "active_bundle_id": "rb-20260707-gomeku-development-1001-android-3c3ff6"
+      }
+    }
+  ],
+  "order_id": "ro-20260629143411-a84827",
+  "build_number": 118,
+  "finished_at": "2026-07-07T12:35:45.233753"
+}

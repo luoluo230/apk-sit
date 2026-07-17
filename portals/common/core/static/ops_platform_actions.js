@@ -65,8 +65,13 @@
     const t=selectedTarget();
     const meta=$('actTargetMeta');
     if(!meta) return;
-    if(!t){ meta.textContent='当前筛选条件下没有可执行目标，请切换目标类型或先完成拓扑与 Agent 配置。'; return; }
-    meta.innerHTML='类型='+esc(TARGET_TYPE_ZH[t.target_type]||t.target_type)+' | 节点='+esc(t.node_id||'-')+' | Agent='+esc(t.agent_id||'-')+' | 探活='+statusBadge(t.probe_status||'-');
+    if(!t){
+      meta.textContent='';
+      meta.classList.add('is-hidden');
+      return;
+    }
+    meta.classList.remove('is-hidden');
+    meta.textContent=(TARGET_TYPE_ZH[t.target_type]||t.target_type)+' · '+String(t.node_id||'-')+' · '+String(t.agent_id||'-');
     if($('actTarget')) $('actTarget').value=String(t.service_id||t.node_id||'');
   }
 
@@ -153,12 +158,15 @@
     var statusLabel = d.ok ? '成功: ' : '失败: ';
     if (d.degraded) statusLabel = '降级执行: ';
     var metaText = statusLabel+(d.message||d.error||mode)+(d.trace_id?(' | trace='+d.trace_id):'')+(d.approval_id?(' | approval='+d.approval_id):'');
-    $('execMeta').textContent = metaText;
-    if (d.degraded) {
-      $('execMeta').style.cssText='background:#ff9f1a;color:#fff;padding:6px 10px;border-radius:6px';
-      if(typeof toast==='function') toast('动作未实际执行（下游服务不可达），仅记录参数','warn');
-    } else {
-      $('execMeta').style.cssText='';
+    const execMeta=$('execMeta');
+    if(execMeta){
+      execMeta.textContent=metaText;
+      execMeta.classList.remove('is-hidden');
+      if (d.degraded) {
+        execMeta.style.cssText='background:#ff9f1a;color:#fff;padding:6px 10px;border-radius:6px';
+      } else {
+        execMeta.style.cssText='';
+      }
     }
     if(mode==='execute' && d.ok) await loadAgentRegistryAndQueue();
   }
@@ -196,7 +204,12 @@
       }
     };
     const d=await OpsApi.updateAgentPolicy(payload);
-    $('execMeta').textContent=(d.ok?'策略已保存':'策略保存失败')+(d.error?(' | '+d.error):'');
+    const execMeta=$('execMeta');
+    if(execMeta){
+      execMeta.textContent=(d.ok?'策略已保存':'保存失败')+(d.error?(' · '+d.error):'');
+      execMeta.classList.remove('is-hidden');
+      execMeta.style.cssText='';
+    }
     await loadPolicy();
   }
 
@@ -207,30 +220,46 @@
     const agents=(d.agents && typeof d.agents==='object')?d.agents:{};
     const regWrap=$('agentRegistryWrap');
     const keys=Object.keys(agents);
-    if(!keys.length){regWrap.innerHTML='<div class="preset-empty">暂无 Agent 在线记录</div>';} else {
-      regWrap.innerHTML=keys.map(k=>{
+    if(!keys.length){regWrap.innerHTML='<div class="ops-workspace-empty">暂无 Agent</div>';} else {
+      regWrap.innerHTML='<div class="env-line-cards">'+keys.map(k=>{
         const a=agents[k]||{};
-        return '<div style="border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;margin-bottom:8px">'
-          +'<div style="display:flex;justify-content:space-between"><b>'+esc(a.agent_id||k)+'</b>'+statusBadge(a.status||'UNKNOWN')+'</div>'
-          +'<div style="font-size:11px;color:#64748b">node='+esc(a.node_id||k)+' | ver='+esc(a.version||'-')+' | ip='+esc(a.ip||'-')+'</div>'
-          +'<div style="font-size:11px;color:#64748b">last_seen='+esc(a.last_seen||'-')+(a.upgrade_status?(' | upgrade='+esc(a.upgrade_status)):'')+'</div></div>';
-      }).join('');
+        const st=String(a.status||'').toUpperCase();
+        const cls=(st==='ONLINE'||st==='SUCCESS')?'configured':'unconfigured';
+        return '<article class="env-line-card '+cls+'"><div class="env-line-card-head"><span class="env-line-platform-icon"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span><div class="env-line-card-title"><span class="env-line-platform">'+esc(a.agent_id||k)+'</span><span class="env-line-badge '+(cls==='configured'?'ready':'pending')+'">'+esc(STATUS_ZH[st]||st||'-')+'</span></div></div>'
+          +'<dl class="env-line-fields"><div><dt>节点</dt><dd>'+esc(a.node_id||k)+'</dd></div><div><dt>版本</dt><dd>'+esc(a.version||'-')+'</dd></div><div><dt>IP</dt><dd>'+esc(a.ip||'-')+'</dd></div></dl></article>';
+      }).join('')+'</div>';
     }
 
     const c={PENDING:0,RUNNING:0,SUCCESS:0,FAILED:0,CANCELED:0,TIMEOUT:0};
     jobs.forEach(j=>{const s=String(j.status||'').toUpperCase(); if(c[s]!==undefined)c[s]++;});
     $('queueSummary').innerHTML=''
-      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">待执行：<b>'+c.PENDING+'</b></div>'
-      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">运行中：<b>'+c.RUNNING+'</b></div>'
-      +'<div style="border:1px solid #dbe6fb;border-radius:8px;padding:8px;background:#fff">已结束：<b>'+(c.SUCCESS+c.FAILED+c.CANCELED+c.TIMEOUT)+'</b></div>';
+      +'<div class="project-ops-queue-card is-pending">待执行 <b>'+c.PENDING+'</b></div>'
+      +'<div class="project-ops-queue-card is-pending">运行中 <b>'+c.RUNNING+'</b></div>'
+      +'<div class="project-ops-queue-card is-ready">已结束 <b>'+(c.SUCCESS+c.FAILED+c.CANCELED+c.TIMEOUT)+'</b></div>';
 
-    if(!jobs.length){$('queueTableWrap').innerHTML='<div class="preset-empty">暂无队列任务</div>'; return;}
-    let table='<table style="width:100%;border-collapse:separate;border-spacing:0 8px"><thead><tr><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">任务</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">节点</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">动作</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">状态</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">尝试次数</th><th style="text-align:left;font-size:12px;color:#64748b;padding:6px">更新时间</th></tr></thead><tbody>';
-    jobs.forEach(j=>{
-      table+='<tr style="background:#fff"><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.job_id||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.node_id||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(ACTION_ZH[j.action_type]||j.action_type||'-')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+statusBadge(j.status||'')+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.attempt??0)+'</td><td style="padding:6px;border-top:1px solid #e5ecfa;border-bottom:1px solid #e5ecfa">'+esc(j.updated_at||'-')+'</td></tr>';
-    });
-    table+='</tbody></table>';
-    $('queueTableWrap').innerHTML=table;
+    if(!jobs.length){$('queueTableWrap').innerHTML='<div class="ops-workspace-empty">暂无队列任务</div>'; return;}
+    function queueCardClass(st){
+      const s=String(st||'').toUpperCase();
+      if(s==='SUCCESS') return 'is-success';
+      if(s==='FAILED'||s==='TIMEOUT'||s==='CANCELED') return 'is-failed';
+      if(s==='RUNNING') return 'is-running';
+      return '';
+    }
+    function queueBadgeClass(st){
+      const s=String(st||'').toUpperCase();
+      if(s==='SUCCESS') return 'success';
+      if(s==='FAILED'||s==='TIMEOUT'||s==='CANCELED') return 'failed';
+      if(s==='RUNNING') return 'running';
+      return 'pending';
+    }
+    $('queueTableWrap').innerHTML=jobs.map(function(j){
+      const st=String(j.status||'').toUpperCase();
+      return '<article class="ops-queue-card '+queueCardClass(st)+'"><div class="ops-queue-card-head"><strong title="'+esc(j.job_id||'-')+'">'+esc(j.job_id||'-')+'</strong><span class="ops-queue-badge '+queueBadgeClass(st)+'">'+esc(st||'-')+'</span></div>'
+        +'<dl class="ops-queue-fields"><div><dt>节点</dt><dd title="'+esc(j.node_id||'-')+'">'+esc(j.node_id||'-')+'</dd></div>'
+        +'<div><dt>动作</dt><dd>'+esc(ACTION_ZH[j.action_type]||j.action_type||'-')+'</dd></div>'
+        +'<div><dt>尝试</dt><dd>'+esc(j.attempt??0)+'</dd></div>'
+        +'<div><dt>更新</dt><dd>'+esc(j.updated_at||'-')+'</dd></div></dl></article>';
+    }).join('');
   }
 
   async function boot(){

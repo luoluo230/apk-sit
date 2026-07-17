@@ -9,22 +9,14 @@
     </div>
     <div class="build-page-actions pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
-      <a class="build-btn build-btn-primary" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">
+      <a class="build-btn release" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">
         <img src="/static/project_ui/svg/nav_version_code.svg" alt="">返回版本继续发布
       </a>
-      <button class="build-btn" type="button" data-refresh>
+      <button class="build-btn neutral" type="button" data-refresh>
         <img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新
       </button>
     </div>
   </header>
-
-  <div class="build-scope-banner is-hidden" data-scope-banner>
-    <div>
-      <strong data-scope-title>构建记录 · 发布请从版本代码开始</strong>
-      <p data-scope-desc></p>
-    </div>
-    <a class="build-btn" data-scope-back href="/admin/projects/{{ project_id }}/versions">返回版本继续发布</a>
-  </div>
 
   <div class="build-kpis pm-kpi-row" data-kpis>
     <article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--blue"><img src="/static/project_ui/svg/kpi_build.svg" alt=""></span><div class="pm-kpi-body"><span>今日构建</span><strong data-kpi="today">--</strong></div></article>
@@ -48,7 +40,7 @@
           <label><span>开始日期</span><input type="date" data-date-from style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
           <label><span>结束日期</span><input type="date" data-date-to style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
           <label><span>每页</span><select data-page-size><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></label>
-          <button class="build-btn" type="button" data-reset><img src="/static/project_ui/svg/action_refresh.svg" alt="">重置</button>
+          <button class="build-btn neutral" type="button" data-reset><img src="/static/project_ui/svg/action_refresh.svg" alt="">重置</button>
         </div>
       </section>
 
@@ -56,7 +48,7 @@
         <div class="build-panel-title">
           <div><h2>构建记录</h2><p>显示全部历史记录，选择一行可查看真实构建详情。</p></div>
           {% if can_edit %}
-          <button class="build-btn build-btn-danger" type="button" data-batch-delete disabled>
+          <button class="build-btn warn" type="button" data-batch-delete disabled>
             <img src="/static/project_ui/svg/action_delete.svg" alt="">批量删除
           </button>
           {% endif %}
@@ -64,24 +56,10 @@
         <div class="build-state" data-state="loading"><span class="build-spinner"></span><strong>正在加载构建历史</strong><p>正在同步本地记录与 Jenkins 实时状态。</p></div>
         <div class="build-table-wrap" data-table-wrap hidden>
           <table class="build-table">
-            <thead><tr><th class="check-col"><input type="checkbox" data-check-all aria-label="全选当前页"></th><th>构建编号</th><th>版本 / VersionCode</th><th>环境 / 平台</th><th>结果</th><th>构建人</th><th>触发时间</th><th>耗时</th><th>操作</th></tr></thead>
+            <thead><tr><th class="check-col"><input type="checkbox" data-check-all aria-label="全选当前页"></th><th>构建编号</th><th>版本 / VersionCode</th><th>环境</th><th>渠道</th><th>平台</th><th>结果</th><th>构建人</th><th>触发时间</th><th>耗时</th><th>操作</th></tr></thead>
             <tbody data-build-rows></tbody>
           </table>
           <footer class="build-pagination"><span data-result-count>共 0 条记录</span><div><button type="button" data-prev><img src="/static/project_ui/svg/action_back.svg" alt=""></button><span data-page-text>1 / 1</span><button type="button" data-next><img src="/static/project_ui/svg/action_next.svg" alt=""></button></div></footer>
-        </div>
-      </section>
-
-      <section class="build-panel artifact-panel artifact-list-panel">
-        <div class="build-panel-title">
-          <div><h2>产物列表</h2><p>按构建展平的真实产物登记记录</p></div>
-        </div>
-        <div class="artifact-tabs" data-artifact-tabs>
-          <button type="button" class="active" data-artifact-tab="latest">最新产物</button>
-          <button type="button" data-artifact-tab="by-build">按构建</button>
-          <button type="button" data-artifact-tab="missing">缺失产物</button>
-        </div>
-        <div data-artifact-list-body style="padding:0 14px 14px">
-          <table class="artifact-list-table pm-table"><thead><tr><th>类型</th><th>版本 / VC</th><th>构建号</th><th>大小</th><th>校验</th><th>操作</th></tr></thead><tbody data-artifact-list-rows><tr><td colspan="6">加载后展示</td></tr></tbody></table>
         </div>
       </section>
     </main>
@@ -99,6 +77,7 @@
       <section class="build-panel">
         <div class="build-panel-title"><div><h2>快捷操作</h2><p>操作当前选中的构建</p></div></div>
         <div class="build-quick-actions">
+          <button type="button" data-install-apk disabled><img src="/static/project_ui/svg/action_download.svg" alt=""><span><strong>安装该版本</strong><small>下载链接与扫码安装</small></span></button>
           <button type="button" data-detail disabled><img src="/static/project_ui/svg/nav_doc.svg" alt=""><span><strong>查看完整详情</strong><small>参数、日志与构建上下文</small></span></button>
           <button type="button" data-download-log disabled><img src="/static/project_ui/svg/action_download.svg" alt=""><span><strong>下载构建日志</strong><small>下载真实 Jenkins 日志</small></span></button>
           <button type="button" data-console disabled><img src="/static/project_ui/svg/action_export.svg" alt=""><span><strong>打开 Jenkins</strong><small>前往对应构建控制台</small></span></button>
@@ -122,10 +101,10 @@
     <h2 data-confirm-title>确认删除构建</h2>
     <p data-confirm-text>删除后无法恢复。</p>
     <label>操作原因<textarea data-confirm-reason rows="3" placeholder="请输入删除原因，便于审计"></textarea></label>
-    <div><button class="build-btn" type="button" data-cancel-confirm>取消</button><button class="build-btn build-btn-danger-solid" type="button" data-confirm-action>确认删除</button></div>
+    <div><button class="build-btn neutral" type="button" data-cancel-confirm>取消</button><button class="build-btn build-btn-danger-solid" type="button" data-confirm-action>确认删除</button></div>
   </section>
 </div>
 
 <div class="build-toast" data-toast hidden></div>
 
-<script src="/static/project_build_history.js?v=20260625-pm1"></script>
+<script src="/static/project_build_history.js?v=20260708-bh9"></script>

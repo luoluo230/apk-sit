@@ -22,6 +22,7 @@
 - `docs/design_specs/_design-module-spec-template.md`
 - `docs/design_assets/README.md`
 - 模块 spec：`docs/design_specs/*.md`
+- P18 交付线窄小卡片（用户已验收）：`.cursor/rules/delivery-matrix-compact-cards.mdc`
 
 模块 spec 不存在 → **先创建再写代码**。设计图未归档 → **先归档到 `docs/design_assets/` 再写代码**。
 

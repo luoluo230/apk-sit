@@ -10,6 +10,7 @@
   const groupVersionName = (root.dataset.versionName || "").trim();
   const groupPlatform = (root.dataset.platform || "").trim();
   const groupEnvKey = (root.dataset.envKey || "").trim();
+  const defaultResourceServerUrl = (root.dataset.defaultResourceServerUrl || "").trim();
   const isGroupMode = editScope === "version_group";
   const form = document.getElementById("versionBuildConfigForm");
   const statusEl = document.getElementById("vcConfigStatus");
@@ -415,7 +416,7 @@
 
     setCheck("apk_build_enabled", apkBuild.enabled);
 
-    set("resource_server_url", version.resource_server_url || "");
+    set("resource_server_url", version.resource_server_url || defaultResourceServerUrl || "");
     set("catalog_file_name", version.catalog_file_name || defaultCatalogName(version));
     set("min_client_version", version.min_client_version || version.version_name || "");
     set("rollout_percentage", version.rollout_percentage ?? 100);
@@ -448,6 +449,8 @@
     const historyLink = document.getElementById("buildHistoryLink");
     if (historyLink) {
       const params = new URLSearchParams();
+      params.set("scoped", "1");
+      if (version.id) params.set("version_id", version.id);
       if (version.env_key) params.set("env_key", version.env_key);
       if (version.channel_id || version.channel) params.set("channel_id", version.channel_id || version.channel);
       if (version.platform) params.set("platform", version.platform);
@@ -770,6 +773,36 @@
     return meta;
   };
 
+  const applyBootstrapDefaults = (version, bootstrap) => {
+    const merged = { ...version };
+    Object.entries(bootstrap || {}).forEach(([key, value]) => {
+      if (value === null || value === undefined) return;
+      if (["rollout_percentage", "force_update", "is_revoked"].includes(key)) {
+        if (merged[key] === undefined || merged[key] === null) merged[key] = value;
+        return;
+      }
+      if (!String(merged[key] ?? "").trim() && String(value).trim()) merged[key] = value;
+    });
+    if (!String(merged.resource_server_url || "").trim() && defaultResourceServerUrl) {
+      merged.resource_server_url = defaultResourceServerUrl;
+    }
+    return merged;
+  };
+
+  const loadEffectiveBootstrap = async () => {
+    if (!versionId) return {};
+    try {
+      const response = await fetch(`/api/projects/${projectId}/versions/${encodeURIComponent(versionId)}/effective-pipeline`, {
+        credentials: "same-origin",
+      });
+      const data = await response.json();
+      if (!response.ok) return {};
+      return data.bootstrap || {};
+    } catch (_error) {
+      return {};
+    }
+  };
+
   const loadVersion = async () => {
     if (!versionId) {
       const groupMeta = await loadGroupTemplate({ version_name: groupVersionName });
@@ -783,6 +816,11 @@
         pipeline: groupMeta?.pipeline_template || {},
       };
       currentVersion = mergeGroupTemplate(stub, groupMeta);
+      currentVersion = applyBootstrapDefaults(currentVersion, {
+        resource_server_url: defaultResourceServerUrl,
+        catalog_file_name: defaultCatalogName(stub),
+        min_client_version: groupVersionName,
+      });
       fillForm(currentVersion);
       renderJenkinsPreview();
       return currentVersion;
@@ -798,6 +836,8 @@
     } else {
       currentVersion = version;
     }
+    const bootstrap = await loadEffectiveBootstrap();
+    currentVersion = applyBootstrapDefaults(currentVersion, bootstrap);
     fillForm(currentVersion);
     renderJenkinsPreview();
     return currentVersion;
@@ -926,8 +966,81 @@
     });
   }
 
+  const FIELD_SECTION_MAP = {
+    jenkins_instance_id: "jenkins",
+    jenkins_job_id: "jenkins",
+    config_export_enabled: "config_export",
+    resource_build_enabled: "resource_build",
+    hot_release_enabled: "hot_release",
+    code_enabled: "hot_release",
+    apk_build_enabled: "artifact",
+    resource_server_url: "client_policy",
+  };
+
+  function applyReleaseOrderFocus() {
+    const params = new URLSearchParams(location.search);
+    if (params.get("from") !== "release-order") return;
+    const highlights = (params.get("highlight") || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const reason = params.get("focus_reason") || "请填写下方红色高亮字段并点击「保存配置」。";
+    const releaseOrderId = params.get("release_order_id") || "";
+    let banner = root.querySelector(".release-focus-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.className = "release-focus-banner";
+      const anchor = root.querySelector(".build-config-journey-banner") || root.querySelector(".workflow-heading");
+      anchor?.insertAdjacentElement("afterend", banner);
+    }
+    const returnHref = releaseOrderId
+      ? `/admin/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(releaseOrderId)}`
+      : "";
+    banner.innerHTML = `<div><strong>来自发布单 · 待补充配置</strong><p>${esc(reason)}</p></div>${returnHref ? `<a class="release-focus-return" href="${returnHref}">返回发布单</a>` : ""}`;
+    const rssField = form.querySelector('[name="resource_server_url"]');
+    const rssFilled = rssField && String(rssField.value || "").trim();
+    const allHighlightsFilled = highlights.every((name) => {
+      const field = form.querySelector(`[name="${name}"]`) || document.getElementById(name);
+      if (!field) return true;
+      return field.type === "checkbox" ? field.checked : Boolean(String(field.value || "").trim());
+    });
+    if (rssFilled && allHighlightsFilled) {
+      banner.classList.add("release-focus-banner-ready");
+      banner.innerHTML = `<div><strong>来自发布单 · 客户端策略已填写</strong><p>请确认资源服务器 URL 无误后点击「保存配置」，再返回发布单点「重新预检」。剩余阻断项通常是：code 包未构建、OSS 产物未上传、Runtime 未启动。</p></div>${returnHref ? `<a class="release-focus-return" href="${returnHref}">返回发布单</a>` : ""}`;
+    } else {
+      banner.classList.remove("release-focus-banner-ready");
+    }
+    const touchedSections = new Set();
+    highlights.forEach((name) => {
+      const field = form.querySelector(`[name="${name}"]`) || document.getElementById(name);
+      if (!field) return;
+      const label = field.closest("label") || field.closest(".build-config-strategy-panel");
+      const alreadyFilled = field.type === "checkbox" ? field.checked : String(field.value || "").trim();
+      if (alreadyFilled) return;
+      label?.classList.add("field-highlight-required");
+      field.classList.add("field-highlight-required");
+      const section = FIELD_SECTION_MAP[name] || params.get("section");
+      if (section) touchedSections.add(section);
+      const clearHighlight = () => {
+        const filled = field.type === "checkbox" ? field.checked : String(field.value || "").trim();
+        if (filled) {
+          label?.classList.remove("field-highlight-required");
+          field.classList.remove("field-highlight-required");
+        }
+      };
+      field.addEventListener("input", clearHighlight);
+      field.addEventListener("change", clearHighlight);
+    });
+    touchedSections.forEach((section) => {
+      root.querySelector(`[data-section-tab="${section}"]`)?.classList.add("field-highlight-step");
+    });
+    requestAnimationFrame(() => {
+      const first = form.querySelector(".field-highlight-required");
+      first?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (first && typeof first.focus === "function") first.focus();
+    });
+  }
+
   activateSection(sectionFromUrl());
   loadJenkinsInstances()
     .then(() => loadVersion())
+    .then(() => applyReleaseOrderFocus())
     .catch((error) => toast(error.message || "加载失败", "error"));
 })();

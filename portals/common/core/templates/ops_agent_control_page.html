@@ -1,132 +1,127 @@
-<link rel="stylesheet" href="/static/ops_platform_agent_console.css?v=20260609-unified-v1">
-<div class="agent-screen agent-screen--control agent-screen--embedded" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-page="agent-control">
-  <section class="agent-shell-main">
-    <main class="agent-shell-content">
-      <section class="agent-page-hero">
-        <div class="agent-page-hero-copy">
-          <div class="agent-page-title-line">
-            <span class="agent-page-title-badge">G</span>
-            <h1>Agent 与服务器</h1>
-          </div>
-          <p>按设备分组管理 Agent，支持批量操作、状态监控与策略配置</p>
-          <div class="agent-page-scope-badge">当前项目：<strong>{{ project_id }}</strong> · 环境：<strong>{{ env_key }}</strong> · 单 Agent 管理本环境服务节点</div>
-        </div>
-        <div class="agent-page-hero-actions">
-          <button id="btnCreateAgent" class="agent-btn agent-btn--primary" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建设备 Agent</button>
-          <button id="btnProbeAllAgent" class="agent-btn agent-btn--ghost" type="button"><img src="/static/project_ui/svg/kpi_health.svg" alt="">一键探测测试</button>
-          <button id="btnProbeRepairAllAgent" class="agent-btn agent-btn--ghost" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">批量修复并探测</button>
-        </div>
-      </section>
+<link rel="stylesheet" href="/static/ops_agent_workspace.css?v=20260717-workspace-v5">
+<div class="ops-agent-app" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-page="agent-control">
+  <header class="ops-page-head">
+    <div class="ops-page-head-main">
+      <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span>
+      <div class="ops-page-head-text"><h1>Agent 与服务器</h1></div>
+    </div>
+    <div class="ops-page-head-actions">
+      <button id="btnCreateAgent" class="pm-btn pm-btn--primary pm-btn--compact" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建</button>
+      <button id="btnProbeAllAgent" class="pm-btn pm-btn--compact" type="button"><img src="/static/project_ui/svg/kpi_health.svg" alt="">探测</button>
+      <button id="btnProbeRepairAllAgent" class="pm-btn pm-btn--compact" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">修复</button>
+    </div>
+  </header>
 
-      <section id="agentSummaryCards" class="agent-summary-grid"></section>
+  <section class="env-panel ops-agent-panel">
+    <div class="env-panel-head">
+      <h2>Agent</h2>
+      <span class="ops-panel-meta" id="agentPanelMeta"></span>
+    </div>
 
-      <section class="agent-toolbar agent-toolbar--filters">
-        <div class="agent-filter-group">
-          <select id="filterStatus" class="agent-field agent-field--select">
-            <option value="">全部状态</option>
-            <option value="ONLINE">在线</option>
-            <option value="DEGRADED">异常</option>
-            <option value="OFFLINE">离线</option>
-          </select>
-          <label class="agent-field agent-field--search">
-            <input id="filterQuery" type="text" placeholder="按设备 / IP / 备注">
-            <span><img src="/static/project_ui/svg/global_search.svg" alt=""></span>
-          </label>
-          <select id="filterServiceStatus" class="agent-field agent-field--select">
-            <option value="">全部服务状态</option>
-            <option value="healthy">全部正常</option>
-            <option value="abnormal">服务异常</option>
-            <option value="offline">全部离线</option>
-          </select>
-          <select id="filterFresh" class="agent-field agent-field--select">
-            <option value="all" selected>显示全部</option>
-            <option value="active_120">仅看活跃 (120 秒内)</option>
-            <option value="active_600">仅看活跃 (10 分钟内)</option>
-          </select>
-          <button id="btnApplyFilter" class="agent-btn agent-btn--primary agent-btn--small" type="button">应用筛选</button>
-          <button id="btnResetFilter" class="agent-btn agent-btn--outline agent-btn--small" type="button">重置</button>
-        </div>
-        <div class="agent-view-switch">
-          <button id="btnCardView" class="agent-view-switch-btn is-active" type="button">卡片视图</button>
-          <button id="btnListView" class="agent-view-switch-btn" type="button">列表视图</button>
-        </div>
-      </section>
+    <div class="agent-toolbar agent-toolbar--filters">
+      <div class="agent-filter-group">
+        <select id="filterStatus" class="agent-field agent-field--select" aria-label="状态">
+          <option value="">全部状态</option>
+          <option value="ONLINE">在线</option>
+          <option value="DEGRADED">异常</option>
+          <option value="OFFLINE">离线</option>
+        </select>
+        <label class="agent-field agent-field--search">
+          <img src="/static/project_ui/svg/global_search.svg" alt="">
+          <input id="filterQuery" type="text" placeholder="设备 / IP / 备注">
+        </label>
+        <select id="filterServiceStatus" class="agent-field agent-field--select" aria-label="服务状态">
+          <option value="">全部服务</option>
+          <option value="healthy">正常</option>
+          <option value="abnormal">异常</option>
+          <option value="offline">离线</option>
+        </select>
+        <select id="filterFresh" class="agent-field agent-field--select" aria-label="活跃度">
+          <option value="all" selected>全部</option>
+          <option value="active_120">120 秒内</option>
+          <option value="active_600">10 分钟内</option>
+        </select>
+        <button id="btnApplyFilter" class="pm-btn pm-btn--primary pm-btn--compact" type="button">筛选</button>
+        <button id="btnResetFilter" class="pm-btn pm-btn--compact" type="button">重置</button>
+      </div>
+      <div class="agent-view-switch">
+        <button id="btnCardView" class="agent-view-switch-btn is-active" type="button">卡片</button>
+        <button id="btnListView" class="agent-view-switch-btn" type="button">列表</button>
+      </div>
+    </div>
 
-      <section class="agent-toolbar agent-toolbar--batch">
-        <div class="agent-batch-left">
-          <label class="agent-checkbox-line">
-            <input id="selectPage" type="checkbox">
-            <span id="selectedCountLabel">已选择 0 项</span>
-          </label>
-          <button id="btnBatchProbe" class="agent-btn agent-btn--outline agent-btn--small" type="button">批量探测</button>
-          <button id="btnBatchRestart" class="agent-btn agent-btn--outline agent-btn--small" type="button">批量重启</button>
-          <button id="btnBatchBind" class="agent-btn agent-btn--outline agent-btn--small" type="button">批量绑定服务</button>
-          <div class="agent-dropdown">
-            <button id="btnBatchMore" class="agent-btn agent-btn--outline agent-btn--small" type="button">更多操作 <img src="/static/project_ui/svg/global_chevron_down.svg" alt=""></button>
-            <div id="batchMoreMenu" class="agent-dropdown-menu is-hidden">
-              <button id="btnClearSelection" type="button">清空选择</button>
-              <button id="btnRefreshNow" type="button">立即刷新</button>
-            </div>
+    <div class="agent-toolbar agent-toolbar--batch">
+      <div class="agent-batch-left">
+        <label class="agent-checkbox-line">
+          <input id="selectPage" type="checkbox">
+          <span id="selectedCountLabel">0 项</span>
+        </label>
+        <button id="btnBatchProbe" class="pm-btn pm-btn--compact" type="button">探测</button>
+        <button id="btnBatchRestart" class="pm-btn pm-btn--compact" type="button">重启</button>
+        <button id="btnBatchBind" class="pm-btn pm-btn--compact" type="button">绑定</button>
+        <div class="agent-dropdown">
+          <button id="btnBatchMore" class="pm-btn pm-btn--compact" type="button">更多</button>
+          <div id="batchMoreMenu" class="agent-dropdown-menu is-hidden">
+            <button id="btnClearSelection" type="button">清空</button>
+            <button id="btnRefreshNow" type="button">刷新</button>
           </div>
         </div>
-        <div class="agent-batch-right">
-          <button id="btnCleanupExpired" class="agent-btn agent-btn--outline agent-btn--small" type="button">清理过期 Agent</button>
-          <span id="agentRefreshHint">数据自动刷新：每 2 秒同步状态</span>
-        </div>
-      </section>
+      </div>
+      <div class="agent-batch-right">
+        <button id="btnCleanupExpired" class="pm-btn pm-btn--compact" type="button">清理过期</button>
+      </div>
+    </div>
 
-      <section class="agent-list-section">
-        <div id="agentResultsMeta" class="agent-list-meta"></div>
-        <div id="agentCards" class="agent-card-grid"></div>
-        <div id="agentList" class="agent-table-shell is-hidden"></div>
-        <div class="agent-pagination">
-          <div id="agentPaginationMeta" class="agent-pagination-total">共 0 条</div>
-          <div class="agent-pagination-center">
-            <button id="btnPrevPage" class="agent-pagination-btn" type="button" aria-label="上一页"><img src="/static/project_ui/svg/action_back.svg" alt=""></button>
-            <span id="pageIndicator" class="agent-pagination-current">1</span>
-            <button id="btnNextPage" class="agent-pagination-btn" type="button" aria-label="下一页"><img src="/static/project_ui/svg/action_next.svg" alt=""></button>
-          </div>
-          <select id="pageSizeSelect" class="agent-page-size">
-            <option value="6" selected>每页 6 条</option>
-            <option value="9">每页 9 条</option>
-            <option value="12">每页 12 条</option>
-          </select>
+    <section class="agent-list-section">
+      <div id="agentResultsMeta" class="agent-list-meta is-hidden" aria-hidden="true"></div>
+      <div id="agentCards" class="agent-card-grid"></div>
+      <div id="agentList" class="agent-table-shell is-hidden"></div>
+      <div class="agent-pagination">
+        <div id="agentPaginationMeta" class="agent-pagination-total">共 0 条</div>
+        <div class="agent-pagination-center">
+          <button id="btnPrevPage" class="agent-pagination-btn" type="button" aria-label="上一页"><img src="/static/project_ui/svg/action_back.svg" alt=""></button>
+          <span id="pageIndicator" class="agent-pagination-current">1</span>
+          <button id="btnNextPage" class="agent-pagination-btn" type="button" aria-label="下一页"><img src="/static/project_ui/svg/action_next.svg" alt=""></button>
         </div>
-      </section>
-    </main>
+        <select id="pageSizeSelect" class="agent-page-size">
+          <option value="6" selected>6 条/页</option>
+          <option value="9">9 条/页</option>
+          <option value="12">12 条/页</option>
+        </select>
+      </div>
+    </section>
   </section>
 
   <div id="agentEditModal" class="agent-modal is-hidden" aria-hidden="true">
     <div class="agent-modal-card">
       <div class="agent-modal-head">
         <h3 id="agentEditTitle">编辑 Agent</h3>
-        <button id="btnCloseAgentEdit" class="agent-btn agent-btn--outline agent-btn--small" type="button"><img src="/static/project_ui/svg/action_close.svg" alt="">关闭</button>
+        <button id="btnCloseAgentEdit" class="pm-btn pm-btn--compact" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
       </div>
-      <p class="agent-modal-sub">保存后会同步更新当前列表与详情页展示。</p>
       <div class="agent-form-grid">
         <label><span>Agent ID</span><input id="editAgentId" type="text"></label>
         <label><span>设备 ID</span><input id="editDeviceId" type="text"></label>
-        <label><span>IP 地址</span><input id="editHostIp" type="text"></label>
-        <label><span>显示名称</span><input id="editDisplayName" type="text"></label>
-        <label><span>Agent 端口</span><input id="editPort" type="number" min="1" max="65535"></label>
+        <label><span>IP</span><input id="editHostIp" type="text"></label>
+        <label><span>名称</span><input id="editDisplayName" type="text"></label>
+        <label><span>端口</span><input id="editPort" type="number" min="1" max="65535"></label>
         <label>
-          <span>运行状态</span>
+          <span>状态</span>
           <select id="editRunState">
-            <option value="">保持不变</option>
+            <option value="">不变</option>
             <option value="ONLINE">ONLINE</option>
             <option value="DEGRADED">DEGRADED</option>
             <option value="OFFLINE">OFFLINE</option>
           </select>
         </label>
-        <label class="agent-form-grid-wide"><span>备注</span><textarea id="editDesc" rows="3"></textarea></label>
+        <label class="agent-form-grid-wide"><span>备注</span><textarea id="editDesc" rows="2"></textarea></label>
       </div>
       <div class="agent-modal-actions">
-        <button id="btnProbeAgent" class="agent-btn agent-btn--outline" type="button">探测</button>
-        <button id="btnSaveAgentEdit" class="agent-btn agent-btn--primary" type="button">保存</button>
-        <button id="btnCancelAgentEdit" class="agent-btn agent-btn--ghost" type="button">取消</button>
+        <button id="btnProbeAgent" class="pm-btn pm-btn--compact" type="button">探测</button>
+        <button id="btnSaveAgentEdit" class="pm-btn pm-btn--primary pm-btn--compact" type="button">保存</button>
+        <button id="btnCancelAgentEdit" class="pm-btn pm-btn--compact" type="button">取消</button>
       </div>
     </div>
   </div>
 </div>
-<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>
-<script src="/static/ops_platform_agent_control.js?v=20260613-project-v2"></script>
+<script src="/static/ops_platform_api.js?v=20260717-workspace-v5"></script>
+<script src="/static/ops_platform_agent_control.js?v=20260717-workspace-v5"></script>

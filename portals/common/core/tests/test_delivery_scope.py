@@ -151,5 +151,34 @@ class ApiAuthJsonTests(unittest.TestCase):
         self.assertIn("application/json", resp.content_type)
 
 
+class VersionsEnvGateTests(unittest.TestCase):
+    def setUp(self):
+        app.config["TESTING"] = True
+        app.config["WTF_CSRF_ENABLED"] = False
+        self.client = app.test_client()
+
+    @patch("routes.admin_routes.can_edit_project", return_value=True)
+    @patch("routes.admin_routes.can_view_project", return_value=True)
+    @patch.dict("routes.admin_routes.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    def test_versions_without_env_key_redirects_to_env_picker(self, _mock_edit, _mock_view):
+        with self.client.session_transaction() as sess:
+            sess["user"] = "admin"
+        resp = self.client.get("/admin/projects/demo/versions")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("tab=environments", resp.headers.get("Location", ""))
+        self.assertIn("hint=pick_env", resp.headers.get("Location", ""))
+
+    @patch("routes.admin_routes.can_edit_project", return_value=True)
+    @patch("routes.admin_routes.can_view_project", return_value=True)
+    @patch.dict("routes.admin_routes.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    def test_versions_with_env_key_renders(self, _mock_edit, _mock_view):
+        with self.client.session_transaction() as sess:
+            sess["user"] = "admin"
+        resp = self.client.get("/admin/projects/demo/versions?env_key=development")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"version-workspace", resp.data)
+        self.assertIn(b"data-env-scoped", resp.data)
+
+
 if __name__ == "__main__":
     unittest.main()

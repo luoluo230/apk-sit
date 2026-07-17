@@ -1,21 +1,34 @@
-<section class="binding-page" data-project-id="{{ project_id }}">
-  <style>
-    .binding-button{display:inline-flex!important;align-items:center;justify-content:center;gap:7px;text-decoration:none}.binding-button img{width:16px;height:16px}
-    .binding-page{display:flex;flex-direction:column;gap:16px;color:#25324a}.binding-head,.binding-panel{border:1px solid #e5eaf3;border-radius:10px;background:#fff;box-shadow:0 2px 6px rgba(16,24,40,.04)}.binding-head{padding:20px;display:flex;align-items:center;justify-content:space-between}.binding-head h1{margin:0;font-size:24px}.binding-head p{margin:5px 0 0;color:#71809a;font-size:12px}.binding-actions{display:flex;gap:8px}.binding-button{min-height:36px;padding:0 14px;border:1px solid #dce4f2;border-radius:6px;background:#fff;color:#344054;font-weight:600;cursor:pointer}.binding-button.primary{border-color:#1677ff;background:#1677ff;color:#fff}.binding-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.binding-kpi{padding:16px;border:1px solid #e5eaf3;border-radius:8px;background:#fff}.binding-kpi span{color:#71809a;font-size:11px}.binding-kpi strong{display:block;margin-top:7px;font-size:24px}.binding-form{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px}.binding-form label{display:flex;flex-direction:column;gap:6px;color:#475467;font-size:11px}.binding-form select,.binding-form input{height:36px;padding:0 10px;border:1px solid #dce4f2;border-radius:6px}.binding-form .wide{grid-column:span 3}.binding-form .submit{align-self:end}.binding-table-head,.binding-row{display:grid;grid-template-columns:130px 1fr 1fr 1fr 1.4fr 130px;gap:12px;align-items:center;padding:0 16px}.binding-table-head{height:42px;background:#f8faff;color:#71809a;font-size:11px}.binding-row{min-height:62px;border-top:1px solid #eef1f5;font-size:12px}.binding-row small{display:block;color:#8a96a8}.binding-empty{padding:40px;text-align:center;color:#8a96a8}.binding-status{padding:3px 7px;border-radius:4px;background:#e9f8ee;color:#38a45b;font-size:10px}@media(max-width:1100px){.binding-kpis,.binding-form{grid-template-columns:repeat(2,1fr)}.binding-form .wide{grid-column:span 2}.binding-table{overflow:auto}.binding-table-head,.binding-row{min-width:900px}}
-  </style>
-  <div class="binding-head"><div><h1>拓扑绑定矩阵</h1><p>按“项目默认 → 环境与渠道 → 大版本覆盖”的优先级，为发布单解析唯一目标拓扑。</p></div><div class="binding-actions"><a class="binding-button" href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">查看拓扑资产</a><button class="binding-button primary" id="bindingRefresh" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新矩阵</button></div></div>
-  <div class="binding-kpis"><div class="binding-kpi"><span>项目默认</span><strong id="bindingDefault">0</strong></div><div class="binding-kpi"><span>环境 / 渠道</span><strong id="bindingEnvChannel">0</strong></div><div class="binding-kpi"><span>大版本覆盖</span><strong id="bindingVersion">0</strong></div><div class="binding-kpi"><span>可用拓扑</span><strong id="bindingTopologyCount">0</strong></div></div>
-  <section class="binding-panel">
-    <div class="binding-form">
-      <label>绑定层级<select id="bindingLevel"><option value="project_default">项目默认</option><option value="env_channel">环境 / 渠道</option><option value="version">大版本覆盖</option></select></label>
-      <label>环境<select id="bindingEnv"></select></label>
-      <label>渠道<select id="bindingChannel"></select></label>
-      <label>大版本<select id="bindingVersionName"></select></label>
-      <label class="wide">目标拓扑<select id="bindingTopology"></select></label>
-      <button class="binding-button primary submit" id="bindingSave" type="button"><img src="/static/project_ui/svg/nav_binding.svg" alt="">保存绑定</button>
+<section class="ops-workspace-app binding-page" data-project-id="{{ project_id }}">
+  <header class="ops-page-head">
+    <div class="ops-page-head-main">
+      <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_binding.svg" alt=""></span>
+      <div class="ops-page-head-text"><h1>拓扑绑定矩阵</h1></div>
+    </div>
+    <div class="ops-page-head-actions">
+      <a class="pm-btn pm-btn--compact" href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a>
+      <button class="pm-btn pm-btn--compact" id="bindingRefresh" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+    </div>
+  </header>
+
+  <section class="env-panel ops-panel">
+    <div class="env-panel-head"><h2>新增绑定</h2></div>
+    <div class="ops-binding-bar ops-filter-bar pm-filter-bar">
+      <select id="bindingLevel" aria-label="绑定层级"><option value="project_default">项目默认</option><option value="env_channel">环境 / 渠道</option><option value="version">大版本覆盖</option></select>
+      <select id="bindingEnv" aria-label="环境"></select>
+      <select id="bindingChannel" aria-label="渠道"></select>
+      <select id="bindingVersionName" aria-label="大版本"></select>
+      <select id="bindingTopology" aria-label="目标拓扑"></select>
+      <button class="pm-btn pm-btn--primary pm-btn--compact" id="bindingSave" type="button">保存</button>
     </div>
   </section>
-  <section class="binding-panel"><div class="binding-table" id="bindingTable"><div class="binding-empty">正在加载绑定矩阵...</div></div></section>
+
+  <section class="env-panel ops-panel">
+    <div class="env-panel-head"><h2>绑定规则</h2><span class="ops-panel-meta" id="bindingContext"></span></div>
+    <div class="env-line-cards-wrap">
+      <div class="env-line-cards" id="bindingGrid"><div class="ops-workspace-empty">正在加载…</div></div>
+    </div>
+  </section>
+
   <script>
   (function(){
     var root=document.querySelector('.binding-page');if(!root)return;var projectId=root.dataset.projectId,state={bindings:[],topologies:[],channels:[],version_names:[]};
@@ -23,13 +36,21 @@
     function request(url,opts){return fetch(url,Object.assign({credentials:'same-origin'},opts||{})).then(function(r){return r.json().then(function(d){if(!r.ok||d.ok===false)throw new Error(d.error||'请求失败');return d.data})})}
     function options(rows,value,label,empty){return (empty?'<option value="">'+empty+'</option>':'')+rows.map(function(x){return '<option value="'+esc(x[value])+'">'+esc(x[label])+'</option>'}).join('')}
     function updateControls(){var level=document.getElementById('bindingLevel').value;document.getElementById('bindingEnv').disabled=level==='project_default';document.getElementById('bindingChannel').disabled=level==='project_default';document.getElementById('bindingVersionName').disabled=level!=='version'}
-    function render(){
-      document.getElementById('bindingDefault').textContent=state.bindings.filter(function(x){return x.level==='project_default'}).length;document.getElementById('bindingEnvChannel').textContent=state.bindings.filter(function(x){return x.level==='env_channel'}).length;document.getElementById('bindingVersion').textContent=state.bindings.filter(function(x){return x.level==='version'}).length;document.getElementById('bindingTopologyCount').textContent=state.topologies.length;
-      var cm={};state.channels.forEach(function(x){cm[x.channel_id]=x.channel_name});var tm={};state.topologies.forEach(function(x){tm[x.topology_id]=x.name||x.topology_id});var em={};envs.forEach(function(x){em[x[0]]=x[1]});
-      document.getElementById('bindingTable').innerHTML='<div class="binding-table-head"><span>优先级</span><span>环境</span><span>渠道</span><span>大版本</span><span>目标拓扑</span><span>操作</span></div>'+(state.bindings.length?state.bindings.map(function(x){return '<div class="binding-row"><div><span class="binding-status">'+esc(x.level_label)+'</span></div><div>'+esc(em[x.env_key]||'全部环境')+'</div><div>'+esc(cm[x.channel_id]||'全部渠道')+'</div><div>'+esc(x.version_name||'全部版本')+'</div><div><strong>'+esc(tm[x.topology_id]||x.topology_id)+'</strong><small>'+esc(x.topology_id)+'</small></div><div><button class="binding-button" data-delete="'+esc(x.binding_id)+'">删除</button></div></div>'}).join(''):'<div class="binding-empty">尚未配置拓扑绑定规则</div>');
-      document.querySelectorAll('[data-delete]').forEach(function(btn){btn.addEventListener('click',function(){if(!confirm('确认删除这条拓扑绑定规则吗？'))return;request('/api/projects/'+encodeURIComponent(projectId)+'/topology-bindings/'+encodeURIComponent(btn.dataset.delete),{method:'DELETE'}).then(load).catch(function(e){alert(e.message)})})})
+    function renderContext(){
+      var host=document.getElementById('bindingContext'); if(!host)return;
+      host.textContent=state.bindings.length?('共 '+state.bindings.length+' 条'):'';
     }
-    function load(){request('/api/projects/'+encodeURIComponent(projectId)+'/topology-bindings').then(function(data){state=data;document.getElementById('bindingEnv').innerHTML=options(envs,0,1);document.getElementById('bindingChannel').innerHTML=options(state.channels,'channel_id','channel_name');document.getElementById('bindingVersionName').innerHTML=options(state.version_names.map(function(x){return{value:x,label:x}}),'value','label');document.getElementById('bindingTopology').innerHTML=options(state.topologies,'topology_id','name');updateControls();render()}).catch(function(e){document.getElementById('bindingTable').innerHTML='<div class="binding-empty">'+esc(e.message)+'</div>'})}
+    function render(){
+      renderContext();
+      var cm={};state.channels.forEach(function(x){cm[x.channel_id]=x.channel_name});var tm={};state.topologies.forEach(function(x){tm[x.topology_id]=x.name||x.topology_id});var em={};envs.forEach(function(x){em[x[0]]=x[1]});
+      document.getElementById('bindingGrid').innerHTML=state.bindings.length?state.bindings.map(function(x){
+        return '<article class="env-line-card configured" data-binding-id="'+esc(x.binding_id)+'"><div class="env-line-card-head"><span class="env-line-platform-icon"><img src="/static/project_ui/svg/nav_binding.svg" alt=""></span><div class="env-line-card-title"><span class="env-line-platform">'+esc(tm[x.topology_id]||x.topology_id)+'</span><span class="env-line-badge ready">'+esc(x.level_label||'绑定')+'</span></div></div>'
+          +'<p class="env-line-status-hint">'+esc(em[x.env_key]||'全部')+' / '+esc(cm[x.channel_id]||'全部')+' / '+esc(x.version_name||'全部')+'</p>'
+          +'<footer class="env-line-actions env-line-card-links"><button class="matrix-btn warn" type="button" data-delete="'+esc(x.binding_id)+'">删除</button></footer></article>';
+      }).join(''):'<div class="ops-workspace-empty">暂无绑定</div>';
+      document.querySelectorAll('[data-delete]').forEach(function(btn){btn.addEventListener('click',function(){if(!confirm('确认删除？'))return;request('/api/projects/'+encodeURIComponent(projectId)+'/topology-bindings/'+encodeURIComponent(btn.dataset.delete),{method:'DELETE'}).then(load).catch(function(e){alert(e.message)})})})
+    }
+    function load(){request('/api/projects/'+encodeURIComponent(projectId)+'/topology-bindings').then(function(data){state=data;document.getElementById('bindingEnv').innerHTML=options(envs,0,1);document.getElementById('bindingChannel').innerHTML=options(state.channels,'channel_id','channel_name');document.getElementById('bindingVersionName').innerHTML=options(state.version_names.map(function(x){return{value:x,label:x}}),'value','label');document.getElementById('bindingTopology').innerHTML=options(state.topologies,'topology_id','name');updateControls();render()}).catch(function(e){document.getElementById('bindingGrid').innerHTML='<div class="ops-workspace-empty">'+esc(e.message)+'</div>'})}
     document.getElementById('bindingLevel').addEventListener('change',updateControls);document.getElementById('bindingRefresh').addEventListener('click',load);document.getElementById('bindingSave').addEventListener('click',function(){var level=document.getElementById('bindingLevel').value,payload={topology_id:document.getElementById('bindingTopology').value,env_key:level==='project_default'?'':document.getElementById('bindingEnv').value,channel_id:level==='project_default'?'':document.getElementById('bindingChannel').value,version_name:level==='version'?document.getElementById('bindingVersionName').value:''};request('/api/projects/'+encodeURIComponent(projectId)+'/topology-bindings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(load).catch(function(e){alert(e.message)})});load();
   })();
   </script>

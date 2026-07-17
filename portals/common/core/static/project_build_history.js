@@ -11,6 +11,7 @@
   const scopeVersionName = (pageQuery.get('version_name') || root.dataset.scopeVersionName || '').trim();
   const scopeVersionCode = (pageQuery.get('version_code') || root.dataset.scopeVersionCode || '').trim();
   const scopeChannelId = (pageQuery.get('channel_id') || root.dataset.scopeChannelId || '').trim();
+  const scopeBuildNumber = (pageQuery.get('build_number') || '').trim();
   const isScoped = pageQuery.get('scoped') === '1' || scopeVersionId || scopeEnvKey;
 
   const envLabels = {
@@ -42,9 +43,9 @@
     currentEmpty: root.querySelector('[data-current-empty]'),
     failurePanel: root.querySelector('[data-failure-panel]'),
     failure: root.querySelector('[data-failure]'),
-    artifactListRows: root.querySelector('[data-artifact-list-rows]'),
     detail: root.querySelector('[data-detail]'),
     downloadLog: root.querySelector('[data-download-log]'),
+    installApk: root.querySelector('[data-install-apk]'),
     console: root.querySelector('[data-console]'),
     deleteCurrent: root.querySelector('[data-delete-current]'),
   };
@@ -54,7 +55,6 @@
   let selected = null;
   let page = 1;
   let pendingDelete = [];
-  let artifactTab = 'latest';
 
   const icon = (name) => `/static/project_ui/svg/${name}.svg`;
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({
@@ -86,6 +86,13 @@
     '': 'unknown',
   }[statusKey(item)] || 'unknown');
   const statusBadge = (item) => `<span class="build-status ${statusClass(item)}">${statusText(item)}</span>`;
+  const rowStatusClass = (item) => {
+    const key = statusKey(item);
+    if (key === 'SUCCESS') return 'row-success';
+    if (key === 'FAILURE') return 'row-failure';
+    if (key === 'building') return 'row-building';
+    return 'row-neutral';
+  };
 
   const toast = (message) => {
     const el = document.querySelector('[data-toast]');
@@ -109,43 +116,14 @@
 
   const applyScopeUi = () => {
     if (!isScoped) return;
-    const banner = root.querySelector('[data-scope-banner]');
-    const title = root.querySelector('[data-scope-title]');
-    const desc = root.querySelector('[data-scope-desc]');
     const subtitle = document.getElementById('buildPageSubtitle');
-    const parts = [];
-    if (scopeVersionName) parts.push(`版本 ${scopeVersionName}`);
-    if (scopeVersionCode) parts.push(`VC ${scopeVersionCode}`);
-    if (scopeEnvKey) parts.push(envLabels[scopeEnvKey] || scopeEnvKey);
-    if (scopePlatform) parts.push(platformLabels[scopePlatform] || scopePlatform);
-    if (scopeChannelId) parts.push(`渠道 ${scopeChannelId}`);
-    const scopeText = parts.join(' · ');
-    if (banner) banner.classList.remove('is-hidden');
-    if (title) {
-      title.textContent = scopeVersionId
-        ? '构建记录 · 发布请从版本代码开始'
-        : '构建记录 · 发布请从版本代码开始';
-    }
-    if (desc) {
-      desc.textContent = scopeText
-        ? `范围：${scopeText}。其他环境 / 平台的记录已隐藏。`
-        : '已按 URL 范围过滤构建记录。';
-    }
     if (subtitle) subtitle.textContent = '仅展示当前交付范围内的构建记录，不混入其他环境或平台。';
     const panelDesc = document.querySelector('.build-table-panel .build-panel-title p');
-    if (panelDesc) panelDesc.textContent = '仅显示当前交付范围内的构建记录，不混入其他环境或平台。';
+    if (panelDesc) panelDesc.textContent = '点击记录查看详情，成功构建可在操作列下载产物。';
     if (scopePlatform && ui.platform) {
       const wanted = scopePlatform === 'android' ? 'Android' : scopePlatform === 'ios' ? 'iOS' : scopePlatform;
       ui.platform.value = wanted;
       ui.platform.disabled = true;
-    }
-    const back = root.querySelector('[data-scope-back]');
-    if (back && scopeEnvKey) {
-      const qs = new URLSearchParams();
-      qs.set('env_key', scopeEnvKey);
-      if (scopePlatform) qs.set('platform', scopePlatform);
-      if (scopeVersionName) qs.set('version_name', scopeVersionName);
-      back.href = `/admin/projects/${projectId}/versions?${qs.toString()}`;
     }
   };
 
@@ -156,6 +134,7 @@
     if (scopePlatform && String(row.platform || '').toLowerCase() !== scopePlatform) return false;
     if (scopeVersionName && String(row.version_name || '') !== scopeVersionName) return false;
     if (scopeVersionCode && String(row.version_code || '') !== scopeVersionCode) return false;
+    if (scopeChannelId && String(row.channel_id || '') !== scopeChannelId) return false;
     return true;
   };
 
@@ -237,72 +216,45 @@
 
     page = 1;
     renderRows();
-    renderArtifactList();
   }
 
-  function latestArtifactRows(rows) {
-    const map = new Map();
-    rows.forEach((row) => {
-      const key = `${row.version_id || ''}|${row.version_code || ''}`;
-      const existing = map.get(key);
-      const num = Number(row.build_number || row.number || 0);
-      if (!existing || num > Number(existing.build_number || existing.number || 0)) {
-        map.set(key, row);
-      }
-    });
-    return Array.from(map.values()).sort(
-      (a, b) => Number(b.build_number || b.number || 0) - Number(a.build_number || a.number || 0),
-    );
-  }
+  const formatFileSize = (bytes) => {
+    const n = Number(bytes || 0);
+    if (!n) return '';
+    if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`;
+    if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+    return `${n} B`;
+  };
 
-  function artifactChecksum(row) {
-    const dl = row.apk_download && typeof row.apk_download === 'object' ? row.apk_download : {};
-    if (dl.md5) return dl.md5;
-    if (dl.sha256) return dl.sha256;
-    if (dl.checksum) return dl.checksum;
-    if (dl.public_download_reachable) return '外网可达';
-    if (hasArtifact(row)) return '已登记';
-    return '-';
-  }
-
-  function artifactListRowHtml(row) {
-    const ready = hasArtifact(row);
-    const dl = row.apk_download && typeof row.apk_download === 'object' ? row.apk_download : {};
-    const sizeText = dl.size_bytes ? `${(dl.size_bytes / 1048576).toFixed(1)} MB` : '-';
-    const downloadUrl = dl.public_download_url || dl.local_download_url || dl.oss_download_url || '';
-    const actions = ready && downloadUrl
-      ? `<span class="build-row-actions"><a class="build-btn" href="${esc(downloadUrl)}" target="_blank" rel="noopener">下载</a></span>`
-      : '<span class="artifact-missing-inline">缺失</span>';
-    return `<tr>
-      <td>${ready ? '安装包' : '缺失产物'}</td>
-      <td><strong>${esc(row.version_name || '未命名')}</strong><small>VC ${esc(row.version_code || '-')}</small></td>
-      <td>#${esc(row.build_number || row.number || '-')}</td>
-      <td>${esc(sizeText)}</td>
-      <td>${esc(artifactChecksum(row))}</td>
-      <td>${actions}</td>
-    </tr>`;
-  }
-
-  function renderArtifactList() {
-    if (!ui.artifactListRows) return;
-    let rows = filtered.slice();
-    if (artifactTab === 'latest') rows = latestArtifactRows(rows.filter(hasArtifact));
-    else if (artifactTab === 'missing') rows = rows.filter(isMissingArtifact);
-    else if (artifactTab === 'by-build') rows = rows.slice().sort(
-      (a, b) => Number(b.build_number || b.number || 0) - Number(a.build_number || a.number || 0),
-    );
-
-    if (!rows.length) {
-      const emptyMsg = artifactTab === 'missing'
-        ? '当前筛选范围内没有缺失产物记录'
-        : artifactTab === 'latest'
-          ? '当前筛选范围内没有已登记产物'
-          : '当前筛选范围内没有产物记录';
-      ui.artifactListRows.innerHTML = `<tr><td colspan="6">${emptyMsg}</td></tr>`;
+  const openDownloadDialog = async (row) => {
+    if (!row) return;
+    const adl = window.ArtifactDownload;
+    if (!adl) {
+      toast("下载组件未加载，请刷新页面后重试");
       return;
     }
-    ui.artifactListRows.innerHTML = rows.map(artifactListRowHtml).join('');
-  }
+    const versionId = String(row.version_id || scopeVersionId || row.id || "").trim();
+    try {
+      await adl.open({
+        projectId,
+        versionId,
+        row: {
+          ...row,
+          build_number: row.build_number || row.number,
+          version_id: versionId,
+        },
+        downloadInfo: row.apk_download,
+        titleMode: "build",
+        labels: {
+          env: envLabels[row.env_key] || row.env_key || "-",
+          channel: row.channel_name || row.channel_id || "-",
+          platform: platformLabels[String(row.platform || "").toLowerCase()] || row.platform || "-",
+        },
+      });
+    } catch (error) {
+      toast(error.message || "下载信息加载失败");
+    }
+  };
 
   function renderRows() {
     const pageSize = Number(ui.pageSize?.value || 20);
@@ -315,16 +267,27 @@
       const isSelected = selected
         && String(selected.instance_id) === String(row.instance_id)
         && Number(selected.build_number || selected.number) === Number(num);
-      return `<tr data-row data-instance="${esc(row.instance_id)}" data-number="${esc(num)}" data-version="${esc(row.version_id)}" class="${isSelected ? 'selected' : ''}">
+      const consoleUrl = String(row.console_url || '').trim();
+      const statusCls = rowStatusClass(row);
+      const buildNumberCell = `<button type="button" class="build-number-link" data-build-task title="${consoleUrl ? `打开 Jenkins 构建 #${esc(num)}` : `查看构建 #${esc(num)}`}">#${esc(num)}</button>`;
+      const downloadBtn = statusKey(row) === 'SUCCESS' && hasArtifact(row)
+        ? `<button type="button" class="build-row-download" data-download-row title="下载产物"><img src="${icon('action_download')}" alt=""></button>`
+        : '';
+      const consoleBtn = consoleUrl
+        ? `<button type="button" data-console title="打开 Jenkins 控制台"><img src="${icon('action_export')}" alt=""></button>`
+        : '';
+      return `<tr data-row data-instance="${esc(row.instance_id)}" data-number="${esc(num)}" data-version="${esc(row.version_id)}" class="${statusCls}${isSelected ? ' selected' : ''}">
         <td><input type="checkbox" data-check aria-label="选择构建 ${esc(num)}" ${row.building ? 'disabled' : ''}></td>
-        <td><span class="build-number">#${esc(num)}</span></td>
-        <td><span class="build-version"><strong>${esc(row.version_name || '未命名版本')}</strong><small>VC ${esc(row.version_code || '-')} · ${esc(row.channel_name || '未配置渠道')}</small></span></td>
-        <td>${esc(envLabels[row.env_key] || '未配置')} / ${esc(platformLabels[String(row.platform || '').toLowerCase()] || row.platform || '未配置')}</td>
+        <td>${buildNumberCell}</td>
+        <td><span class="build-version"><strong>${esc(row.version_name || '未命名版本')}</strong><small>VC ${esc(row.version_code || '-')}</small></span></td>
+        <td>${esc(envLabels[row.env_key] || row.env_key || '未配置')}</td>
+        <td>${esc(row.channel_name || row.channel_id || '未配置')}</td>
+        <td>${esc(platformLabels[String(row.platform || '').toLowerCase()] || row.platform || '未配置')}</td>
         <td>${statusBadge(row)}</td>
         <td>${esc(row.triggered_by || '-')}</td>
         <td>${esc(dateText(row.started_at))}</td>
         <td>${esc(row.duration || '-')}</td>
-        <td><span class="build-row-actions"><button type="button" data-open title="查看详情"><img src="${icon('nav_doc')}" alt=""></button>${canEdit && !row.building ? `<button type="button" data-delete title="删除"><img src="${icon('action_delete')}" alt=""></button>` : ''}</span></td>
+        <td><span class="build-row-actions">${consoleBtn}${downloadBtn}<button type="button" data-open title="查看完整详情"><img src="${icon('nav_doc')}" alt=""></button>${canEdit && !row.building ? `<button type="button" data-delete title="删除"><img src="${icon('action_delete')}" alt=""></button>` : ''}</span></td>
       </tr>`;
     }).join('');
 
@@ -359,19 +322,20 @@
     ui.current.hidden = false;
     const progress = row.building ? 62 : 100;
     const num = row.build_number || row.number;
-    ui.current.innerHTML = `<div class="current-number"><strong>#${esc(num)}</strong>${statusBadge(row)}</div><div class="current-progress"><span style="width:${progress}%"></span></div><div class="current-meta">
-      <div><span>版本</span><b>${esc(row.version_name || '-')} (${esc(row.version_code || '-')})</b></div>
-      <div><span>环境 / 平台</span><b>${esc(envLabels[row.env_key] || '-')} / ${esc(platformLabels[String(row.platform || '').toLowerCase()] || row.platform || '-')}</b></div>
-      <div><span>Jenkins 实例</span><b>${esc(row.instance_id || '-')}</b></div>
-      <div><span>触发人</span><b>${esc(row.triggered_by || '-')}</b></div>
-      <div><span>触发时间</span><b>${esc(dateText(row.started_at))}</b></div>
-      <div><span>耗时</span><b>${esc(row.duration || '-')}</b></div>
-    </div>`;
+    ui.current.innerHTML = `<div class="current-number"><strong>#${esc(num)}</strong>${statusBadge(row)}</div><div class="current-progress"><span style="width:${progress}%"></span></div><dl class="build-kv-grid">
+      <div class="build-kv is-ready"><dt>版本</dt><dd title="${esc(row.version_name || '-')}">${esc(row.version_name || '-')} (${esc(row.version_code || '-')})</dd></div>
+      <div class="build-kv"><dt>环境 / 平台</dt><dd>${esc(envLabels[row.env_key] || '-')} / ${esc(platformLabels[String(row.platform || '').toLowerCase()] || row.platform || '-')}</dd></div>
+      <div class="build-kv"><dt>Jenkins 实例</dt><dd>${esc(row.instance_id || '-')}</dd></div>
+      <div class="build-kv"><dt>触发人</dt><dd>${esc(row.triggered_by || '-')}</dd></div>
+      <div class="build-kv"><dt>触发时间</dt><dd>${esc(dateText(row.started_at))}</dd></div>
+      <div class="build-kv"><dt>耗时</dt><dd>${esc(row.duration || '-')}</dd></div>
+    </dl>`;
     ui.failurePanel.hidden = statusKey(row) !== 'FAILURE';
     ui.failure.textContent = row.failure_summary || '请打开完整详情读取真实失败日志。';
-    [ui.detail, ui.downloadLog, ui.console, ui.deleteCurrent].filter(Boolean).forEach((button) => {
+    [ui.detail, ui.downloadLog, ui.console, ui.deleteCurrent, ui.installApk].filter(Boolean).forEach((button) => {
       button.disabled = false;
     });
+    if (ui.installApk) ui.installApk.disabled = !hasArtifact(row);
     ui.console.disabled = !row.console_url;
     document.querySelectorAll('[data-row]').forEach((el) => {
       el.classList.toggle(
@@ -419,6 +383,9 @@
     return `<div class="detail-grid">${[
       ['构建状态', statusText(row)],
       ['版本', `${row.version_name || '-'} (${row.version_code || '-'})`],
+      ['环境', envLabels[row.env_key] || row.env_key || '-'],
+      ['渠道', row.channel_name || row.channel_id || '-'],
+      ['平台', platformLabels[String(row.platform || '').toLowerCase()] || row.platform || '-'],
       ['Jenkins 实例', row.instance_id || '-'],
       ['触发人', row.triggered_by || '-'],
       ['开始时间', dateText(row.started_at)],
@@ -530,6 +497,7 @@
           env_key: build.env_key || scopeEnvKey,
           platform: build.platform || scopePlatform,
           channel_id: build.channel_id || scopeChannelId,
+          channel_name: build.channel_name || '',
         }));
       } else {
         const response = await fetch(`/api/build/history-by-project?project_id=${encodeURIComponent(projectId)}`, { credentials: 'same-origin' });
@@ -541,9 +509,12 @@
       selected = null;
       setKpis();
       applyFilters();
-      if (records.length) {
-        renderCurrent(records[0]);
-        loadDetail(records[0], false);
+      const initial = scopeBuildNumber
+        ? records.find((row) => String(row.build_number || row.number) === scopeBuildNumber)
+        : records[0];
+      if (initial) {
+        renderCurrent(initial);
+        loadDetail(initial, Boolean(scopeBuildNumber));
       }
     } catch (error) {
       ui.state.hidden = false;
@@ -555,16 +526,6 @@
   applyScopeUi();
 
   root.addEventListener('click', (event) => {
-    const tabBtn = event.target.closest('[data-artifact-tab]');
-    if (tabBtn) {
-      artifactTab = tabBtn.dataset.artifactTab || 'latest';
-      root.querySelectorAll('[data-artifact-tab]').forEach((btn) => {
-        btn.classList.toggle('active', btn === tabBtn);
-      });
-      renderArtifactList();
-      return;
-    }
-
     if (event.target.closest('[data-refresh]')) load();
 
     if (event.target.closest('[data-reset]')) {
@@ -579,6 +540,29 @@
     }
 
     const row = findRow(event.target);
+    if (event.target.closest('[data-build-task]') && row) {
+      event.stopPropagation();
+      renderCurrent(row);
+      loadDetail(row, false);
+      const consoleUrl = String(row.console_url || '').trim();
+      if (consoleUrl) window.open(consoleUrl, '_blank', 'noopener');
+      else loadDetail(row, true);
+      return;
+    }
+    if (event.target.closest('[data-download-row]') && row) {
+      event.stopPropagation();
+      renderCurrent(row);
+      openDownloadDialog(row);
+      return;
+    }
+    if (event.target.closest('[data-console]') && row) {
+      event.stopPropagation();
+      renderCurrent(row);
+      loadDetail(row, false);
+      const consoleUrl = String(row.console_url || '').trim();
+      if (consoleUrl) window.open(consoleUrl, '_blank', 'noopener');
+      return;
+    }
     if (event.target.closest('[data-delete]') && row) {
       event.stopPropagation();
       askDelete([row]);
@@ -590,7 +574,10 @@
       loadDetail(row, true);
       return;
     }
-    if (row && !event.target.matches('input')) renderCurrent(row);
+    if (row && !event.target.matches('input') && !event.target.closest('[data-check]')) {
+      renderCurrent(row);
+      loadDetail(row, false);
+    }
   });
 
   [ui.search, ui.status, ui.platform, ui.pageSize, ui.dateFrom, ui.dateTo, ui.artifactType]
@@ -609,6 +596,7 @@
   ui.batchDelete?.addEventListener('click', () => {
     askDelete([...root.querySelectorAll('[data-check]:checked')].map((box) => findRow(box)).filter(Boolean));
   });
+  ui.installApk?.addEventListener('click', () => selected && openDownloadDialog(selected));
   ui.detail?.addEventListener('click', () => selected && loadDetail(selected, true));
   ui.downloadLog?.addEventListener('click', () => {
     if (selected) {

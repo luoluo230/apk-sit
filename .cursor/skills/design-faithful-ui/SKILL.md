@@ -13,6 +13,7 @@ description: 用于任何“用户给了设计图、截图、视觉稿，要求�
 | **design-faithful-ui-rule** | **硬门槛摘要**：零容差、禁止替代验收、Hard Gate 勾选 | 始终生效的**门禁提醒**，不重复详表 |
 | **AGENTS.md** | 仓库级交付规则 | 与本 skill 冲突时，**本 skill 的设计验收条款优先** |
 | **safe-change-workflow §13** | 设计任务对通用 workflow 的覆盖 | 仅补充「设计任务覆盖最小补丁」；验收细节**以本 skill 为准** |
+| **delivery-matrix-compact-cards** | P18 环境详情交付线矩阵 · 用户已验收的小卡片风格 | 改 `project_environment_detail.css` / `renderDeliveryMatrixHtml` 时**必须先读** `.cursor/rules/delivery-matrix-compact-cards.mdc` |
 
 **禁止 AI 错觉：** 不得因 rule 较短而跳过 skill 中的 Phase C 专业验收；不得因多处都提「零容差」而认为只读 rule 就够。
 

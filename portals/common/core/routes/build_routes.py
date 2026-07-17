@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, render_template_string
+from flask import Blueprint, request, jsonify, render_template, render_template_string, redirect
 from services.authz import admin_required_any, has_scope
 from config import Config
 from models.data import log_audit, get_channel_by_id
@@ -1081,9 +1081,13 @@ def _get_stage_downloads(project_id, channel_id, stage_id):
 @bp.route('/admin/projects/<project_id>/versions/<version_id>/workflow')
 @admin_required_any('projects', 'build')
 def project_version_workflow(project_id, version_id):
-    """单个版本的构建工作流页：独立参数与下载列表，OUTPUT_BASE_DIR 含渠道子目录/阶段目录。"""
+    """Legacy workflow page — redirect to unified release-order build path."""
+    from urllib.parse import urlencode
     from models.data import projects_db, project_versions_db, can_view_project
     from flask import session, abort
+    from services.release.env_registry import normalize_release_env_key
+    from services.release.scope_ids import resolve_channel_id
+
     if project_id not in projects_db:
         abort(404)
     if not can_view_project(project_id, session.get('user') or ''):
@@ -1094,82 +1098,16 @@ def project_version_workflow(project_id, version_id):
     v = next((x for x in versions if (x.get('id') or '') == version_id), None)
     if not v:
         abort(404)
-    channel_id = (v.get('channel') or '').strip()
-    stage_id = (v.get('stage') or 'dev').strip()
-    output_base = _compute_stage_output_base(Config.APK_DIR, channel_id, stage_id)
-    downloads = _get_version_downloads(project_id, v, scan_dir=output_base)
-    params_saved = v.get('jenkins_params') or {}
-    version_mode = (v.get('version_mode') or 'general').strip().lower()
-    if version_mode not in ('general', 'commercial'):
-        version_mode = 'general'
-    preferred_instance_id = (v.get('jenkins_instance_id') or '').strip()
-    pipeline = v.get('pipeline') or {}
-    apk_build_cfg = (pipeline.get('apk_build') or {}) if isinstance(pipeline, dict) else {}
-    default_output = params_saved.get('OUTPUT_BASE_DIR') or output_base
-    from models.data import get_channels_for_project, get_channel_by_id
-    ch_obj = get_channel_by_id(channel_id)
-    default_channel_display = (ch_obj.get('name') or ch_obj.get('id', '') or channel_id or '-') if ch_obj else (channel_id or '-')
-    stage_labels = {'dev': '开发', 'test': '测试', 'production': '线上'}
-    version_info = {
-        'project_id': project_id,
-        'version_name': v.get('version_name'),
-        'version_code': v.get('version_code'),
-        'channel': channel_id,
-        'channel_name': default_channel_display,
-        'stage': stage_id,
-        'stage_name': stage_labels.get(stage_id, '开发'),
-        'platform': (v.get('platform') or 'android'),
-    }
-    default_app = params_saved.get('APP_NAME') or project_id
-    default_ver_name, default_ver_code = _canonical_version_name_code(v)
-    if not default_ver_name:
-        default_ver_name = '1.0.0'
-    if not default_ver_code:
-        default_ver_code = '100'
-    default_unity = _resolve_version_unity_version(v, versions)
-    default_git_branch = _resolve_version_git_branch(v)
-    try:
-        from services.admin.project_build_config_service import get_project_build_config
-
-        pbc = get_project_build_config(project_id)
-        default_app = params_saved.get('APP_NAME') or (pbc.get('app_name') or '').strip() or project_id
-        if not params_saved.get('OUTPUT_BASE_DIR') and (pbc.get('output_base_dir') or '').strip():
-            default_output = (pbc.get('output_base_dir') or '').strip()
-        else:
-            default_output = params_saved.get('OUTPUT_BASE_DIR') or output_base
-    except Exception:
-        default_output = params_saved.get('OUTPUT_BASE_DIR') or output_base
-    if version_mode == 'commercial' and isinstance(apk_build_cfg, dict):
-        default_app = (apk_build_cfg.get('app_name') or '').strip() or default_app
-        default_output = (apk_build_cfg.get('output_base_dir') or '').strip() or default_output
-    channel_opts = get_channels_for_project(project_id)
-    channel_options = [(c.get('id', '').strip(), (c.get('name') or c.get('id', '')).strip()) for c in channel_opts if (c.get('id') or '').strip()]
-    default_channel = channel_id or ''
-    return render_template_string(
-        _version_workflow_page_html(),
-        apk_dir=default_output,
-        default_app_name=default_app,
-        default_version_name=default_ver_name,
-        default_version_code=default_ver_code,
-        default_unity_version=default_unity,
-        default_git_branch=default_git_branch,
-        project_id=project_id,
-        version_id=version_id,
-        version_info=version_info,
-        version_downloads=downloads,
-        back_href='/admin/projects/%s' % project_id,
-        channel_options=channel_options,
-        default_channel=default_channel,
-        default_channel_display=default_channel_display,
-        version_mode=version_mode,
-        preferred_instance_id=preferred_instance_id,
-        version_pipeline=pipeline,
-        version_lock_params=True,
-        canonical_version_name=default_ver_name,
-        canonical_version_code=default_ver_code,
-        canonical_unity_version=default_unity,
-        csrf_token_value=_get_csrf_token(),
-    )
+    ch_raw = str(v.get('channel_id') or v.get('channel') or '').strip()
+    channel_id = resolve_channel_id(project_id, ch_raw) or ch_raw
+    env_key = normalize_release_env_key(v.get('env_key') or v.get('stage') or 'development', project_id=project_id)
+    qs = urlencode({
+        'version_id': version_id,
+        'env_key': env_key,
+        'channel_id': channel_id,
+        'platform': str(v.get('platform') or 'android').strip().lower(),
+    })
+    return redirect(f'/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/build?{qs}')
 
 
 @bp.route('/admin/projects/<project_id>/channels/<channel_id>/stages/<stage_id>/build')
@@ -1420,12 +1358,16 @@ def build_history_by_version():
     """按 version_code 获取构建历史（含 Jenkins 实时状态）。"""
     version_id = (request.args.get('version_id') or '').strip()
     instance_id = (request.args.get('instance_id') or '').strip()
+    project_id = (request.args.get('project_id') or '').strip()
     if not version_id:
         return jsonify({'ok': True, 'builds': []})
-    from services.build_history_service import builds_for_version_enriched
+    from services.build_history_service import builds_for_version_enriched, latest_build_for_version
 
     builds = builds_for_version_enriched(version_id, instance_id=instance_id)
-    return jsonify({'ok': True, 'builds': builds, 'recent': builds})
+    latest = builds[0] if builds else latest_build_for_version(version_id, project_id, instance_id=instance_id)
+    if latest and not builds:
+        builds = [latest]
+    return jsonify({'ok': True, 'builds': builds, 'recent': builds, 'latest': latest or {}})
 
 
 @bp.route('/api/build/history-by-project')

@@ -1,22 +1,67 @@
-<section class="delivery-app order-detail-app" data-delivery-page="order-detail" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
-  <div class="order-detail-heading"><div><h1 id="orderTitle">发布单详情</h1><p id="orderSubtitle">正在加载完整交付上下文...</p></div><div id="orderActions" class="order-actions-bar"></div></div>
-  <div class="order-meta-strip" id="orderMeta"></div>
-  <div class="ro-journey-progress" id="orderJourneyProgress" aria-label="发布进度"></div>
-  <div class="order-detail-layout order-detail-layout--two-col">
-    <main>
-      <section class="order-alerts" id="orderAlerts"></section>
-      <div class="order-detail-grid order-detail-grid--two">
-        <section class="ui-panel"><div class="ui-panel-head"><h2>构建与产物</h2></div><div id="orderArtifacts"></div></section>
-        <section class="ui-panel"><div class="ui-panel-head"><h2>拓扑与运行态</h2></div><div id="orderRuntime"></div></section>
-        <section class="ui-panel"><div class="ui-panel-head"><h2>预检结果</h2></div><div id="orderPrecheck"></div></section>
-        <section class="ui-panel"><div class="ui-panel-head"><h2>审批信息</h2></div><div id="orderApprovals"></div></section>
+<section class="delivery-app order-detail-app rod-page" data-delivery-page="order-detail" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
+  <header class="rod-header">
+    <div class="rod-header-copy">
+      <h1 id="orderTitle">发布单详情</h1>
+      <p id="orderSubtitle">正在加载完整交付上下文...</p>
+    </div>
+    <div id="orderActions" class="order-actions-bar rod-header-actions"></div>
+  </header>
+
+  <div class="rod-meta-strip" id="orderMeta"></div>
+  <div class="rod-stepper ro-journey-progress" id="orderJourneyProgress" aria-label="发布进度"></div>
+
+  <div class="rod-body">
+    <div class="rod-main">
+      <section class="rod-focus-card" id="orderFocus">
+        <div id="orderIssues"></div>
+      </section>
+
+      <div class="rod-tabs" id="orderDetailTabs">
+        <div class="rod-tab-bar" role="tablist" aria-label="发布单详情分区">
+          <button type="button" class="rod-tab active" data-rod-tab="plan" role="tab" aria-selected="true">发布计划</button>
+          <button type="button" class="rod-tab" data-rod-tab="build" role="tab" aria-selected="false">构建产物<span class="rod-tab-badge is-hidden" data-tab-badge="build"></span></button>
+          <button type="button" class="rod-tab" data-rod-tab="env" role="tab" aria-selected="false">环境与预检<span class="rod-tab-badge is-hidden" data-tab-badge="env"></span></button>
+          <button type="button" class="rod-tab" data-rod-tab="release" role="tab" aria-selected="false">审批发布</button>
+        </div>
+        <div class="rod-tab-panels">
+          <section class="rod-tab-panel active" data-rod-panel="plan" role="tabpanel">
+            <div class="rod-panel-body" id="orderPlan"></div>
+          </section>
+          <section class="rod-tab-panel" data-rod-panel="build" role="tabpanel" hidden>
+            <div class="rod-tab-section">
+              <h3 class="rod-tab-section-title">构建与管线</h3>
+              <div class="rod-panel-body" id="orderPipeline"></div>
+            </div>
+            <div class="rod-tab-section">
+              <h3 class="rod-tab-section-title">产物登记</h3>
+              <div class="rod-panel-body" id="orderArtifacts"></div>
+            </div>
+          </section>
+          <section class="rod-tab-panel" data-rod-panel="env" role="tabpanel" hidden>
+            <div class="rod-tab-section">
+              <h3 class="rod-tab-section-title">拓扑与运行态</h3>
+              <div class="rod-panel-body" id="orderRuntime"></div>
+            </div>
+            <div class="rod-tab-section">
+              <h3 class="rod-tab-section-title">预检结果</h3>
+              <div class="rod-panel-body" id="orderPrecheck"></div>
+            </div>
+          </section>
+          <section class="rod-tab-panel" data-rod-panel="release" role="tabpanel" hidden>
+            <div class="rod-panel-body" id="orderExecutionBundle"></div>
+          </section>
+        </div>
       </div>
-      <div class="order-detail-grid order-detail-secondary">
-        <section class="ui-panel"><div class="ui-panel-head"><h2>发布与验证</h2></div><div id="orderExecution"></div></section>
-        <section class="ui-panel"><div class="ui-panel-head"><h2>Bundle 与回滚</h2></div><div id="orderBundle"></div></section>
-      </div>
-    </main>
-    <aside class="ui-panel timeline-panel"><div class="ui-panel-head"><h2>事件时间线</h2></div><div id="orderEvents"></div></aside>
+    </div>
+
+    <aside class="rod-rail">
+      <section class="rod-rail-card rod-rail-card--actions" id="orderFixRail"></section>
+      <section class="rod-rail-card rod-rail-card--warn" id="orderRiskRail"></section>
+      <section class="rod-rail-card rod-rail-card--timeline">
+        <div class="rod-panel-head"><h2>事件时间线</h2></div>
+        <div class="rod-timeline" id="orderEvents"></div>
+      </section>
+    </aside>
   </div>
 </section>
 <div id="orderActionDialog" class="delivery-dialog pm-modal-root is-hidden" aria-hidden="true">

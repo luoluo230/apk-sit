@@ -19,13 +19,6 @@
       {{ nav_item('environment-runtime', '/admin/projects/' ~ project_id ~ '/overview/runtime?env_key=' ~ (env_key or 'production'), 'nav_environment', '运行概览') }}
       {{ nav_item('environment-config', '/admin/projects/' ~ project_id ~ '/overview?tab=environments', 'nav_project_setting', '环境配置') }}
     </div>
-    <div class="ops-shell-nav-group"><b>交付管理</b>
-      {{ nav_item('versions', '/admin/projects/' ~ project_id ~ '/versions', 'nav_version_code', '版本代码') }}
-      {{ nav_item('release-orders', '/admin/projects/' ~ project_id ~ '/release-orders', 'nav_release_order', '发布中心') }}
-      {{ nav_item('builds', '/admin/projects/' ~ project_id ~ '/build-history?env_key=' ~ (env_key or 'production') ~ '&scoped=1', 'nav_build_artifact', '构建产物') }}
-      {{ nav_item('download-center', '/admin/projects/' ~ project_id ~ '/download-center', 'nav_download_center', '下载中心') }}
-      {{ nav_item('test-devices', '/admin/projects/' ~ project_id ~ '/test-devices', 'nav_test_device', '测试设备') }}
-    </div>
     <div class="ops-shell-nav-group"><b>运行管理</b>
       {{ nav_item('topology', '/admin/projects/' ~ project_id ~ '/topologies', 'nav_topology', '拓扑资产') }}
       {{ nav_item('topology-bindings', '/admin/projects/' ~ project_id ~ '/topology-bindings', 'nav_binding', '拓扑绑定') }}

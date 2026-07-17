@@ -1,0 +1,650 @@
+/* Agent 运行管理 — 嵌入 ops shell 的紧凑样式（不加载 agent console 全量 CSS） */
+
+.ops-agent-app {
+  --agent-blue: #1677ff;
+  --agent-line: #e5eaf3;
+  --agent-text: #1d2939;
+  --agent-muted: #667085;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  color: var(--agent-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ops-agent-app a { text-decoration: none; }
+.ops-agent-app button,
+.ops-agent-app input,
+.ops-agent-app select { font: inherit; }
+
+.ops-agent-app .ops-page-head.pm-page-head {
+  margin-bottom: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--agent-line);
+  border-left: 3px solid var(--agent-blue);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fff 0%, #fafcff 100%);
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.ops-agent-app .pm-page-head-copy {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.ops-agent-app .pm-page-head-copy > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.ops-agent-app .pm-page-head-actions {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+}
+
+.ops-agent-app .ops-page-head h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.ops-agent-app .ops-page-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .ops-scope-inline span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  margin-right: 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid var(--agent-line);
+  background: #fff;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .ops-scope-inline span.is-info {
+  background: #e6f4ff;
+  border-color: #91caff;
+  color: #0958d9;
+}
+
+.ops-agent-panel.env-panel {
+  border: 1px solid var(--agent-line);
+  border-left: 3px solid var(--agent-blue);
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.ops-agent-app .env-panel-head {
+  min-height: 40px;
+  padding: 0 12px;
+  background: #fafcff;
+}
+
+.ops-agent-app .env-panel-head h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ops-agent-app .ops-panel-meta {
+  font-size: 12px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .ops-panel-meta:empty {
+  display: none;
+}
+
+.ops-agent-app .agent-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid #eef1f6;
+  background: #fff;
+}
+
+.ops-agent-app .agent-toolbar--batch {
+  border-top: 1px dashed #eef1f6;
+}
+
+.ops-agent-app .agent-filter-group,
+.ops-agent-app .agent-batch-left,
+.ops-agent-app .agent-batch-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ops-agent-app .agent-field {
+  min-height: 30px;
+  border: 1px solid #dce4f2;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-field--select {
+  min-width: 120px;
+  padding: 0 8px;
+}
+
+.ops-agent-app .agent-field--search {
+  min-width: 180px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ops-agent-app .agent-field--search img { width: 14px; height: 14px; opacity: 0.6; }
+
+.ops-agent-app .agent-field--search input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-view-switch {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.ops-agent-app .agent-view-switch-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid #dce4f2;
+  background: #fff;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ops-agent-app .agent-view-switch-btn.is-active {
+  border-color: #91caff;
+  color: #0958d9;
+  background: #e6f4ff;
+}
+
+.ops-agent-app .agent-checkbox-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #344054;
+}
+
+.ops-agent-app .agent-checkbox-line input,
+.ops-agent-app .agent-card-select input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--agent-blue);
+}
+
+.ops-agent-app #agentRefreshHint {
+  font-size: 11px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .agent-dropdown { position: relative; }
+
+.ops-agent-app .agent-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--agent-line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.12);
+  z-index: 20;
+}
+
+.ops-agent-app .agent-dropdown-menu button {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  color: #344054;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-dropdown-menu button:hover { background: #f5f9ff; }
+
+.ops-agent-app .agent-list-section { padding: 0; }
+
+.ops-agent-app .agent-list-meta {
+  padding: 6px 10px 0;
+  font-size: 11px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .agent-list-meta strong { color: var(--agent-text); }
+
+.ops-agent-app .agent-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.ops-agent-app .agent-card {
+  border: 1px solid var(--agent-line);
+  border-left: 3px solid #52c41a;
+  border-radius: 8px;
+  padding: 10px;
+  background: linear-gradient(180deg, #f6ffed 0%, #fff 100%);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.ops-agent-app .agent-card.is-selected {
+  border-color: #91caff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+}
+
+.ops-agent-app .agent-card.is-warning {
+  border-left-color: #faad14;
+  background: linear-gradient(180deg, #fff7e6 0%, #fff 100%);
+}
+
+.ops-agent-app .agent-card.is-offline {
+  border-left-color: #ff4d4f;
+  background: linear-gradient(180deg, #fff1f0 0%, #fff 100%);
+}
+
+.ops-agent-app .agent-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ops-agent-app .agent-card-main { flex: 1; min-width: 0; }
+
+.ops-agent-app .agent-card-menu-wrap { position: relative; flex-shrink: 0; }
+
+.ops-agent-app .agent-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ops-agent-app .agent-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ops-agent-app .agent-card-device img { width: 16px; height: 16px; }
+
+.ops-agent-app .agent-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ops-agent-app .agent-card-more {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.ops-agent-app .agent-card-more:hover { background: #f5f9ff; }
+.ops-agent-app .agent-card-more img { width: 14px; height: 14px; }
+
+.ops-agent-app .agent-state-pill {
+  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ops-agent-app .agent-state-pill::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ops-agent-app .agent-state-pill--ok { color: #237804; background: #f6ffed; border: 1px solid #b7eb8f; }
+.ops-agent-app .agent-state-pill--warn { color: #ad6800; background: #fff7e6; border: 1px solid #ffd591; }
+.ops-agent-app .agent-state-pill--offline { color: #cf1322; background: #fff1f0; border: 1px solid #ffccc7; }
+.ops-agent-app .agent-state-pill--info { color: #475467; background: #f2f4f7; border: 1px solid #eaecf0; }
+
+.ops-agent-app .agent-card-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  color: var(--agent-muted);
+  font-size: 11px;
+}
+
+.ops-agent-app .agent-card-body-split {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  gap: 10px;
+  align-items: start;
+}
+
+.ops-agent-app .agent-card-metrics {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ops-agent-app .agent-metric-pill {
+  min-height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ops-agent-app .agent-metric-pill[data-tone="cpu"] { color: #0958d9; background: #e6f4ff; }
+.ops-agent-app .agent-metric-pill[data-tone="mem"] { color: #531dab; background: #f9f0ff; }
+.ops-agent-app .agent-metric-pill[data-tone="disk"] { color: #475467; background: #f2f4f7; }
+
+.ops-agent-app .agent-card-service {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-card-service strong { font-size: 12px; }
+
+.ops-agent-app .agent-service-text { font-size: 11px; font-weight: 700; }
+.ops-agent-app .agent-service-text--ok { color: #389e0d; }
+.ops-agent-app .agent-service-text--warn { color: #d48806; }
+.ops-agent-app .agent-service-text--offline { color: var(--agent-muted); }
+
+.ops-agent-app .agent-card-service-panel {
+  min-height: 90px;
+  border: 1px solid #eef1f6;
+  border-radius: 8px;
+  background: #fcfdff;
+  padding: 8px;
+}
+
+.ops-agent-app .agent-card-service-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #344054;
+}
+
+.ops-agent-app .agent-card-service-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.ops-agent-app .agent-card-service-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ops-agent-app .agent-card-service-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ops-agent-app .agent-card-service-badge {
+  flex-shrink: 0;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ops-agent-app .agent-card-service-badge--online { color: #237804; background: #f6ffed; border: 1px solid #b7eb8f; }
+.ops-agent-app .agent-card-service-badge--offline { color: #cf1322; background: #fff1f0; border: 1px solid #ffccc7; }
+.ops-agent-app .agent-card-service-badge--warn { color: #ad6800; background: #fff7e6; border: 1px solid #ffd591; }
+.ops-agent-app .agent-card-service-badge--unknown { color: #475467; background: #f2f4f7; border: 1px solid #eaecf0; }
+
+.ops-agent-app .agent-card-service-more,
+.ops-agent-app .agent-card-service-empty {
+  font-size: 10px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .agent-card-service-more {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-weight: 600;
+  color: #0958d9;
+  cursor: pointer;
+}
+
+.ops-agent-app .agent-card-actions {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.ops-agent-app .agent-card-action {
+  min-height: 26px;
+  border: 1px solid #dce4f2;
+  border-radius: 6px;
+  background: #fff;
+  color: #344054;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ops-agent-app .agent-card-action.is-primary {
+  border-color: #91caff;
+  background: #e6f4ff;
+  color: #0958d9;
+}
+
+.ops-agent-app .agent-card-action:hover {
+  border-color: #91caff;
+  color: #0958d9;
+}
+
+.ops-agent-app .agent-empty {
+  grid-column: 1 / -1;
+  padding: 24px 12px;
+  border: 1px dashed #d0d5dd;
+  border-radius: 8px;
+  background: #fafcff;
+  text-align: center;
+  color: var(--agent-muted);
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-table-shell {
+  margin: 0 10px 8px;
+  border: 1px solid var(--agent-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ops-agent-app .agent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-table th,
+.ops-agent-app .agent-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eef1f6;
+  text-align: left;
+}
+
+.ops-agent-app .agent-table th {
+  background: #fafcff;
+  color: var(--agent-muted);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.ops-agent-app .agent-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #eef1f6;
+  font-size: 11px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .agent-pagination-center {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ops-agent-app .agent-pagination-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dce4f2;
+  border-radius: 6px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.ops-agent-app .agent-pagination-btn img { width: 14px; height: 14px; }
+
+.ops-agent-app .agent-page-size {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid #dce4f2;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.ops-agent-app .agent-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 31, 58, 0.48);
+}
+
+.ops-agent-app .agent-modal.is-hidden { display: none; }
+
+.ops-agent-app .agent-modal-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--agent-line);
+  border-left: 3px solid var(--agent-blue);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.ops-agent-app .agent-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ops-agent-app .agent-modal-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.ops-agent-app .agent-modal-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .agent-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ops-agent-app .agent-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--agent-muted);
+}
+
+.ops-agent-app .agent-form-grid-wide { grid-column: 1 / -1; }
+
+.ops-agent-app .agent-form-grid input,
+.ops-agent-app .agent-form-grid select,
+.ops-agent-app .agent-form-grid textarea {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid #dce4f2;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.ops-agent-app .agent-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.ops-agent-app .is-hidden { display: none !important; }
+
+@media (max-width: 900px) {
+  .ops-agent-app .agent-card-body-split { grid-template-columns: 1fr; }
+  .ops-agent-app .agent-card-grid { grid-template-columns: 1fr; }
+}
