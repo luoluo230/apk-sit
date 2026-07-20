@@ -246,7 +246,9 @@
     }
 
     const num = build.build_number || build.number;
-    const progress = build.building ? 62 : (statusKey(build) === "SUCCESS" ? 100 : 38);
+    const progress = Number.isFinite(Number(build.progress_pct))
+      ? Math.max(0, Math.min(100, Number(build.progress_pct)))
+      : (build.building ? 55 : (statusKey(build) === "SUCCESS" ? 100 : 38));
     const recordHref = buildRecordHref(build, links);
     const consoleUrl = String(build.console_url || "").trim();
     const failureBlock = statusKey(build) === "FAILURE" && build.failure_summary
@@ -359,12 +361,13 @@
     const vc = state.version_name && state.version_code ? `${state.version_name} / ${state.version_code}` : "未选择";
     const status = String(state.order_status || "");
     const isBuilding = Boolean(latestBuild?.building) || status === "building";
+    const isBuildFailed = status === "build_failed" || statusKey(latestBuild) === "FAILURE";
     const artifactHref = latestBuild ? buildRecordHref(latestBuild, links) : (links.build_history || "#");
     const rows = [
       ["版本组", esc(state.version_name || "—"), state.version_name ? "ready" : "pending"],
       ["VersionCode", esc(vc), versionId ? "ready" : "pending"],
       ["管线", state.pipeline_ready ? '<span class="cj-badge ready">已就绪</span>' : '<span class="cj-badge pending">未配置</span>', state.pipeline_ready ? "ready" : "pending"],
-      ["构建状态", esc(isBuilding ? "building" : (status || "待触发")), isBuilding ? "pending" : state.artifact_ready ? "ready" : "pending"],
+      ["构建状态", esc(isBuilding ? "building" : (isBuildFailed ? "build_failed" : (status || "待触发"))), isBuilding ? "pending" : isBuildFailed ? "pending" : state.artifact_ready ? "ready" : "pending"],
       ["发布单", esc(state.release_order_id || "—")],
     ];
 
@@ -383,6 +386,16 @@
     }
     if (!versionId) {
       return panel("请选择 VersionCode", "在上方选择版本组与 VersionCode 后再触发构建。", summaryGrid(rows), `<a class="cj-btn neutral" href="${esc(links.versions || "#")}">管理版本</a>`, "pending");
+    }
+    if (isBuildFailed && !isBuilding) {
+      return panel(
+        "构建失败",
+        "Jenkins 构建未成功，请查看失败摘要后重新触发构建。",
+        summaryGrid([...rows, ["失败摘要", esc(latestBuild?.failure_summary || "—"), "pending"]]),
+        `<button type="button" class="cj-btn build" id="cjRebuildBuild">重新构建</button>
+        <a class="cj-btn neutral" href="${esc(artifactHref)}">查看构建记录</a>`,
+        "pending",
+      );
     }
     if (isBuilding) {
       return panel(

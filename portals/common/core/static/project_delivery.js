@@ -3,7 +3,7 @@
   if (!page) return;
   const projectId = page.dataset.projectId;
   const envLabels = {development:"开发环境",testing:"测试环境",staging:"预发环境",production:"生产环境"};
-  const statusLabels = {draft:"草稿",building:"构建中",artifacts_ready:"产物就绪",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
+  const statusLabels = {draft:"草稿",building:"构建中",build_failed:"构建失败",artifacts_ready:"产物就绪",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
   const releaseLabel = (value) => {
     if (window.PmDisplayLabels && window.PmDisplayLabels.releaseStatus) {
       return window.PmDisplayLabels.releaseStatus(value).label;
@@ -12,7 +12,7 @@
   };
   const artifactStatusLabels = {registered:"已登记",available:"可用",reachable:"可达",missing:"缺失",unreachable:"不可达",invalid:"无效"};
   const artifactTypeLabels = {apk:"APK 安装包",resource:"资源包",config:"配置包",code:"代码热更包"};
-  const bindingSourceLabels = {project_default:"项目默认",env_channel:"环境与渠道",version:"大版本覆盖",version_override:"大版本覆盖",default:"项目默认"};
+  const bindingSourceLabels = {project_default:"项目默认",env_channel:"环境与渠道",env_channel_platform:"环境/渠道/平台",version:"大版本覆盖",version_override:"大版本覆盖",scope_default:"Scope默认",scope_override:"Scope覆盖",default:"项目默认"};
   const parseApiError = (result, fallback) => {
     if (!result || typeof result !== "object") return fallback;
     const err = result.error;
@@ -87,6 +87,10 @@
       return `${href}${join}${parts.join("&")}`;
     }
   };
+  const buildTopologyDrawerHref = (scope = {}) => {
+    const envKey = scope.env_key || page.dataset.envKey || "development";
+    return scopeHref(`/admin/projects/${projectId}/environments/${encodeURIComponent(envKey)}`, scope, { open_topology_drawer: "1" });
+  };
   const orderScopeLinks = (item) => {
     const scope = {
       env_key: item.env_key,
@@ -103,7 +107,7 @@
       buildHistory: scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" }),
       buildConfig: vid ? buildReleaseFocusUrl(`/admin/projects/${projectId}/versions/${vid}/build-config${buildScopeQuery(scope, { from: "release-order", release_order_id: item.release_order_id })}`, { releaseOrderId: item.release_order_id }) : "",
       versions: scopeHref(`/admin/projects/${projectId}/versions`, scope),
-      topology: scopeHref(`/admin/projects/${projectId}/topology-bindings`, scope),
+      topology: buildTopologyDrawerHref(scope),
       runtime: buildReleaseFocusUrl(scopeHref(`/admin/projects/${projectId}/overview/runtime`, { env_key: item.env_key }), { releaseOrderId: item.release_order_id, highlightFields: ["runtime_topology"], focusReason: "请确认并启动目标拓扑的运行态" }),
       network: buildReleaseFocusUrl(`/admin/projects/${projectId}/environments/${encodeURIComponent(item.env_key || "development")}${ctx}`, { releaseOrderId: item.release_order_id, highlightFields: ["gateway_ws", "login_http", "game_ws", "ops_http"], focusReason: "请补充环境网络接入配置" }),
     };
@@ -906,7 +910,7 @@
               : `<button type="button" class="env-btn release" data-env-toggle="${key}" data-enabled="1">启用</button>`;
             const remove = builtin ? "" : `<button type="button" class="env-btn warn env-btn-full" data-env-remove="${key}">删除</button>`;
             const scopeBtn = `<button type="button" class="env-btn build" data-scope-env="${key}">配置</button>`;
-            const scopeLink = `<a class="env-btn neutral" href="/admin/projects/${encodeURIComponent(projectId)}/environments/${key}#delivery-scope">环境详情</a>`;
+            const scopeLink = `<a class="env-btn neutral" href="/admin/projects/${encodeURIComponent(projectId)}/environments/${key}">环境详情</a>`;
             const iconCls = envConfigIconClass(row.env_key);
             const iconFile = envConfigIconFile(row.env_key);
             const badgeClass = enabled ? (builtin ? "builtin" : "active") : "disabled";
@@ -1008,10 +1012,14 @@
         const badgeText = line.configured ? "已配置" : "未配置";
         const cardVersionLink = scopeApi.renderCardVersionEntry
           ? scopeApi.renderCardVersionEntry(projectId, envKey, cid, line.platform)
-          : `<a class="matrix-btn version" href="${esc(scopeApi.versionsPageHref ? scopeApi.versionsPageHref(projectId, { env_key: envKey, channel_id: cid, platform: line.platform }) : scopeHref(`/admin/projects/${projectId}/versions`, { env_key: envKey, channel_id: cid, platform: line.platform }))}">版本</a>`;
+          : `<a class="matrix-btn version env-line-version-btn" href="${esc(scopeApi.versionsPageHref ? scopeApi.versionsPageHref(projectId, { env_key: envKey, channel_id: cid, platform: line.platform }) : scopeHref(`/admin/projects/${projectId}/versions`, { env_key: envKey, channel_id: cid, platform: line.platform }))}">版本</a>`;
         const cardBuildHref = scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "build", line.platform) : "#";
         const cardReleaseHref = scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "release", line.platform) : "#";
-        html += `<article class="env-line-card ${line.configured ? "configured" : "unconfigured"} env-line-card-readonly" data-platform-card="${esc(line.platform || "")}">
+        const gmHref = scopeHref(`/admin/projects/${projectId}/actions`, { env_key: envKey, channel_id: cid, platform: line.platform });
+        const testHref = scopeHref(`/admin/projects/${projectId}/diagnostics`, { env_key: envKey, channel_id: cid, platform: line.platform });
+        const topoName = line.topology_name || line.topology_id || "-";
+        const topoSource = line.binding_source_label || bindingSourceLabels[line.binding_source] || line.binding_source || "-";
+        html += `<article class="env-line-card env-line-card-v2 ${line.configured ? "configured" : "unconfigured"}" data-platform-card="${esc(line.platform || "")}" data-env-key="${esc(envKey)}" data-channel-id="${esc(cid)}" data-channel-name="${esc(group.name || cid)}" data-platform="${esc(line.platform || "")}" data-version-name="${esc(line.version_name || "")}">
           <div class="env-line-card-head">
             <span class="env-line-platform-icon"><img src="/static/project_ui/svg/${platformIcon(line.platform)}" alt=""></span>
             <div class="env-line-card-title">
@@ -1019,13 +1027,24 @@
               <span class="env-line-badge ${badgeClass}">${badgeText}</span>
             </div>
           </div>
-          <p class="env-line-status-hint">${esc(line.status_hint || (line.configured ? "产物就绪" : "未配置 VersionCode"))}</p>
           <dl class="env-line-fields">
             <div><dt>版本</dt><dd class="${line.version_name ? "" : "muted"}" title="${esc(versionText)}">${esc(versionText)}</dd></div>
             <div><dt>Bundle</dt><dd class="mono" title="${esc(line.bundle_id || "-")}">${esc(line.bundle_id || "-")}</dd></div>
-            <div><dt>拓扑</dt><dd class="mono" title="${esc(line.topology_id || "-")}">${esc(line.topology_id || "-")}</dd></div>
+            <div><dt>拓扑</dt><dd title="${esc(topoName)}"><span class="env-line-topology-name">${esc(topoName)}</span><span class="env-line-topology-source">${esc(topoSource)}</span></dd></div>
           </dl>
-          <footer class="env-line-actions env-line-card-links">${cardVersionLink}<a class="matrix-btn build" href="${esc(cardBuildHref)}">构建</a><a class="matrix-btn release" href="${esc(cardReleaseHref)}">发版</a></footer>
+          <div class="env-line-version-row">${cardVersionLink}</div>
+          <div class="env-line-card-tabs" data-active-tab="client">
+            <div class="env-line-tab-head">
+              <button type="button" class="env-line-tab is-active" data-card-tab="client">客户端</button>
+              <button type="button" class="env-line-tab" data-card-tab="server">服务端</button>
+            </div>
+            <div class="env-line-tab-pane is-active" data-card-pane="client">
+              <div class="env-line-actions env-line-card-links"><a class="matrix-btn build" href="${esc(cardBuildHref)}">构建</a><a class="matrix-btn release" href="${esc(cardReleaseHref)}">发版</a></div>
+            </div>
+            <div class="env-line-tab-pane" data-card-pane="server">
+              <div class="env-line-actions env-line-card-links"><button type="button" class="matrix-btn topology" data-open-topology-drawer>拓扑</button><a class="matrix-btn server-gm" href="${esc(gmHref)}">GM</a><a class="matrix-btn server-test" href="${esc(testHref)}">测试</a></div>
+            </div>
+          </div>
         </article>`;
       });
       html += "</div></section>";
@@ -1073,6 +1092,19 @@
       return null;
     }
   };
+  const clearDeliveryScopeDeepLink = () => {
+    const params = new URLSearchParams(location.search);
+    let changed = false;
+    if (params.get("configure_delivery_scope") === "1") {
+      params.delete("configure_delivery_scope");
+      changed = true;
+    }
+    const qs = params.toString();
+    const nextUrl = `${location.pathname}${qs ? `?${qs}` : ""}`;
+    if (location.hash === "#delivery-scope" || changed) {
+      history.replaceState(null, "", nextUrl);
+    }
+  };
   const openDeliveryScopeDialog = async (options = {}) => {
     const dialog = document.getElementById("deliveryScopeDialog");
     if (!dialog) return;
@@ -1106,6 +1138,14 @@
     if (!dialog) return;
     dialog.classList.add("is-hidden");
     dialog.setAttribute("aria-hidden", "true");
+    clearDeliveryScopeDeepLink();
+  };
+  const maybeOpenDeliveryScopeFromDeepLink = () => {
+    const params = new URLSearchParams(location.search);
+    const wantsDialog = params.get("configure_delivery_scope") === "1" || location.hash === "#delivery-scope";
+    if (!wantsDialog) return;
+    clearDeliveryScopeDeepLink();
+    openDeliveryScopeDialog();
   };
   const saveDeliveryScope = async () => {
     const envKey = scopeDialogEnvKey || page.dataset.envKey;
@@ -1129,7 +1169,8 @@
       if (page.dataset.deliveryPage === "environment" && page.dataset.envKey === envKey) {
         const summary = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`);
         const lines = summary.delivery_lines || [];
-        document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey, data.channel_journeys || []);
+        document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey, summary.channel_journeys || []);
+        if (typeof window.bindEnvLineCardTabs === "function") window.bindEnvLineCardTabs(document.getElementById("deliveryMatrix"));
       }
       if (page.dataset.deliveryPage === "overview") await loadOverview();
     } catch (error) {
@@ -1401,6 +1442,7 @@
     document.getElementById("envDetailTitle").textContent = data.env_label || envKey;
     const lines = data.delivery_lines || [];
     document.getElementById("deliveryMatrix").innerHTML = renderDeliveryMatrixHtml(lines, envKey, data.channel_journeys || []);
+    if (typeof window.bindEnvLineCardTabs === "function") window.bindEnvLineCardTabs(document.getElementById("deliveryMatrix"));
     const orders = data.release_orders || [];
     document.getElementById("envOrders").innerHTML = orders.length
       ? orders.slice(0, 6).map((item) => {
@@ -1455,7 +1497,7 @@
       });
     }
     if (scopeApi.bindMatrixMoreMenus) scopeApi.bindMatrixMoreMenus(page);
-    if (location.hash === "#delivery-scope") openDeliveryScopeDialog();
+    maybeOpenDeliveryScopeFromDeepLink();
   }
 
   const renderOrderTable = (items) => {
@@ -2374,7 +2416,14 @@
     }
     document.addEventListener("pm-shell-search",(e)=>{const q=e.detail?.query||"";if(!q)return;const cards=document.querySelectorAll(".p02-env-card,.p02-activity-item");cards.forEach(el=>{el.style.display=el.textContent?.toLowerCase().includes(q.toLowerCase())?"":"none";});});
   }
-  if(type==="environment"){loadEnvironmentDetail().catch(error=>toast(error.message,"error"));page.querySelector("[data-refresh-env]")?.addEventListener("click",loadEnvironmentDetail);}
+  if(type==="environment"){
+    if(window.TopologyBindingDrawer){
+      window.TopologyBindingDrawer.init({projectId,onSaved:loadEnvironmentDetail});
+      window.TopologyBindingDrawer.maybeOpenFromQuery();
+    }
+    loadEnvironmentDetail().catch(error=>toast(error.message,"error"));
+    page.querySelector("[data-refresh-env]")?.addEventListener("click",loadEnvironmentDetail);
+  }
   if(type==="orders")setupOrders().catch(error=>toast(error.message,"error"));
   if(type==="order-form")setupOrderForm().catch(error=>toast(error.message,"error"));
   if(type==="order-detail")loadOrderDetail().catch(error=>toast(error.message,"error"));

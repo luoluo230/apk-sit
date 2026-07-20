@@ -149,7 +149,21 @@
 | P10 | 发布单中心 | 复用列表语言 | 有列表，视觉未对齐 P02 |
 | P16 | 环境运行工作台 | `P16_environment_runtime_overview.png` | `/environments/{env}/runtime` MVP-A 已立项 |
 
-### 建议修复优先级
+### 拓扑绑定（P18 整合 · 2026-07-20）
+
+规格：[`topology_binding_architecture.md`](topology_binding_architecture.md) · 环境详情：[`project_environment_detail_p18.md`](project_environment_detail_p18.md)
+
+| 检查项 | 目标 | 2026-07-20 实现 | 差异 |
+|---|---|---|---|
+| 绑定入口 | 仅交付线卡片抽屉 | 卡片服务端「拓扑」+ 抽屉；侧栏/右栏已移除 | ✅ |
+| 拓扑选择 | 全量列表+详情 | picker API + 抽屉卡片列表 | ✅ |
+| platform 维度 | Android/iOS 独立绑定 | `topology_bindings.platform` + resolver | ✅ |
+| 解析链 | 单一 `resolve_topology_binding_for_scope` | 交付线/发布/运行概览已接入 | ✅ |
+| 独立绑定页 | 兼容深链 redirect | `/topology-bindings` → 环境详情抽屉 | ✅ |
+| 卡片尺寸 | 260–320px + 页签 | `project_environment_detail.css` | ✅ |
+| bundle 引用提示 | 抽屉内 bundle_ref_count | 占位 0，待 P3 | 轻微 |
+| 屏级像素验收 | 对照设计资产 | 待浏览器 PASS 表 | 待验收 |
+
 
 1. **壳层统一**：补全侧栏 IA、四级面包屑、页面标题区规范（星标/主操作/筛选位）。  
 2. **P04 + P06**：表格化 + 右栏/抽屉 + KPI/筛选对齐设计稿（交付链路最高频）。  

@@ -204,25 +204,45 @@
       return panel("请选择发版目标", "在上方选择产物就绪的版本组与 VersionCode。", summaryGrid(rows), "", "pending");
     }
 
-    if (!oid || status === "draft" || status === "artifacts_ready" || status === "precheck_failed") {
+    if (!oid || status === "draft" || status === "artifacts_ready" || status === "precheck_failed" || status === "build_failed") {
+      const ensureApi = state.ensure_order_api || "";
+      const createHref = state.create_order_href || "";
+      const noOrderActions = !oid && ensureApi
+        ? `<button type="button" class="cj-btn release" id="cjEnsureOrder">创建发布单</button>
+           ${createHref ? `<a class="cj-btn neutral" href="${esc(createHref)}">填写发布计划</a>` : ""}`
+        : "";
+      const failedHint = status === "build_failed"
+        ? `<p class="cj-empty-hint">构建失败，请先在构建流程重新触发构建，或创建新的发布单。</p>`
+        : "";
       return panel(
         "发版计划",
         data.form_depth === "full" ? "生产环境需填写完整发布计划。" : "开发环境可使用极简计划。",
-        summaryGrid([...rows, ["计划深度", esc(data.form_depth === "full" ? "完整计划" : "极简计划"), "ready"]]),
-        `${oid ? `<a class="cj-btn release" href="${esc(editHref)}">编辑计划</a>` : ""}
+        `${failedHint}${summaryGrid([...rows, ["计划深度", esc(data.form_depth === "full" ? "完整计划" : "极简计划"), "ready"]])}`,
+        `${noOrderActions}
+        ${oid ? `<a class="cj-btn release" href="${esc(editHref)}">编辑计划</a>` : ""}
         ${oid ? `<a class="cj-btn neutral" href="${esc(detailHref)}">发布单详情</a>` : ""}
-        <button type="button" class="cj-btn release" id="cjPrecheck">执行预检</button>`,
-        oid ? "ready" : "pending",
+        ${oid && status !== "build_failed" ? `<button type="button" class="cj-btn release" id="cjPrecheck">执行预检</button>` : ""}`,
+        oid ? "ready" : (versionId ? "pending" : "pending"),
       );
     }
 
-    if (status === "prechecking" || status === "ready" || status === "awaiting_approval" || status === "approved") {
+    if (status === "awaiting_approval") {
+      return panel(
+        "待审批",
+        "生产环境预检已通过，需审批后才能发布。",
+        summaryGrid(rows),
+        `${oid ? `<a class="cj-btn release" href="${esc(detailHref)}">前往审批</a>` : ""}
+        ${oid ? `<a class="cj-btn neutral" href="${esc(detailHref)}">查看详情</a>` : ""}`,
+        "pending",
+      );
+    }
+
+    if (status === "prechecking" || status === "ready" || status === "approved") {
       return panel(
         "发布操作",
-        "预检已通过或待审批，可执行发布。",
+        status === "approved" || data.form_depth !== "full" ? "预检已通过，可执行发布。" : "预检已通过，等待审批。",
         summaryGrid(rows),
         `<button type="button" class="cj-btn release" id="cjPublish">全量发布</button>
-        <button type="button" class="cj-btn release" id="cjPublishGray">灰度发布 (10%)</button>
         ${oid ? `<a class="cj-btn neutral" href="${esc(detailHref)}">查看详情</a>` : ""}`,
         "pending",
       );
@@ -273,35 +293,57 @@
     });
     const oid = state.release_order_id || "";
     const scopeId = state.scope_id || "";
+    const ensureApi = state.ensure_order_api || "";
+
+    document.getElementById("cjEnsureOrder")?.addEventListener("click", async () => {
+      if (!ensureApi) return toast("缺少创建发布单接口", "error");
+      try {
+        const result = await api(ensureApi, { method: "POST", body: "{}" });
+        toast("发布单已创建");
+        if (result?.release_order_id) {
+          versionId = versionId || result.version_id || "";
+          syncUrl();
+        }
+        load();
+      } catch (e) { toast(e.message, "error"); }
+    });
 
     document.getElementById("cjPrecheck")?.addEventListener("click", async () => {
-      if (!oid) return toast("请先选择 VersionCode 并确保有发布单", "error");
+      let orderId = oid;
+      if (!orderId && ensureApi) {
+        try {
+          const created = await api(ensureApi, { method: "POST", body: "{}" });
+          orderId = created?.release_order_id || "";
+        } catch (e) {
+          return toast(e.message, "error");
+        }
+      }
+      if (!orderId) return toast("请先选择 VersionCode 并创建发布单", "error");
       try {
-        await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(oid)}/precheck`, { method: "POST", body: "{}" });
+        await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(orderId)}/precheck`, { method: "POST", body: "{}" });
         toast("预检已执行");
         load();
       } catch (e) { toast(e.message, "error"); }
     });
 
-    const publish = async (mode, grayRatio = "") => {
+    const publish = async () => {
       if (bundleId && scopeId) {
         const reason = promptReason("发布指定 Bundle");
         await api(`/api/projects/${encodeURIComponent(projectId)}/scopes/${encodeURIComponent(scopeId)}/publish-bundle`, {
           method: "POST",
-          body: JSON.stringify({ bundle_id: bundleId, mode, gray_ratio: grayRatio, reason }),
+          body: JSON.stringify({ bundle_id: bundleId, mode: "full", reason }),
         });
         toast("指定 Bundle 已发布");
         load();
         return;
       }
-      if (!oid) throw new Error("请先选择目标版本");
+      if (!oid) throw new Error("请先选择目标版本并创建发布单");
       await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(oid)}/publish`, { method: "POST", body: "{}" });
       toast("发布已执行");
       load();
     };
 
-    document.getElementById("cjPublish")?.addEventListener("click", () => publish("full").catch((e) => toast(e.message, "error")));
-    document.getElementById("cjPublishGray")?.addEventListener("click", () => publish("gray", "10").catch((e) => toast(e.message, "error")));
+    document.getElementById("cjPublish")?.addEventListener("click", () => publish().catch((e) => toast(e.message, "error")));
 
     document.getElementById("cjVerifyPass")?.addEventListener("click", async () => {
       if (!oid) return toast("缺少发布单", "error");

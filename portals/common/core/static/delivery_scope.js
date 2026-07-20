@@ -73,12 +73,17 @@
     return `<button class="${cls}" type="button" disabled title="${esc(primary.reason || "")}">${esc(primary.label)}</button>`;
   };
 
+  const topologyDrawerHref = (projectId, scope = {}) => {
+    const envKey = scope.env_key || "development";
+    return href(`/admin/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}`, scope, { open_topology_drawer: "1" });
+  };
+
   const renderMatrixActions = (actions = {}, links = {}, scope = {}, projectId = "") => {
     const primary = actions.primary || {};
     const secondary = actions.secondary || [];
     const buildHistory = links.build_history || href(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" });
     const versionsHref = links.versions || href(`/admin/projects/${projectId}/versions`, scope);
-    const topologyHref = href(`/admin/projects/${projectId}/topology-bindings`, scope);
+    const topologyHref = topologyDrawerHref(projectId, scope);
     const downloadHref = primary.version_id || scope.version_id
       ? href(`/admin/projects/${projectId}/versions`, scope, { download_vc: scope.version_id })
       : "";
@@ -240,6 +245,7 @@
     renderChannelVersionsEntry,
     renderChannelJourneyActions,
     channelJourneyHref,
+    topologyDrawerHref,
     bindQuickBuild,
     bindMatrixMoreMenus,
     esc,

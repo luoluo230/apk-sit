@@ -5,7 +5,7 @@
       <div class="ops-page-head-text"><h1>项目拓扑资产</h1></div>
     </div>
     <div class="ops-page-head-actions">
-      <a class="pm-btn pm-btn--compact" href="/admin/projects/{{ project_id }}/topology-bindings?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a>
+      <a class="pm-btn pm-btn--compact" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}?open_topology_drawer=1&amp;env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a>
       <button class="pm-btn pm-btn--primary pm-btn--compact" id="taCreate" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建拓扑</button>
     </div>
   </header>
@@ -65,6 +65,13 @@
     function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
     function cardClass(st){return st==='running'||st==='validated'?'configured':(st==='draft'||st==='stopped'?'unconfigured':'neutral')}
     function badgeClass(st){return st==='running'||st==='validated'?'ready':(st==='draft'||st==='stopped'?'pending':'neutral')}
+    function bindingDrawerHref(envKey, channelId, platform){
+      var ek=envKey||currentEnv||'development';
+      var q='open_topology_drawer=1&env_key='+encodeURIComponent(ek);
+      if(channelId) q+='&channel_id='+encodeURIComponent(channelId);
+      if(platform) q+='&platform='+encodeURIComponent(platform);
+      return '/admin/projects/'+encodeURIComponent(projectId)+'/environments/'+encodeURIComponent(ek)+'?'+q;
+    }
     function renderContext(){
       var host=document.getElementById('taContext'); if(!host)return;
       var running=state.topologies.filter(function(x){return x.status==='running'||x.status==='validated'}).length;
@@ -76,7 +83,7 @@
       return '<article class="env-line-card '+cls+'"><div class="env-line-card-head"><span class="env-line-platform-icon"><img src="/static/project_ui/svg/nav_topology.svg" alt=""></span><div class="env-line-card-title"><span class="env-line-platform">'+esc(x.name||x.topology_id)+'</span><span class="env-line-badge '+badge+'">'+esc(statusNames[st]||st)+'</span></div></div>'
         +'<p class="env-line-status-hint" title="'+esc(x.topology_id)+'">'+esc(envNames[x.env_key]||x.env_key||'-')+'</p>'
         +'<dl class="env-line-fields"><div><dt>节点</dt><dd>'+esc(x.node_count||0)+'</dd></div><div><dt>连线</dt><dd>'+esc(x.edge_count||0)+'</dd></div><div><dt>更新</dt><dd>'+esc(String(x.updated_at||'-').slice(0,10))+'</dd></div></dl>'
-        +'<footer class="env-line-actions env-line-card-links"><a class="matrix-btn build" href="'+canvas+'">画布</a><a class="matrix-btn version" href="/admin/projects/'+encodeURIComponent(projectId)+'/topology-bindings?env_key='+encodeURIComponent(x.env_key||currentEnv)+'">绑定</a></footer></article>';
+        +'<footer class="env-line-actions env-line-card-links"><a class="matrix-btn build" href="'+canvas+'">画布</a><a class="matrix-btn version" href="'+bindingDrawerHref(x.env_key||currentEnv,'','')+'">绑定</a></footer></article>';
     }
     function render(){
       var kw=(document.getElementById('taSearch').value||'').trim().toLowerCase(), env=document.getElementById('taEnv').value, status=document.getElementById('taStatus').value;
@@ -93,7 +100,7 @@
         return '<article class="env-line-card configured"><div class="env-line-card-head"><span class="env-line-platform-icon"><img src="/static/project_ui/svg/nav_binding.svg" alt=""></span><div class="env-line-card-title"><span class="env-line-platform">'+esc(x.level_label||'绑定')+'</span><span class="env-line-badge ready">绑定</span></div></div>'
           +'<p class="env-line-status-hint" title="'+esc(scope)+'">'+esc(scope)+'</p>'
           +'<dl class="env-line-fields"><div><dt>拓扑</dt><dd class="mono" title="'+esc(x.topology_id||'-')+'">'+esc(x.topology_id||'-')+'</dd></div></dl>'
-          +'<footer class="env-line-actions env-line-card-links"><a class="matrix-btn version" href="/admin/projects/'+encodeURIComponent(projectId)+'/topology-bindings?env_key='+encodeURIComponent(x.env_key||currentEnv)+'">管理</a></footer></article>';
+          +'<footer class="env-line-actions env-line-card-links"><a class="matrix-btn version" href="'+bindingDrawerHref(x.env_key, x.channel_id, x.platform)+'">管理</a></footer></article>';
       }).join(''):'<div class="ops-workspace-empty">暂无绑定</div>';
     }
     function load(){

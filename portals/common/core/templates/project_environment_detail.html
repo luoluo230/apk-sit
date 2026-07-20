@@ -44,9 +44,7 @@
         <div class="env-rail-head"><h2>配置入口</h2></div>
         <div class="env-quick-grid">
           <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本管理</a>
-          <a href="/admin/projects/{{ project_id }}/topology-bindings?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_binding.svg" alt="">拓扑绑定</a>
           <a href="/admin/projects/{{ project_id }}/topologies?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_topology.svg" alt="">拓扑资产</a>
-          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">去版本代码开始发布</a>
         </div>
       </section>
     </aside>
@@ -67,5 +65,28 @@
         <button type="button" class="ui-primary" id="btnSaveDeliveryScope">保存</button>
       </div>
     </div>
+  </div>
+
+  <div id="topologyBindingDrawer" class="topology-binding-drawer is-hidden" aria-hidden="true">
+    <div class="topology-drawer-backdrop" data-drawer-close></div>
+    <aside class="topology-drawer-panel" role="dialog" aria-labelledby="topologyDrawerTitle">
+      <header class="topology-drawer-head">
+        <div><h3 id="topologyDrawerTitle">拓扑绑定</h3><p id="topologyDrawerPreview">选择目标拓扑并保存绑定</p></div>
+        <button type="button" class="icon-button" data-drawer-close aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+      </header>
+      <div id="topologyDrawerSummary" class="topology-drawer-summary">加载中…</div>
+      <div class="topology-drawer-filters">
+        <input id="topologyDrawerSearch" type="search" placeholder="搜索拓扑名称或 ID" aria-label="搜索拓扑">
+        <select id="topologyDrawerEnv" aria-label="环境筛选"></select>
+        <select id="topologyDrawerStatus" aria-label="状态筛选"></select>
+        <label class="topology-drawer-check"><input id="topologyDrawerSameEnv" type="checkbox" checked> 优先本环境</label>
+      </div>
+      <div id="topologyDrawerList" class="topology-drawer-list"><div class="topology-drawer-empty">加载中…</div></div>
+      <footer class="topology-drawer-foot">
+        <button type="button" class="ui-secondary" id="topologyDrawerClear">清除覆盖</button>
+        <a class="ui-secondary" id="topologyDrawerAssets" href="#">拓扑资产</a>
+        <button type="button" class="ui-primary" id="topologyDrawerSave">保存绑定</button>
+      </footer>
+    </aside>
   </div>
 </section>
