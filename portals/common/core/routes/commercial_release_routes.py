@@ -5,7 +5,7 @@ import os
 import json as json_module
 import uuid
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template_string, session
+from flask import Blueprint, request, jsonify, render_template_string, session, redirect, url_for
 
 from config import Config, DATA_DIR
 from models.data import log_audit, projects_db, resolve_project_id
@@ -920,14 +920,11 @@ function getCsrfToken() {
 @bp.route('/admin/build/commercial-release')
 @admin_required_any('projects', 'build')
 def commercial_release_page():
-    """商业级发布独立页面"""
-    csrf_token = generate_csrf()
-    # 注入 CSRF token 到 meta 标签
-    page = COMMERCIAL_RELEASE_PAGE.replace(
-        '<meta name="csrf-token" content="">',
-        '<meta name="csrf-token" content="' + csrf_token + '">'
-    )
-    return _admin_layout(page, '商业级发布', back_href='/admin')
+    """Legacy commercial release UI — redirect to project delivery hub."""
+    project_id = (request.args.get('project_id') or '').strip()
+    if project_id and project_id in projects_db:
+        return redirect(f'/admin/projects/{project_id}/overview?legacy=commercial-release')
+    return redirect('/admin/projects?legacy=commercial-release')
 
 
 @bp.route('/admin/build/commercial-release/trigger', methods=['POST'])
@@ -956,7 +953,9 @@ def trigger_commercial_release():
                 'build_number': build_number,
                 'release_order_id': draft.get('release_order_id'),
                 'pipeline_source': 'version_group',
-            })
+                'deprecated': True,
+                'prefer': '/api/projects/{}/versions/{}/quick-build'.format(project_id, version_id),
+            }), 200, {'Deprecation': 'true', 'Link': '</api/projects/{}/versions/{}/quick-build>; rel="successor-version"'.format(project_id, version_id)}
         except ValueError as exc:
             return jsonify({'success': False, 'error': str(exc)}), 400
         except Exception as exc:
@@ -1201,40 +1200,49 @@ def trigger_commercial_release():
 @bp.route('/admin/build/commercial-release/activate', methods=['POST'])
 @admin_required_any('projects', 'build')
 def activate_commercial_release():
-    """仅 Step4 激活：上传完成后单独触发，不写 release_plan 构建步骤。"""
-    if not has_scope('build.trigger'):
-        return jsonify({'success': False, 'error': '无权限触发构建'}), 403
-
-    data = request.get_json() or {}
-    base_url, builds_dir, instance_id = _jenkins_context(data)
-    if not base_url or not builds_dir:
-        return jsonify({'success': False, 'error': 'Jenkins 实例未找到或未运行'}), 400
-
-    plan = data.get('plan') or {}
-    if not isinstance(plan, dict):
-        plan = {}
-    plan['releaseMode'] = 'activate'
-    plan['releaseActivate'] = True
-    plan['releaseUpload'] = False
-    plan['configEnabled'] = False
-    plan['resourceEnabled'] = False
-    plan['hotReleaseEnabled'] = True
-
-    plan_id = str(uuid.uuid4())[:8]
-    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    plan_filename = f'release_plan_activate_{plan_id}_{timestamp}.json'
-    plan_filepath = os.path.join(RELEASE_PLANS_DIR, plan_filename)
-    with open(plan_filepath, 'w', encoding='utf-8') as f:
-        json_module.dump(plan, f, ensure_ascii=False, indent=2)
-
-    params, _ = plan_to_jenkins_params(plan, plan_filepath, None)
-    success, build_number, err = jenkins_svc.trigger_build(
-        params, base_url=base_url, builds_dir=builds_dir, instance_id=instance_id
-    )
-    if success:
-        log_audit('commercial_release_activate', f'激活 #{build_number}')
-        return jsonify({'success': True, 'build_number': build_number, 'mode': 'activate'})
-    return jsonify({'success': False, 'error': err or '触发失败'}), 500
+    """Legacy activate — prefer release order publish. Rejects direct Jenkins activate when order path is available."""
+    data = request.get_json(silent=True) or {}
+    project_id = (data.get('_project_id') or data.get('project_id') or '').strip()
+    version_id = (data.get('_version_id') or data.get('version_id') or '').strip()
+    if project_id and version_id:
+        try:
+            from services.release.release_order_service import ensure_draft_release_order, publish_release_order, precheck_release_order
+            actor = session.get('user') or ''
+            order = ensure_draft_release_order(project_id, version_id, actor, reason='legacy commercial activate')
+            order_id = str(order.get('release_order_id') or '')
+            status = str(order.get('status') or '')
+            if status in {'draft', 'artifacts_ready', 'precheck_failed'}:
+                order = precheck_release_order(project_id, order_id, actor)
+                status = str(order.get('status') or '')
+            if status == 'awaiting_approval':
+                return jsonify({
+                    'success': False,
+                    'error': '生产环境需审批，请从发版流程完成发布',
+                    'release_order_id': order_id,
+                    'deprecated': True,
+                }), 400
+            if status in {'ready', 'approved'}:
+                published = publish_release_order(project_id, order_id, actor)
+                return jsonify({
+                    'success': True,
+                    'release_order_id': order_id,
+                    'bundle_id': published.get('bundle_id'),
+                    'deprecated': True,
+                    'prefer': f'/admin/projects/{project_id}/release-orders/{order_id}',
+                }), 200, {'Deprecation': 'true'}
+            return jsonify({
+                'success': False,
+                'error': f'发布单状态 {status} 无法直接激活，请走 Channel 发版流程',
+                'release_order_id': order_id,
+                'deprecated': True,
+            }), 400
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': str(exc), 'deprecated': True}), 400
+    return jsonify({
+        'success': False,
+        'error': 'legacy activate 需 project_id 与 version_id；请改用发版流程 publish',
+        'deprecated': True,
+    }), 400
 
 
 @bp.route('/admin/build/commercial-release/plan-preview', methods=['POST'])

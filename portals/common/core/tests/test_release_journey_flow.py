@@ -21,6 +21,7 @@ from config import load_dotenv
 load_dotenv()
 
 from app_new import app  # noqa: F401
+from services.release import order_diagnostics as diag
 from services.release import release_order_service as ros
 
 
@@ -41,8 +42,8 @@ class ReleaseJourneyNextActionTests(unittest.TestCase):
             "artifacts": [],
         }
         with mock.patch.object(ros, "get_release_order", return_value=fake_order), \
-             mock.patch.object(ros, "_build_pipeline_snapshot", return_value={"ready": True}), \
-             mock.patch.object(ros, "_pipeline_build_ready", return_value=True):
+             mock.patch.object(diag, "_build_pipeline_snapshot", return_value={"ready": True}), \
+             mock.patch.object(diag, "_pipeline_build_ready", return_value=True):
             action = ros.resolve_release_order_next_action("p1", "ro-1")
         self.assertEqual(action["phases"], ["准备", "构建", "发版"])
         self.assertEqual(action["phase_index"], 1)

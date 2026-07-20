@@ -77,7 +77,7 @@ MODULE_LINKS = {
     'projects': ('/admin/projects', 'fa-folder', 'text-green-500'),
     'community': ('/admin/community', 'fa-comments', 'text-pink-500'),
     'build': ('/admin/build', 'fa-cogs', 'text-orange-500'),
-    'commercial_release': ('/admin/build/commercial-release', 'fa-rocket', 'text-violet-500'),
+    'commercial_release': ('/admin/projects', 'fa-rocket', 'text-violet-500'),
     'dashboard': ('/admin/dashboard', 'fa-chart-pie', 'text-purple-500'),
     'versions': ('/admin/versions', 'fa-code-branch', 'text-teal-500'),
     'docs': ('/docs', 'fa-file-alt', 'text-cyan-500'),

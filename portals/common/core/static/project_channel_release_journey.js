@@ -1,5 +1,6 @@
 (() => {
-  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const JC = window.JourneyCommon || {};
+  const esc = JC.esc || ((v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])));
   const page = document.querySelector('[data-journey="release"]');
   if (!page) return;
 
@@ -11,17 +12,17 @@
   let versionId = params.get("version_id") || "";
   let bundleId = params.get("bundle_id") || "";
 
-  const toast = (msg, type = "info") => {
+  const toast = JC.toast || ((msg, type = "info") => {
     if (window.DeliveryScopeToast) window.DeliveryScopeToast(msg, type);
     else alert(msg);
-  };
+  });
 
-  const api = async (url, options = {}) => {
+  const api = JC.api || (async (url, options = {}) => {
     const resp = await fetch(url, { credentials: "same-origin", headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.ok === false) throw new Error(data.error || `请求失败 (${resp.status})`);
     return data.data ?? data;
-  };
+  });
 
   const syncUrl = () => {
     const qs = new URLSearchParams({ env_key: envKey, channel_id: channelId });
@@ -37,8 +38,27 @@
     return String(reason).trim();
   };
 
-  const chip = (label, value, ready = true) =>
-    `<span class="cj-context-chip ${ready ? "is-ready" : "is-pending"}">${label} <strong>${esc(value)}</strong></span>`;
+  const chip = JC.chip || ((label, value, ready = true) =>
+    `<span class="cj-context-chip ${ready ? "is-ready" : "is-pending"}">${label} <strong>${esc(value)}</strong></span>`);
+
+  const panel = JC.panel || ((title, desc, bodyHtml, actionsHtml = "", tone = "ready") => {
+    const actionBlock = actionsHtml ? `<div class="cj-actions">${actionsHtml}</div>` : "";
+    return `<div class="cj-main-inner is-${tone}${actionsHtml ? " has-actions" : ""}">
+      <div class="cj-main-copy">
+        <div class="cj-panel-head"><div><h3>${title}</h3><p>${desc}</p></div></div>
+        <div class="cj-panel-body">${bodyHtml}</div>
+      </div>
+      ${actionBlock}
+    </div>`;
+  });
+
+  const summaryGrid = JC.summaryGrid || ((rows) => {
+    const items = rows.filter((r) => r).map(([k, v, tone]) => {
+      const cls = tone === "pending" ? " is-pending" : tone === "ready" ? " is-ready" : "";
+      return `<div class="cj-kv${cls}"><dt>${esc(k)}</dt><dd>${v}</dd></div>`;
+    }).join("");
+    return items ? `<dl class="cj-kv-grid">${items}</dl>` : "";
+  });
 
   const renderContext = (data, state) => {
     const host = document.getElementById("cjReleaseContext");
@@ -51,25 +71,6 @@
       chip("目标", vc, Boolean(state.version_name || versionId)),
       chip("Bundle", bundleId || state.bundle_id || "待选", Boolean(bundleId || state.bundle_id)),
     ].join("");
-  };
-
-  const panel = (title, desc, bodyHtml, actionsHtml = "", tone = "ready") => {
-    const actionBlock = actionsHtml ? `<div class="cj-actions">${actionsHtml}</div>` : "";
-    return `<div class="cj-main-inner is-${tone}${actionsHtml ? " has-actions" : ""}">
-      <div class="cj-main-copy">
-        <div class="cj-panel-head"><div><h3>${title}</h3><p>${desc}</p></div></div>
-        <div class="cj-panel-body">${bodyHtml}</div>
-      </div>
-      ${actionBlock}
-    </div>`;
-  };
-
-  const summaryGrid = (rows) => {
-    const items = rows.filter((r) => r).map(([k, v, tone]) => {
-      const cls = tone === "pending" ? " is-pending" : tone === "ready" ? " is-ready" : "";
-      return `<div class="cj-kv${cls}"><dt>${esc(k)}</dt><dd>${v}</dd></div>`;
-    }).join("");
-    return items ? `<dl class="cj-kv-grid">${items}</dl>` : "";
   };
 
   const buildVersionGroups = (versions, filterFn = () => true) => {

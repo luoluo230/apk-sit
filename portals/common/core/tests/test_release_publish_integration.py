@@ -20,6 +20,7 @@ from config import load_dotenv
 load_dotenv()
 
 from app_new import app  # noqa: F401
+from services.release import channel_journey_bff as cjb
 from services.release import release_order_service as ros
 
 
@@ -148,18 +149,18 @@ class QuickPublishApiTests(unittest.TestCase):
 
 class ReleaseJourneyEnsureOrderTests(unittest.TestCase):
     def test_missing_order_exposes_ensure_api(self):
-        with mock.patch.object(ros, "_lines_for_channel", return_value=[{
+        with mock.patch.object(cjb, "_lines_for_channel", return_value=[{
             "channel_id": "wechat",
             "channel_name": "微信",
             "platform": "android",
             "platform_label": "Android",
             "scope_id": "scope-1",
             "configured": True,
-        }]), mock.patch.object(ros, "_platform_state_for_journey", return_value={
+        }]), mock.patch.object(cjb, "_platform_state_for_journey", return_value={
             "platform": "android",
             "scope_id": "scope-1",
             "versions": [{"version_id": "vc-1", "artifacts_ready": True, "version_name": "1.0.1", "version_code": "1"}],
-        }), mock.patch.object(ros, "_enrich_state_from_version_id", side_effect=lambda _p, s, vid: {**s, "version_id": vid}), \
+        }), mock.patch.object(cjb, "_enrich_state_from_version_id", side_effect=lambda _p, s, vid: {**s, "version_id": vid}), \
              mock.patch.object(ros, "find_release_order_for_version", return_value=None), \
              mock.patch.object(ros, "sync_building_release_orders", return_value=[]), \
              mock.patch.object(ros, "list_release_orders", return_value=[]), \

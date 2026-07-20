@@ -47,7 +47,17 @@ from services.release.release_policy_service import release_order_form_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
 
-DELIVERY_ASSET_VER = "20260720-release-pipeline-v1"
+DELIVERY_ASSET_VER = "20260720-refactor-v1"
+
+def _delivery_js_bundle(*extra: str) -> str:
+    parts = [
+        f'<script src="/static/delivery_common.js?v={DELIVERY_ASSET_VER}"></script>',
+        f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>',
+    ]
+    for name in extra:
+        parts.append(f'<script src="/static/{name}?v={DELIVERY_ASSET_VER}"></script>')
+    parts.append(f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>')
+    return "".join(parts)
 
 bp = Blueprint("project_delivery", __name__)
 
@@ -99,11 +109,7 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
         context_filters=_filters(),
         **context,
     )
-    js = (
-        f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
-        f'<script src="/static/project_overview.js?v={DELIVERY_ASSET_VER}"></script>'
-        f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
-    )
+    js = _delivery_js_bundle("project_overview.js")
     if template_name == "project_overview.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v={DELIVERY_ASSET_VER}">'
@@ -127,10 +133,7 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
         )
-        js = (
-            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
-        )
+        js = _delivery_js_bundle()
     elif template_name in ("project_channel_build_journey.html", "project_channel_release_journey.html"):
         css = (
             f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
@@ -142,34 +145,27 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
             if template_name == "project_channel_build_journey.html"
             else "project_channel_release_journey.js"
         )
-        js = f'<script src="/static/{js_name}?v={DELIVERY_ASSET_VER}"></script>'
+        js = (
+            f'<script src="/static/journey_common.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/{js_name}?v={DELIVERY_ASSET_VER}"></script>'
+        )
     elif template_name == "project_environment_detail.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/project_environment_detail.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/release_focus.css?v={DELIVERY_ASSET_VER}">'
         )
-        js = (
-            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/topology_binding_drawer.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
-        )
+        js = _delivery_js_bundle("topology_binding_drawer.js")
     elif template_name == "release_order_detail.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/release_order_detail.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
         )
-        js = (
-            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
-        )
+        js = _delivery_js_bundle()
     else:
         css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
-        js = (
-            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
-        )
+        js = _delivery_js_bundle()
     return _render_ops_page(
         content,
         title,

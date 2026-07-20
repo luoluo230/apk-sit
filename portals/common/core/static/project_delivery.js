@@ -1,27 +1,23 @@
 (() => {
+  const DC = window.DeliveryCommon || {};
   const page = document.querySelector("[data-delivery-page]");
   if (!page) return;
   const projectId = page.dataset.projectId;
   const envLabels = {development:"开发环境",testing:"测试环境",staging:"预发环境",production:"生产环境"};
-  const statusLabels = {draft:"草稿",building:"构建中",build_failed:"构建失败",artifacts_ready:"产物就绪",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
-  const releaseLabel = (value) => {
-    if (window.PmDisplayLabels && window.PmDisplayLabels.releaseStatus) {
-      return window.PmDisplayLabels.releaseStatus(value).label;
-    }
-    return statusLabels[value] || value || "未配置";
-  };
+  const statusLabels = DC.statusLabels || {draft:"草稿",building:"构建中",build_failed:"构建失败",artifacts_ready:"产物就绪",prechecking:"预检中",precheck_failed:"预检失败",ready:"待发布",awaiting_approval:"待审批",approved:"待发布",publishing:"发布中",published:"已发布",publish_failed:"发布失败",verifying:"验证中",verified:"验证通过",verify_failed:"验证失败",rolled_back:"已回滚",cancelled:"已取消"};
+  const releaseLabel = DC.releaseLabel || ((value) => statusLabels[value] || value || "未配置");
   const artifactStatusLabels = {registered:"已登记",available:"可用",reachable:"可达",missing:"缺失",unreachable:"不可达",invalid:"无效"};
   const artifactTypeLabels = {apk:"APK 安装包",resource:"资源包",config:"配置包",code:"代码热更包"};
   const bindingSourceLabels = {project_default:"项目默认",env_channel:"环境与渠道",env_channel_platform:"环境/渠道/平台",version:"大版本覆盖",version_override:"大版本覆盖",scope_default:"Scope默认",scope_override:"Scope覆盖",default:"项目默认"};
-  const parseApiError = (result, fallback) => {
+  const parseApiError = DC.parseApiError || ((result, fallback) => {
     if (!result || typeof result !== "object") return fallback;
     const err = result.error;
     if (typeof err === "string" && err) return err;
     if (err && typeof err === "object") return err.message || err.text || fallback;
     return result.error_text || result.error_legacy || fallback;
-  };
-  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const parseJsonResponse = async (response) => {
+  });
+  const esc = DC.esc || ((value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])));
+  const parseJsonResponse = DC.parseJsonResponse || (async (response) => {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       const text = await response.text();
@@ -31,8 +27,8 @@
       throw new Error(`请求失败 (${response.status})`);
     }
     return response.json();
-  };
-  const api = async (path, options = {}) => {
+  });
+  const api = DC.api || (async (path, options = {}) => {
     const response = await fetch(path, { ...options, credentials: "same-origin" });
     const result = await parseJsonResponse(response);
     if (!response.ok || result.ok === false) {
@@ -41,13 +37,13 @@
       throw new Error(message);
     }
     return result.data;
-  };
-  const toast = (message, type="success") => {
+  });
+  const toast = DC.toast || ((message, type="success") => {
     let host = document.querySelector(".toast-stack");
     if (!host) { host = document.createElement("div"); host.className = "toast-stack"; document.body.append(host); }
     const node = document.createElement("div"); node.className = `toast ${type}`; node.textContent = message; host.append(node); setTimeout(() => node.remove(), 3500);
-  };
-  const status = (value) => `<span class="status-pill ${esc(value)}">${esc(releaseLabel(value))}</span>`;
+  });
+  const status = DC.status || ((value) => `<span class="status-pill ${esc(value)}">${esc(releaseLabel(value))}</span>`);
   const detailRow = (label, value, extra = "", opts = {}) => {
     const tone = opts.tone ? `detail-tone ${opts.tone}` : "";
     const href = opts.href || "";

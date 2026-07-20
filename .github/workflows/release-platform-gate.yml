@@ -36,6 +36,9 @@ jobs:
       - name: admin_routes size gate
         run: py -3 scripts/admin_routes_size_gate.py
 
+      - name: release module size gate
+        run: py -3 scripts/release_module_size_gate.py
+
       - name: Protocol alignment gates
         env:
           MACLIENT_ROOT: ${{ github.workspace }}

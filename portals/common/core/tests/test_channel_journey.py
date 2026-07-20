@@ -20,12 +20,13 @@ from config import load_dotenv
 load_dotenv()
 
 from app_new import app  # noqa: F401
+from services.release import channel_journey_bff as cjb
 from services.release import release_order_service as ros
 
 
 class ChannelBuildJourneyTests(unittest.TestCase):
     def test_resolve_build_journey_has_steps(self):
-        with mock.patch.object(ros, "_lines_for_channel", return_value=[{
+        with mock.patch.object(cjb, "_lines_for_channel", return_value=[{
             "channel_id": "wechat",
             "channel_name": "微信",
             "platform": "android",
@@ -35,7 +36,7 @@ class ChannelBuildJourneyTests(unittest.TestCase):
             "version_id": "vc-1",
             "version_name": "1.0.1",
             "version_code": "1",
-        }]), mock.patch.object(ros, "_platform_state_for_journey", return_value={
+        }]), mock.patch.object(cjb, "_platform_state_for_journey", return_value={
             "platform": "android",
             "pipeline_ready": True,
             "version_id": "vc-1",
@@ -50,14 +51,14 @@ class ChannelBuildJourneyTests(unittest.TestCase):
 
 class ChannelReleaseJourneyTests(unittest.TestCase):
     def test_resolve_release_journey_has_steps(self):
-        with mock.patch.object(ros, "_lines_for_channel", return_value=[{
+        with mock.patch.object(cjb, "_lines_for_channel", return_value=[{
             "channel_id": "wechat",
             "channel_name": "微信",
             "platform": "android",
             "platform_label": "Android",
             "scope_id": "scope-1",
             "configured": True,
-        }]), mock.patch.object(ros, "_platform_state_for_journey", return_value={
+        }]), mock.patch.object(cjb, "_platform_state_for_journey", return_value={
             "platform": "android",
             "scope_id": "scope-1",
             "artifact_ready": True,
