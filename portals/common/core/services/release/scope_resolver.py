@@ -95,6 +95,7 @@ def resolve_topology_binding_for_scope(scope: Dict[str, Any], version_name: str 
         str(scope.get("project_id") or ""),
         str(scope.get("env_key") or ""),
         str(scope.get("channel_id") or ""),
+        platform=str(scope.get("platform") or "").strip().lower(),
         version_name=version_name,
         fallback_topology_id=fallback,
     )

@@ -624,6 +624,9 @@ def list_release_orders(project_id: str, filters: Optional[Dict[str, str]] = Non
     sql += " ORDER BY updated_at DESC"
     with _db_lock:
         rows = _get_conn().execute(sql, params).fetchall()
+    sync_building_release_orders(project_id)
+    with _db_lock:
+        rows = _get_conn().execute(sql, params).fetchall()
     return [_order_from_row(row) for row in rows]
 
 
@@ -737,6 +740,62 @@ def quick_build_version(project_id: str, version_id: str, actor: str, *, force: 
         if missing:
             raise ValueError("请先完善发布计划后再触发构建")
     return request_build(project_id, order_id, actor)
+
+
+def quick_publish_delivery(
+    project_id: str,
+    env_key: str,
+    channel_id: str,
+    platform: str,
+    version_id: str,
+    actor: str,
+    *,
+    skip_build: bool = False,
+    force_build: bool = False,
+    auto_verify: bool = True,
+) -> Dict[str, Any]:
+    """Dev/prod unified shortcut: ensure order → (optional) build → precheck → publish → verify.
+
+    Returns early with ``phase`` when waiting on build or production approval.
+    """
+    vid = str(version_id or "").strip()
+    plat = str(platform or "").strip().lower()
+    ek = normalize_release_env_key(env_key, project_id=project_id)
+    cid = str(channel_id or "").strip()
+    if not vid or not plat or not cid:
+        raise ValueError("env_key、channel_id、platform、version_id 必填")
+    order = ensure_draft_release_order(project_id, vid, actor, reason="一键发版")
+    order_id = str(order.get("release_order_id") or "")
+    status = str(order.get("status") or "")
+    if status == "building":
+        return {"phase": "building", "release_order_id": order_id, "order": order}
+    if status == "build_failed":
+        if skip_build:
+            raise ValueError("构建已失败，请重新触发构建")
+        order = request_build(project_id, order_id, actor)
+        return {"phase": "building", "release_order_id": order_id, "order": order}
+    if status in {"draft", "precheck_failed"} and not skip_build:
+        order = quick_build_version(project_id, vid, actor, force=force_build)
+        status = str(order.get("status") or "")
+        order_id = str(order.get("release_order_id") or order_id)
+        if status == "building":
+            return {"phase": "building", "release_order_id": order_id, "order": order}
+    if status not in {"artifacts_ready", "ready", "approved", "awaiting_approval", "precheck_failed", "published"}:
+        if status == "draft" and skip_build:
+            raise ValueError("产物未就绪，无法跳过构建直接发布")
+    order = get_release_order(project_id, order_id) or order
+    status = str(order.get("status") or "")
+    if status in {"draft", "artifacts_ready", "precheck_failed"}:
+        order = precheck_release_order(project_id, order_id, actor)
+        status = str(order.get("status") or "")
+    if status == "awaiting_approval":
+        return {"phase": "awaiting_approval", "release_order_id": order_id, "order": order}
+    if status in {"ready", "approved"}:
+        order = publish_release_order(project_id, order_id, actor)
+        status = str(order.get("status") or "")
+    if status == "published" and auto_verify:
+        order = verify_release_order(project_id, order_id, actor, ok=True)
+    return {"phase": str(order.get("status") or status), "release_order_id": order_id, "order": order}
 
 
 def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -> Dict[str, Any]:
@@ -976,7 +1035,20 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
         return order
     result = str(st.get("status") or "").upper()
     if result != "SUCCESS":
-        return order
+        fail_status = "build_failed"
+        fail_payload = {
+            "build_number": build_number,
+            "jenkins_result": result,
+            "failure_summary": str(st.get("error") or result or "BUILD_FAILED"),
+        }
+        now = _now_iso()
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE release_orders SET status=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+                (fail_status, now, project_id, order_id),
+            )
+            _event(cur, order_id, "build_failed", actor, "building", fail_status, fail_payload)
+        return get_release_order(project_id, order_id, include_details=False)
     try:
         from services.apk_artifact_service import finalize_apk_from_jenkins_build
 
@@ -1011,6 +1083,28 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
         )
         _event(cur, order_id, "build_completed", actor, "building", "artifacts_ready", {"build_number": build_number})
     return get_release_order(project_id, order_id, include_details=False)
+
+
+def sync_building_release_orders(project_id: str = "", *, actor: str = "system") -> List[Dict[str, Any]]:
+    """Poll Jenkins for all in-flight release-order builds (proactive sync)."""
+    init_db()
+    sql = "SELECT project_id, release_order_id FROM release_orders WHERE status='building'"
+    params: List[str] = []
+    if project_id:
+        sql += " AND project_id=?"
+        params.append(str(project_id).strip())
+    with _db_lock:
+        rows = _get_conn().execute(sql, params).fetchall()
+    updated: List[Dict[str, Any]] = []
+    for row in rows:
+        pid = str(row["project_id"] or "")
+        oid = str(row["release_order_id"] or "")
+        if not pid or not oid:
+            continue
+        synced = sync_release_order_build_status(pid, oid, actor=actor)
+        if synced:
+            updated.append(synced)
+    return updated
 
 
 def _scope_query_suffix(order: Dict[str, Any]) -> str:
@@ -1479,6 +1573,7 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
                 "project_id": project_id,
                 "env_key": order["env_key"],
                 "channel_id": order["channel_id"],
+                "platform": str(order.get("platform") or "").strip().lower(),
                 "version_name": order["version_name"],
                 "topology_id": topology_id,
             },
@@ -1598,11 +1693,52 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
     return published
 
 
+def run_bootstrap_smoke_for_order(project_id: str, order_id: str) -> Dict[str, Any]:
+    """HTTP smoke against active bundle fields after publish (internal validation)."""
+    order = get_release_order(project_id, order_id, include_details=False)
+    if not order:
+        raise ValueError("发布单不存在")
+    scope_id = str(order.get("scope_id") or "").strip()
+    bundle_id = str(order.get("bundle_id") or "").strip()
+    if not scope_id or not bundle_id:
+        return {"ok": False, "error": "发布单缺少 scope 或 bundle", "checks": []}
+    from services.release.bundle_service import find_active_bundle
+
+    bundle = find_active_bundle(scope_id, platform=str(order.get("platform") or ""))
+    if not bundle or str(bundle.get("bundle_id") or "") != bundle_id:
+        return {"ok": False, "error": "active bundle 与发布单不一致", "checks": []}
+    client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
+    checks: List[Dict[str, Any]] = []
+    for key in ("catalog_url", "config_manifest_url", "code_manifest_url", "resource_server_url"):
+        val = str(client.get(key) or "").strip()
+        checks.append({"key": key, "ok": bool(val), "value": val[:120] if val else ""})
+    apk_url = str(client.get("apk_url") or client.get("catalog_url") or "").strip()
+    if str(order.get("platform") or "").lower() == "android":
+        checks.append({"key": "apk_url", "ok": bool(apk_url), "value": apk_url[:120] if apk_url else ""})
+    ok = all(item.get("ok") for item in checks if item.get("key") != "resource_server_url") and any(
+        item.get("ok") for item in checks
+    )
+    return {"ok": ok, "bundle_id": bundle_id, "scope_id": scope_id, "checks": checks}
+
+
 def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = True) -> Dict[str, Any]:
     order = get_release_order(project_id, order_id, include_details=False)
     if order.get("status") not in {"published", "verifying", "verify_failed"}:
         raise ValueError("只有已发布的发布单可以验证")
-    return _transition(project_id, order_id, actor, "verified" if ok else "verify_failed", "verified", {"ok": ok})
+    smoke_ok = ok
+    smoke_report: Dict[str, Any] = {}
+    if ok:
+        smoke_report = run_bootstrap_smoke_for_order(project_id, order_id)
+        smoke_ok = bool(smoke_report.get("ok"))
+    target = "verified" if smoke_ok else "verify_failed"
+    return _transition(
+        project_id,
+        order_id,
+        actor,
+        target,
+        "verified",
+        {"ok": smoke_ok, "smoke": smoke_report},
+    )
 
 
 def rollback_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
@@ -1681,6 +1817,16 @@ def activate_bundle_on_scope(
     bid = str(bundle_id or "").strip()
     if not sid or not bid:
         raise ValueError("scope_id 与 bundle_id 必填")
+    from services.release.storage import find_scope
+
+    scope_row = find_scope(sid) or {}
+    env_key = normalize_release_env_key(str(scope_row.get("env_key") or ""), project_id=project_id)
+    if env_key == "production" and str(os.environ.get("ALLOW_SCOPE_PUBLISH_PRODUCTION", "")).strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        raise ValueError("生产环境禁止 Scope 直发 Bundle，请通过发布单审批发布")
     init_db()
     now = _now_iso()
     with get_cursor() as cur:
@@ -2039,6 +2185,22 @@ def _enrich_state_from_version_id(project_id: str, state: Dict[str, Any], versio
     }
 
 
+def _jenkins_progress_pct(build: Dict[str, Any]) -> int:
+    if not isinstance(build, dict):
+        return 0
+    if build.get("building"):
+        st = str(build.get("status") or build.get("result") or "BUILDING").upper()
+        if st in {"QUEUED", "WAITING"}:
+            return 12
+        return 55
+    st = str(build.get("status") or build.get("result") or "").upper()
+    if st == "SUCCESS":
+        return 100
+    if st in {"FAILURE", "ABORTED", "UNSTABLE"}:
+        return 100
+    return 38
+
+
 def resolve_channel_build_journey(
     project_id: str,
     env_key: str,
@@ -2076,6 +2238,8 @@ def resolve_channel_build_journey(
         except Exception:
             latest_build = {}
     if latest_build:
+        latest_build = dict(latest_build)
+        latest_build["progress_pct"] = _jenkins_progress_pct(latest_build)
         state = dict(state)
         state["latest_build"] = latest_build
         per_platform = dict(per_platform)
@@ -2130,11 +2294,26 @@ def resolve_channel_release_journey(
     state = per_platform.get(plat) or {}
     selected_vid = str(version_id or state.get("version_id") or "").strip()
     selected_bundle = str(bundle_id or "").strip()
+    sync_building_release_orders(project_id)
     if selected_vid:
         state = _enrich_state_from_version_id(project_id, state, selected_vid)
         order = find_release_order_for_version(project_id, selected_vid)
         if order:
             state = {**state, "order_status": order.get("status"), "release_order_id": order.get("release_order_id")}
+        else:
+            start_qs = urlencode(
+                {
+                    "env_key": ek,
+                    "channel_id": cid,
+                    "platform": plat,
+                    "version_id": selected_vid,
+                }
+            )
+            state = {
+                **state,
+                "create_order_href": f"/admin/projects/{project_id}/release-orders/start?{start_qs}",
+                "ensure_order_api": f"/api/projects/{project_id}/versions/{selected_vid}/ensure-release-order",
+            }
         per_platform = dict(per_platform)
         per_platform[plat] = state
     has_target = bool(selected_vid or selected_bundle or state.get("active_bundle_id"))
@@ -2231,13 +2410,11 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
             client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
             server = bundle.get("server") if isinstance(bundle.get("server"), dict) else {}
             version_name = str(client.get("version_name") or bundle.get("version_name") or "")
-            binding = resolve_topology_binding(
-                project_id,
-                env_key,
-                cid,
-                version_name=version_name,
-                fallback_topology_id=str(scope.get("default_topology_id") or "") if scope else "",
-            )
+            binding = resolve_topology_binding_for_scope(scope or {}, version_name) if scope else {}
+            topology_id = str(binding.get("topology_id") or server.get("topology_id") or "")
+            from services.release.topology_binding_service import _topology_name_map
+
+            topo_names = _topology_name_map(project_id)
             configured = bool(scope and (bundle or version_name))
             line_version_code = str(client.get("version_code") or bundle.get("version_code") or "")
             lines.append(
@@ -2253,8 +2430,10 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
                     "version_id": _version_id_for_delivery_line(
                         project_id, env_key, cid, plat_value, version_name, line_version_code
                     ),
-                    "topology_id": str(binding.get("topology_id") or server.get("topology_id") or ""),
+                    "topology_id": topology_id,
+                    "topology_name": topo_names.get(topology_id, topology_id or "-"),
                     "binding_source": str(binding.get("binding_source") or ""),
+                    "binding_source_label": str(binding.get("binding_source_label") or ""),
                     "bundle_id": str(bundle.get("bundle_id") or ""),
                     "runtime_run_id": str(server.get("runtime_run_id") or ""),
                 }

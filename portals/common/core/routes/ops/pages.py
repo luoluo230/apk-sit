@@ -1,6 +1,8 @@
 ﻿# -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from routes.ops.common import *  # noqa: F403
 from flask import jsonify, redirect, render_template_string, request, session
 
@@ -77,19 +79,17 @@ def project_topology_bindings_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
-    content = ops_helpers._render_local_template(
-        "ops_topology_bindings_page.html",
-        project_id=project_id,
-        env_key=env_key,
-    )
-    return ops_helpers._render_ops_page(
-        content,
-        "拓扑绑定矩阵",
-        active_page="topology-bindings",
-        project_id=project_id,
-        env_key=env_key,
-        breadcrumb_module="运行管理",
-    )
+    target_env = env_key or "development"
+    params = {"open_topology_drawer": "1"}
+    if env_key:
+        params["env_key"] = env_key
+    channel_id = str(request.args.get("channel_id") or "").strip()
+    platform = str(request.args.get("platform") or "").strip().lower()
+    if channel_id:
+        params["channel_id"] = channel_id
+    if platform:
+        params["platform"] = platform
+    return redirect(f"/admin/projects/{project_id}/environments/{target_env}?{urlencode(params)}")
 
 
 @bp.route("/admin/projects/<project_id>/topologies/canvas")

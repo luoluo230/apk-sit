@@ -732,10 +732,17 @@ def build_environment_runtime_overview(
 
     if can_ops:
         from services.ops import helpers as ops_helpers
+        from services.release.scope_resolver import resolve_scope, resolve_topology_binding_for_scope
 
         agents = ops_helpers._logical_agents_for_project(project_id, env)
         services = ops_helpers._services_for_project(project_id, env)
-        ctx = ops_helpers._resolve_topology_context(project_id, env, "")
+        topology_id_override = ""
+        if channel_id and platform:
+            scope = resolve_scope(project_id, env, channel_id, platform=platform, auto_create=False)
+            if scope:
+                binding = resolve_topology_binding_for_scope(scope, "")
+                topology_id_override = str(binding.get("topology_id") or "").strip()
+        ctx = ops_helpers._resolve_topology_context(project_id, env, topology_id_override)
         topo = ctx.get("topology") if isinstance(ctx.get("topology"), dict) else {}
         for item in topo.get("nodes") or []:
             if isinstance(item, dict):

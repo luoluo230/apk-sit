@@ -418,6 +418,14 @@ def init_db():
             "ON release_scopes(project_id, env_key, channel_id, platform)"
         )
         _migrate_release_scopes_platform(conn)
+        binding_columns = {row["name"] for row in conn.execute("PRAGMA table_info(topology_bindings)").fetchall()}
+        if "platform" not in binding_columns:
+            conn.execute("ALTER TABLE topology_bindings ADD COLUMN platform TEXT DEFAULT ''")
+        conn.execute("DROP INDEX IF EXISTS idx_topology_binding_target")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_binding_target "
+            "ON topology_bindings(project_id, env_key, channel_id, platform, version_name)"
+        )
         conn.commit()
 
 

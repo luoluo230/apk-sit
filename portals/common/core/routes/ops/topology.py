@@ -7,7 +7,9 @@ from flask import jsonify, redirect, render_template_string, request, session
 from models.data import create_approval, get_channels_for_project, log_audit, project_versions_db
 from services.authz import admin_required
 from services.release.topology_binding_service import (
+    build_topology_binding_picker,
     delete_topology_binding,
+    delete_topology_binding_for_scope,
     list_topology_bindings,
     resolve_topology_binding,
     upsert_topology_binding,
@@ -126,6 +128,53 @@ def project_topology_binding_delete(project_id: str, binding_id: str):
     if not delete_topology_binding(binding_id, actor=str(session.get("user") or "admin")):
         return jsonify({"ok": False, "error": "绑定规则不存在"}), 404
     log_audit("project_topology_binding_delete", f"project={project_id}; binding={binding_id}")
+    return jsonify({"ok": True, "data": _project_binding_catalog(project_id)})
+
+
+@bp.route("/api/projects/<project_id>/topology-binding-picker", methods=["GET"])
+@admin_required("gm_ops")
+def project_topology_binding_picker(project_id: str):
+    env_key = ops_helpers._normalize_env_key(request.args.get("env_key") or "")
+    channel_id = str(request.args.get("channel_id") or "").strip()
+    platform = str(request.args.get("platform") or "").strip().lower()
+    version_name = str(request.args.get("version_name") or "").strip()
+    if not channel_id:
+        return jsonify({"ok": False, "error": "channel_id required"}), 400
+    data = build_topology_binding_picker(
+        project_id,
+        env_key,
+        channel_id,
+        platform=platform,
+        version_name=version_name,
+    )
+    return jsonify({"ok": True, "data": data})
+
+
+@bp.route("/api/projects/<project_id>/topology-bindings/scope", methods=["DELETE"])
+@admin_required("gm_ops")
+def project_topology_binding_delete_scope(project_id: str):
+    if not ops_helpers._allow_ops_execute():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    env_key = ops_helpers._normalize_env_key(payload.get("env_key") or request.args.get("env_key") or "")
+    channel_id = str(payload.get("channel_id") or request.args.get("channel_id") or "").strip()
+    platform = str(payload.get("platform") or request.args.get("platform") or "").strip().lower()
+    version_name = str(payload.get("version_name") or request.args.get("version_name") or "").strip()
+    if not channel_id:
+        return jsonify({"ok": False, "error": "channel_id required"}), 400
+    deleted = delete_topology_binding_for_scope(
+        project_id,
+        env_key,
+        channel_id,
+        platform=platform,
+        version_name=version_name,
+    )
+    if not deleted:
+        return jsonify({"ok": False, "error": "当前 scope 无覆盖绑定"}), 404
+    log_audit(
+        "project_topology_binding_delete_scope",
+        f"project={project_id}; env={env_key}; channel={channel_id}; platform={platform}",
+    )
     return jsonify({"ok": True, "data": _project_binding_catalog(project_id)})
 
 @bp.route("/api/ops-platform/topologies")

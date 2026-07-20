@@ -20,6 +20,7 @@ from services.release.release_order_service import (
     cancel_release_order,
     context_options,
     create_release_order,
+    ensure_draft_release_order,
     environment_detail,
     find_draft_release_order,
     get_release_order,
@@ -28,6 +29,7 @@ from services.release.release_order_service import (
     project_overview,
     publish_release_order,
     quick_build_version,
+    quick_publish_delivery,
     resolve_channel_build_journey,
     resolve_channel_release_journey,
     resolve_delivery_actions,
@@ -35,6 +37,7 @@ from services.release.release_order_service import (
     request_build,
     rollback_release_order,
     rollback_scope_to_bundle,
+    sync_building_release_orders,
     unpublish_scope,
     update_release_order,
     verify_release_order,
@@ -44,7 +47,7 @@ from services.release.release_policy_service import release_order_form_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
 
-DELIVERY_ASSET_VER = "20260708-journey-v26"
+DELIVERY_ASSET_VER = "20260720-release-pipeline-v1"
 
 bp = Blueprint("project_delivery", __name__)
 
@@ -148,6 +151,7 @@ def _page(template_name: str, title: str, project_id: str, active_page: str, bre
         )
         js = (
             f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/topology_binding_drawer.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
         )
     elif template_name == "release_order_detail.html":
@@ -858,6 +862,50 @@ def version_quick_build_api(project_id: str, version_id: str):
         return jsonify({"ok": True, "data": data})
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/versions/<version_id>/ensure-release-order", methods=["POST"])
+@admin_required("projects")
+def version_ensure_release_order_api(project_id: str, version_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    try:
+        data = ensure_draft_release_order(project_id, version_id, _actor(), reason="发版流程创建发布单")
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/delivery-attempts/quick-publish", methods=["POST"])
+@admin_required("projects")
+def delivery_quick_publish_api(project_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    payload = request.get_json(silent=True) or {}
+    try:
+        data = quick_publish_delivery(
+            project_id,
+            str(payload.get("env_key") or "").strip(),
+            str(payload.get("channel_id") or "").strip(),
+            str(payload.get("platform") or "").strip(),
+            str(payload.get("version_id") or "").strip(),
+            _actor(),
+            skip_build=bool(payload.get("skip_build")),
+            force_build=bool(payload.get("force_build")),
+            auto_verify=payload.get("auto_verify", True) is not False,
+        )
+        return jsonify({"ok": True, "data": data})
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@bp.route("/api/projects/<project_id>/release-orders/sync-building", methods=["POST"])
+@admin_required("projects")
+def release_orders_sync_building_api(project_id: str):
+    if project_id not in projects_db:
+        return jsonify({"ok": False, "error": "项目不存在"}), 404
+    rows = sync_building_release_orders(project_id, actor=_actor())
+    return jsonify({"ok": True, "data": {"updated": rows, "count": len(rows)}})
 
 
 @bp.route("/api/projects/<project_id>/scopes/<scope_id>/publishable-bundles")

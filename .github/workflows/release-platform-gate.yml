@@ -6,6 +6,8 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
 
 jobs:
   web-gate:
@@ -55,6 +57,14 @@ jobs:
           RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
           RELEASE_GATE_SCOPE_ID: ${{ vars.RELEASE_GATE_SCOPE_ID || 'gomeku:development:1001' }}
         run: py -3 scripts/commercial_startup_sequence_gate.py
+
+      - name: Nightly release chain smoke (fixture)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
+          RELEASE_GATE_SCOPE_ID: ${{ vars.RELEASE_GATE_SCOPE_ID || 'gomeku:development:1001' }}
+        run: py -3 scripts/nightly_release_chain_smoke.py --mode fixture
+        continue-on-error: true
 
   unity-session:
     name: Unity session acceptance (T6-T7, optional)

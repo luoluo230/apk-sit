@@ -342,6 +342,9 @@ def resolve_runtime_version():
         'meta': {
             'matched_count': len(candidates),
             'selected_rule': 'latest_updated_at_then_version_code',
+            'deprecated': True,
+            'prefer_endpoint': '/api/public/runtime-bootstrap',
+            'notice': 'New clients should read published bundle via runtime-bootstrap; version-resolve uses version rows only and may drift from live bundle.',
             'query': {
                 'status': status,
                 'include_status': sorted(list(include_statuses)),
