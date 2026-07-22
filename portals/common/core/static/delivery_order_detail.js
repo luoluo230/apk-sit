@@ -441,10 +441,20 @@
 
   async function loadOrderDetail(){
     const orderId=page.dataset.orderId;
-    const [item, nextAction]=await Promise.all([
-      api(`/api/projects/${projectId}/release-orders/${orderId}`),
-      api(`/api/projects/${projectId}/release-orders/${orderId}/next-action`),
-    ]);
+    let item;
+    let nextAction;
+    try {
+      item = await api(`/api/projects/${projectId}/release-orders/${orderId}`);
+      try {
+        nextAction = await api(`/api/projects/${projectId}/release-orders/${orderId}/next-action`);
+      } catch (nextError) {
+        nextAction = { primary: { label: "查看详情", disabled: true, reason: nextError.message || "下一步动作暂不可用" }, more: [], phases: ["准备", "构建", "发版"], phase_index: 0 };
+      }
+    } catch (error) {
+      document.getElementById("orderSubtitle").textContent = error.message || "加载失败";
+      toast(error.message || "加载失败", "error");
+      return;
+    }
     const links=orderScopeLinks(item);
     let pipelineInfo=item.pipeline_snapshot||null;
     if(!pipelineInfo&&item.version_id){

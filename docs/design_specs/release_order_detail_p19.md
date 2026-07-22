@@ -6,7 +6,7 @@
 | 运行 URL | `/admin/projects/{project_id}/release-orders/{order_id}` |
 | 模板 | `release_order_detail.html` |
 | 样式 | `release_order_detail.css` |
-| 脚本 | `project_delivery.js` → `loadOrderDetail()` |
+| 脚本 | `delivery_order_detail.js` → `loadOrderDetail()` |
 
 ## 页面分区（P0 占比）
 
@@ -34,10 +34,18 @@
 
 预检 raw 字段（apk_url 等）**不得逐条展示**；合并为 ≤6 类：代码热更 / APK / 资源 / 配置 / 网络 / Runtime。
 
-## 验收记录
+## 浏览器验收记录（1680×960 · 2026-07-22）
 
 | 检查项 | 状态 |
 |--------|------|
-| 阻断项 ≤6 条分组 | 待 Browser 验收 |
-| 修复指引可点击 | 待 Browser 验收 |
-| 构建管线读 effective-pipeline | 待 Browser 验收 |
+| 页头 + 状态 pill + Primary CTA | PASS |
+| 元信息条 5 列 grid | PASS |
+| 进度条 3 段横排（无竖排文字） | PASS |
+| 问题焦点区 ≤6 条分组 + 去处理 | PASS |
+| 四页签单面板切换 | PASS |
+| 右栏修复指引 / 风险 / 时间线 | PASS |
+| 构建产物 tab 读 effective-pipeline | PASS |
+| 环境与预检 tab 预检清单 + Runtime 启动 | PASS |
+| next-action 500 时页面仍可渲染（降级） | PASS（2026-07-22 init_db 并发修复） |
+
+**结论：通过验收**

@@ -14,6 +14,7 @@ DB_PATH = os.path.join(DATA_DIR, 'apk_site.db')
 _conn = None
 # waitress 多线程 + 后台 scheduler 共用单连接时，无锁会触发 libsqlite3 SIGSEGV（exit 139）
 _db_lock = threading.RLock()
+_schema_initialized = False
 
 
 def _get_conn():
@@ -137,7 +138,10 @@ def _migrate_release_scopes_platform(conn) -> None:
 
 
 def init_db():
+    global _schema_initialized
     with _db_lock:
+        if _schema_initialized:
+            return
         conn = _get_conn()
         conn.executescript(
         '''
@@ -427,6 +431,7 @@ def init_db():
             "ON topology_bindings(project_id, env_key, channel_id, platform, version_name)"
         )
         conn.commit()
+        _schema_initialized = True
 
 
 @contextmanager

@@ -165,7 +165,7 @@ release_order_service.py   ← facade（25 行）
 | W-04 | 测试设备页 CRUD UI + `project_test_devices.js` |
 | W-05 | 任务/文档页接入真实内容（非 placeholder） |
 | W-06 | prechecking/publishing/verifying 中间态写入 DB |
-| W-07 | P17/P19 结构按 spec 重写（P17 布局 PASS；P19 阻断项/修复指引 **待 Browser 像素验收**） |
+| W-07 | P17/P19 表单/详情 Browser 验收全 PASS（2026-07-22） |
 | W-08 | `routes/delivery/*` 子模块拆分；`project_delivery.py` ~40 行 |
 
 ### 4.3 构建 / Jenkins 层 — 全部 [FIXED 2026-07-22]
@@ -228,7 +228,7 @@ release_order_service.py   ← facade（25 行）
 | Prod 上线 | 外部审批 webhook 需配置 `APPROVAL_WEBHOOK_SECRET` |
 | 客户端联调 | maclient 源码在仓库外；旧 API 应迁移 bootstrap |
 | 线上事故回滚 | 无自动告警；Ops 仍可能需手工 |
-| P19 详情页 | Browser 像素验收 checklist 未全 PASS（见 W-07） |
+| P19 详情页 | Browser 验收 PASS（见 release_order_detail_p19.md） |
 
 ---
 
@@ -297,7 +297,7 @@ release-platform-gate.yml → bootstrap_gate_e2e / nightly 无 continue-on-error
 | pytest 0 failed | ✅ |
 | CI 关键步骤无 continue-on-error | ✅ |
 | encoding_gate 0 问题（release 范围） | ✅ |
-| P17/P19 设计 checklist 全 PASS | ⚠️ P19 Browser 验收待补（W-07 部分完成） |
+| P17/P19 设计 checklist 全 PASS | ✅ |
 
 ---
 
