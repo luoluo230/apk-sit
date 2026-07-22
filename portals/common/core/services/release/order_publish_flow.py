@@ -37,16 +37,187 @@ from services.release.order_helpers import (
 def _order_crud():
     import services.release.order_crud as mod
     return mod
+
+
+def _notify_awaiting_approval(project_id: str, order_id: str, order: Dict[str, Any], actor: str) -> None:
+    """Outbound approval webhook (Feishu/DingTalk + generic webhook)."""
+    approval_id = ""
+    for row in order.get("approvals") or []:
+        if isinstance(row, dict) and str(row.get("status") or "") == "pending":
+            approval_id = str(row.get("approval_id") or "")
+            break
+    payload = {
+        "project_id": project_id,
+        "release_order_id": order_id,
+        "approval_id": approval_id,
+        "env_key": order.get("env_key"),
+        "version_name": order.get("version_name"),
+        "version_code": order.get("version_code"),
+        "channel_id": order.get("channel_id"),
+        "platform": order.get("platform"),
+        "requested_by": actor,
+    }
+    try:
+        from services.webhook import fire_dingtalk, fire_feishu, fire_webhook
+
+        fire_webhook("release_awaiting_approval", payload)
+        summary = (
+            f"project={project_id}\n"
+            f"order={order_id}\n"
+            f"approval={approval_id}\n"
+            f"version={order.get('version_name')}/{order.get('version_code')}\n"
+            f"env={order.get('env_key')}\n"
+            f"actor={actor}"
+        )
+        fire_feishu("发布单待审批", summary)
+        fire_dingtalk("发布单待审批", summary)
+    except Exception:
+        pass
+
+
+def scan_approval_sla_timeouts(*, project_id: str = "") -> int:
+    """Fire approval_sla_timeout webhook for pending approvals past SLA."""
+    try:
+        sla_hours = max(1, int(os.getenv("RELEASE_APPROVAL_SLA_HOURS", "24")))
+    except (TypeError, ValueError):
+        sla_hours = 24
+    cutoff = datetime.now().timestamp() - sla_hours * 3600
+    fired = 0
+    init_db()
+    with get_cursor() as cur:
+        sql = (
+            "SELECT a.approval_id, a.release_order_id, a.created_at, o.project_id, o.env_key, "
+            "o.version_name, o.version_code FROM release_approvals a "
+            "JOIN release_orders o ON o.release_order_id = a.release_order_id "
+            "WHERE a.status='pending'"
+        )
+        params: List[Any] = []
+        if project_id:
+            sql += " AND o.project_id=?"
+            params.append(project_id)
+        rows = cur.execute(sql, params).fetchall()
+        for row in rows:
+            created = str(row["created_at"] or "")
+            try:
+                ts = datetime.fromisoformat(created.replace("Z", "+00:00")).timestamp()
+            except (TypeError, ValueError):
+                continue
+            if ts > cutoff:
+                continue
+            note = str(row["note"] or "")
+            if "sla_timeout_notified" in note:
+                continue
+            cur.execute(
+                "UPDATE release_approvals SET note=?, updated_at=? WHERE approval_id=?",
+                ((note + ";sla_timeout_notified").strip(";"), _now_iso(), row["approval_id"]),
+            )
+            _event(
+                cur,
+                str(row["release_order_id"]),
+                "approval_sla_timeout",
+                "system",
+                "awaiting_approval",
+                "awaiting_approval",
+                {"approval_id": row["approval_id"], "sla_hours": sla_hours},
+            )
+            try:
+                from services.webhook import fire_webhook
+
+                fire_webhook(
+                    "approval_sla_timeout",
+                    {
+                        "approval_id": row["approval_id"],
+                        "release_order_id": row["release_order_id"],
+                        "project_id": row["project_id"],
+                        "env_key": row["env_key"],
+                        "version_name": row["version_name"],
+                        "version_code": row["version_code"],
+                        "sla_hours": sla_hours,
+                    },
+                )
+            except Exception:
+                pass
+            fired += 1
+    return fired
+
+
+def _post_catalog_reload(url: str, payload: Dict[str, Any]) -> None:
+    target = str(url or "").strip()
+    if not target.startswith("http"):
+        return
+    import json
+    import urllib.error
+    import urllib.request
+
+    def _send() -> None:
+        try:
+            req = urllib.request.Request(
+                target,
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10):
+                pass
+        except Exception:
+            pass
+
+    import threading
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def _sync_version_row_from_publish(project_id: str, order: Dict[str, Any], bundle_id: str) -> None:
+    """Keep VersionRow publish fields aligned with SQLite bundle truth."""
+    vid = str(order.get("version_id") or "").strip()
+    bid = str(bundle_id or "").strip()
+    if not vid or not bid:
+        return
+    from models.data import save_project_versions
+
+    versions = project_versions_db.get(project_id) or []
+    if not isinstance(versions, list):
+        return
+    changed = False
+    for ver in versions:
+        if not isinstance(ver, dict) or str(ver.get("id") or "") != vid:
+            continue
+        ver["active_bundle_id"] = bid
+        ver["publish_status"] = "published"
+        if order.get("scope_id"):
+            ver["scope_id"] = str(order.get("scope_id") or "")
+        ver["updated_at"] = _now_iso()
+        changed = True
+        break
+    if changed:
+        project_versions_db[project_id] = versions
+        save_project_versions()
+
+
 def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     order = _order_crud().get_release_order(project_id, order_id, include_details=False)
     if not order:
         raise ValueError("发布单不存在")
+    from services.release.release_policy_service import get_env_release_policy
+
+    runtime_mode = str(get_env_release_policy(project_id, order["env_key"]).get("runtime_required") or "block").strip().lower()
+    if runtime_mode not in {"block", "warn", "skip"}:
+        runtime_mode = "block"
+    _order_crud()._transition(project_id, order_id, actor, "prechecking", "precheck_started", {})
     version = _find_version(project_id, order["version_id"], order["version_code"])
     from services.admin.version_service import enrich_version_client_urls
 
     version = enrich_version_client_urls(project_id, version)
     scope = resolve_scope(project_id, order["env_key"], order["channel_id"], platform=order["platform"], auto_create=False)
     if not scope:
+        _order_crud()._transition(
+            project_id,
+            order_id,
+            actor,
+            "precheck_failed",
+            "precheck_failed",
+            {"error": "发布作用域不存在"},
+        )
         raise ValueError("发布作用域不存在")
     plan = dict(order.get("payload") or {})
     target_topology_id = str(plan.get("target_topology_id") or "").strip()
@@ -64,18 +235,26 @@ def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
         binding = resolve_topology_binding_for_scope(scope, str(version.get("version_name") or ""))
         result = run_scope_precheck(scope, version, validate_artifacts=True)
     runtime_run_id = ""
-    try:
-        from services.ops.helpers import _runtime_active_for_scope
-        runtime = _runtime_active_for_scope(project_id, order["env_key"], str(result.get("topology_id") or ""))
-        if runtime.get("active"):
-            runtime_run_id = str(runtime.get("run_id") or "")
-    except Exception:
-        runtime_run_id = ""
-    result["runtime_run_id"] = runtime_run_id
-    result["runtime_active"] = bool(runtime_run_id)
-    if not runtime_run_id:
-        result["ok"] = False
-        result["runtime_error"] = "目标拓扑没有运行中的 runtime"
+    if runtime_mode != "skip":
+        try:
+            from services.ops.helpers import _runtime_active_for_scope
+            runtime = _runtime_active_for_scope(project_id, order["env_key"], str(result.get("topology_id") or ""))
+            if runtime.get("active"):
+                runtime_run_id = str(runtime.get("run_id") or "")
+        except Exception:
+            runtime_run_id = ""
+        result["runtime_run_id"] = runtime_run_id
+        result["runtime_active"] = bool(runtime_run_id)
+        if not runtime_run_id:
+            if runtime_mode == "block":
+                result["ok"] = False
+                result["runtime_error"] = "目标拓扑没有运行中的 runtime"
+            else:
+                result["runtime_warning"] = "目标拓扑没有运行中的 runtime（development 策略：warn）"
+    else:
+        result["runtime_run_id"] = ""
+        result["runtime_active"] = False
+        result["runtime_skipped"] = True
     target = "awaiting_approval" if result.get("ok") and order["env_key"] == "production" else ("ready" if result.get("ok") else "precheck_failed")
     now = _now_iso()
     with get_cursor() as cur:
@@ -103,7 +282,11 @@ def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
                 """,
                 (f"ra-{uuid.uuid4().hex[:12]}", order_id, "pending", actor, "", "", now, now),
             )
-    return _order_crud().get_release_order(project_id, order_id)
+    updated = _order_crud().get_release_order(project_id, order_id)
+    if target == "awaiting_approval":
+        _notify_awaiting_approval(project_id, order_id, updated, actor)
+        scan_approval_sla_timeouts(project_id=project_id)
+    return updated
 
 
 def approve_release_order(project_id: str, order_id: str, actor: str, note: str = "") -> Dict[str, Any]:
@@ -130,6 +313,22 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
         raise ValueError("发布单必须先通过预检和审批")
     if order["env_key"] == "production" and order.get("status") != "approved":
         raise ValueError("生产环境发布必须审批")
+    _order_crud()._transition(project_id, order_id, actor, "publishing", "publish_started", {})
+    try:
+        return _publish_release_order_body(project_id, order_id, actor, order)
+    except Exception as exc:
+        _order_crud()._transition(
+            project_id,
+            order_id,
+            actor,
+            "publish_failed",
+            "publish_failed",
+            {"error": str(exc)[:500]},
+        )
+        raise
+
+
+def _publish_release_order_body(project_id: str, order_id: str, actor: str, order: Dict[str, Any]) -> Dict[str, Any]:
     version = _find_version(project_id, order["version_id"], order["version_code"])
     scope = resolve_scope(project_id, order["env_key"], order["channel_id"], platform=order["platform"], auto_create=False)
     if not scope:
@@ -249,6 +448,41 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
         )
         _event(cur, order_id, "published", actor, order["status"], "published", {"bundle_id": bundle_id, "topology_id": topology_id, "runtime_run_id": runtime_run_id})
     published = _order_crud().get_release_order(project_id, order_id)
+    _sync_version_row_from_publish(project_id, published, bundle_id)
+    try:
+        from services.webhook import fire_webhook
+
+        fire_webhook(
+            "bundle_published",
+            {
+                "project_id": project_id,
+                "release_order_id": order_id,
+                "bundle_id": bundle_id,
+                "scope_id": order.get("scope_id"),
+                "env_key": order.get("env_key"),
+                "channel_id": order.get("channel_id"),
+                "platform": order.get("platform"),
+                "version_name": order.get("version_name"),
+                "version_code": order.get("version_code"),
+                "topology_id": topology_id,
+                "runtime_run_id": runtime_run_id,
+                "actor": actor,
+            },
+        )
+        catalog_reload_url = str((profile or {}).get("catalog_reload_url") or "").strip()
+        if catalog_reload_url:
+            _post_catalog_reload(
+                catalog_reload_url,
+                {
+                    "event": "bundle_published",
+                    "project_id": project_id,
+                    "scope_id": order.get("scope_id"),
+                    "bundle_id": bundle_id,
+                    "topology_id": topology_id,
+                },
+            )
+    except Exception:
+        pass
     if str(os.getenv("RELEASE_FEISHU_NOTIFY", "true")).lower() in ("true", "1", "yes"):
         try:
             from services.webhook import fire_feishu
@@ -278,22 +512,37 @@ def run_bootstrap_smoke_for_order(project_id: str, order_id: str) -> Dict[str, A
     bundle_id = str(order.get("bundle_id") or "").strip()
     if not scope_id or not bundle_id:
         return {"ok": False, "error": "发布单缺少 scope 或 bundle", "checks": []}
-    from services.release.bundle_service import find_active_bundle
+    from services.release.bundle_service import _check_remote_artifact, find_active_bundle
 
     bundle = find_active_bundle(scope_id, platform=str(order.get("platform") or ""))
     if not bundle or str(bundle.get("bundle_id") or "") != bundle_id:
         return {"ok": False, "error": "active bundle 与发布单不一致", "checks": []}
     client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
     checks: List[Dict[str, Any]] = []
-    for key in ("catalog_url", "config_manifest_url", "code_manifest_url", "resource_server_url"):
+    probe_keys = ("catalog_url", "config_manifest_url", "code_manifest_url")
+    for key in probe_keys:
         val = str(client.get(key) or "").strip()
-        checks.append({"key": key, "ok": bool(val), "value": val[:120] if val else ""})
-    apk_url = str(client.get("apk_url") or client.get("catalog_url") or "").strip()
+        probe = _check_remote_artifact(val) if val else {"ok": False, "status": 0, "error": "missing url"}
+        checks.append(
+            {
+                "key": key,
+                "ok": bool(probe.get("ok")),
+                "value": val[:120] if val else "",
+                "probe": probe,
+            }
+        )
     if str(order.get("platform") or "").lower() == "android":
-        checks.append({"key": "apk_url", "ok": bool(apk_url), "value": apk_url[:120] if apk_url else ""})
-    ok = all(item.get("ok") for item in checks if item.get("key") != "resource_server_url") and any(
-        item.get("ok") for item in checks
-    )
+        apk_url = str(client.get("apk_url") or client.get("catalog_url") or "").strip()
+        probe = _check_remote_artifact(apk_url) if apk_url else {"ok": False, "status": 0, "error": "missing url"}
+        checks.append(
+            {
+                "key": "apk_url",
+                "ok": bool(probe.get("ok")),
+                "value": apk_url[:120] if apk_url else "",
+                "probe": probe,
+            }
+        )
+    ok = all(item.get("ok") for item in checks)
     return {"ok": ok, "bundle_id": bundle_id, "scope_id": scope_id, "checks": checks}
 
 
@@ -301,6 +550,7 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
     order = _order_crud().get_release_order(project_id, order_id, include_details=False)
     if order.get("status") not in {"published", "verifying", "verify_failed"}:
         raise ValueError("只有已发布的发布单可以验证")
+    _order_crud()._transition(project_id, order_id, actor, "verifying", "verify_started", {})
     smoke_ok = ok
     smoke_report: Dict[str, Any] = {}
     if ok:
@@ -312,7 +562,7 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
         order_id,
         actor,
         target,
-        "verified",
+        "verified" if smoke_ok else "verify_failed",
         {"ok": smoke_ok, "smoke": smoke_report},
     )
 
@@ -387,6 +637,7 @@ def activate_bundle_on_scope(
     mode: str = "full",
     gray_ratio: str = "",
     reason: str = "",
+    release_order_id: str = "",
 ) -> Dict[str, Any]:
     """Activate an existing bundle as the live bundle for a scope (publish specified)."""
     sid = str(scope_id or "").strip()
@@ -403,6 +654,10 @@ def activate_bundle_on_scope(
         "yes",
     ):
         raise ValueError("生产环境禁止 Scope 直发 Bundle，请通过发布单审批发布")
+    mode_key = str(mode or "full").strip().lower()
+    order_id = str(release_order_id or "").strip()
+    if mode_key not in {"rollback"} and not order_id:
+        raise ValueError("Scope 直发必须绑定发布单 release_order_id")
     init_db()
     now = _now_iso()
     with get_cursor() as cur:
@@ -428,6 +683,8 @@ def activate_bundle_on_scope(
             )
         target_bundle["publish_status"] = "published"
         target_bundle["publish_mode"] = str(mode or "full")
+        if order_id:
+            target_bundle["release_order_id"] = order_id
         if gray_ratio:
             target_bundle["gray_ratio"] = str(gray_ratio)
         if reason:

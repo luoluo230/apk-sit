@@ -845,7 +845,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
         var params={ APP_NAME: (document.getElementById('APP_NAME')||{}).value, VERSION_NAME: (document.getElementById('VERSION_NAME')||{}).value, VERSION_CODE: (document.getElementById('VERSION_CODE')||{}).value, UNITY_VERSION: (document.getElementById('UNITY_VERSION')||{}).value, OUTPUT_BASE_DIR: (document.getElementById('OUTPUT_BASE_DIR')||{}).value, GIT_BRANCH: versionGitBranch(), CHANNEL: (document.getElementById('CHANNEL')||{}).value||'' };
         var url='/admin/build/trigger';
         var body=apiBody(params);
-        if(normalizedType(VERSION_MODE)==='commercial'){
+        if(PROJECT_ID && VERSION_ID){
             url='/api/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/'+encodeURIComponent(VERSION_ID)+'/quick-build';
             body={ force: false };
         }

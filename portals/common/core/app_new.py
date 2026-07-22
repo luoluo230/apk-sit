@@ -224,6 +224,8 @@ def _register_blueprints():
         from routes.versions_routes import bp as versions_routes_bp
         from routes.workspace_routes import bp as workspace_bp
         from routes.commercial_release_routes import bp as commercial_release_bp
+        from routes.gm_ops_release import bp as gm_ops_release_bp
+        from routes.internal_jenkins import bp as internal_jenkins_bp
         from routes.project_delivery import bp as project_delivery_bp
         from routes.release import bp as release_scopes_bp
         from routes.ops import bp as project_ops_bp
@@ -250,6 +252,8 @@ def _register_blueprints():
         app.register_blueprint(versions_routes_bp)
         app.register_blueprint(jenkins_manage_bp)
         app.register_blueprint(commercial_release_bp)
+        app.register_blueprint(gm_ops_release_bp)
+        app.register_blueprint(internal_jenkins_bp)
         app.register_blueprint(project_delivery_bp)
         app.register_blueprint(release_scopes_bp)
         app.register_blueprint(project_ops_bp)
@@ -257,6 +261,7 @@ def _register_blueprints():
             # Project delivery and ops pages use authenticated JSON fetch calls.
             csrf.exempt(project_delivery_bp)
             csrf.exempt(project_ops_bp)
+            csrf.exempt(internal_jenkins_bp)
 
 
 _register_blueprints()

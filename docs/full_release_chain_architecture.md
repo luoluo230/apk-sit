@@ -45,7 +45,7 @@
 | `project_id` | 平台项目标识 | project manifest / project registry |
 | `env_key` | 环境键，固定 `development/testing/staging/production` | Env 归一规则 |
 | `channel_id` | 渠道主键 | project manifest |
-| `scope_id` | 发布作用域，格式 `{project_id}:{env_key}:{channel_id}` | release scope |
+| `scope_id` | 发布作用域，格式 `{project_id}:{env_key}:{channel_id}:{platform}` | release scope |
 | `version_name` | 客户端展示版本 | VersionRow / 构建参数 |
 | `version_code` | 精确构建号 | VersionRow / 构建参数 |
 | `platform` | `android` / `ios` | 构建参数 / 客户端 |
@@ -218,15 +218,20 @@ Ops 负责：
 
 ### 6.2 Release / GM
 
-- `GET /api/runtime/version-resolve`
-- `POST /api/gm-ops/release/versions`
-- `POST /api/gm-ops/release/precheck`
-- `POST /api/gm-ops/release/publish`
-- `POST /api/gm-ops/release/rollback`
-- `GET /api/public/release-config`
-- `GET /api/public/runtime-bootstrap`
-- `GET /api/release/scopes/<scope_id>`
+- `GET /api/runtime/version-resolve` — 兼容层；响应含 `deprecated` 与 `prefer_runtime_bootstrap`
+- `GET /api/public/release-config` — scope / network / bootstrap_paths（与 runtime-bootstrap 字段对齐）
+- `GET /api/public/runtime-bootstrap` — 客户端唯一真相入口（active bundle + rollout_percentage / rollout_bucket 灰度分桶）
+- `POST /api/webhooks/approval/{provider}` — 外部审批回调（Feishu/DingTalk，签名校验，幂等 approval_id）
+- `POST` generic webhook 事件：`release_awaiting_approval`、`bundle_published`、`approval_sla_timeout`
+- 发布成功后可选 `network_profile.catalog_reload_url` POST 通知服务端 reload catalog
+- `GET /api/release/scopes/<scope_id>?platform=android` — platform 必填或四段 scope_id
 - `GET /api/release/bundles`
+- `POST /api/gm-ops/release/versions` — **deprecated**，薄包装 → ReleaseOrder API
+- `POST /api/gm-ops/release/precheck` — **deprecated**，薄包装 → `POST .../release-orders/<id>/precheck`
+- `POST /api/gm-ops/release/publish` — **deprecated**，薄包装 → Journey / ReleaseOrder publish
+- `POST /api/gm-ops/release/rollback` — **deprecated**，薄包装 → ReleaseOrder rollback
+
+推荐路径：Channel Build/Release Journey → ReleaseOrder API（`/api/projects/<id>/delivery/...`）。
 
 ### 6.3 Ops / Runtime
 

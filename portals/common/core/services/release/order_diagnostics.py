@@ -174,6 +174,33 @@ def _refresh_diagnostic_payload(project_id: str, order: dict, payload: Optional[
     return payload
 
 
+def _resolve_runtime_start_node(project_id: str, env_key: str, topology_id: str) -> str:
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return ""
+    try:
+        from services.ops.helpers import _load_topology_scoped
+
+        topo = _load_topology_scoped(str(project_id or ""), str(env_key or ""), tid)
+        nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
+        preferred_roles = ("gateway", "auth", "business", "game", "ops")
+        for role in preferred_roles:
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                node_role = str(node.get("role") or "").strip().lower()
+                if node_role == role or str(node.get("id") or "").startswith(f"{role}-"):
+                    return str(node.get("id") or node.get("server_id") or "").strip()
+        for node in nodes:
+            if isinstance(node, dict):
+                nid = str(node.get("id") or node.get("server_id") or "").strip()
+                if nid:
+                    return nid
+    except Exception:
+        return ""
+    return ""
+
+
 def _resolve_issue_fix(
     group_id: str,
     order: dict,
@@ -183,12 +210,22 @@ def _resolve_issue_fix(
     project_id: str = "",
 ) -> Dict[str, str]:
     if group_id == "runtime":
+        pid = str(project_id or order.get("project_id") or "").strip()
+        env_key = str(order.get("env_key") or "").strip()
+        topology_id = str((precheck_payload or {}).get("topology_id") or order.get("topology_id") or "").strip()
+        node_id = _resolve_runtime_start_node(pid, env_key, topology_id)
         return {
             "fix": "runtime",
             "fix_section": "",
             "fix_label": "启动运行态",
             "highlight_fields": ["runtime_topology"],
             "focus_reason": "目标环境尚未启动运行态，请在本页确认拓扑运行状态并启动 Runtime",
+            "runtime_action": {
+                "project_id": pid,
+                "env_key": env_key,
+                "topology_id": topology_id,
+                "node_id": node_id,
+            },
         }
     if group_id == "network":
         return {
@@ -416,6 +453,7 @@ def summarize_order_diagnostic_issues(
                 "highlight_fields": fix_meta.get("highlight_fields") or [],
                 "focus_reason": fix_meta.get("focus_reason") or "",
                 "fields": sorted(matched),
+                "runtime_action": fix_meta.get("runtime_action") or {},
             }
         )
 
@@ -424,6 +462,10 @@ def summarize_order_diagnostic_issues(
         if payload.get("topology_runtime_aligned") is False:
             topo_hint = f"设计拓扑 {payload.get('topology_id') or '-'}，运行拓扑 {payload.get('runtime_topology_id') or '-'}"
             runtime_hint = f"{runtime_hint}；{topo_hint}" if runtime_hint else topo_hint
+        pid = str(order.get("project_id") or "").strip()
+        env_key = str(order.get("env_key") or "").strip()
+        topology_id = str(payload.get("topology_id") or order.get("topology_id") or "").strip()
+        node_id = _resolve_runtime_start_node(pid, env_key, topology_id)
         issues.append(
             {
                 "id": "runtime",
@@ -435,6 +477,12 @@ def summarize_order_diagnostic_issues(
                 "highlight_fields": ["runtime_topology"],
                 "focus_reason": "目标环境尚未启动运行态，请启动 Runtime 后返回发布单重新预检",
                 "fields": ["runtime"],
+                "runtime_action": {
+                    "project_id": pid,
+                    "env_key": env_key,
+                    "topology_id": topology_id,
+                    "node_id": node_id,
+                },
             }
         )
 

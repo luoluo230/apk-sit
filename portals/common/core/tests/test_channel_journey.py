@@ -80,10 +80,9 @@ class ChannelJourneyApiTests(unittest.TestCase):
         app.config["WTF_CSRF_ENABLED"] = False
         self.client = app.test_client()
 
-    @mock.patch("routes.project_delivery.resolve_channel_build_journey")
-    @mock.patch("routes.project_delivery.get_project_env_defs", return_value=[{"env_key": "development"}])
-    @mock.patch.dict("routes.project_delivery.projects_db", {"demo": {"name": "Demo"}}, clear=False)
-    def test_build_journey_api(self, _env_defs, mock_resolve):
+    @mock.patch.dict("routes.delivery.journey_api.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    @mock.patch("routes.delivery.journey_api.resolve_channel_build_journey")
+    def test_build_journey_api(self, mock_resolve):
         mock_resolve.return_value = {"steps": [], "current_step": 0}
         with self.client.session_transaction() as sess:
             sess["user"] = "admin"

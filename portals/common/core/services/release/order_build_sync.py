@@ -221,6 +221,35 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     return _order_crud().get_release_order(project_id, order_id)
 
 
+def find_release_order_for_build(
+    instance_id: str,
+    build_number: int | str,
+    *,
+    project_id: str = "",
+) -> Optional[Tuple[str, str]]:
+    """Resolve (project_id, release_order_id) for a Jenkins build webhook/poll."""
+    iid = str(instance_id or "").strip()
+    bn = str(build_number or "").strip()
+    if not iid or not bn:
+        return None
+    init_db()
+    sql = "SELECT project_id, release_order_id, payload FROM release_orders WHERE status='building'"
+    params: List[str] = []
+    if project_id:
+        sql += " AND project_id=?"
+        params.append(str(project_id).strip())
+    with _db_lock:
+        rows = _get_conn().execute(sql, params).fetchall()
+    for row in rows:
+        payload = _decode(row["payload"], {}) or {}
+        if str(payload.get("jenkins_instance_id") or "").strip() != iid:
+            continue
+        if str(payload.get("build_job_id") or "").strip() != bn:
+            continue
+        return (str(row["project_id"] or ""), str(row["release_order_id"] or ""))
+    return None
+
+
 def sync_release_order_build_status(project_id: str, order_id: str, *, actor: str = "system") -> Dict[str, Any]:
     """When Jenkins build finishes, advance building → artifacts_ready and refresh artifacts."""
     init_db()
@@ -260,6 +289,7 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
             "build_number": build_number,
             "jenkins_result": result,
             "failure_summary": str(st.get("error") or result or "BUILD_FAILED"),
+            "retry_hint": "检查 Jenkins 控制台与 commercial_android_pipeline 日志；OSS 上传失败可重试构建",
         }
         now = _now_iso()
         with get_cursor() as cur:
@@ -273,8 +303,23 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
         from services.apk_artifact_service import finalize_apk_from_jenkins_build
 
         finalize_apk_from_jenkins_build(instance_id, int(build_number))
-    except Exception:
-        pass
+    except Exception as exc:
+        fail_status = "build_failed"
+        fail_payload = {
+            "build_number": build_number,
+            "jenkins_result": "SUCCESS",
+            "failure_summary": f"构建产物登记失败: {exc}",
+            "finalize_error": str(exc)[:500],
+            "retry_hint": "请检查 Jenkins 归档脚本与 APK 路径，修复后重新触发构建",
+        }
+        now = _now_iso()
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE release_orders SET status=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+                (fail_status, now, project_id, order_id),
+            )
+            _event(cur, order_id, "build_finalize_failed", actor, "building", fail_status, fail_payload)
+        return _order_crud().get_release_order(project_id, order_id, include_details=False)
     version = _find_version(project_id, order["version_id"], order["version_code"])
     if not version:
         return order
@@ -502,18 +547,7 @@ def resolve_release_order_next_action(project_id: str, order_id: str) -> Dict[st
 
 def find_release_order_for_version(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
     """Latest non-terminal release order for a VersionCode (for hub/matrix actions)."""
-    vid = str(version_id or "").strip()
-    if not vid:
-        return None
-    terminal = TERMINAL_STATUSES | {"cancelled"}
-    candidates = [
-        row
-        for row in _order_crud().list_release_orders(project_id)
-        if str(row.get("version_id") or "") == vid and str(row.get("status") or "") not in terminal
-    ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""))
+    return _order_crud().find_release_order_for_version(project_id, version_id)
 
 
 def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]:

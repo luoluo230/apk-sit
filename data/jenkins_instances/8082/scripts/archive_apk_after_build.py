@@ -22,23 +22,6 @@ def _repo_core() -> Path:
     raise SystemExit(f"找不到 apk-site core 目录: {candidates}")
 
 
-def _repo_root() -> Path:
-    return _repo_core().parents[2]
-
-
-def _prepare_apk_publish_env() -> str:
-    """归档到 pub/download 目录，勿与 Jenkins 构建输出目录 APK_DIR 混用。"""
-    for key in ("APK_PUBLISH_DIR", "APK_SCAN_DIR"):
-        candidate = os.environ.get(key, "").strip()
-        if candidate:
-            publish = str(Path(candidate).expanduser())
-            os.environ["APK_DIR"] = publish
-            return publish
-    publish = str(_repo_root() / "data" / "apk")
-    os.environ["APK_DIR"] = publish
-    return publish
-
-
 def _parse_oss_remote_from_log(log_path: Path) -> str:
     if not log_path.is_file():
         return ""
@@ -55,9 +38,6 @@ def main() -> int:
     if not apk_file or not Path(apk_file).is_file():
         print(f"ERROR: APK 文件不存在: {apk_file or '(未设置 APK_FILE)'}", file=sys.stderr)
         return 1
-
-    publish_dir = _prepare_apk_publish_env()
-    print(f"OK: APK 发布目录 -> {publish_dir}")
 
     core = _repo_core()
     if str(core) not in sys.path:

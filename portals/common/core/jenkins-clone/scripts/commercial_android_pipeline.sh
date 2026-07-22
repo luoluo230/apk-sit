@@ -300,6 +300,32 @@ _run_unity() {
   [ -z "${UNITY_LOG_KEEP:-}" ] && rm -f "$UNITY_LOG"
 }
 
+_run_unity_oss_with_retry() {
+  local attempt max_attempts delay ec
+  max_attempts=3
+  delay=2
+  attempt=1
+  while [ "$attempt" -le "$max_attempts" ]; do
+    echo "OSS Unity 步骤尝试 ${attempt}/${max_attempts} (method=$1)"
+    set +e
+    _run_unity "$@"
+    ec=$?
+    set -e
+    if [ "$ec" -eq 0 ]; then
+      return 0
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "ERROR: OSS Unity 步骤失败，已重试 ${max_attempts} 次 (exit=${ec})"
+      return "$ec"
+    fi
+    echo "⚠ OSS 上传/Unity 步骤失败 (exit=${ec})，${delay}s 后重试..."
+    sleep "$delay"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
 
 _sanitize_release_targets() {
   local raw="${1:-code,resource}"
@@ -345,7 +371,7 @@ _run_publish_only_mode() {
   [ -n "${RELEASE_ROLLBACK_TARGET}" ] && HR_ARGS="$HR_ARGS -releaseRollbackTarget \"${RELEASE_ROLLBACK_TARGET}\""
   _warmup_unity || echo "⚠ 预热非零退出（可继续）"
   sleep 3
-  _run_unity CommercialReleaseCli.ExecuteFromCommandLine $HR_ARGS || exit $?
+  _run_unity_oss_with_retry CommercialReleaseCli.ExecuteFromCommandLine $HR_ARGS || exit $?
   echo "Step 4 (${mode}) 完成"
   return 0
 }
@@ -388,7 +414,7 @@ if [ "${CONFIG_EXPORT_ENABLED:-false}" = "true" ]; then
   echo "Unity Editor 程序集预热编译..."
   _warmup_unity || echo "⚠ 预热非零退出（可继续 Step1）"
   sleep 3
-  if ! _run_unity "MAClient.ConfigContentTool.ConfigRemotePublishCli.ExecuteFromCommandLine" $CFG_ARGS; then
+  if ! _run_unity_oss_with_retry "MAClient.ConfigContentTool.ConfigRemotePublishCli.ExecuteFromCommandLine" $CFG_ARGS; then
     _verify_step1_log "$UNITY_LOG" || { echo "FAIL: Step1 ConfigRemotePublish 退出"; exit 1; }
   fi
   _verify_step1_log "$UNITY_LOG" || exit 1
@@ -491,7 +517,7 @@ if [ "${HOT_RELEASE_ENABLED:-false}" = "true" ]; then
     _warmup_unity || echo "⚠ Step3 预热非零退出（可继续）"
     sleep 3
   fi
-  _run_unity CommercialReleaseCli.ExecuteFromCommandLine $HR_ARGS || exit $?
+  _run_unity_oss_with_retry CommercialReleaseCli.ExecuteFromCommandLine $HR_ARGS || exit $?
   echo "Step 3 完成"
 else
   echo "Step 3 (热更发布) 已跳过"
@@ -549,7 +575,7 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export VERSION_CODE APP_NAME VERSION_NAME PROJECT_ID
   UNITY_LOG="${UNITY_LOG:-${JENKINS_HOME:-}/workspace/Android/unity_apk_upload.log}"
   export UNITY_LOG
-  _run_unity ApkReleaseUploadCli.ExecuteFromCommandLine $APK_UP_ARGS || exit $?
+  _run_unity_oss_with_retry ApkReleaseUploadCli.ExecuteFromCommandLine $APK_UP_ARGS || exit $?
   echo "=== Step 4c: APK 本地落盘 + 版本下载信息 ==="
   export APK_PUBLISH_DIR="${APK_PUBLISH_DIR:-${APK_SCAN_DIR:-}}"
   ARCHIVE_SCRIPT="${JENKINS_HOME:-}/scripts/archive_apk_after_build.py"

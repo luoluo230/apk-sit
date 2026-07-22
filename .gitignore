@@ -42,6 +42,9 @@ data/apk_site.db
 data/apk_site.db-shm
 data/apk_site.db-wal
 data/jenkins_instances/**
+data/jenkins_instances/**/queue.xml*
+data/jenkins_instances/**/builds/
+data/jenkins_instances/**/.owner
 data/acceptance_reports/**
 data/business_test_runs/**
 data/logs/**

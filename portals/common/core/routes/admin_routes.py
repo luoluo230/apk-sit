@@ -477,7 +477,22 @@ def project_versions_page(project_id):
         return redirect(f"/admin/projects/{project_id}/overview?{urlencode({'tab': 'environments', 'hint': 'pick_env'})}")
     channel_filter = str(request.args.get("channel_id") or "").strip()
     if not channel_filter:
-        return redirect(f"/admin/projects/{project_id}/environments/{env_key}")
+        from data.delivery_scope import get_channels_for_env
+
+        env_channels = get_channels_for_env(project_id, env_key)
+        enabled = [row for row in env_channels if str(row.get("id") or "").strip()]
+        if not enabled:
+            return redirect(f"/admin/projects/{project_id}/environments/{env_key}")
+        if len(enabled) == 1:
+            channel_filter = str(enabled[0].get("id") or "").strip()
+        else:
+            channel_filter = str(enabled[0].get("id") or "").strip()
+            if not request.args.get("channel_id"):
+                params = {"env_key": env_key, "channel_id": channel_filter}
+                platform = str(request.args.get("platform") or "").strip().lower()
+                if platform:
+                    params["platform"] = platform
+                return redirect(f"/admin/projects/{project_id}/versions?{urlencode(params)}")
     can_edit = can_edit_project(project_id, _current_username())
     platform_filter = str(request.args.get("platform") or "").strip().lower()
     from services.ops.helpers import _render_ops_page

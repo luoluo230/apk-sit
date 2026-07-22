@@ -3,10 +3,21 @@
 | 用户意图 | 唯一 URL | API | Service 模块 |
 |----------|----------|-----|--------------|
 | 选 scope | `/admin/projects/{id}/environments/{env}` | `GET .../environment-detail` | `channel_journey_bff.environment_detail` |
-| 构建 | `.../channels/{ch}/build` | `POST .../versions/{vid}/quick-build` | `release_order_service.request_build` |
+| 构建 | `.../channels/{ch}/build` | `POST .../versions/{vid}/quick-build` | `order_build_sync.request_build` |
 | 发版 | `.../channels/{ch}/release` | precheck → publish → verify | `order_publish_flow` + `order_crud` |
 | 一键发版 | — | `POST .../delivery-attempts/quick-publish` | `order_build_sync.quick_publish_delivery` |
-| 客户端读包 | — | `GET /api/public/runtime-bootstrap` | `bundle_service` |
+| 客户端读包 | — | `GET /api/public/runtime-bootstrap` | `bundle_service` + gray rollout |
+| 客户端兼容 | — | `GET /api/runtime/version-resolve` (deprecated) | `release_context.merge_version_resolve_with_active_bundle` |
+| 发布上下文 | — | `GET /api/public/release-config` | `release_context.resolve_release_context` |
+
+## Internal / Webhook
+
+| 路径 | 说明 |
+|------|------|
+| `POST /api/internal/jenkins/build-complete` | Jenkins HMAC webhook → sync build status |
+| `POST /api/webhooks/approval/{provider}` | 外部审批回调 → approve_release_order |
+| `GET /api/projects/{id}/build-events` | Build status poll + ETag |
+| `GET /api/projects/{id}/build-events/stream` | Build status SSE |
 
 ## Legacy（redirect / wrapper）
 
@@ -15,4 +26,19 @@
 | `/admin/build/commercial-release` | `/admin/projects/{id}/overview` |
 | `POST .../commercial-release/trigger` | `POST .../quick-build`（带 Deprecation） |
 | `POST .../commercial-release/activate` | `precheck` + `publish` via release order |
+| `POST /api/gm-ops/release/*` | ReleaseOrder API（deprecated 薄包装） |
 | `GET /runtime/version-resolve` | `GET /api/public/runtime-bootstrap` |
+
+## Route 模块（P1+ 拆分）
+
+| 模块 | 职责 |
+|------|------|
+| `routes/delivery/pages.py` | HTML 页面 |
+| `routes/delivery/scope_api.py` | 环境/渠道/scope |
+| `routes/delivery/journey_api.py` | Build/Release Journey |
+| `routes/delivery/release_orders_api.py` | 发布单 CRUD |
+| `routes/delivery/build_events_api.py` | 构建事件 poll/SSE |
+| `routes/delivery/public_api.py` | runtime-bootstrap + release-config |
+| `routes/internal_jenkins.py` | Jenkins webhook |
+| `routes/approval_webhooks.py` | 审批 webhook |
+| `routes/gm_ops_release.py` | GM deprecated wrappers |

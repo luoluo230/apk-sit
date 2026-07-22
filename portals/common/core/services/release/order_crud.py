@@ -110,6 +110,12 @@ def _order_from_row(row, *, include_details: bool = False) -> Dict[str, Any]:
             precheck_payload,
             pipeline_snapshot=pipeline_snapshot,
         )
+        from services.release.client_health_service import build_client_health_panel
+
+        result["client_health"] = build_client_health_panel(
+            events=result.get("events") or [],
+            scope_id=str(result.get("scope_id") or ""),
+        )
     return result
 
 

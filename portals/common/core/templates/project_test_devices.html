@@ -1,16 +1,46 @@
-<section class="delivery-app test-devices-app" data-delivery-page="test-devices" data-project-id="{{ project_id }}">
+<section class="delivery-app test-devices-app" data-delivery-page="test-devices" data-project-id="{{ project_id }}" data-can-edit="{{ '1' if can_edit else '0' }}">
   <div class="pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_test_device.svg" alt=""></span>
-      <div><h1>测试设备</h1><p>扫码安装测试包；完整设备管理即将上线。</p></div>
+      <div><h1>测试设备</h1><p>绑定 device_id 与阶段（开发/测试/线上），供 version-resolve 与 bootstrap 选版。</p></div>
     </div>
     <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
   </div>
-  <div class="pm-placeholder-page" style="margin-top:16px">
-    <img src="/static/project_ui/svg/nav_test_device.svg" alt="">
-    <h2>设备管理即将上线</h2>
-    <p>当前可通过版本页的「下载」获取 APK 外网链接与二维码，分享给测试设备扫码安装。</p>
-    <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/versions">前往版本与 VersionCode</a>
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/download-center" style="margin-left:8px">打开下载中心</a>
+
+  <div class="pm-filter-bar">
+    <span data-td-count class="pm-filter-meta">共 0 台</span>
+    <div class="pm-filter-actions">
+      {% if can_edit %}<button type="button" class="pm-btn pm-btn--primary" data-td-add><img src="/static/project_ui/svg/action_add.svg" alt="">添加设备</button>{% endif %}
+      <button type="button" class="pm-btn" data-td-refresh><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+    </div>
+  </div>
+
+  <div class="pm-table-panel">
+    <table class="pm-table">
+      <thead>
+        <tr><th>Device ID</th><th>备注名</th><th>平台</th><th>阶段</th><th>说明</th><th>操作</th></tr>
+      </thead>
+      <tbody data-td-rows><tr><td colspan="6">加载中…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="pm-modal-root is-hidden" data-td-modal>
+    <div class="pm-modal pm-modal--480">
+      <div class="pm-modal-head">
+        <h3 data-td-modal-title>添加测试设备</h3>
+        <button type="button" class="pm-modal-close" data-td-cancel aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+      </div>
+      <div class="pm-modal-body pm-form-grid">
+        <label><span>Device ID</span><input type="text" data-td-device-id placeholder="客户端上报的设备标识"></label>
+        <label><span>备注名</span><input type="text" data-td-label placeholder="如：QA-张三-小米12"></label>
+        <label><span>平台</span><select data-td-platform><option value="android">Android</option><option value="ios">iOS</option></select></label>
+        <label><span>绑定阶段</span><select data-td-stage><option value="dev">开发</option><option value="test">测试</option><option value="production">线上</option></select></label>
+        <label class="pm-form-span-2"><span>说明</span><textarea data-td-notes rows="2" placeholder="可选：用途、负责人"></textarea></label>
+      </div>
+      <div class="pm-modal-foot">
+        <button type="button" class="pm-btn" data-td-cancel>取消</button>
+        <button type="button" class="pm-btn pm-btn--primary" data-td-save>保存</button>
+      </div>
+    </div>
   </div>
 </section>

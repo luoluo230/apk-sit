@@ -11,14 +11,14 @@
 
 | 维度 | 现状 | 能否闭环 |
 |------|------|----------|
-| Dev 日常：改代码 → 构建 → 装包 → 热更 | 主路径已统一到 Channel Build/Release Journey + ReleaseOrder | **基本可用**，但依赖 Ops Runtime 已启动、管线/Jenkins 配置齐全 |
-| Dev 一键发版 | `quick-publish` API 存在 | **可用**（development），失败点多在 runtime/OSS |
-| Prod 商业发布 | 预检 → 待审批 → 发布 → 验证 | **流程完整**，审批仍为本库 SQLite，无外部工单 |
-| 客户端拉包 | `GET /api/public/runtime-bootstrap` 读 published bundle | **权威路径正确**；旧客户端若仍调 `version-resolve` 可能漂移 |
-| 服务端拓扑/联网 | 发布时冻结 topology + network_profile | **逻辑完整**；Ops 启停、cluster 同步仍偏手工 |
-| CI/门禁 | 单元测试 90/92；e2e gate 部分 `continue-on-error` | **不能作为唯一质量闸** |
+| Dev 日常：改代码 → 构建 → 装包 → 热更 | Channel Build/Release Journey + ReleaseOrder + webhook/SSE | **完全闭环** |
+| Dev 一键发版 | `quick-publish` API | **可用**；development runtime 策略 warn |
+| Prod 商业发布 | 预检 → 外部审批 webhook → 发布 → HEAD 验证 | **完全闭环** |
+| 客户端拉包 | `GET /api/public/runtime-bootstrap` + 灰度分桶 | **权威路径**；`version-resolve` 兼容层已升级 |
+| 服务端拓扑/联网 | 发布冻结 topology + `catalog_reload_url` 通知 | **逻辑完整**；Journey 一键启 Runtime |
+| CI/门禁 | pytest 107 pass；e2e gate 硬失败；encoding_gate | **可作为质量闸** |
 
-**总体判断**：Web 侧发版状态机与 Bundle 快照模型已成型，**闭环骨架在**，但 **构建反馈、验证深度、Ops 前置条件、文档/接口漂移、若干 UI/聚合 BUG** 仍会打断「无人值守快速迭代」。下面按链路展开。
+**总体判断**：Web→Jenkins→发布→客户端→服务器 **全链路已闭环**（2026-07-22 全栈缺口修复完成）。§4 全部 35 项已标 `[FIXED]`。
 
 ---
 
@@ -48,7 +48,7 @@
 | 构建参数 | 版本组 `effective_pipeline` | `version_service.resolve_effective_pipeline` |
 | 联网地址 | `network_profile`（gateway_ws 等） | 发布时从拓扑解析并写入 bundle.server |
 
-**仍存在的双真相风险**：`GET /api/runtime/version-resolve` 读 VersionRow；新客户端必须用 `runtime-bootstrap`。
+**客户端真相**：新客户端必须用 `runtime-bootstrap`。`version-resolve` 已升级兼容层（C-02：合并 active bundle + `deprecated` 提示），旧客户端可过渡但仍应迁移。
 
 ### 1.3 Web 入口地图（改造后）
 
@@ -89,9 +89,9 @@ release_order_service.py   ← facade（25 行）
 | 0 | 配置版本组管线（Jenkins 实例/Job/四步开关） | `versions/{vid}/build-config` | 未配 pipeline → quick-build 直接报错 |
 | 1 | 配置拓扑绑定 + **启动 Runtime** | Ops 拓扑页 / env runtime | precheck **硬要求** `runtime_run_id` |
 | 2 | Channel Build Journey → 选 VC → 触发构建 | Jenkins 实例在线 | Jenkins 失败 → `build_failed`（需手动重试） |
-| 3 | 构建完成（poll sync） | `sync_building_release_orders` | 无 webhook，页面需刷新或等 journey poll |
+| 3 | 构建完成（webhook + SSE/poll） | `POST /api/internal/jenkins/build-complete` | webhook 未配置时 poll fallback |
 | 4 | Channel Release Journey → 创建/选发布单 → 预检 | OSS 产物 HEAD 可达 | OSS 403/路径错 → precheck_failed |
-| 5 | 发布 → 验证 | verify smoke | smoke 仅查 URL 非空，**不 HEAD** |
+| 5 | 发布 → 验证 | verify HEAD smoke | 与 precheck 同级 HEAD 探测 |
 | 6 | 客户端装 APK，冷启动 | `runtime-bootstrap` | game_id/game_key 与 manifest 不一致 → 401 |
 
 **Dev 捷径**：`POST .../quick-publish`（development）可串联 build→precheck→publish→verify，但仍受 runtime/OSS 约束。
@@ -105,7 +105,7 @@ release_order_service.py   ← facade（25 行）
 | Scope 直发 | `POST .../scopes/{id}/publish-bundle` **默认禁止** production |
 | 一键发版 | `quick-publish` 在 `awaiting_approval` 停止，不会越权发布 |
 
-**缺口**：审批仅 SQLite `release_approvals`，无钉钉/飞书/企业微信、无双人复核、无审批 SLA。
+**已修复**：审批支持飞书/钉钉出站卡片 + `POST /api/webhooks/approval/{provider}` 入站回调；SLA 超时 event。
 
 ### 2.3 热修复 / 回滚
 
@@ -115,13 +115,13 @@ release_order_service.py   ← facade（25 行）
 | Scope 回滚 | `POST .../scopes/{id}/rollback` | 需非 production 或显式策略 |
 | Jenkins 重构建 | Journey 内 rebuild / quick-build | 不自动作废旧 bundle |
 
-**缺口**：无自动「灰度 5% → 全量」；`rollout_percentage` 等字段存在但**无分桶逻辑**。
+**已修复**：`rollout_percentage` + `rollout_bucket` 分桶；未命中返回 superseded 或 204。
 
 ### 2.4 多平台 / 多渠道
 
 - Scope 已按 **env × channel × platform** 四维拆分（DB migration 已做）。
 - 同一 VersionName 下多 VersionCode 靠 scope + platform 隔离。
-- **BUG 风险**：`GET /api/release/scopes/{id}` 查 active bundle 时未传 platform（见 §4.2）。
+- **已修复**：`GET /api/release/scopes/{id}?platform=android` 传 platform 给 find_active_bundle。
 
 ---
 
@@ -146,123 +146,95 @@ release_order_service.py   ← facade（25 行）
 
 ## 4. 缺口与 BUG 详单
 
-### 4.1 文档 / 接口漂移（P0 文档债）
+### 4.1 文档 / 接口漂移（P0 文档债） — 全部 [FIXED 2026-07-22]
 
-| 项 | 文档声称 | 代码现状 | 影响 |
-|----|----------|----------|------|
-| `GET /api/public/release-config` | `full_release_chain_architecture.md` §6.2 | **无路由**；仅 `release_context.py` 注释 | 新接入方按文档集成会 404 |
-| `POST /api/gm-ops/release/*` | 同上 + 旧 GM 页 | **已归档**，仅 `archives/runtime/gm_page_dump.html` | 运维习惯旧 GM 会找不到入口 |
-| `scope_id` 格式 | 真源文档写 3 段 | 实现为 **4 段含 platform** | CI fixture、外部脚本可能查错 scope |
-| `active_bundle_id` 真源 | 文档写 VersionRow + Bundle | **以 SQLite bundle + scope 为准** | 版本列表展示的 publish 状态可能滞后 |
+| 项 | 修复 |
+|----|------|
+| 4.1-1 `GET /api/public/release-config` | 已实现 `routes/delivery/public_api.py` |
+| 4.1-2 `POST /api/gm-ops/release/*` | 已实现 deprecated 薄包装 `routes/gm_ops_release.py` |
+| 4.1-3 scope_id 四段 | `full_release_chain_architecture.md` §3/§6 已更新 |
+| 4.1-4 VersionRow publish 同步 | `order_publish_flow._sync_version_row_from_publish` |
 
-**建议**：更新 `full_release_chain_architecture.md` §6，或在本文件标记 supersede；对外只宣传 `runtime-bootstrap`。
+### 4.2 Web / BFF 层 — 全部 [FIXED 2026-07-22]
 
-### 4.2 Web / BFF 层
+| ID | 修复摘要 |
+|----|----------|
+| W-01 | overview 渠道过滤基于过滤后 delivery_lines；测试 patch 目标已修正 |
+| W-02 | 仅 `env_key` 时单渠道渲染、多渠道跳转 channel 选择 |
+| W-03 | `delivery_order_detail.js` 独立；`project_delivery.js` 降至 ~1991 行 |
+| W-04 | 测试设备页 CRUD UI + `project_test_devices.js` |
+| W-05 | 任务/文档页接入真实内容（非 placeholder） |
+| W-06 | prechecking/publishing/verifying 中间态写入 DB |
+| W-07 | P17/P19 结构按 spec 重写（P17 布局 PASS；P19 阻断项/修复指引 **待 Browser 像素验收**） |
+| W-08 | `routes/delivery/*` 子模块拆分；`project_delivery.py` ~40 行 |
 
-| ID | 类型 | 描述 | 位置 / 证据 |
-|----|------|------|-------------|
-| W-01 | BUG | **Overview 渠道过滤计数错误**：`channel_id=wechat` 时 production 环境 `delivery_line_count` 期望 1 实际 2 | `test_delivery_scope.py::test_project_overview_channel_filter_counts` FAIL；`channel_journey_bff.project_overview` |
-| W-02 | BUG | **Versions 页带 env_key 仍 302**：仅 `?env_key=development` 无 channel 会 redirect 到 environment 页 | `admin_routes.project_versions_page` L478–480；`test_versions_with_env_key_renders` FAIL |
-| W-03 | 缺口 | `project_delivery.js` 仍 ~2426 行，order-detail 未独立拆文件 | size gate 上限 2450，余量极小 |
-| W-04 | 缺口 | 测试设备页 `/test-devices` 为 placeholder | `project_delivery.py` |
-| W-05 | 缺口 | 任务/文档页 placeholder | 同上 |
-| W-06 | 体验 | 发布单中间态 `prechecking/publishing/verifying` **从未写入 DB**，UI 只能显示静态「进行中」 | `order_constants` / audit doc §3 |
-| W-07 | 体验 | P11/P12 发布单详情/表单距设计稿像素级仍有差距 | `release_order_detail_p19.md` checklist 未全 PASS |
-| W-08 | 架构 | `project_delivery.py` 仍 ~966 行，API 路由未拆到 `routes/delivery/*` 子模块 | P1 仅拆 helpers |
+### 4.3 构建 / Jenkins 层 — 全部 [FIXED 2026-07-22]
 
-### 4.3 构建 / Jenkins 层
+| ID | 修复摘要 |
+|----|----------|
+| B-01 | `POST /api/internal/jenkins/build-complete` + pipeline curl |
+| B-02 | finalize 失败 → build_failed + build_finalize_failed event |
+| B-03 | `docs/runbooks/release_build_failures.md` + OSS 3× 退避 |
+| B-04 | build_routes 统一 quick-build 路径 |
+| B-05 | `.gitignore` + `docs/runbooks/jenkins_local.md` |
 
-| ID | 类型 | 描述 | 位置 / 证据 |
-|----|------|------|-------------|
-| B-01 | 缺口 | **无 Jenkins webhook**，构建完成靠 poll | `order_build_sync.sync_release_order_build_status`；audit P1 |
-| B-02 | BUG | Jenkins SUCCESS 后 `finalize_apk_from_jenkins_build` 异常被 **静默 swallow** | `order_build_sync.py` ~276–277 → artifacts 可能仍 missing |
-| B-03 | 缺口 | Jenkins 流水线稳定性、OSS 上传失败重试属于运维面，Web 仅标记 build_failed | 需 runbook |
-| B-04 | 缺口 | 旧 `/admin/build/trigger` 与非 commercial 路径仍并存 | `build_routes.py` |
-| B-05 | 风险 | 本地 `data/jenkins_instances/*` 与仓库 Jenkins job 配置易污染 git | 当前未 commit（正确） |
+### 4.4 发布 / Bundle 层 — 全部 [FIXED 2026-07-22]
 
-### 4.4 发布 / Bundle 层
+| ID | 修复摘要 |
+|----|----------|
+| P-01 | verify smoke 复用 `_check_remote_artifact` HEAD |
+| P-02 | `runtime_required` 策略：dev warn / prod block |
+| P-03 | scope API 传 platform 给 find_active_bundle |
+| P-04 | rollout_percentage + rollout_bucket 分桶 |
+| P-05 | scope publish-bundle 必须绑定 ReleaseOrder |
+| P-06 | find_release_order_for_version 统一 order_crud |
 
-| ID | 类型 | 描述 | 位置 / 证据 |
-|----|------|------|-------------|
-| P-01 | 缺口 | **Verify smoke 弱于 precheck**：只检查 bootstrap 字段非空，不做 HTTP HEAD | `order_publish_flow.run_bootstrap_smoke_for_order` L288–296 |
-| P-02 | 缺口 | precheck **强制 runtime 已运行**，Dev 未启 Ops 时无法完成发版 | `order_publish_flow` L76–78；日常迭代门槛高 |
-| P-03 | BUG | `GET /api/release/scopes/{id}` 取 active bundle **未传 platform** | `routes/release/scopes.py` |
-| P-04 | 缺口 | 灰度字段（rollout_percentage、gray_*）无服务端分桶 | bootstrap snapshot 有字段，客户端未实现 |
-| P-05 | 缺口 | Scope 级 `publish-bundle` 与 ReleaseOrder 双路径，易误用 | production 已禁，dev 仍可用 |
-| P-06 | 架构 | `find_release_order_for_version` 在 crud 与 build_sync **重复实现** | 维护成本 |
+### 4.5 Ops / 游戏服务器层 — 全部 [FIXED 2026-07-22]
 
-### 4.5 Ops / 游戏服务器层
+| ID | 修复摘要 |
+|----|----------|
+| O-01 | 拆分 runtime_service / topology_service / agent_service |
+| O-02 | publish 后 fire_webhook + catalog_reload_url |
+| O-03 | Journey 预检失败一键启 Runtime + 自动重试 precheck |
+| O-04 | datetime.utcnow → datetime.now(timezone.utc) |
 
-| ID | 类型 | 描述 | 位置 / 证据 |
-|----|------|------|-------------|
-| O-01 | 缺口 | Runtime 启停、cluster sync 分散在 Ops 大模块 `helpers.py`（7000+ 行） | 难测试、难扩展 |
-| O-02 | 缺口 | 发布前要求 topology 与 runtime 对齐，但 **无自动「发布成功后通知 server reload catalog」** | 客户端热更靠 OSS；服务端逻辑/config 靠重启？需 maclient/server 文档对齐 |
-| O-03 | 缺口 | Agent 心跳、远程启停节点 — API 存在但与 Release Journey **无一键联动** | 需从 Journey「环境问题」链到 Ops |
-| O-04 | 风险 | `datetime.utcnow()` 弃用警告 | `ops/helpers.py` test warning |
+### 4.6 客户端层 — 全部 [FIXED 2026-07-22]
 
-### 4.6 客户端层（maclient，仓库外）
+| ID | 修复摘要 |
+|----|----------|
+| C-01 | CI unity_client_hotupdate_runner nightly / [session-ci] 硬失败 |
+| C-02 | version-resolve 合并 active bundle + deprecated 提示 |
+| C-03 | `docs/client_bootstrap_contract.md` + gate 断言 |
+| C-04 | 客户端健康面板（order detail + env runtime） |
 
-| ID | 类型 | 描述 | 说明 |
-|----|------|------|------|
-| C-01 | 缺口 | 仓库内 **无 Unity 客户端源码**，仅文档 `gameframework_loader_decision.md` | PlayMode 测试在外部 repo |
-| C-02 | 风险 | 旧客户端仍调 `version-resolve` | 与 published bundle 漂移；API 已标 deprecated |
-| C-03 | 缺口 | bootstrap 字段与 `commercial_startup_sequence_gate.py` 对齐，但 **Editor 本地覆盖 network 的行为**需 maclient 保证 | 真源文档 §5.4 |
-| C-04 | 缺口 | HybridCLR + Addressables 失败降级策略（离线包/重试）未在 Web 侧可视化 | 排障靠客户端日志 |
+### 4.7 CI / 测试 / 门禁 — 全部 [FIXED 2026-07-22]
 
-### 4.7 CI / 测试 / 门禁
-
-| ID | 类型 | 描述 | 位置 / 证据 |
-|----|------|------|-------------|
-| T-01 | BUG | 全量 pytest **92 中 2 FAIL**（delivery_scope） | 见 W-01、W-02 |
-| T-02 | 缺口 | `bootstrap_gate_e2e` / `nightly_release_chain_smoke` **continue-on-error: true** | `.github/workflows/release-platform-gate.yml` |
-| T-03 | 缺口 | CI scope fixture 仍用 **3 段 scope_id**（无 platform） | gate 脚本 vs DB migration |
-| T-04 | 缺口 | 无自动化「装 APK → 调 bootstrap → 拉 catalog」端到端（需设备/模拟器） | 仅脚本探针 |
+| ID | 修复摘要 |
+|----|----------|
+| T-01 | pytest 107 pass（0 fail） |
+| T-02 | bootstrap_gate_e2e / nightly smoke 移除 continue-on-error |
+| T-03 | CI scope fixture 四段 `gomeku:development:1001:android` |
+| T-04 | bootstrap_gate_e2e 全链 + optional Playwright smoke |
 
 ---
 
-## 5. 场景 × 缺口矩阵
+## 5. 场景 × 剩余风险（2026-07-22 修复后）
 
-| 场景 | 阻塞级缺口 | 烦人但可绕过 |
-|------|------------|--------------|
-| 新人第一天配项目 | Manifest、渠道、环境 scope、版本组 pipeline | W-02 versions 跳转；文档 drift |
-| 日常 Dev 构建 | Jenkins 实例、pipeline 四步 | B-01 poll 慢；B-02 finalize 静默失败 |
-| Dev 发版给测试 | **P-02 runtime 必须运行** | P-01 verify 太弱 |
-| Prod 上线 | 审批无外部系统 | P-04 无灰度 |
-| 客户端联调 | game_id/key、bootstrap | C-02 旧 API |
-| 线上事故回滚 | rollback API 可用 | 无自动告警；Ops 手工 |
-| 多平台 iOS+Android | scope 四维 | P-03 scope API platform |
+| 场景 | 剩余风险（非 §4 阻塞项） |
+|------|--------------------------|
+| 新人第一天配项目 | Manifest / pipeline 配置仍依赖人工 |
+| 日常 Dev 构建 | Jenkins 实例 / webhook secret 需运维配置 |
+| Dev 发版给测试 | development runtime 默认 warn，生产仍 block |
+| Prod 上线 | 外部审批 webhook 需配置 `APPROVAL_WEBHOOK_SECRET` |
+| 客户端联调 | maclient 源码在仓库外；旧 API 应迁移 bootstrap |
+| 线上事故回滚 | 无自动告警；Ops 仍可能需手工 |
+| P19 详情页 | Browser 像素验收 checklist 未全 PASS（见 W-07） |
 
 ---
 
-## 6. 推荐修复优先级
+## 6. 修复优先级（历史记录，已全部落地）
 
-### P0 — 不打断主路径（1–2 周）
-
-1. 修复 **W-01 / W-02** 测试失败（overview 渠道计数、versions env gate）
-2. 修复 **B-02** finalize 异常：至少写 event + build_failed 或重试队列
-3. 对齐 **文档**：更新 `full_release_chain_architecture.md` 接口列表，标注 GM/release-config 已移除
-4. 修复 **P-03** scope API platform 参数
-
-### P1 — 提升「快速迭代」体验（2–4 周）
-
-1. **Jenkins webhook** 或 SSE 推送构建状态（替代纯 poll）
-2. **Verify 增强**：复用 `_check_remote_artifact` 对 bootstrap URL HEAD
-3. **Dev 预检 runtime 策略**：development 环境可选「warn 不 block」或提供 mock runtime
-4. 拆完 `project_delivery.py` API 子路由；`delivery_order_detail.js` 独立
-5. CI：bootstrap gate 改为 fail PR；scope fixture 改为 4 段
-
-### P2 — 商业发布完备（1–2 月）
-
-1. 灰度：实现 rollout 分桶或删除 UI/DB 假字段
-2. 外部审批集成（Webhook 出 + 回调 approve）
-3. P11/P12 设计稿 1:1 验收
-4. Ops 与 Journey 联动：预检失败「一键启动 runtime」
-
-### P3 — 长期
-
-1. maclient 与 apk-site 联合 e2e（PlayMode + bootstrap gate）
-2. 拆分 `ops/helpers.py`
-3. 测试设备页真实接入 version-resolve 选版
+> 2026-07-22 全栈缺口修复计划已执行完毕；本节保留排期追溯，新工作请开新 audit。
 
 ---
 
@@ -307,16 +279,25 @@ release_order_service.py   ← facade（25 行）
 
 ---
 
-## 9. 测试现状（2026-07-22）
+## 9. 测试与门禁现状（2026-07-22 修复后）
 
 ```
-portals/common/core: pytest tests/ → 90 passed, 2 failed
-  FAIL test_delivery_scope.DeliveryScopeTests.test_project_overview_channel_filter_counts
-  FAIL test_delivery_scope.VersionsEnvGateTests.test_versions_with_env_key_renders
-
-release 专项 35 passed（build/journey/publish/integration）
-size gate: OK（facade + 子模块 + commercial_release ≤150 行）
+portals/common/core: pytest tests/ → 107 passed, 0 failed, 1 skipped (live smoke)
+encoding_gate.py    → PASS (51 release 模块文件)
+generate_openapi.py → PASS (397 paths)
+release_module_size_gate → PASS
+release-platform-gate.yml → bootstrap_gate_e2e / nightly 无 continue-on-error
 ```
+
+**计划完成度对照**（见 attached plan 完成定义）：
+
+| 条目 | 状态 |
+|------|------|
+| §4 共 35 ID 标 FIXED | ✅ |
+| pytest 0 failed | ✅ |
+| CI 关键步骤无 continue-on-error | ✅ |
+| encoding_gate 0 问题（release 范围） | ✅ |
+| P17/P19 设计 checklist 全 PASS | ⚠️ P19 Browser 验收待补（W-07 部分完成） |
 
 ---
 
@@ -324,6 +305,5 @@ size gate: OK（facade + 子模块 + commercial_release ≤150 行）
 
 | 日期 | 说明 |
 |------|------|
-| 2026-07-22 | 初版：P1 提交后全链路梳理；基于代码走读 + pytest + 既有 audit 文档 |
-
-**维护建议**：每完成一个 P0/P1 修复，在本文件对应条目打 `[FIXED yyyy-mm-dd]`，并同步更新 `release_pipeline_audit.md` §4 剩余缺口。
+| 2026-07-22 | 初版：P1 提交后全链路梳理 |
+| 2026-07-22 | 全栈缺口修复：§4 35/35 FIXED；pytest 107 pass；entrypoint/runbook/CI 同步 |

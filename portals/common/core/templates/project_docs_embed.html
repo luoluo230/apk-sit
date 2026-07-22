@@ -1,0 +1,16 @@
+<section class="delivery-app project-docs-app" data-delivery-page="project-docs" data-project-id="{{ project_id }}">
+  <div class="pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_docs.svg" alt=""></span>
+      <div><h1>项目文档</h1><p>客户端 bootstrap 契约与发布链说明；完整知识库请访问<a href="/docs">知识中心</a>。</p></div>
+    </div>
+    <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
+  </div>
+  <div class="pm-docs-embed" style="margin-top:16px;padding:20px;background:#fff;border:1px solid #e5e7eb;border-radius:12px">
+    <div class="pm-docs-actions" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <a class="pm-btn pm-btn--primary" href="/docs">打开知识中心</a>
+      <a class="pm-btn" href="/docs/client_bootstrap_contract">Bootstrap 契约（Markdown）</a>
+    </div>
+    <article class="pm-markdown-body" style="font-size:14px;line-height:1.65;color:#334155;white-space:pre-wrap">{{ docs_markdown|e }}</article>
+  </div>
+</section>

@@ -56,7 +56,9 @@ class PrecheckTransitionTests(unittest.TestCase):
              mock.patch.object(opf, "resolve_scope", return_value={"scope_id": "scope-1"}), \
              mock.patch("services.release.bundle_service.run_scope_precheck", return_value=precheck), \
              mock.patch.object(opf, "resolve_topology_binding_for_scope", return_value={"topology_id": "topo-1"}), \
+             mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"runtime_required": "block"}), \
              mock.patch("services.ops.helpers._runtime_active_for_scope", return_value={"active": True, "run_id": "run-1"}), \
+             mock.patch.object(oc, "_transition", return_value=order), \
              mock.patch.object(opf, "get_cursor") as cursor_cm, \
              mock.patch.object(opf, "_event"):
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
@@ -73,7 +75,9 @@ class PrecheckTransitionTests(unittest.TestCase):
              mock.patch.object(opf, "resolve_scope", return_value={"scope_id": "scope-1"}), \
              mock.patch("services.release.bundle_service.run_scope_precheck", return_value=precheck), \
              mock.patch.object(opf, "resolve_topology_binding_for_scope", return_value={"topology_id": "topo-1"}), \
+             mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"runtime_required": "block"}), \
              mock.patch("services.ops.helpers._runtime_active_for_scope", return_value={"active": True, "run_id": "run-1"}), \
+             mock.patch.object(oc, "_transition", return_value=order), \
              mock.patch.object(opf, "get_cursor") as cursor_cm, \
              mock.patch.object(opf, "_event"):
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
@@ -96,6 +100,12 @@ class PublishGovernanceTests(unittest.TestCase):
                 ros.activate_bundle_on_scope("p1", "scope-prod", "bundle-1", "tester")
             self.assertIn("禁止", str(ctx.exception))
 
+    def test_scope_publish_requires_release_order_id(self):
+        with mock.patch("services.release.storage.find_scope", return_value={"env_key": "development"}):
+            with self.assertRaises(ValueError) as ctx:
+                ros.activate_bundle_on_scope("p1", "scope-dev", "bundle-1", "tester")
+            self.assertIn("release_order_id", str(ctx.exception))
+
 
 class VerifySmokeTests(unittest.TestCase):
     def test_verify_ok_runs_smoke_before_verified(self):
@@ -103,11 +113,11 @@ class VerifySmokeTests(unittest.TestCase):
         verified = {**order, "status": "verified"}
         smoke = {"ok": True, "checks": [{"key": "catalog_url", "ok": True}]}
         with mock.patch.object(oc, "get_release_order", side_effect=[order, verified]), \
-             mock.patch.object(opf, "run_bootstrap_smoke_for_order", return_value=smoke) as smoke_fn, \
-             mock.patch.object(oc, "_transition", return_value=verified) as transition:
+             mock.patch.object(oc, "_transition", side_effect=[order, verified]) as transition, \
+             mock.patch.object(opf, "run_bootstrap_smoke_for_order", return_value=smoke) as smoke_fn:
             out = ros.verify_release_order("p1", "ro-int-1", "tester", ok=True)
         smoke_fn.assert_called_once_with("p1", "ro-int-1")
-        transition.assert_called_once()
+        self.assertGreaterEqual(transition.call_count, 2)
         self.assertEqual(transition.call_args.args[3], "verified")
         self.assertEqual(out["status"], "verified")
 
@@ -116,8 +126,8 @@ class VerifySmokeTests(unittest.TestCase):
         failed = {**order, "status": "verify_failed"}
         smoke = {"ok": False, "checks": [{"key": "catalog_url", "ok": False}]}
         with mock.patch.object(oc, "get_release_order", side_effect=[order, failed]), \
-             mock.patch.object(opf, "run_bootstrap_smoke_for_order", return_value=smoke), \
-             mock.patch.object(oc, "_transition", return_value=failed) as transition:
+             mock.patch.object(oc, "_transition", side_effect=[order, failed]) as transition, \
+             mock.patch.object(opf, "run_bootstrap_smoke_for_order", return_value=smoke):
             out = ros.verify_release_order("p1", "ro-int-1", "tester", ok=True)
         self.assertEqual(transition.call_args.args[3], "verify_failed")
         self.assertEqual(out["status"], "verify_failed")
@@ -129,8 +139,8 @@ class QuickPublishApiTests(unittest.TestCase):
         app.config["WTF_CSRF_ENABLED"] = False
         self.client = app.test_client()
 
-    @mock.patch("routes.project_delivery.quick_publish_delivery")
-    @mock.patch.dict("routes.project_delivery.projects_db", {"GomeKu": {"name": "GomeKu"}}, clear=False)
+    @mock.patch("routes.delivery.journey_api.quick_publish_delivery")
+    @mock.patch.dict("models.data.projects_db", {"GomeKu": {"name": "GomeKu"}}, clear=False)
     def test_quick_publish_route(self, qp_mock):
         qp_mock.return_value = {"phase": "verified", "release_order_id": "ro-q1", "order": {"status": "verified"}}
         with self.client.session_transaction() as sess:

@@ -14,7 +14,15 @@
     <div class="ro-journey-segment" data-phase="2" data-jump="execute" title="跳转到发布策略"><span>执行</span></div>
   </div>
 
-  <div class="ro-form-layout workflow-layout ro-form-layout--no-steps">
+  <div class="ro-form-layout workflow-layout">
+    <aside class="ro-form-steps workflow-steps" aria-label="发布单步骤">
+      <button type="button" data-step-target="target" class="active"><b>01</b><span>交付目标</span></button>
+      <button type="button" data-step-target="build"><b>02</b><span>构建计划</span></button>
+      <button type="button" data-step-target="runtime"><b>03</b><span>拓扑运行</span></button>
+      <button type="button" data-step-target="strategy"><b>04</b><span>发布策略</span></button>
+      <button type="button" data-step-target="verify"><b>05</b><span>验证方案</span></button>
+      <button type="button" data-step-target="rollback"><b>06</b><span>回滚方案</span></button>
+    </aside>
     <main class="ro-form-main workflow-main">
       <div class="ro-prod-banner risk-banner production-banner is-hidden" id="orderProductionBanner">
         <img src="/static/project_ui/svg/status_warning.svg" alt="">
@@ -190,7 +198,8 @@
   <footer class="ro-form-footer workflow-footer">
     <a class="ui-secondary" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}">取消</a>
     <button class="ui-secondary" data-save-order type="button">保存草稿</button>
-    <button class="ui-primary" data-form-next type="button" id="btnFormNext">下一步</button>
+    <button class="ui-primary" data-save-build type="button">保存并进入构建</button>
+    <button class="ui-secondary" data-copy-plan type="button">复制计划</button>
     <span class="ro-autosave" id="orderAutosave">—</span>
     <span id="orderSaveStatus" class="is-hidden"></span>
   </footer>

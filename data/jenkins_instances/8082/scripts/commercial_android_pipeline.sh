@@ -90,15 +90,21 @@ echo ""
 echo "======= 可插拔版本构建流水线 ======="
 [ -n "$JENKINS_HOME" ] && [ -f "${JENKINS_HOME}/.apk-site-env" ] && . "${JENKINS_HOME}/.apk-site-env"
 
+_resolve_python_cmd() {
+  local py_cmd=""
+  if command -v py >/dev/null 2>&1; then py_cmd="py -3"
+  elif command -v python >/dev/null 2>&1; then py_cmd="python"
+  elif command -v python3 >/dev/null 2>&1; then py_cmd="python3"
+  fi
+  echo "$py_cmd"
+}
+
 _resolve_unity_exe() {
   local ver="${UNITY_VERSION:-6000.3.8f1}"
   local map_file="${UNITY_PATH_MAP_FILE:-${JENKINS_HOME}/unity_paths.json}"
   local resolved=""
-  local py_cmd=""
-  if command -v python3 >/dev/null 2>&1; then py_cmd="python3"
-  elif command -v python >/dev/null 2>&1; then py_cmd="python"
-  elif command -v py >/dev/null 2>&1; then py_cmd="py -3"
-  fi
+  local py_cmd
+  py_cmd="$(_resolve_python_cmd)"
   if [ -f "$map_file" ] && [ -n "$py_cmd" ]; then
     resolved=$($py_cmd -c "import json,os; m=json.load(open(os.environ['UNITY_PATH_MAP_FILE'],encoding='utf-8')); print((m.get(os.environ.get('UNITY_VERSION','')) or '').strip())" 2>/dev/null || echo "")
   fi
@@ -504,16 +510,6 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export GIT_BRANCH="${GIT_BRANCH:-main}"
   export PROJECT_ID="${PROJECT_ID:-GomeKu}"
   export VERSION_STAGE="${VERSION_STAGE:-dev}"
-  echo "=== Step 4-pre: 同步 HotUpdateConfig（免手工改 Unity） ==="
-  _HC_ARGS="-releaseVersion \"${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}\""
-  _HC_ARGS="$_HC_ARGS -releaseEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
-  _HC_ARGS="$_HC_ARGS -releaseChannel \"${RELEASE_CHANNEL:-${CHANNEL:-wechat}}\""
-  _HC_ARGS="$_HC_ARGS -projectId \"${PROJECT_ID:-GomeKu}\""
-  _HC_ARGS="$_HC_ARGS -versionCode \"${VERSION_CODE:-1}\""
-  if [ -n "${RESOURCE_SERVER_URL:-}" ]; then
-    _HC_ARGS="$_HC_ARGS -resourceServerUrl \"${RESOURCE_SERVER_URL}\""
-  fi
-  _run_unity HotUpdateConfigSyncCli.ExecuteFromCommandLine $_HC_ARGS || exit $?
   APK_SCRIPT="$(_resolve_apk_build_script || true)"
   if [ -z "$APK_SCRIPT" ]; then
     echo "ERROR: APK 步骤已启用但未找到 build_gameku_android.sh"
@@ -545,7 +541,6 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export UNITY_LOG
   _run_unity ApkReleaseUploadCli.ExecuteFromCommandLine $APK_UP_ARGS || exit $?
   echo "=== Step 4c: APK 本地落盘 + 版本下载信息 ==="
-  export APK_PUBLISH_DIR="${APK_PUBLISH_DIR:-${APK_SCAN_DIR:-}}"
   ARCHIVE_SCRIPT="${JENKINS_HOME:-}/scripts/archive_apk_after_build.py"
   [ -f "$ARCHIVE_SCRIPT" ] || ARCHIVE_SCRIPT="$(dirname "$0")/archive_apk_after_build.py"
   if [ -f "$ARCHIVE_SCRIPT" ]; then
@@ -553,11 +548,7 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export VERSION_CHANNEL_ID="${VERSION_CHANNEL_ID:-${CHANNEL:-}}"
   export OSS_APK_REMOTE_KEY="${RELEASE_PROJECT_ROOT:-MyGame1}/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-wechat}/${RELEASE_PLATFORM:-android}/apk/${APP_NAME}_${VERSION_NAME:-1.0.0}_vc${VERSION_CODE}.apk"
   export BUILD_NUMBER="${BUILD_NUMBER:-}"
-  _py_cmd=""
-  if command -v python3 >/dev/null 2>&1; then _py_cmd="python3"
-  elif command -v python >/dev/null 2>&1; then _py_cmd="python"
-  elif command -v py >/dev/null 2>&1; then _py_cmd="py -3"
-  fi
+  _py_cmd="$(_resolve_python_cmd)"
   if [ -z "$_py_cmd" ]; then
     echo "ERROR: 未找到 Python 可执行文件，无法运行 archive_apk_after_build.py"
     exit 1
@@ -573,5 +564,67 @@ else
 fi
 
 _log_stage "END" "流水线结束" "所有启用阶段已执行完成，可根据各阶段日志定位失败点。"
+
+_notify_build_complete() {
+  local base_url="${APKSITE_BASE_URL:-}"
+  if [ -z "$base_url" ] && [ -n "${APK_DIR:-}" ] && [ -f "${APK_DIR}/.apk-site-base-url" ]; then
+    base_url="$(head -1 "${APK_DIR}/.apk-site-base-url" | tr -d '\r\n')"
+  fi
+  local build_no="${BUILD_NUMBER:-}"
+  local instance_id="${JENKINS_INSTANCE_ID:-}"
+  if [ -z "$instance_id" ] && [ -n "${JENKINS_HOME:-}" ]; then
+    _py_cmd="$(_resolve_python_cmd || true)"
+    if [ -n "$_py_cmd" ]; then
+      instance_id="$("$_py_cmd" - <<'PY' 2>/dev/null || true
+import json, os
+home = os.path.normpath(os.environ.get("JENKINS_HOME", "")).lower()
+if not home:
+    raise SystemExit(0)
+data_dir = os.path.dirname(os.path.dirname(home))
+registry = os.path.join(data_dir, "jenkins_instances.json")
+if not os.path.isfile(registry):
+    raise SystemExit(0)
+for row in json.load(open(registry, encoding="utf-8")):
+    if not isinstance(row, dict):
+        continue
+    jh = os.path.normpath(str(row.get("jenkins_home") or "")).lower()
+    if jh == home and row.get("id"):
+        print(str(row.get("id")))
+        break
+PY
+)"
+    fi
+  fi
+  if [ -z "$base_url" ] || [ -z "$build_no" ] || [ -z "$instance_id" ]; then
+    echo "⚠ 跳过 build-complete webhook（缺少 base_url/build_number/instance_id）"
+    return 0
+  fi
+  local secret="${JENKINS_BUILD_WEBHOOK_SECRET:-${APK_SECRET:-}}"
+  if [ -z "$secret" ]; then
+    echo "⚠ 跳过 build-complete webhook（未配置 JENKINS_BUILD_WEBHOOK_SECRET / APK_SECRET）"
+    return 0
+  fi
+  local payload
+  payload=$(printf '{"instance_id":"%s","build_number":%s}' "$instance_id" "$build_no")
+  local signature=""
+  if command -v openssl >/dev/null 2>&1; then
+    signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')
+  else
+    _py_cmd="$(_resolve_python_cmd || true)"
+    if [ -z "$_py_cmd" ]; then
+      echo "⚠ 跳过 build-complete webhook（无法计算 HMAC）"
+      return 0
+    fi
+    signature=$("$_py_cmd" -c "import hmac,hashlib,os; print(hmac.new(os.environ['WH_SECRET'].encode(), os.environ['WH_BODY'].encode(), hashlib.sha256).hexdigest())" \
+      WH_SECRET="$secret" WH_BODY="$payload")
+  fi
+  echo "通知 apk-site 构建完成 webhook (#${build_no}, instance=${instance_id})"
+  curl -fsS -X POST "${base_url%/}/api/internal/jenkins/build-complete" \
+    -H "Content-Type: application/json" \
+    -H "X-Jenkins-Signature: ${signature}" \
+    -d "$payload" >/dev/null 2>&1 || echo "⚠ build-complete webhook 请求失败（非阻断）"
+}
+
+_notify_build_complete
 
 echo "======= 流水线执行完毕 ======="

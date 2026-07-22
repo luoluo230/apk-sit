@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
@@ -23,6 +24,72 @@ from services.commercial_release_plan import (
 
 def _now_iso() -> str:
     return datetime.now().isoformat()
+
+
+def compute_rollout_bucket(
+    *,
+    device_id: str = "",
+    user_id: str = "",
+    scope_id: str = "",
+    bundle_id: str = "",
+) -> int:
+    """Stable 0..99 bucket from device_id or user_id (gray rollout)."""
+    identity = str(device_id or user_id or "anonymous").strip()
+    seed = "|".join([identity, str(scope_id or "").strip(), str(bundle_id or "").strip()])
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % 100
+
+
+def resolve_gray_rollout_bundle(
+    bundle: Dict[str, Any],
+    *,
+    device_id: str = "",
+    user_id: str = "",
+) -> Dict[str, Any]:
+    """Return effective bundle for client; on gray miss use superseded bundle or empty."""
+    if not isinstance(bundle, dict) or not bundle:
+        return {
+            "in_rollout": False,
+            "rollout_percentage": 100,
+            "rollout_bucket": 0,
+            "bundle": {},
+            "gray_miss": False,
+            "superseded_bundle_id": "",
+        }
+    client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
+    try:
+        rollout_percentage = max(0, min(100, int(client.get("rollout_percentage") if client.get("rollout_percentage") is not None else 100)))
+    except (TypeError, ValueError):
+        rollout_percentage = 100
+    scope_id = str(bundle.get("scope_id") or "")
+    bundle_id = str(bundle.get("bundle_id") or "")
+    rollout_bucket = compute_rollout_bucket(
+        device_id=device_id,
+        user_id=user_id,
+        scope_id=scope_id,
+        bundle_id=bundle_id,
+    )
+    base = {
+        "rollout_percentage": rollout_percentage,
+        "rollout_bucket": rollout_bucket,
+        "gray_miss": False,
+        "superseded_bundle_id": "",
+        "target_bundle_id": bundle_id,
+    }
+    if rollout_percentage >= 100 or rollout_bucket < rollout_percentage:
+        return {**base, "in_rollout": True, "bundle": bundle}
+    superseded_id = str(bundle.get("supersedes_bundle_id") or "").strip()
+    if superseded_id:
+        previous = get_bundle(superseded_id)
+        if previous:
+            return {
+                **base,
+                "in_rollout": False,
+                "gray_miss": True,
+                "superseded_bundle_id": superseded_id,
+                "bundle": previous,
+            }
+    return {**base, "in_rollout": False, "gray_miss": True, "bundle": {}}
 
 
 def list_bundles(

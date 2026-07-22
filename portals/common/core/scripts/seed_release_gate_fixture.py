@@ -15,7 +15,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-SCOPE_ID = os.environ.get("RELEASE_GATE_SCOPE_ID", "gomeku:development:1001")
+SCOPE_ID = os.environ.get("RELEASE_GATE_SCOPE_ID", "gomeku:development:1001:android")
 PROJECT_ID = "GomeKu"
 VERSION_NAME = "1.0.0"
 VERSION_CODE = "12"

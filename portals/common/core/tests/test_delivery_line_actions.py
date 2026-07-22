@@ -118,8 +118,8 @@ class DeliveryActionsApiTests(unittest.TestCase):
         app.config["WTF_CSRF_ENABLED"] = False
         self.client = app.test_client()
 
-    @mock.patch("routes.project_delivery.resolve_delivery_actions")
-    @patch.dict("routes.project_delivery.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    @mock.patch("routes.delivery.journey_api.resolve_delivery_actions")
+    @patch.dict("models.data.projects_db", {"demo": {"name": "Demo"}}, clear=False)
     def test_delivery_actions_api(self, mock_resolve):
         mock_resolve.return_value = {
             "primary": {"label": "继续发版", "href": "/detail"},

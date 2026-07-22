@@ -8,7 +8,7 @@ from flask import render_template, request, session
 from models.data import projects_db
 from services.ops.helpers import _render_ops_page
 
-DELIVERY_ASSET_VER = "20260720-refactor-p1"
+DELIVERY_ASSET_VER = "20260722-phase2-gap-fix"
 
 BREADCRUMB_BY_PAGE = {
     "project-home": "总览",
@@ -44,6 +44,13 @@ def delivery_js_bundle(*extra: str) -> str:
         parts.append(f'<script src="/static/{name}?v={DELIVERY_ASSET_VER}"></script>')
     parts.append(f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>')
     return "".join(parts)
+
+
+def normalize_channel_route_id(project_id: str, channel_id: str) -> str:
+    from services.release.scope_ids import resolve_channel_id
+
+    raw = str(channel_id or "").strip()
+    return resolve_channel_id(project_id, raw) or raw
 
 
 def actor() -> str:
@@ -87,6 +94,15 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
             f'<link rel="stylesheet" href="/static/project_environment_runtime.css?v={DELIVERY_ASSET_VER}">'
         )
         js = f'<script src="/static/project_environment_runtime.js?v={DELIVERY_ASSET_VER}"></script>'
+    elif template_name == "project_test_devices.html":
+        css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+        js = (
+            f'<script src="/static/delivery_common.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_test_devices.js?v={DELIVERY_ASSET_VER}"></script>'
+        )
+    elif template_name == "project_docs_embed.html":
+        css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+        js = delivery_js_bundle()
     elif template_name == "release_order_form.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
@@ -126,7 +142,7 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
             f'<script src="/static/delivery_common.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/journey_common.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/delivery_order_detail.js?v={DELIVERY_ASSET_VER}"></script>'
         )
     else:
         css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'

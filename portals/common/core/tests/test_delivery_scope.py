@@ -106,13 +106,14 @@ class DeliveryScopeTests(unittest.TestCase):
         self.assertEqual([c["id"] for c in prod_channels], ["wechat", "douyin"])
         self.assertEqual([p["id"] for p in prod_platforms], ["android", "ios"])
 
-    @patch("services.release.release_order_service.list_project_env_keys", return_value=["development", "production"])
-    @patch("services.release.release_order_service.list_release_orders", return_value=[])
-    @patch("services.release.release_order_service._delivery_lines_for_env")
+    @patch("services.release.channel_journey_bff.list_project_env_keys", return_value=["development", "production"])
+    @patch("services.release.channel_journey_bff._core")
+    @patch("services.release.channel_journey_bff._delivery_lines_for_env")
     @patch("models.data.projects_db", _mock_projects_db())
     @patch("data.projects.projects_db", _mock_projects_db())
     @patch("data.channels.channels_db", _MOCK_CHANNELS)
-    def test_project_overview_channel_filter_counts(self, mock_lines, *_patches):
+    def test_project_overview_channel_filter_counts(self, mock_lines, mock_core, *_patches):
+        mock_core.return_value.list_release_orders.return_value = []
         def _lines(project_id, env_key):
             if env_key == "development":
                 return [
@@ -168,10 +169,11 @@ class VersionsEnvGateTests(unittest.TestCase):
         self.assertIn("tab=environments", resp.headers.get("Location", ""))
         self.assertIn("hint=pick_env", resp.headers.get("Location", ""))
 
+    @patch("data.delivery_scope.get_channels_for_env", return_value=[{"id": "wechat", "name": "WeChat"}])
     @patch("routes.admin_routes.can_edit_project", return_value=True)
     @patch("routes.admin_routes.can_view_project", return_value=True)
     @patch.dict("routes.admin_routes.projects_db", {"demo": {"name": "Demo"}}, clear=False)
-    def test_versions_with_env_key_renders(self, _mock_edit, _mock_view):
+    def test_versions_with_env_key_renders(self, _mock_view, _mock_edit, _mock_channels):
         with self.client.session_transaction() as sess:
             sess["user"] = "admin"
         resp = self.client.get("/admin/projects/demo/versions?env_key=development")

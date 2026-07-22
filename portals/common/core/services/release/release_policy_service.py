@@ -14,11 +14,22 @@ FORM_DEPTH_MINIMAL = "minimal"
 FORM_DEPTH_STANDARD = "standard"
 FORM_DEPTH_FULL = "full"
 
+RUNTIME_REQUIRED_BLOCK = "block"
+RUNTIME_REQUIRED_WARN = "warn"
+RUNTIME_REQUIRED_SKIP = "skip"
+
 ENV_DEFAULT_FORM_DEPTH = {
     "development": FORM_DEPTH_MINIMAL,
     "testing": FORM_DEPTH_MINIMAL,
     "staging": FORM_DEPTH_STANDARD,
     "production": FORM_DEPTH_FULL,
+}
+
+ENV_DEFAULT_RUNTIME_REQUIRED = {
+    "development": RUNTIME_REQUIRED_WARN,
+    "testing": RUNTIME_REQUIRED_WARN,
+    "staging": RUNTIME_REQUIRED_BLOCK,
+    "production": RUNTIME_REQUIRED_BLOCK,
 }
 
 DEFAULT_RELEASE_DEFAULTS: Dict[str, str] = {
@@ -40,6 +51,7 @@ DEFAULT_RELEASE_POLICY: Dict[str, Any] = {
     "form_depth": FORM_DEPTH_MINIMAL,
     "require_approval": False,
     "allow_gray_release": True,
+    "runtime_required": RUNTIME_REQUIRED_BLOCK,
 }
 
 
@@ -68,12 +80,16 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
     ek = normalize_release_env_key(env_key, project_id=project_id) if env_key else "development"
     policy = dict(DEFAULT_RELEASE_POLICY)
     policy["form_depth"] = ENV_DEFAULT_FORM_DEPTH.get(ek, FORM_DEPTH_STANDARD)
+    policy["runtime_required"] = ENV_DEFAULT_RUNTIME_REQUIRED.get(ek, RUNTIME_REQUIRED_BLOCK)
     if ek in ("production", "prod"):
         policy["require_approval"] = True
     if isinstance(raw, dict):
         depth = str(raw.get("form_depth") or "").strip().lower()
         if depth in (FORM_DEPTH_MINIMAL, FORM_DEPTH_STANDARD, FORM_DEPTH_FULL):
             policy["form_depth"] = depth
+        runtime_mode = str(raw.get("runtime_required") or "").strip().lower()
+        if runtime_mode in (RUNTIME_REQUIRED_BLOCK, RUNTIME_REQUIRED_WARN, RUNTIME_REQUIRED_SKIP):
+            policy["runtime_required"] = runtime_mode
         if "require_approval" in raw:
             policy["require_approval"] = bool(raw.get("require_approval"))
         if "allow_gray_release" in raw:

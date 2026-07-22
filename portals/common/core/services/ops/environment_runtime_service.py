@@ -1087,4 +1087,15 @@ def build_environment_runtime_overview(
             **data_quality_extra,
         },
     }
+    scope_id = ""
+    if channel_id and platform:
+        from services.release.scope_resolver import resolve_scope
+
+        scope = resolve_scope(project_id, env, channel_id, platform=platform, auto_create=False)
+        scope_id = str((scope or {}).get("scope_id") or "")
+    elif latest_order:
+        scope_id = str(latest_order.get("scope_id") or "")
+    from services.release.client_health_service import build_client_health_panel
+
+    payload["client_health"] = build_client_health_panel(scope_id=scope_id)
     return payload

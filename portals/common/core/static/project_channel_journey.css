@@ -427,6 +427,24 @@
   .cj-kv-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .cj-kv { max-width: none; }
 }
+
+.cj-env-issue-card {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--cj-pending-border);
+  background: linear-gradient(180deg, var(--cj-pending-bg) 0%, #fff 70%);
+}
+.cj-env-issue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cj-env-issue-head strong { font-size: 13px; color: var(--cj-text); }
+.cj-env-issue-card p { margin: 0 0 10px; font-size: 12px; line-height: 1.5; color: var(--cj-muted); }
+.cj-env-issue-card .cj-btn.build { min-height: 32px; padding: 0 14px; font-size: 12px; }
 @media (max-width: 640px) {
   .cj-kv-grid { grid-template-columns: 1fr 1fr; }
   .cj-list li { grid-template-columns: 1fr; }

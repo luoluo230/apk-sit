@@ -155,8 +155,8 @@ class EnvironmentRuntimeOverviewTests(unittest.TestCase):
         self.assertTrue(data["runtime"]["active"])
 
     def test_api_route_returns_json(self):
-        with patch("routes.project_delivery.projects_db", _mock_projects_db()), patch(
-            "routes.project_delivery.build_environment_runtime_overview",
+        with patch("routes.delivery.scope_api.projects_db", _mock_projects_db()), patch(
+            "routes.delivery.scope_api.build_environment_runtime_overview",
             return_value={"context": {"env_key": "production"}},
         ):
             client = app.test_client()
@@ -169,7 +169,7 @@ class EnvironmentRuntimeOverviewTests(unittest.TestCase):
         self.assertEqual(body["data"]["context"]["env_key"], "production")
 
     def test_runtime_page_redirect(self):
-        with patch("routes.project_delivery.projects_db", _mock_projects_db()):
+        with patch("routes.delivery.pages.projects_db", _mock_projects_db()):
             client = app.test_client()
             with client.session_transaction() as sess:
                 sess["user"] = "admin"

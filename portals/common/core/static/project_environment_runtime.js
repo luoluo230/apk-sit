@@ -249,6 +249,41 @@
       "</div>";
   }
 
+  function renderClientHealth(health) {
+    var host = document.getElementById("p16ClientHealth");
+    var badge = document.getElementById("p16ClientHealthBadge");
+    if (!host) return;
+    health = health || {};
+    var checks = health.verify_checks || [];
+    var gates = health.gate_results || [];
+    var verifyLabel = checks.length
+      ? checks.filter(function (x) { return x.ok; }).length + "/" + checks.length + " 通过"
+      : "未执行";
+    var gateLabel = gates.length ? (gates[0].passed ? "最近 Gate PASS" : "最近 Gate FAIL") : "无 Gate 记录";
+    if (badge) {
+      badge.textContent = gateLabel;
+    }
+    host.innerHTML =
+      '<div class="p16-client-health-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px 16px">' +
+      '<div><strong>验证探针</strong><div style="margin-top:6px;color:#64748b">' + esc(verifyLabel) + "</div>" +
+      (checks.length
+        ? "<ul style=\"margin:8px 0 0;padding-left:18px;font-size:13px\">" +
+          checks.map(function (row) {
+            return "<li>" + esc(row.key || "") + ": " + esc(row.ok ? "OK" : "FAIL") + "</li>";
+          }).join("") +
+          "</ul>"
+        : "") +
+      "</div><div><strong>Bootstrap Gate</strong><div style=\"margin-top:6px;color:#64748b\">" + esc(gateLabel) + "</div>" +
+      (gates.length
+        ? "<ul style=\"margin:8px 0 0;padding-left:18px;font-size:13px\">" +
+          gates.slice(0, 5).map(function (row) {
+            return "<li>" + esc(row.gate || "") + " · " + esc((row.at || "").slice(0, 19)) + "</li>";
+          }).join("") +
+          "</ul>"
+        : "") +
+      "</div></div>";
+  }
+
   function renderRecentRelease(bundle) {
     var host = document.getElementById("p16RecentRelease");
     if (!host) return;
@@ -948,6 +983,7 @@
       renderQuality(data);
       renderKpis(data);
       renderDashboard(data);
+      renderClientHealth(data.client_health || {});
       renderServices(data);
       renderSidebar(data);
     } catch (err) {

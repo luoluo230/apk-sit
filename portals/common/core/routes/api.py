@@ -169,6 +169,7 @@ def resolve_runtime_version():
     include_status_raw = (request.args.get('include_status') or '').strip()
     version_code_exact = (request.args.get('version_code') or '').strip()
     device_id = (request.args.get('device_id') or '').strip()
+    user_id = (request.args.get('user_id') or '').strip()
     scope_id_param = (request.args.get('scope_id') or '').strip()
     env_key_param = (request.args.get('env_key') or '').strip()
     stage_param = (request.args.get('stage') or '').strip().lower()
@@ -260,7 +261,7 @@ def resolve_runtime_version():
         normalize_release_channel,
         DEFAULT_RESOURCE_SERVER,
     )
-    from services.release.release_context import resolve_release_context
+    from services.release.release_context import merge_version_resolve_with_active_bundle, resolve_release_context
 
     row_env_key = normalize_release_env_key(selected.get('env_key') or selected.get('stage') or effective_env_key or 'development')
     release_ctx = resolve_release_context(project_id, row_env_key, str(selected.get('channel') or channel or ''), version_row=selected)
@@ -303,11 +304,38 @@ def resolve_runtime_version():
     rollout_percentage = selected.get('rollout_percentage')
     if rollout_percentage is None:
         rollout_percentage = 100
+    try:
+        rollout_percentage = max(0, min(100, int(rollout_percentage)))
+    except (TypeError, ValueError):
+        rollout_percentage = 100
     is_revoked = bool(selected.get('is_revoked') or selected.get('version_status') == 'revoked')
 
-    return jsonify({
-        'ok': True,
-        'data': {
+    from services.release.bundle_service import compute_rollout_bucket, get_bundle
+
+    active_bundle_id = str(release_ctx.get('active_bundle_id') or selected.get('active_bundle_id') or '').strip()
+    scope_id_resolved = str(release_ctx.get('scope_id') or selected.get('scope_id') or '').strip()
+    rollout_bucket = compute_rollout_bucket(
+        device_id=device_id,
+        user_id=user_id,
+        scope_id=scope_id_resolved,
+        bundle_id=active_bundle_id,
+    )
+    gray_rollout_miss = rollout_percentage < 100 and rollout_bucket >= rollout_percentage
+    superseded_bundle_id = ''
+    if gray_rollout_miss and active_bundle_id:
+        active_bundle = get_bundle(active_bundle_id)
+        superseded_bundle_id = str((active_bundle or {}).get('supersedes_bundle_id') or '').strip()
+        if not superseded_bundle_id:
+            return jsonify({
+                'ok': False,
+                'error': 'gray_rollout_miss',
+                'data': None,
+                'rollout_percentage': rollout_percentage,
+                'rollout_bucket': rollout_bucket,
+                'superseded_bundle_id': '',
+            }), 204
+
+    data_payload = {
             'project_id': project_id,
             'version_id': selected.get('id'),
             'version_name': selected.get('version_name') or version_name,
@@ -319,6 +347,9 @@ def resolve_runtime_version():
             'min_client_version': min_client_version,
             'max_client_version': max_client_version,
             'rollout_percentage': rollout_percentage,
+            'rollout_bucket': rollout_bucket,
+            'gray_rollout_miss': gray_rollout_miss,
+            'superseded_bundle_id': superseded_bundle_id if gray_rollout_miss else '',
             'is_revoked': is_revoked,
             'resource_path': resource_relative_path,
             'config_path': selected.get('config_path') or runtime_paths['config_relative_path'],
@@ -338,13 +369,19 @@ def resolve_runtime_version():
             'channel_key': row_channel,
             'active_bundle_id': release_ctx.get('active_bundle_id') or selected.get('active_bundle_id') or '',
             'version_record': dict(selected),
-        },
+        }
+    data_payload = merge_version_resolve_with_active_bundle(data_payload, release_ctx, platform=row_platform)
+
+    return jsonify({
+        'ok': True,
+        'data': data_payload,
         'meta': {
             'matched_count': len(candidates),
             'selected_rule': 'latest_updated_at_then_version_code',
             'deprecated': True,
+            'prefer_runtime_bootstrap': '/api/public/runtime-bootstrap',
             'prefer_endpoint': '/api/public/runtime-bootstrap',
-            'notice': 'New clients should read published bundle via runtime-bootstrap; version-resolve uses version rows only and may drift from live bundle.',
+            'notice': 'New clients should read published bundle via runtime-bootstrap; version-resolve merges active bundle.client when available.',
             'query': {
                 'status': status,
                 'include_status': sorted(list(include_statuses)),

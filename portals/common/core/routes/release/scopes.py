@@ -20,8 +20,9 @@ def get_release_scope(scope_id: str):
         return jsonify({"ok": False, "error": "scope not found", "scope_id": sid}), 404
 
     version_name = str(request.args.get("version_name") or "1.0.0").strip()
+    platform = str(request.args.get("platform") or scope.get("platform") or "android").strip().lower()
     profile, profile_source = resolve_network_profile(scope, version_name=version_name)
-    active_bundle = find_active_bundle(sid)
+    active_bundle = find_active_bundle(sid, platform=platform)
     precheck = {}
     if request.args.get("precheck") in ("1", "true", "yes"):
         from models.data import project_versions_db
@@ -47,6 +48,7 @@ def get_release_scope(scope_id: str):
             "env_key": scope.get("env_key"),
             "channel_id": scope.get("channel_id"),
             "active_bundle_id": scope.get("active_bundle_id") or (active_bundle or {}).get("bundle_id"),
+            "platform": platform,
             "network_profile_preview": profile,
             "profile_source": profile_source,
             "precheck": precheck,

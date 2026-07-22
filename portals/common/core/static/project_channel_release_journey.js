@@ -60,7 +60,82 @@
     return items ? `<dl class="cj-kv-grid">${items}</dl>` : "";
   });
 
-  const renderContext = (data, state) => {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pollRuntimeActive = async (scope, tries = 24) => {
+    const qs = new URLSearchParams({
+      project_id: scope.project_id || projectId,
+      env_key: scope.env_key || envKey,
+      topology_id: scope.topology_id || "",
+    });
+    for (let i = 0; i < tries; i += 1) {
+      const data = await api(`/api/ops-platform/runtime/active?${qs}`);
+      if (data?.active) return data;
+      await sleep(2500);
+    }
+    throw new Error("Runtime 启动超时，请稍后在 Ops 面板确认运行态");
+  };
+
+  const startRuntimeRemote = async (action) => {
+    const nodeId = String(action?.node_id || "").trim();
+    if (!nodeId) throw new Error("缺少拓扑节点，无法远端启动 Runtime");
+    await api("/api/ops-platform/topology/node/start-remote", {
+      method: "POST",
+      body: JSON.stringify({
+        project_id: action.project_id || projectId,
+        env_key: action.env_key || envKey,
+        topology_id: action.topology_id || "",
+        node_id: nodeId,
+      }),
+    });
+    return pollRuntimeActive(action);
+  };
+
+  const renderEnvIssueCard = (issues) => {
+    const runtimeIssue = (issues || []).find((row) => row.id === "runtime" || row.fix === "runtime");
+    if (!runtimeIssue) return "";
+    const action = runtimeIssue.runtime_action || {};
+    return `<div class="cj-env-issue-card">
+      <div class="cj-env-issue-head"><strong>${esc(runtimeIssue.label || "Runtime 运行态")}</strong><span class="cj-badge pending">环境问题</span></div>
+      <p>${esc(runtimeIssue.hint || "目标拓扑未运行")}</p>
+      <button type="button" class="cj-btn build" id="cjStartRuntime"
+        data-runtime-project="${esc(action.project_id || projectId)}"
+        data-runtime-env="${esc(action.env_key || envKey)}"
+        data-runtime-topology="${esc(action.topology_id || "")}"
+        data-runtime-node="${esc(action.node_id || "")}">一键启动 Runtime</button>
+    </div>`;
+  };
+
+  const bindRuntimeStart = (state) => {
+    const btn = document.getElementById("cjStartRuntime");
+    if (!btn) return;
+    btn.onclick = async () => {
+      const action = {
+        project_id: btn.dataset.runtimeProject || projectId,
+        env_key: btn.dataset.runtimeEnv || envKey,
+        topology_id: btn.dataset.runtimeTopology || "",
+        node_id: btn.dataset.runtimeNode || "",
+      };
+      btn.disabled = true;
+      try {
+        toast("正在启动 Runtime…");
+        await startRuntimeRemote(action);
+        const oid = state.release_order_id || "";
+        if (oid) {
+          await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(oid)}/precheck`, { method: "POST", body: "{}" });
+          toast("Runtime 已启动，预检已自动重试");
+        } else {
+          toast("Runtime 已启动");
+        }
+        load();
+      } catch (e) {
+        toast(e.message, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  };
+
     const host = document.getElementById("cjReleaseContext");
     if (!host) return;
     const vc = state.version_name ? `${state.version_name} / ${state.version_code}` : versionId ? "已选 VC" : "待选";
@@ -215,10 +290,11 @@
       const failedHint = status === "build_failed"
         ? `<p class="cj-empty-hint">构建失败，请先在构建流程重新触发构建，或创建新的发布单。</p>`
         : "";
+      const envIssues = status === "precheck_failed" ? renderEnvIssueCard(state.diagnostic_issues || []) : "";
       return panel(
         "发版计划",
         data.form_depth === "full" ? "生产环境需填写完整发布计划。" : "开发环境可使用极简计划。",
-        `${failedHint}${summaryGrid([...rows, ["计划深度", esc(data.form_depth === "full" ? "完整计划" : "极简计划"), "ready"]])}`,
+        `${failedHint}${envIssues}${summaryGrid([...rows, ["计划深度", esc(data.form_depth === "full" ? "完整计划" : "极简计划"), "ready"]])}`,
         `${noOrderActions}
         ${oid ? `<a class="cj-btn release" href="${esc(editHref)}">编辑计划</a>` : ""}
         ${oid ? `<a class="cj-btn neutral" href="${esc(detailHref)}">发布单详情</a>` : ""}
@@ -328,16 +404,6 @@
     });
 
     const publish = async () => {
-      if (bundleId && scopeId) {
-        const reason = promptReason("发布指定 Bundle");
-        await api(`/api/projects/${encodeURIComponent(projectId)}/scopes/${encodeURIComponent(scopeId)}/publish-bundle`, {
-          method: "POST",
-          body: JSON.stringify({ bundle_id: bundleId, mode: "full", reason }),
-        });
-        toast("指定 Bundle 已发布");
-        load();
-        return;
-      }
       if (!oid) throw new Error("请先选择目标版本并创建发布单");
       await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(oid)}/publish`, { method: "POST", body: "{}" });
       toast("发布已执行");
@@ -422,6 +488,7 @@
       bindVersionPicker(state);
       if (main) main.innerHTML = renderWorkspace(data, state);
       bindPanelActions(state);
+      bindRuntimeStart(state);
     } catch (e) {
       if (main) main.innerHTML = `<div class="ui-empty">${esc(e.message)}</div>`;
     }

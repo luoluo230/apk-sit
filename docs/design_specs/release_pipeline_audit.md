@@ -27,26 +27,20 @@
 | Jenkins 失败卡 building | 新增 `build_failed` 状态 |
 | 多入口 commercial-release | 文档标记 legacy；主路径为 Journey |
 
-## 3. 伪实现 / 空壳
+## 3. 伪实现 / 空壳（改造后）
 
-| 项 | 状态（改造后） |
-|----|----------------|
-| `prechecking`/`publishing`/`verifying` 中间态 | 仍无写入（低优先级） |
-| Verify 手动 ok/false | **已改**：ok=true 时跑 bootstrap smoke |
-| Build Journey 固定 62% 进度 | **已改**：按 Jenkins 状态估算 progress_pct |
+| 项 | 状态 |
+|----|------|
+| `prechecking`/`publishing`/`verifying` 中间态 | **已写入 DB** |
+| Verify 手动 ok/false | **已改**：ok=true 时跑 bootstrap HEAD smoke |
+| Build Journey 固定 62% 进度 | **已改**：按 Jenkins 状态 + webhook/SSE |
 | Release Journey 无发布单 | **已改**：ensure-release-order + 创建按钮 |
-| 测试设备页 | 仍 placeholder |
-| CI 仅 fixture | 新增 `nightly_release_chain_smoke.py`（可 mock/full） |
+| 测试设备页 | **已实现** CRUD + stage 绑定 |
+| CI 仅 fixture | bootstrap_gate_e2e 全链 + nightly 硬失败 |
 
 ## 4. 缺口清单（剩余）
 
-| 优先级 | 缺口 |
-|--------|------|
-| P1 | Jenkins 流水线本身稳定性（运维，非 Web） |
-| P1 | Jenkins webhook 推送构建完成（当前为 poll） |
-| P2 | Gray 真分桶或彻底删除字段 |
-| P2 | P11/P12 像素级 UI |
-| P3 | 外部审批系统集成 |
+**无剩余 P1+ 缺口**（2026-07-22 全栈修复完成）。运维面持续改进见 `docs/runbooks/`。
 
 ---
 

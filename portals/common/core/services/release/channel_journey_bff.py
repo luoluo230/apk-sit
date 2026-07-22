@@ -350,7 +350,15 @@ def resolve_channel_release_journey(
         state = _enrich_state_from_version_id(project_id, state, selected_vid)
         order = _core().find_release_order_for_version(project_id, selected_vid)
         if order:
-            state = {**state, "order_status": order.get("status"), "release_order_id": order.get("release_order_id")}
+            enriched = {**state, "order_status": order.get("status"), "release_order_id": order.get("release_order_id")}
+            if str(order.get("status") or "") == "precheck_failed":
+                full = _core().get_release_order(project_id, str(order.get("release_order_id") or ""))
+                if full:
+                    from services.release.order_diagnostics import summarize_order_diagnostic_issues
+
+                    payload = ((full.get("latest_precheck") or {}).get("payload") or {})
+                    enriched["diagnostic_issues"] = summarize_order_diagnostic_issues(full, payload)
+            state = enriched
         else:
             start_qs = urlencode(
                 {

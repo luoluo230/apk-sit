@@ -110,8 +110,45 @@ def resolve_release_context(
             or ((version_row or {}).get("active_bundle_id") if version_row else "")
             or ""
         ),
+        "active_bundle": active_bundle if isinstance(active_bundle, dict) else {},
         "bootstrap_paths": bootstrap_paths,
     }
+
+
+def merge_version_resolve_with_active_bundle(
+    version_data: Dict[str, Any],
+    release_ctx: Dict[str, Any],
+    *,
+    platform: str = "",
+) -> Dict[str, Any]:
+    """When scope has a published bundle, overlay bundle.client onto version-resolve payload."""
+    if not isinstance(version_data, dict):
+        return version_data
+    scope_id = str(release_ctx.get("scope_id") or version_data.get("scope_id") or "").strip()
+    plat = str(platform or version_data.get("platform") or "android").strip().lower()
+    bundle = release_ctx.get("active_bundle") if isinstance(release_ctx.get("active_bundle"), dict) else {}
+    if not bundle and scope_id:
+        bundle = find_active_bundle(scope_id, platform=plat) or {}
+    if not bundle:
+        out = dict(version_data)
+        out.setdefault("source", "version_row")
+        return out
+    client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
+    if not client:
+        out = dict(version_data)
+        out.setdefault("source", "version_row")
+        return out
+    merged = dict(version_data)
+    for key, value in client.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        merged[key] = value
+    merged["source"] = "bundle"
+    merged["active_bundle_id"] = str(bundle.get("bundle_id") or merged.get("active_bundle_id") or "")
+    merged["bundle_id"] = merged["active_bundle_id"]
+    return merged
 
 
 def release_matches_env(row: Dict[str, Any], env_raw: str) -> bool:

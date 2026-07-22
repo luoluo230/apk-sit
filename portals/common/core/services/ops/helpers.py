@@ -47,6 +47,19 @@ from services.business_test_catalog import (
 from services.legacy_gm_bridge_client import LegacyGmBridgeClient
 import services.ops.constants as _ops_constants
 import services.ops.storage as _ops_storage
+from services.ops.agent_service import _default_agent_policy, _load_agent_policy, _save_agent_policy
+from services.ops.runtime_service import _runtime_active_for_scope
+from services.ops.topology_service import (
+    _default_env_options,
+    _env_label,
+    _load_topology_contents,
+    _load_topology_registry,
+    _normalize_env_key,
+    _save_topology_contents,
+    _save_topology_registry,
+    _scope_binding_key,
+    _topology_content_counts,
+)
 from services.ops.encoding import repair_legacy_node_text, text_has_mojibake
 
 for _mod in (_ops_constants, _ops_storage):
@@ -708,78 +721,6 @@ def _render_local_template(template_name: str, **kwargs):
 def _render_standalone_page(content: str, title: str):
     """Legacy compat — delegates to _render_ops_page."""
     return _render_ops_page(content, title)
-
-
-def _normalize_env_key(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    alias = {
-        "dev": "development",
-        "develop": "development",
-        "development": "development",
-        "test": "testing",
-        "testing": "testing",
-        "qa": "testing",
-        "staging": "staging",
-        "pre": "staging",
-        "preprod": "staging",
-        "pre-release": "staging",
-        "prod": "production",
-        "production": "production",
-        "online": "production",
-    }
-    return alias.get(text, text or "production")
-
-
-def _default_env_options() -> List[Dict[str, str]]:
-    return [
-        {"env_key": "development", "label": "开发环境"},
-        {"env_key": "testing", "label": "测试环境"},
-        {"env_key": "staging", "label": "预发环境"},
-        {"env_key": "production", "label": "生产环境"},
-    ]
-
-
-def _env_label(env_key: str) -> str:
-    key = _normalize_env_key(env_key)
-    for item in _default_env_options():
-        if str(item.get("env_key") or "") == key:
-            return str(item.get("label") or key)
-    return key or "生产环境"
-
-
-def _load_topology_registry() -> List[Dict[str, Any]]:
-    raw = _load_json_config(OPS_TOPOLOGY_REGISTRY_KEY, [])
-    return raw if isinstance(raw, list) else []
-
-
-def _save_topology_registry(rows: List[Dict[str, Any]]) -> None:
-    items = rows if isinstance(rows, list) else []
-    _save_json_config(OPS_TOPOLOGY_REGISTRY_KEY, items, description="Ops 拓扑注册表")
-
-
-def _load_topology_contents() -> Dict[str, Any]:
-    raw = _load_json_config(OPS_TOPOLOGY_CONTENTS_KEY, {})
-    return raw if isinstance(raw, dict) else {}
-
-
-def _save_topology_contents(data: Dict[str, Any]) -> None:
-    payload = data if isinstance(data, dict) else {}
-    _save_json_config(OPS_TOPOLOGY_CONTENTS_KEY, payload, description="Ops 拓扑内容分片")
-
-
-def _scope_binding_key(topology_id: str, node_id: str) -> str:
-    return f"{str(topology_id or '').strip()}::{str(node_id or '').strip()}"
-
-
-def _topology_content_counts(topology_id: str) -> Tuple[int, int]:
-    tid = str(topology_id or "").strip()
-    if not tid:
-        return 0, 0
-    contents = _load_topology_contents()
-    topo = contents.get(tid) if isinstance(contents.get(tid), dict) else {}
-    nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
-    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
-    return len(nodes), len(edges)
 
 
 def _ensure_design_demo_registry(project_id: str) -> None:
@@ -3093,89 +3034,6 @@ def _save_scope_service_binding(topology_id: str, node_id: str, service_id: str)
     return data
 
 
-def _runtime_active_for_scope(project_id: str, env_key: str, topology_id: str) -> Dict[str, Any]:
-    pid = str(project_id or "").strip()
-    env = _normalize_env_key(env_key)
-    tid = str(topology_id or "").strip()
-    rows = _load_runtime_runs()
-    latest_start = None
-    latest_stop = None
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if pid and str(row.get("project_id") or "") != pid:
-            continue
-        if env and _normalize_env_key(row.get("env_key") or "") != env:
-            continue
-        if tid and str(row.get("topology_id") or "") != tid:
-            continue
-        op = str(row.get("op") or "").lower()
-        ts = str(row.get("updated_at") or row.get("created_at") or "")
-        if op == "start":
-            prev_ts = str((latest_start or {}).get("updated_at") or (latest_start or {}).get("created_at") or "")
-            if latest_start is None or ts >= prev_ts:
-                latest_start = row
-        if op == "stop":
-            prev_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
-            if latest_stop is None or ts >= prev_ts:
-                latest_stop = row
-    if not latest_start:
-        return {"active": False, "run_id": "", "status": "", "reason": "no_start_run"}
-    start_ts = str(latest_start.get("updated_at") or latest_start.get("created_at") or "")
-    stop_ts = str((latest_stop or {}).get("updated_at") or (latest_stop or {}).get("created_at") or "")
-    stop_st = str((latest_stop or {}).get("status") or "").lower()
-    if latest_stop and stop_ts and start_ts and stop_ts >= start_ts:
-        if stop_st in ("success", "running", "queued"):
-            return {
-                "active": False,
-                "run_id": str(latest_stop.get("run_id") or latest_start.get("run_id") or ""),
-                "status": stop_st,
-                "reason": "stopped_after_start" if stop_st == "success" else "stop_in_progress",
-            }
-        if stop_st in ("failed", "timeout", "canceled"):
-            return {
-                "active": True,
-                "run_id": str(latest_start.get("run_id") or ""),
-                "status": str(latest_start.get("status") or ""),
-                "reason": "stop_failed",
-            }
-    start_st = str(latest_start.get("status") or "").lower()
-    if start_st in ("failed", "success", "timeout", "canceled"):
-        return {"active": False, "run_id": str(latest_start.get("run_id") or ""), "status": start_st, "reason": "start_finished"}
-    return {"active": True, "run_id": str(latest_start.get("run_id") or ""), "status": start_st, "reason": "start_alive"}
-
-
-def _default_agent_policy() -> Dict[str, Any]:
-    return {
-        "mtls_required": False,
-        "lease_timeout_sec": 60,
-        "max_retries": 2,
-        "default_node_concurrency": 1,
-        "agent_online_fresh_sec": 120,
-        "rollout": {
-            "enabled": False,
-            "desired_version": "",
-            "channel": "stable",
-            "percent": 0,
-            "allow_ids": [],
-        },
-    }
-
-
-def _load_agent_policy() -> Dict[str, Any]:
-    raw = _load_json_config(OPS_AGENT_POLICY_KEY, {})
-    out = _default_agent_policy()
-    if isinstance(raw, dict):
-        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency", "agent_online_fresh_sec"):
-            if k in raw:
-                out[k] = raw[k]
-        if isinstance(raw.get("rollout"), dict):
-            merged_rollout = out["rollout"]
-            merged_rollout.update(raw.get("rollout"))
-            out["rollout"] = merged_rollout
-    return out
-
-
 # ──────────────────────────────────────────────────────────────────────
 #  Cluster → Agent 同步：从 game-server 的 cluster.json /ops/cluster 自动同步拓扑
 # ──────────────────────────────────────────────────────────────────────
@@ -4004,11 +3862,11 @@ def _tcp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
     """TCP connect 探活，返回 {ok, rtt_ms, error}。"""
     if not host or port <= 0:
         return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         with socket.create_connection((host, port), timeout=timeout):
             pass
-        rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        rtt = max(0.0, (datetime.now(timezone.utc) - start).total_seconds() * 1000.0)
         return {"ok": True, "rtt_ms": round(rtt, 1), "error": ""}
     except Exception as ex:
         return {"ok": False, "rtt_ms": 0.0, "error": str(ex)}
@@ -4018,7 +3876,7 @@ def _udp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
     """UDP 探活：发送空包检测端口是否可达（KCP 等协议）。"""
     if not host or port <= 0:
         return {"ok": False, "rtt_ms": 0.0, "error": "invalid host/port"}
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
@@ -4032,7 +3890,7 @@ def _udp_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, Any]:
         except socket.timeout:
             # 超时 = 端口可达但无响应，算作在线
             pass
-        rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+        rtt = max(0.0, (datetime.now(timezone.utc) - start).total_seconds() * 1000.0)
         sock.close()
         return {"ok": True, "rtt_ms": round(rtt, 1), "error": ""}
     except OSError as ex:
@@ -4062,7 +3920,7 @@ def _redis_ping_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, A
     tcp_fast = _tcp_probe(host, port, min(0.45, float(timeout)))
     if not tcp_fast.get("ok"):
         return tcp_fast
-    start = datetime.utcnow()
+    start = datetime.now(timezone.utc)
     for cli in _redis_cli_candidates():
         try:
             proc = subprocess.run(
@@ -4072,7 +3930,7 @@ def _redis_ping_probe(host: str, port: int, timeout: float = 1.5) -> Dict[str, A
                 timeout=max(0.6, min(1.0, float(timeout))),
             )
             ok = proc.returncode == 0 and "PONG" in (proc.stdout or "").upper()
-            rtt = max(0.0, (datetime.utcnow() - start).total_seconds() * 1000.0)
+            rtt = max(0.0, (datetime.now(timezone.utc) - start).total_seconds() * 1000.0)
             if ok:
                 return {"ok": True, "rtt_ms": round(rtt, 1), "error": "", "method": cli}
         except FileNotFoundError:
@@ -6534,18 +6392,6 @@ def _runtime_cluster_start_all(
     )
     return {"items": items, "logs": logs, "failed": fail, "gateway_live": gateway_live and game_ok}
 
-def _save_agent_policy(policy: Dict[str, Any]) -> None:
-    out = _default_agent_policy()
-    if isinstance(policy, dict):
-        for k in ("mtls_required", "lease_timeout_sec", "max_retries", "default_node_concurrency", "agent_online_fresh_sec"):
-            if k in policy:
-                out[k] = policy.get(k)
-        if isinstance(policy.get("rollout"), dict):
-            merged_rollout = out["rollout"]
-            merged_rollout.update(policy.get("rollout"))
-            out["rollout"] = merged_rollout
-    _save_json_config(OPS_AGENT_POLICY_KEY, out, description="Ops Agent 策略配置")
-
 def _agent_token_for_node(node: Dict[str, Any]) -> str:
     tok = str(node.get("ops_write_key") or node.get("ops_read_key") or "").strip()
     # 如果数据库里的 node 没有 key，从默认 nodes 里取
@@ -6702,7 +6548,7 @@ def _reconcile_agent_jobs(
     agent_id: str = "",
 ) -> bool:
     changed = False
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     service_ids = _agent_managed_service_ids(agent_id, node_id) if agent_id else {str(node_id or "").strip()}
     for item in jobs:
         if not isinstance(item, dict):
@@ -6721,7 +6567,7 @@ def _reconcile_agent_jobs(
         leased_at = _parse_iso_datetime(str(lease.get("leased_at") or item.get("updated_at") or ""))
         if not leased_at:
             continue
-        age = (now - leased_at.replace(tzinfo=None)).total_seconds()
+        age = (now.replace(tzinfo=None) - leased_at.replace(tzinfo=None)).total_seconds()
         if age < max(5, int(lease_timeout_sec)):
             continue
         attempts = int(item.get("attempt") or 0)
@@ -7088,7 +6934,7 @@ def _append_realtime_agent_sample(item: Dict[str, Any]) -> None:
         "rtt_ms": sample.get("rtt_ms"),
         "service_cpu_percent": sample.get("service_cpu_percent"),
         "service_memory_mb": sample.get("service_memory_mb"),
-        "_ts": _parse_iso_ts(sample_time) or datetime.utcnow().timestamp(),
+        "_ts": _parse_iso_ts(sample_time) or datetime.now(timezone.utc).timestamp(),
     }
     with _agent_metric_history_lock:
         bucket = _agent_metric_history.get(agent_id)
@@ -7106,7 +6952,7 @@ def _realtime_metric_points(agent_ids: List[str], window_sec: int = OPS_AGENT_ME
     ids = [str(x or "").strip() for x in (agent_ids or []) if str(x or "").strip()]
     if not ids:
         return []
-    cutoff = datetime.utcnow().timestamp() - max(60, int(window_sec or OPS_AGENT_METRIC_WINDOW_SEC))
+    cutoff = datetime.now(timezone.utc).timestamp() - max(60, int(window_sec or OPS_AGENT_METRIC_WINDOW_SEC))
     merged: List[Dict[str, Any]] = []
     with _agent_metric_history_lock:
         for agent_id in ids:

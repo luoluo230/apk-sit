@@ -51,5 +51,11 @@
     history.replaceState(null, "", `${pathname}?${params}`);
   };
 
-  window.JourneyCommon = { esc, toast, api, chip, panel, summaryGrid, syncUrl };
+  window.JourneyCommon = { esc, toast, api, chip, panel, summaryGrid, syncUrl, renderJourneyProgress: (host, phases, phaseIndex, failed = false) => {
+    if (!host || !phases?.length) return;
+    host.innerHTML = phases.map((label, index) => {
+      const cls = index < phaseIndex ? "done" : index === phaseIndex ? (failed ? "failed active" : "active") : "";
+      return `<div class="ro-journey-segment ${cls}" data-phase="${index}"><span>${esc(label)}</span></div>`;
+    }).join("");
+  } };
 })();

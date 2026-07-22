@@ -11,6 +11,8 @@
   let platform = params.get("platform") || "";
   let versionId = params.get("version_id") || "";
   let pollTimer = null;
+  let buildEventSource = null;
+  let buildEventsEtag = "";
   let latestBuild = null;
   let journeyLinks = {};
 
@@ -329,11 +331,58 @@
   };
 
   const fetchBuildActivity = async (vid, fallbackBuild = null) => {
-    const qs = new URLSearchParams({ version_id: vid, project_id: projectId });
-    const resp = await fetch(`/api/build/history-by-version?${qs}`, { credentials: "same-origin" });
+    const qs = new URLSearchParams({ version_id: vid, platform: platform || "" });
+    const headers = {};
+    if (buildEventsEtag) headers["If-None-Match"] = buildEventsEtag;
+    const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/build-events?${qs}`, {
+      credentials: "same-origin",
+      headers,
+    });
+    if (resp.status === 304) return latestBuild || fallbackBuild || null;
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.ok === false) throw new Error(data.error || "构建活动加载失败");
-    return (data.builds || [])[0] || data.latest || fallbackBuild || null;
+    const etag = resp.headers.get("ETag");
+    if (etag) buildEventsEtag = etag;
+    const build = data.data?.build || null;
+    return build || fallbackBuild || null;
+  };
+
+  const stopBuildEventStream = () => {
+    if (buildEventSource) {
+      buildEventSource.close();
+      buildEventSource = null;
+    }
+  };
+
+  const applyBuildSnapshot = (snapshot, state, links) => {
+    if (!snapshot || typeof snapshot !== "object") return;
+    latestBuild = snapshot.build || latestBuild;
+    if (snapshot.order_status && state) state.order_status = snapshot.order_status;
+    renderBuildActivity(latestBuild, links || journeyLinks, state || {});
+    bindActivityActions();
+  };
+
+  const startBuildEventStream = (vid, state, links) => {
+    stopBuildEventStream();
+    if (!vid || typeof EventSource === "undefined") return false;
+    const qs = new URLSearchParams({ version_id: vid, platform: platform || "" });
+    const es = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/build-events/stream?${qs}`);
+    buildEventSource = es;
+    es.addEventListener("build", (event) => {
+      try {
+        const snapshot = JSON.parse(event.data || "{}");
+        applyBuildSnapshot(snapshot, state, links);
+        if (!snapshot.building) stopBuildEventStream();
+      } catch (_e) { /* ignore malformed SSE payload */ }
+    });
+    es.addEventListener("done", () => {
+      stopBuildEventStream();
+      load(true);
+    });
+    es.onerror = () => {
+      stopBuildEventStream();
+    };
+    return true;
   };
 
   const selectedVersionRow = (state) => (state.versions || []).find((row) => row.version_id === versionId) || null;
@@ -518,8 +567,11 @@
 
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = null;
-      if (shouldPoll(state)) {
-        pollTimer = setInterval(() => load(true), 6000);
+      stopBuildEventStream();
+      if (shouldPoll(state) && versionId) {
+        if (!startBuildEventStream(versionId, state, journeyLinks)) {
+          pollTimer = setInterval(() => load(true), 3000);
+        }
       }
     } catch (e) {
       if (main) main.innerHTML = `<div class="ui-empty">${esc(e.message)}</div>`;

@@ -14,7 +14,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 DEFAULT_BASE = os.environ.get("RELEASE_GATE_BASE_URL", "http://127.0.0.1:5003")
-DEFAULT_SCOPE = os.environ.get("RELEASE_GATE_SCOPE_ID", "gomeku:development:1001")
+DEFAULT_SCOPE = os.environ.get("RELEASE_GATE_SCOPE_ID", "gomeku:development:1001:android")
 DEFAULT_GAME_ID = os.environ.get("RELEASE_GATE_GAME_ID", "gomeku-fb64779f94b161d0")
 DEFAULT_GAME_KEY = os.environ.get("RELEASE_GATE_GAME_KEY", "zpf2zNQPoVfiqWjRCSpt70Rx9x4wjTWf")
 DEFAULT_VERSION = os.environ.get("RELEASE_GATE_VERSION_NAME", "1.0.0")
