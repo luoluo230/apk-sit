@@ -21,6 +21,8 @@ from config import load_dotenv
 load_dotenv()
 
 from app_new import app  # noqa: F401
+from services.release import order_build_sync as obs
+from services.release import order_crud as oc
 from services.release import order_diagnostics as diag
 from services.release import release_order_service as ros
 
@@ -41,14 +43,15 @@ class ReleaseJourneyNextActionTests(unittest.TestCase):
             "payload": {},
             "artifacts": [],
         }
-        with mock.patch.object(ros, "get_release_order", return_value=fake_order), \
+        with mock.patch.object(oc, "get_release_order", return_value=fake_order), \
              mock.patch.object(diag, "_build_pipeline_snapshot", return_value={"ready": True}), \
              mock.patch.object(diag, "_pipeline_build_ready", return_value=True):
             action = ros.resolve_release_order_next_action("p1", "ro-1")
         self.assertEqual(action["phases"], ["准备", "构建", "发版"])
         self.assertEqual(action["phase_index"], 1)
-        self.assertEqual(action["primary"]["api_action"], "precheck")
-        self.assertIn("继续发版", action["primary"]["label"])
+        self.assertIn("/channels/", action["primary"]["href"])
+        self.assertIn("/release", action["primary"]["href"])
+        self.assertIn("发版", action["primary"]["label"])
 
     def test_draft_primary_is_trigger_build(self):
         fake_order = {
@@ -65,10 +68,11 @@ class ReleaseJourneyNextActionTests(unittest.TestCase):
             "payload": {},
             "artifacts": [],
         }
-        with mock.patch.object(ros, "get_release_order", return_value=fake_order):
+        with mock.patch.object(oc, "get_release_order", return_value=fake_order):
             action = ros.resolve_release_order_next_action("p1", "ro-2")
-        self.assertEqual(action["primary"]["api_action"], "build")
-        self.assertIn("触发构建", action["primary"]["label"])
+        self.assertIn("/channels/", action["primary"]["href"])
+        self.assertIn("/build", action["primary"]["href"])
+        self.assertIn("构建", action["primary"]["label"])
 
     def test_ready_phase_index_is_release(self):
         fake_order = {
@@ -85,7 +89,7 @@ class ReleaseJourneyNextActionTests(unittest.TestCase):
             "payload": {},
             "artifacts": [],
         }
-        with mock.patch.object(ros, "get_release_order", return_value=fake_order):
+        with mock.patch.object(oc, "get_release_order", return_value=fake_order):
             action = ros.resolve_release_order_next_action("p1", "ro-3")
         self.assertEqual(action["phase_index"], 2)
 
@@ -93,16 +97,16 @@ class ReleaseJourneyNextActionTests(unittest.TestCase):
 class QuickBuildVersionTests(unittest.TestCase):
     def test_quick_build_returns_existing_artifacts_ready(self):
         draft = {"release_order_id": "ro-q1", "status": "artifacts_ready", "env_key": "development"}
-        with mock.patch.object(ros, "ensure_draft_release_order", return_value=draft):
+        with mock.patch.object(oc, "ensure_draft_release_order", return_value=draft):
             out = ros.quick_build_version("p1", "v1", "tester")
         self.assertEqual(out["status"], "artifacts_ready")
 
     def test_quick_build_triggers_request_build_for_draft(self):
         draft = {"release_order_id": "ro-q2", "status": "draft", "env_key": "development", "payload": {}, "reason": "x", "created_by": "tester"}
         built = {**draft, "status": "building"}
-        with mock.patch.object(ros, "ensure_draft_release_order", return_value=draft), \
+        with mock.patch.object(oc, "ensure_draft_release_order", return_value=draft), \
              mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"form_depth": "minimal"}), \
-             mock.patch.object(ros, "request_build", return_value=built) as rb:
+             mock.patch.object(obs, "request_build", return_value=built) as rb:
             out = ros.quick_build_version("p1", "v1", "tester")
         rb.assert_called_once_with("p1", "ro-q2", "tester")
         self.assertEqual(out["status"], "building")

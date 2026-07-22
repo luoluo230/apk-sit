@@ -19,6 +19,8 @@ from config import load_dotenv
 
 load_dotenv()
 
+from services.release import order_build_sync as obs
+from services.release import order_crud as oc
 from services.release import release_order_service as ros
 
 
@@ -56,16 +58,16 @@ class SyncReleaseOrderBuildStatusTests(unittest.TestCase):
             "payload": {"build_job_id": "117", "jenkins_instance_id": "8082"},
         }
         updated = {**order, "status": "build_failed"}
-        with mock.patch.object(ros, "init_db"), \
-             mock.patch.object(ros, "_db_lock"), \
-             mock.patch.object(ros, "_get_conn") as conn, \
+        with mock.patch.object(obs, "init_db"), \
+             mock.patch.object(obs, "_db_lock"), \
+             mock.patch.object(obs, "_get_conn") as conn, \
              mock.patch("services.jenkins.get_build_status", return_value={"building": False, "status": "FAILURE", "error": "compile error"}), \
              mock.patch("services.jenkins_manager.get_jenkins_url_for_instance", return_value="http://j"), \
              mock.patch("services.jenkins_manager.get_builds_dir_for_instance", return_value="/tmp/builds"), \
-             mock.patch.object(ros, "_order_from_row", side_effect=[order, updated]), \
-             mock.patch.object(ros, "get_release_order", return_value=updated), \
-             mock.patch.object(ros, "get_cursor") as cursor_cm, \
-             mock.patch.object(ros, "_event"):
+             mock.patch.object(oc, "_order_from_row", side_effect=[order, updated]), \
+             mock.patch.object(oc, "get_release_order", return_value=updated), \
+             mock.patch.object(obs, "get_cursor") as cursor_cm, \
+             mock.patch.object(obs, "_event"):
             conn.return_value.execute.return_value.fetchone.return_value = row
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
             cursor_cm.return_value.__exit__.return_value = False
@@ -90,19 +92,19 @@ class SyncReleaseOrderBuildStatusTests(unittest.TestCase):
             "config_url": "https://cdn/c",
         }
         updated = {**order, "status": "artifacts_ready"}
-        with mock.patch.object(ros, "init_db"), \
-             mock.patch.object(ros, "_db_lock"), \
-             mock.patch.object(ros, "_get_conn") as conn, \
+        with mock.patch.object(obs, "init_db"), \
+             mock.patch.object(obs, "_db_lock"), \
+             mock.patch.object(obs, "_get_conn") as conn, \
              mock.patch("services.jenkins.get_build_status", return_value={"building": False, "status": "SUCCESS"}), \
              mock.patch("services.jenkins_manager.get_jenkins_url_for_instance", return_value="http://j"), \
              mock.patch("services.jenkins_manager.get_builds_dir_for_instance", return_value="/tmp/builds"), \
              mock.patch("services.apk_artifact_service.finalize_apk_from_jenkins_build"), \
-             mock.patch.object(ros, "_find_version", return_value=version), \
-             mock.patch.object(ros, "_artifact_rows", return_value=[("apk", "u1", "p1"), ("resource", "u2", "p2"), ("config", "u3", "p3")]), \
-             mock.patch.object(ros, "_order_from_row", side_effect=[order, updated]), \
-             mock.patch.object(ros, "get_release_order", return_value=updated), \
-             mock.patch.object(ros, "get_cursor") as cursor_cm, \
-             mock.patch.object(ros, "_event"):
+             mock.patch.object(obs, "_find_version", return_value=version), \
+             mock.patch.object(obs, "_artifact_rows", return_value=[("apk", "u1", "p1"), ("resource", "u2", "p2"), ("config", "u3", "p3")]), \
+             mock.patch.object(oc, "_order_from_row", side_effect=[order, updated]), \
+             mock.patch.object(oc, "get_release_order", return_value=updated), \
+             mock.patch.object(obs, "get_cursor") as cursor_cm, \
+             mock.patch.object(obs, "_event"):
             conn.return_value.execute.return_value.fetchone.return_value = row
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
             cursor_cm.return_value.__exit__.return_value = False
@@ -110,10 +112,10 @@ class SyncReleaseOrderBuildStatusTests(unittest.TestCase):
         self.assertEqual(out["status"], "artifacts_ready")
 
     def test_sync_building_release_orders_polls_each_row(self):
-        with mock.patch.object(ros, "init_db"), \
-             mock.patch.object(ros, "_db_lock"), \
-             mock.patch.object(ros, "_get_conn") as conn, \
-             mock.patch.object(ros, "sync_release_order_build_status", side_effect=[{"status": "artifacts_ready"}, {"status": "build_failed"}]) as sync:
+        with mock.patch.object(obs, "init_db"), \
+             mock.patch.object(obs, "_db_lock"), \
+             mock.patch.object(obs, "_get_conn") as conn, \
+             mock.patch.object(obs, "sync_release_order_build_status", side_effect=[{"status": "artifacts_ready"}, {"status": "build_failed"}]) as sync:
             conn.return_value.execute.return_value.fetchall.return_value = [
                 {"project_id": "p1", "release_order_id": "ro-1"},
                 {"project_id": "p1", "release_order_id": "ro-2"},

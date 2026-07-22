@@ -21,6 +21,8 @@ from config import load_dotenv
 load_dotenv()
 
 from app_new import app  # noqa: F401
+from services.release import order_build_sync as obs
+from services.release import order_crud as oc
 from services.release import release_order_service as ros
 
 
@@ -51,9 +53,9 @@ class ResolveDeliveryActionsTests(unittest.TestCase):
             "version_name": "1.0.1",
             "version_code": "1",
         }
-        with mock.patch.object(ros, "_find_version", return_value=version), \
-             mock.patch.object(ros, "find_release_order_for_version", return_value=order), \
-             mock.patch.object(ros, "find_draft_release_order", return_value=order), \
+        with mock.patch.object(obs, "_find_version", return_value=version), \
+             mock.patch.object(obs, "find_release_order_for_version", return_value=order), \
+             mock.patch.object(oc, "find_draft_release_order", return_value=order), \
              mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"form_depth": "minimal"}), \
              mock.patch("services.release.release_policy_service.assess_delivery_readiness", return_value={"pipeline_ready": True}), \
              mock.patch("services.release.release_policy_service.build_config_href", return_value="/build-config"):
@@ -64,9 +66,9 @@ class ResolveDeliveryActionsTests(unittest.TestCase):
 
     def test_delivery_actions_include_dual_entries(self):
         version = self._version()
-        with mock.patch.object(ros, "_find_version", return_value=version), \
-             mock.patch.object(ros, "find_release_order_for_version", return_value=None), \
-             mock.patch.object(ros, "find_draft_release_order", return_value=None), \
+        with mock.patch.object(obs, "_find_version", return_value=version), \
+             mock.patch.object(obs, "find_release_order_for_version", return_value=None), \
+             mock.patch.object(oc, "find_draft_release_order", return_value=None), \
              mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"form_depth": "minimal"}), \
              mock.patch("services.release.release_policy_service.assess_delivery_readiness", return_value={"pipeline_ready": True}), \
              mock.patch("services.release.release_policy_service.build_config_href", return_value="/build-config"):
@@ -104,7 +106,7 @@ class ResolveDeliveryActionsTests(unittest.TestCase):
             "scope": {},
             "links": {},
         }
-        with mock.patch.object(ros, "resolve_delivery_actions", return_value=fake_actions):
+        with mock.patch.object(obs, "resolve_delivery_actions", return_value=fake_actions):
             out = ros.enrich_delivery_line_actions("p1", line)
         self.assertEqual(out["release_order_status"], "artifacts_ready")
         self.assertEqual(out["delivery_actions"]["primary"]["label"], "继续发版")

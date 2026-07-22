@@ -21,6 +21,9 @@ load_dotenv()
 
 from app_new import app  # noqa: F401
 from services.release import channel_journey_bff as cjb
+from services.release import order_build_sync as obs
+from services.release import order_crud as oc
+from services.release import order_publish_flow as opf
 from services.release import release_order_service as ros
 
 
@@ -47,15 +50,15 @@ class PrecheckTransitionTests(unittest.TestCase):
     def test_dev_precheck_ok_becomes_ready(self):
         order = _order(env_key="development", status="artifacts_ready")
         precheck = {"ok": True, "scope_id": "scope-1", "topology_id": "topo-1", "binding_source": "matrix"}
-        with mock.patch.object(ros, "get_release_order", side_effect=[order, {**order, "status": "ready"}]), \
-             mock.patch.object(ros, "_find_version", return_value={"id": "v1", "version_name": "1.0.0"}), \
+        with mock.patch.object(oc, "get_release_order", side_effect=[order, {**order, "status": "ready"}]), \
+             mock.patch.object(opf, "_find_version", return_value={"id": "v1", "version_name": "1.0.0"}), \
              mock.patch("services.admin.version_service.enrich_version_client_urls", side_effect=lambda _p, v: v), \
-             mock.patch.object(ros, "resolve_scope", return_value={"scope_id": "scope-1"}), \
+             mock.patch.object(opf, "resolve_scope", return_value={"scope_id": "scope-1"}), \
              mock.patch("services.release.bundle_service.run_scope_precheck", return_value=precheck), \
-             mock.patch.object(ros, "resolve_topology_binding_for_scope", return_value={"topology_id": "topo-1"}), \
+             mock.patch.object(opf, "resolve_topology_binding_for_scope", return_value={"topology_id": "topo-1"}), \
              mock.patch("services.ops.helpers._runtime_active_for_scope", return_value={"active": True, "run_id": "run-1"}), \
-             mock.patch.object(ros, "get_cursor") as cursor_cm, \
-             mock.patch.object(ros, "_event"):
+             mock.patch.object(opf, "get_cursor") as cursor_cm, \
+             mock.patch.object(opf, "_event"):
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
             cursor_cm.return_value.__exit__.return_value = False
             out = ros.precheck_release_order("p1", "ro-int-1", "tester")
@@ -64,15 +67,15 @@ class PrecheckTransitionTests(unittest.TestCase):
     def test_prod_precheck_ok_becomes_awaiting_approval(self):
         order = _order(env_key="production", status="artifacts_ready")
         precheck = {"ok": True, "scope_id": "scope-1", "topology_id": "topo-1", "binding_source": "matrix"}
-        with mock.patch.object(ros, "get_release_order", side_effect=[order, {**order, "status": "awaiting_approval"}]), \
-             mock.patch.object(ros, "_find_version", return_value={"id": "v1", "version_name": "1.0.0"}), \
+        with mock.patch.object(oc, "get_release_order", side_effect=[order, {**order, "status": "awaiting_approval"}]), \
+             mock.patch.object(opf, "_find_version", return_value={"id": "v1", "version_name": "1.0.0"}), \
              mock.patch("services.admin.version_service.enrich_version_client_urls", side_effect=lambda _p, v: v), \
-             mock.patch.object(ros, "resolve_scope", return_value={"scope_id": "scope-1"}), \
+             mock.patch.object(opf, "resolve_scope", return_value={"scope_id": "scope-1"}), \
              mock.patch("services.release.bundle_service.run_scope_precheck", return_value=precheck), \
-             mock.patch.object(ros, "resolve_topology_binding_for_scope", return_value={"topology_id": "topo-1"}), \
+             mock.patch.object(opf, "resolve_topology_binding_for_scope", return_value={"topology_id": "topo-1"}), \
              mock.patch("services.ops.helpers._runtime_active_for_scope", return_value={"active": True, "run_id": "run-1"}), \
-             mock.patch.object(ros, "get_cursor") as cursor_cm, \
-             mock.patch.object(ros, "_event"):
+             mock.patch.object(opf, "get_cursor") as cursor_cm, \
+             mock.patch.object(opf, "_event"):
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
             cursor_cm.return_value.__exit__.return_value = False
             out = ros.precheck_release_order("p1", "ro-int-1", "tester")
@@ -82,7 +85,7 @@ class PrecheckTransitionTests(unittest.TestCase):
 class PublishGovernanceTests(unittest.TestCase):
     def test_prod_publish_without_approval_rejected(self):
         order = _order(env_key="production", status="ready")
-        with mock.patch.object(ros, "get_release_order", return_value=order):
+        with mock.patch.object(oc, "get_release_order", return_value=order):
             with self.assertRaises(ValueError) as ctx:
                 ros.publish_release_order("p1", "ro-int-1", "tester")
             self.assertIn("审批", str(ctx.exception))
@@ -99,9 +102,9 @@ class VerifySmokeTests(unittest.TestCase):
         order = _order(status="published", bundle_id="bundle-1", scope_id="scope-1")
         verified = {**order, "status": "verified"}
         smoke = {"ok": True, "checks": [{"key": "catalog_url", "ok": True}]}
-        with mock.patch.object(ros, "get_release_order", side_effect=[order, verified]), \
-             mock.patch.object(ros, "run_bootstrap_smoke_for_order", return_value=smoke) as smoke_fn, \
-             mock.patch.object(ros, "_transition", return_value=verified) as transition:
+        with mock.patch.object(oc, "get_release_order", side_effect=[order, verified]), \
+             mock.patch.object(opf, "run_bootstrap_smoke_for_order", return_value=smoke) as smoke_fn, \
+             mock.patch.object(oc, "_transition", return_value=verified) as transition:
             out = ros.verify_release_order("p1", "ro-int-1", "tester", ok=True)
         smoke_fn.assert_called_once_with("p1", "ro-int-1")
         transition.assert_called_once()
@@ -112,9 +115,9 @@ class VerifySmokeTests(unittest.TestCase):
         order = _order(status="published", bundle_id="bundle-1", scope_id="scope-1")
         failed = {**order, "status": "verify_failed"}
         smoke = {"ok": False, "checks": [{"key": "catalog_url", "ok": False}]}
-        with mock.patch.object(ros, "get_release_order", side_effect=[order, failed]), \
-             mock.patch.object(ros, "run_bootstrap_smoke_for_order", return_value=smoke), \
-             mock.patch.object(ros, "_transition", return_value=failed) as transition:
+        with mock.patch.object(oc, "get_release_order", side_effect=[order, failed]), \
+             mock.patch.object(opf, "run_bootstrap_smoke_for_order", return_value=smoke), \
+             mock.patch.object(oc, "_transition", return_value=failed) as transition:
             out = ros.verify_release_order("p1", "ro-int-1", "tester", ok=True)
         self.assertEqual(transition.call_args.args[3], "verify_failed")
         self.assertEqual(out["status"], "verify_failed")
@@ -161,9 +164,9 @@ class ReleaseJourneyEnsureOrderTests(unittest.TestCase):
             "scope_id": "scope-1",
             "versions": [{"version_id": "vc-1", "artifacts_ready": True, "version_name": "1.0.1", "version_code": "1"}],
         }), mock.patch.object(cjb, "_enrich_state_from_version_id", side_effect=lambda _p, s, vid: {**s, "version_id": vid}), \
-             mock.patch.object(ros, "find_release_order_for_version", return_value=None), \
-             mock.patch.object(ros, "sync_building_release_orders", return_value=[]), \
-             mock.patch.object(ros, "list_release_orders", return_value=[]), \
+             mock.patch.object(oc, "find_release_order_for_version", return_value=None), \
+             mock.patch.object(obs, "sync_building_release_orders", return_value=[]), \
+             mock.patch.object(oc, "list_release_orders", return_value=[]), \
              mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"form_depth": "minimal"}):
             data = ros.resolve_channel_release_journey(
                 "GomeKu",

@@ -9,9 +9,15 @@ import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIMITS = {
-    "services/release/release_order_service.py": 1700,
+    "services/release/release_order_service.py": 50,
+    "services/release/order_crud.py": 400,
+    "services/release/order_build_sync.py": 720,
+    "services/release/order_publish_flow.py": 520,
     "services/release/channel_journey_bff.py": 650,
     "services/release/order_diagnostics.py": 450,
+    "routes/commercial_release_routes.py": 150,
+    "routes/project_delivery.py": 980,
+    "routes/delivery/helpers.py": 160,
     "static/project_delivery.js": 2450,
     "static/delivery_common.js": 120,
 }

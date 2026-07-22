@@ -846,15 +846,8 @@ def _build_page_html(project_context=False, version_lock_params=False):
         var url='/admin/build/trigger';
         var body=apiBody(params);
         if(normalizedType(VERSION_MODE)==='commercial'){
-            url='/admin/build/commercial-release/trigger';
-            var cPlan = buildCommercialPlanFromVersion();
-            body={
-                instance_id: selectedInstanceId(),
-                _project_id: PROJECT_ID,
-                _version_id: VERSION_ID,
-                UNITY_PROJECT_PATH: cPlan.unityProjectPath || '',
-                plan: cPlan
-            };
+            url='/api/projects/'+encodeURIComponent(PROJECT_ID)+'/versions/'+encodeURIComponent(VERSION_ID)+'/quick-build';
+            body={ force: false };
         }
         fetch(url, { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCsrfToken()}, body: JSON.stringify(body), credentials:'same-origin' })
         .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, status:r.status, data:d}; }); })

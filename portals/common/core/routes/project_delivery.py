@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import List
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session
+from flask import Blueprint, jsonify, redirect, request, session
 
 from data.platforms import get_platform_by_id, get_project_assigned_platform_ids, is_valid_platform_id, list_platform_catalog
 from models.data import channels_db, can_edit_project, get_channel_by_id, get_channels_for_project, projects_db
@@ -13,7 +13,6 @@ from services.admin import project_env_service, project_service
 from services.release.env_registry import get_project_env_defs, list_project_env_keys, normalize_release_env_key, project_env_label
 from services.authz import admin_required
 from services.ops.environment_runtime_service import build_environment_runtime_overview
-from services.ops.helpers import _render_ops_page
 from services.release.release_order_service import (
     activate_bundle_on_scope,
     approve_release_order,
@@ -47,135 +46,15 @@ from services.release.release_policy_service import release_order_form_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
 
-DELIVERY_ASSET_VER = "20260720-refactor-v1"
-
-def _delivery_js_bundle(*extra: str) -> str:
-    parts = [
-        f'<script src="/static/delivery_common.js?v={DELIVERY_ASSET_VER}"></script>',
-        f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>',
-    ]
-    for name in extra:
-        parts.append(f'<script src="/static/{name}?v={DELIVERY_ASSET_VER}"></script>')
-    parts.append(f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>')
-    return "".join(parts)
+from routes.delivery.helpers import (
+    DELIVERY_ASSET_VER,
+    actor as _actor,
+    delivery_js_bundle as _delivery_js_bundle,
+    filters as _filters,
+    render_delivery_page as _page,
+)
 
 bp = Blueprint("project_delivery", __name__)
-
-BREADCRUMB_BY_PAGE = {
-    "project-home": "总览",
-    "environment-overview": "总览",
-    "environment-runtime": "总览",
-    "environment-config": "项目设置",
-    "project-channels": "项目设置",
-    "versions": "交付管理",
-    "release-orders": "交付管理",
-    "builds": "交付管理",
-    "download-center": "交付管理",
-    "test-devices": "交付管理",
-    "topology": "运行管理",
-    "topology-bindings": "运行管理",
-    "agent-control": "运行管理",
-    "actions": "运行管理",
-    "diagnostics": "运行管理",
-    "approval-center": "治理与审计",
-    "change-governance": "治理与审计",
-    "audit-log": "治理与审计",
-    "project-tasks": "协作",
-    "project-docs": "协作",
-    "project-settings": "项目设置",
-}
-
-
-def _actor() -> str:
-    return str(session.get("user") or session.get("username") or "admin")
-
-
-def _filters() -> dict:
-    return {
-        key: str(request.args.get(key) or "").strip()
-        for key in ("env_key", "channel_id", "platform", "version_name", "version_code", "status")
-    }
-
-
-def _page(template_name: str, title: str, project_id: str, active_page: str, breadcrumb_module: str = "", **context):
-    if project_id not in projects_db:
-        return "项目不存在", 404
-    env_key = str(context.pop("page_env_key", "") or request.args.get("env_key") or "production")
-    content = render_template(
-        template_name,
-        project_id=project_id,
-        project=projects_db.get(project_id) or {},
-        env_key=env_key,
-        context_filters=_filters(),
-        **context,
-    )
-    js = _delivery_js_bundle("project_overview.js")
-    if template_name == "project_overview.html":
-        css = (
-            f'<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_overview.css?v={DELIVERY_ASSET_VER}">'
-        )
-    elif template_name == "project_environment_runtime.html":
-        css = (
-            f'<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_ui/pm-table.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_environment_runtime.css?v={DELIVERY_ASSET_VER}">'
-        )
-        js = f'<script src="/static/project_environment_runtime.js?v={DELIVERY_ASSET_VER}"></script>'
-    elif template_name == "release_order_form.html":
-        css = (
-            f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
-        )
-        js = _delivery_js_bundle()
-    elif template_name in ("project_channel_build_journey.html", "project_channel_release_journey.html"):
-        css = (
-            f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_channel_journey.css?v={DELIVERY_ASSET_VER}">'
-        )
-        js_name = (
-            "project_channel_build_journey.js"
-            if template_name == "project_channel_build_journey.html"
-            else "project_channel_release_journey.js"
-        )
-        js = (
-            f'<script src="/static/journey_common.js?v={DELIVERY_ASSET_VER}"></script>'
-            f'<script src="/static/{js_name}?v={DELIVERY_ASSET_VER}"></script>'
-        )
-    elif template_name == "project_environment_detail.html":
-        css = (
-            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/project_environment_detail.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/release_focus.css?v={DELIVERY_ASSET_VER}">'
-        )
-        js = _delivery_js_bundle("topology_binding_drawer.js")
-    elif template_name == "release_order_detail.html":
-        css = (
-            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/release_order_detail.css?v={DELIVERY_ASSET_VER}">'
-            f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
-        )
-        js = _delivery_js_bundle()
-    else:
-        css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
-        js = _delivery_js_bundle()
-    return _render_ops_page(
-        content,
-        title,
-        active_page=active_page,
-        project_id=project_id,
-        env_key=env_key,
-        breadcrumb_module=breadcrumb_module or BREADCRUMB_BY_PAGE.get(active_page, "项目工作区"),
-        extra_css=css,
-        extra_js=js,
-    )
 
 
 @bp.route("/admin/projects/<project_id>/overview/runtime")

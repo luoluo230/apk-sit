@@ -4,8 +4,8 @@
 |----------|----------|-----|--------------|
 | 选 scope | `/admin/projects/{id}/environments/{env}` | `GET .../environment-detail` | `channel_journey_bff.environment_detail` |
 | 构建 | `.../channels/{ch}/build` | `POST .../versions/{vid}/quick-build` | `release_order_service.request_build` |
-| 发版 | `.../channels/{ch}/release` | precheck → publish → verify | `release_order_service` + `order_publish_flow`（同文件内） |
-| 一键发版 | — | `POST .../delivery-attempts/quick-publish` | `quick_publish_delivery` |
+| 发版 | `.../channels/{ch}/release` | precheck → publish → verify | `order_publish_flow` + `order_crud` |
+| 一键发版 | — | `POST .../delivery-attempts/quick-publish` | `order_build_sync.quick_publish_delivery` |
 | 客户端读包 | — | `GET /api/public/runtime-bootstrap` | `bundle_service` |
 
 ## Legacy（redirect / wrapper）

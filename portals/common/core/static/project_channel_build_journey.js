@@ -1,5 +1,6 @@
 (() => {
-  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const JC = window.JourneyCommon || {};
+  const esc = JC.esc || ((v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])));
   const page = document.querySelector('[data-journey="build"]');
   if (!page) return;
 
@@ -13,14 +14,14 @@
   let latestBuild = null;
   let journeyLinks = {};
 
-  const toast = (msg, type = "info") => {
+  const toast = JC.toast || ((msg, type = "info") => {
     if (window.DeliveryScopeToast) window.DeliveryScopeToast(msg, type);
     else alert(msg);
-  };
+  });
 
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || "";
 
-  const api = async (url, options = {}) => {
+  const api = JC.api || (async (url, options = {}) => {
     const resp = await fetch(url, {
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -29,16 +30,16 @@
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.ok === false) throw new Error(data.error || `请求失败 (${resp.status})`);
     return data.data ?? data;
-  };
+  });
 
   const dateText = (value) => (value ? String(value).replace("T", " ").slice(0, 19) : "—");
 
-  const syncUrl = () => {
+  const syncUrl = JC.syncUrl || (() => {
     const qs = new URLSearchParams({ env_key: envKey, channel_id: channelId });
     if (platform) qs.set("platform", platform);
     if (versionId) qs.set("version_id", versionId);
     history.replaceState(null, "", `${location.pathname}?${qs}`);
-  };
+  });
 
   const statusKey = (item) => (item?.building ? "building" : String(item?.result || "UNKNOWN").toUpperCase());
   const statusText = (item) => ({
@@ -61,8 +62,8 @@
   }[statusKey(item)] || "pending");
   const statusBadge = (item) => `<span class="cj-badge ${statusBadgeClass(item)}">${esc(statusText(item))}</span>`;
 
-  const chip = (label, value, ready = true) =>
-    `<span class="cj-context-chip ${ready ? "is-ready" : "is-pending"}">${label} <strong>${esc(value)}</strong></span>`;
+  const chip = JC.chip || ((label, value, ready = true) =>
+    `<span class="cj-context-chip ${ready ? "is-ready" : "is-pending"}">${label} <strong>${esc(value)}</strong></span>`);
 
   const renderContext = (data, state) => {
     const host = document.getElementById("cjBuildContext");
@@ -76,7 +77,7 @@
     ].join("");
   };
 
-  const panel = (title, desc, bodyHtml, actionsHtml = "", tone = "ready") => {
+  const panel = JC.panel || ((title, desc, bodyHtml, actionsHtml = "", tone = "ready") => {
     const actionBlock = actionsHtml ? `<div class="cj-actions">${actionsHtml}</div>` : "";
     return `<div class="cj-main-inner is-${tone}${actionsHtml ? " has-actions" : ""}">
       <div class="cj-main-copy">
@@ -85,7 +86,7 @@
       </div>
       ${actionBlock}
     </div>`;
-  };
+  });
 
   const summaryGrid = (rows) => {
     const items = rows.filter((r) => r).map(([k, v, tone]) => {

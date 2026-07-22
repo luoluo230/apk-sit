@@ -21,6 +21,7 @@ load_dotenv()
 
 from app_new import app  # noqa: F401
 from services.release import channel_journey_bff as cjb
+from services.release import order_crud as oc
 from services.release import release_order_service as ros
 
 
@@ -66,7 +67,7 @@ class ChannelReleaseJourneyTests(unittest.TestCase):
             "order_status": "artifacts_ready",
             "release_order_id": "ro-1",
             "versions": [],
-        }), mock.patch.object(ros, "list_release_orders", return_value=[]), \
+        }), mock.patch.object(oc, "list_release_orders", return_value=[]), \
              mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"form_depth": "minimal"}):
             data = ros.resolve_channel_release_journey("p1", "development", "wechat", platform="android")
         self.assertEqual(len(data["steps"]), 7)
