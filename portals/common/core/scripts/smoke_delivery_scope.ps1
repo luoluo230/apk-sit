@@ -4,7 +4,7 @@ param(
     [string]$EnvKey = "development",
     [string]$ChannelId = "1001",
     [string]$Username = "admin",
-    [string]$Password = "admin123"
+    [string]$Password = $(if ($env:PORTAL_DEV_ADMIN_PASSWORD) { $env:PORTAL_DEV_ADMIN_PASSWORD } else { "" })
 )
 
 $ErrorActionPreference = "Stop"

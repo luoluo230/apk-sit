@@ -175,7 +175,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
                         <select id="jenkinsInstance" class="w-full max-w-xs border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
                             <option value="">默认（当前配置）</option>
                         </select>
-                        <p class="text-xs text-gray-500 mt-1">在「Jenkins 管理」中可启动多个实例，此处选择用于本次构建的 Jenkins。通过本系统新建的实例使用固定账号（默认 admin/admin123），无需在 .env 配置</p>
+                        <p class="text-xs text-gray-500 mt-1">在「Jenkins 管理」中可启动多个实例，此处选择用于本次构建的 Jenkins。实例凭据请通过 .env 或 jenkins_credentials.json 配置</p>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div><label class="block text-sm font-medium text-gray-700 mb-1">APP_NAME</label><input type="text" name="APP_NAME" id="APP_NAME" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" value="{{ default_app_name|default('RecycleTycoon') }}" placeholder="应用名"></div>

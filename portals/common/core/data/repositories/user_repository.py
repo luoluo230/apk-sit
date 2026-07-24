@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import os
+import secrets
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -30,9 +32,13 @@ class UserRepository:
 
     @staticmethod
     def _default_users() -> Dict[str, Dict[str, Any]]:
+        pwd = (os.getenv('PORTAL_DEV_ADMIN_PASSWORD') or os.getenv('DEV_ADMIN_PASSWORD') or '').strip()
+        if not pwd:
+            pwd = secrets.token_urlsafe(16)
+        digest = __import__('hashlib').sha256(pwd.encode()).hexdigest()
         return {
             'admin': {
-                'password': __import__('hashlib').sha256('admin123'.encode()).hexdigest(),
+                'password': digest,
                 'role': 'super_admin',
                 'created_at': datetime.now().isoformat(),
                 'email': 'admin@example.com',

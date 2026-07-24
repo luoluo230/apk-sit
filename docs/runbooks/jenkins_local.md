@@ -29,14 +29,20 @@ Jenkins 流水线结束后会 `POST /api/internal/jenkins/build-complete`：
 { "instance_id": "<uuid>", "build_number": 123 }
 ```
 
-请求头：`X-Jenkins-Signature: <hmac-sha256-hex>`（body 原始 JSON 的 HMAC）。
+请求头（推荐）：`X-Signature-SHA256: t=<unix>,v1=<hmac>`（5 分钟防重放）。  
+兼容：`X-Jenkins-Signature: sha256=<hex>` 或裸 hex（legacy）。
 
 ### 密钥
 
-- 优先：`JENKINS_BUILD_WEBHOOK_SECRET`
-- 回退：`APK_SECRET`（与 Flask session 同源）
+- 生产必填：`JENKINS_BUILD_WEBHOOK_SECRET`（见 [`production_secrets.md`](./production_secrets.md)）
+- 开发回退：未配置时可回退 `APK_SECRET`（**生产禁止**）
 
 在 apk-site `.env` 与 Jenkins 实例环境（`.apk-site-env` 或 Job 注入）中保持一致。
+
+### Jenkins 管理员密码
+
+- **代码库不再提供默认密码**。本地开发在 `.env` 设置 `JENKINS_DEFAULT_PASSWORD`，或使用 `jenkins_credentials.json` 的 API Token。
+- 生产环境禁止默认口令；新实例未配置密码时将跳过 init.groovy 注入。
 
 ### 实例 ID 解析
 

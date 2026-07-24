@@ -1,36 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Internal Jenkins callbacks (build-complete webhook)."""
+"""Internal Jenkins callbacks (build-complete webhook). Plan: P0-01."""
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
-import os
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 
-from config import Config
+from services.security.webhook_auth import assert_internal_webhook_request
 
 bp = Blueprint("internal_jenkins", __name__)
-
-
-def _webhook_secret() -> str:
-    secret = (os.getenv("JENKINS_BUILD_WEBHOOK_SECRET") or "").strip()
-    if secret:
-        return secret
-    return Config.get_secret_key()
-
-
-def _verify_signature(raw_body: bytes, signature: str) -> bool:
-    sig = (signature or "").strip()
-    if not sig:
-        return False
-    if sig.lower().startswith("sha256="):
-        sig = sig.split("=", 1)[1].strip()
-    expected = hmac.new(_webhook_secret().encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, sig)
 
 
 def _parse_payload(raw_body: bytes) -> Dict[str, Any]:
@@ -40,17 +20,27 @@ def _parse_payload(raw_body: bytes) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _signature_header() -> str:
+    return (
+        request.headers.get("X-Signature-SHA256")
+        or request.headers.get("X-Jenkins-Signature")
+        or request.headers.get("X-Webhook-Signature")
+        or ""
+    )
+
+
 @bp.route("/api/internal/jenkins/build-complete", methods=["POST"])
 def jenkins_build_complete():
     """Jenkins post-build hook: HMAC body + instance_id/build_number → sync release order."""
     raw_body = request.get_data(cache=True) or b""
-    signature = (
-        request.headers.get("X-Jenkins-Signature")
-        or request.headers.get("X-Webhook-Signature")
-        or ""
+    auth_error = assert_internal_webhook_request(
+        request,
+        raw_body,
+        _signature_header(),
+        "JENKINS_BUILD_WEBHOOK_SECRET",
     )
-    if not _verify_signature(raw_body, signature):
-        return jsonify({"ok": False, "error": "invalid signature"}), 401
+    if auth_error:
+        return jsonify({"ok": False, "error": auth_error}), 401
 
     try:
         payload = _parse_payload(raw_body)

@@ -173,7 +173,10 @@ class Config:
     JENKINS_INSTANCES_DIR = _resolve_path(os.getenv('JENKINS_INSTANCES_DIR', _inst))
     JENKINS_JOB_NAME = (os.getenv('JENKINS_JOB_NAME') or _get('jenkins.job_name') or 'Android').strip()
     JENKINS_DEFAULT_USER = (os.getenv('JENKINS_DEFAULT_USER') or _get('jenkins.default_user') or 'admin').strip() or 'admin'
-    JENKINS_DEFAULT_PASSWORD = (os.getenv('JENKINS_DEFAULT_PASSWORD') or _get('jenkins.default_password') or 'admin123').strip() or 'admin123'
+    # Plan P0-01: no default Jenkins password in code; configure via env or jenkins_credentials.json.
+    JENKINS_DEFAULT_PASSWORD = (os.getenv('JENKINS_DEFAULT_PASSWORD') or _get('jenkins.default_password') or '').strip()
+
+    APP_ENV = (os.getenv('APP_ENV') or _get('app.env') or 'development').strip().lower() or 'development'
 
     _force = _get('security.force_login')
     FORCE_LOGIN = (os.getenv('FORCE_LOGIN') or str(_force if _force is not None else True)).lower() in ('true', '1', 'yes')
@@ -226,19 +229,48 @@ class Config:
         return ''
 
     @classmethod
+    def is_production(cls) -> bool:
+        return str(cls.APP_ENV or '').strip().lower() == 'production'
+
+    @classmethod
     def get_secret_key(cls):
         if cls.SECRET_KEY:
             return cls.SECRET_KEY
-        env_key = os.getenv('APK_SECRET')
+        env_key = (os.getenv('APK_SECRET') or os.getenv('FLASK_SECRET_KEY') or '').strip()
         if env_key:
             cls.SECRET_KEY = env_key
             return env_key
+        if cls.is_production():
+            raise RuntimeError('APK_SECRET (or FLASK_SECRET_KEY) is required when APP_ENV=production')
         secret_file = os.path.join(DATA_DIR, 'secret.key')
         if os.path.exists(secret_file):
-            with open(secret_file, 'r') as f:
+            with open(secret_file, 'r', encoding='utf-8') as f:
                 cls.SECRET_KEY = f.read().strip()
         else:
             cls.SECRET_KEY = secrets.token_hex(32)
-            with open(secret_file, 'w') as f:
+            with open(secret_file, 'w', encoding='utf-8') as f:
                 f.write(cls.SECRET_KEY)
         return cls.SECRET_KEY
+
+
+def require_production_secrets() -> None:
+    """Fail fast when APP_ENV=production and required secrets are missing. Plan P0-01."""
+    if not Config.is_production():
+        return
+    missing = []
+    required = {
+        'APK_SECRET': (os.getenv('APK_SECRET') or os.getenv('FLASK_SECRET_KEY') or '').strip(),
+        'JENKINS_BUILD_WEBHOOK_SECRET': (os.getenv('JENKINS_BUILD_WEBHOOK_SECRET') or '').strip(),
+        'APPROVAL_WEBHOOK_SECRET': (os.getenv('APPROVAL_WEBHOOK_SECRET') or '').strip(),
+        'BUILD_NODE_WEBHOOK_SECRET': (
+            os.getenv('BUILD_NODE_WEBHOOK_SECRET') or os.getenv('BUILD_NODE_SHARED_SECRET') or ''
+        ).strip(),
+        'CLUSTER_RELAY_TOKEN': (os.getenv('CLUSTER_RELAY_TOKEN') or '').strip(),
+    }
+    for name, value in required.items():
+        if not value:
+            missing.append(name)
+    if missing:
+        raise RuntimeError(
+            'Production startup blocked: missing required secrets: ' + ', '.join(missing)
+        )

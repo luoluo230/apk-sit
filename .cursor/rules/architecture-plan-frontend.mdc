@@ -1,0 +1,34 @@
+---
+description: JS/static conventions for architecture plan UI steps (wizard, admin pages)
+globs: portals/common/core/static/**/*.js,portals/common/core/templates/**/*.html
+alwaysApply: false
+---
+
+# Plan Implementation — Frontend
+
+## Structure
+
+Split new UI into small files or sections inside one file:
+
+- `init()` / state
+- `fetchApi()` — HTTP only
+- `render*()` — DOM only
+- `bindEvents()` — listeners
+
+Do not add **>80 lines** of new logic inline in `project_delivery.js` without extracting functions.
+
+## Chinese & encoding
+
+- UI copy: 简体中文 via `messages.json` or template — not hardcoded Latin placeholders in production paths
+- Prefer `textContent` / template literals; avoid fragile quote concatenation (see safe-change-workflow)
+- After edit: `node --check` on changed `.js`
+
+## API interaction
+
+- Reuse existing CSRF token injection pattern from sibling pages
+- Errors: show user-readable 中文 (`加载失败：…`), log detail to console
+
+## Plan UI Steps (P1-02 wizard, P1-03 badges)
+
+- One screen = one render function
+- Loading / success / fail states required (safe-change-workflow §4)

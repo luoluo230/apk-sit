@@ -718,12 +718,17 @@ def run_deploy_env(log_path):
 
 
 def _write_jenkins_init_admin_script(jenkins_home, user, password):
-    """在 JENKINS_HOME/init.groovy.d 写入创建固定管理员的 Groovy 脚本，首次启动时自动执行。"""
+    """Write init.groovy.d admin script only when password is configured. Plan P0-01."""
+    pwd = str(password or '').strip()
+    if not pwd:
+        logger.warning(
+            "跳过 Jenkins 初始管理员脚本：未配置 JENKINS_DEFAULT_PASSWORD，请通过 env 或 jenkins_credentials.json 设置"
+        )
+        return
     init_d = os.path.join(jenkins_home, 'init.groovy.d')
     os.makedirs(init_d, exist_ok=True)
-    # Groovy 字符串转义：避免用户名/密码中的引号或反斜杠破坏脚本
     u = (user or 'admin').replace('\\', '\\\\').replace('"', '\\"')
-    p = (password or 'admin123').replace('\\', '\\\\').replace('"', '\\"')
+    p = pwd.replace('\\', '\\\\').replace('"', '\\"')
     script = '''// apk-site 注入：管理内实例固定管理员，始终覆盖以便 API 可用
 import jenkins.model.*
 import hudson.security.*
@@ -814,6 +819,59 @@ def _resolve_windows_git_bash():
         if path and os.path.isfile(path):
             return path
     return ''
+
+
+def _commercial_pipeline_builder_xml_for(pipeline_script: str):
+    """Commercial builder block referencing a specific pipeline script under JENKINS_HOME/scripts/."""
+    script = str(pipeline_script or "commercial_android_pipeline.sh").strip()
+    if os.name == 'nt':
+        bash_exe = _resolve_windows_git_bash() or 'bash'
+        cmd = (
+            '@echo off\r\n'
+            'chcp 65001 >nul\r\n'
+            'set PYTHONIOENCODING=utf-8\r\n'
+            'set "BASH=%s"\r\n'
+            'if not exist "%%BASH%%" (\r\n'
+            '  echo ERROR: Git bash not found: %%BASH%%\r\n'
+            '  exit /b 1\r\n'
+            ')\r\n'
+            'if exist "%%JENKINS_HOME%%\\.apk-site-env" (\r\n'
+            '  "%%BASH%%" -lc "set -a; source \\"%%JENKINS_HOME%%/.apk-site-env\\"; set +a"\r\n'
+            ')\r\n'
+            'if not exist "%%JENKINS_HOME%%\\scripts\\%s" (\r\n'
+            '  echo ERROR: missing pipeline script %s\r\n'
+            '  exit /b 1\r\n'
+            ')\r\n'
+            '"%%BASH%%" "%%JENKINS_HOME%%\\scripts\\%s"\r\n'
+            'exit /b %%ERRORLEVEL%%\r\n'
+        ) % (bash_exe.replace('%', '%%'), script, script, script)
+        return (
+            '  <builders>\n'
+            '    <hudson.tasks.BatchFile>\n'
+            '      <command>%s</command>\n'
+            '      <configuredLocalRules/>\n'
+            '    </hudson.tasks.BatchFile>\n'
+            '  </builders>' % cmd
+        )
+    cmd = (
+        '#!/bin/bash\n'
+        'set -e\n'
+        '[ -n "$JENKINS_HOME" ] &amp;&amp; [ -f "${JENKINS_HOME}/.apk-site-env" ] &amp;&amp; . "${JENKINS_HOME}/.apk-site-env"\n'
+        'PIPELINE="${JENKINS_HOME}/scripts/%s"\n'
+        'if [ ! -f "$PIPELINE" ]; then\n'
+        '  echo "ERROR: missing $PIPELINE"\n'
+        '  exit 1\n'
+        'fi\n'
+        'exec bash "$PIPELINE"\n'
+    ) % script
+    return (
+        '  <builders>\n'
+        '    <hudson.tasks.Shell>\n'
+        '      <command>%s</command>\n'
+        '      <configuredLocalRules/>\n'
+        '    </hudson.tasks.Shell>\n'
+        '  </builders>' % cmd
+    )
 
 
 def _commercial_pipeline_builder_xml():
@@ -1214,6 +1272,85 @@ def reload_jenkins_job(instance_id, job_name='Android'):
         return False
 
 
+def _generate_platform_job_config_xml(
+    job_name: str,
+    pipeline_script: str,
+    assigned_node: str,
+    output_base,
+    build_defaults,
+    instance_type='general',
+):
+    """Generate Jenkins job config for a platform pipeline with optional agent label."""
+    content = _generate_job_config_xml(output_base, build_defaults, instance_type=instance_type)
+    import re
+    if instance_type == 'commercial':
+        builders_block = _commercial_pipeline_builder_xml_for(pipeline_script)
+        content = re.sub(
+            r'<builders>.*?</builders>',
+            lambda _m: builders_block,
+            content,
+            count=1,
+            flags=re.DOTALL,
+        )
+    label = str(assigned_node or "").strip()
+    if label:
+        if re.search(r'<assignedNode>', content):
+            content = re.sub(r'<assignedNode>.*?</assignedNode>', f'<assignedNode>{label}</assignedNode>', content, count=1)
+        else:
+            content = content.replace('<canRoam>true</canRoam>', f'<canRoam>false</canRoam>\n  <assignedNode>{label}</assignedNode>')
+    content = content.replace('<concurrentBuild>false</concurrentBuild>', '<concurrentBuild>true</concurrentBuild>', 1)
+    return content
+
+
+def _platform_job_definitions():
+    from services.build.build_grid import BUILD_ROLES, BUILD_ROLE_ANDROID, BUILD_ROLE_IOS, BUILD_ROLE_WXMINIGAME
+
+    rows = []
+    for role_key, job_name in (
+        (BUILD_ROLE_ANDROID, "Android"),
+        (BUILD_ROLE_IOS, "iOS"),
+        (BUILD_ROLE_WXMINIGAME, "WxMinigame"),
+    ):
+        meta = BUILD_ROLES.get(role_key) or {}
+        rows.append((job_name, str(meta.get("pipeline_script") or ""), str(meta.get("label") or "")))
+    return rows
+
+
+def sync_all_platform_jobs(instance_id, build_defaults_override=None, project_id=''):
+    """Sync Android/iOS/WxMinigame Jenkins jobs for distributed build grid."""
+    inst = get_instance_by_id(instance_id)
+    if not inst:
+        return False
+    jenkins_home = resolve_jenkins_home(inst)
+    if not jenkins_home or not os.path.isdir(jenkins_home):
+        return False
+    build_defaults = dict(_resolve_build_defaults_for_project(project_id, inst))
+    if isinstance(build_defaults_override, dict):
+        build_defaults.update(build_defaults_override)
+    output_base = get_instance_output_base(inst, project_id=project_id)
+    instance_type = inst.get('instance_type', 'general')
+    try:
+        for job_name, pipeline_script, assigned_node in _platform_job_definitions():
+            job_dir = os.path.join(jenkins_home, 'jobs', job_name)
+            os.makedirs(job_dir, exist_ok=True)
+            content = _generate_platform_job_config_xml(
+                job_name,
+                pipeline_script,
+                assigned_node,
+                output_base,
+                build_defaults,
+                instance_type=instance_type,
+            )
+            with open(os.path.join(job_dir, 'config.xml'), 'w', encoding='utf-8') as f:
+                f.write(content)
+        _write_unity_paths_json(jenkins_home, build_defaults)
+        logger.info("已同步平台 Jenkins 任务: %s", jenkins_home)
+        return True
+    except Exception as exc:
+        logger.warning("同步平台 Jenkins 任务失败: %s", exc)
+        return False
+
+
 def sync_instance_job_config(instance_id, build_defaults_override=None, project_id=''):
     """按项目 build_config（及可选 override）重新生成 Android job config.xml 与 unity_paths.json。"""
     inst = get_instance_by_id(instance_id)
@@ -1315,12 +1452,13 @@ def prepare_instance_for_project_build(instance_id, project_id='', git_branch=''
             bd = merge_git_branch_into_defaults(bd, git_branch)
         if isinstance(plan, dict) and plan:
             bd = _merge_build_defaults_for_plan(bd, plan)
-        if not sync_instance_job_config(instance_id, build_defaults_override=bd, project_id=project_id):
+        if not sync_all_platform_jobs(instance_id, build_defaults_override=bd, project_id=project_id):
             return False, '同步 Jenkins Job 参数失败'
         ok_env, env_err = apply_project_build_env(instance_id, project_id, bd)
         if not ok_env:
             return False, env_err or '写入项目构建环境失败'
-        reload_jenkins_job(instance_id)
+        for job_name, _, _ in _platform_job_definitions():
+            reload_jenkins_job(instance_id, job_name=job_name)
         return True, ''
     except Exception as exc:
         logger.warning('prepare_instance_for_project_build 失败: %s', exc)
@@ -1692,15 +1830,16 @@ def get_jenkins_url_for_instance(instance_id=None, port=None):
     return None
 
 
-def get_builds_dir_for_instance(instance_id=None, port=None):
-    """返回该实例的 Android job 构建目录。"""
+def get_builds_dir_for_instance(instance_id=None, port=None, job_name=None):
+    """返回该实例指定 job 的构建目录。"""
     inst = None
     if instance_id:
         inst = get_instance_by_id(instance_id)
     elif port is not None:
         inst = get_instance_by_port(port)
+    target_job = (job_name or Config.JENKINS_JOB_NAME or "Android").strip()
     if inst:
         jenkins_home = resolve_jenkins_home(inst)
         if jenkins_home:
-            return os.path.join(jenkins_home, 'jobs', Config.JENKINS_JOB_NAME, 'builds')
+            return os.path.join(jenkins_home, 'jobs', target_job, 'builds')
     return None

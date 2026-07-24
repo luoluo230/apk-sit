@@ -226,6 +226,7 @@ def _register_blueprints():
         from routes.commercial_release_routes import bp as commercial_release_bp
         from routes.gm_ops_release import bp as gm_ops_release_bp
         from routes.internal_jenkins import bp as internal_jenkins_bp
+        from routes.internal_build_nodes import bp as internal_build_nodes_bp
         from routes.project_delivery import bp as project_delivery_bp
         from routes.release import bp as release_scopes_bp
         from routes.ops import bp as project_ops_bp
@@ -254,14 +255,21 @@ def _register_blueprints():
         app.register_blueprint(commercial_release_bp)
         app.register_blueprint(gm_ops_release_bp)
         app.register_blueprint(internal_jenkins_bp)
+        app.register_blueprint(internal_build_nodes_bp)
         app.register_blueprint(project_delivery_bp)
         app.register_blueprint(release_scopes_bp)
         app.register_blueprint(project_ops_bp)
         if _csrf_enabled and csrf is not None:
-            # Project delivery and ops pages use authenticated JSON fetch calls.
-            csrf.exempt(project_delivery_bp)
-            csrf.exempt(project_ops_bp)
+            # Internal routes authenticate via HMAC + IP allowlist (services/security/webhook_auth.py).
             csrf.exempt(internal_jenkins_bp)
+            csrf.exempt(internal_build_nodes_bp)
+            try:
+                from routes.approval_webhooks import approval_webhook_view
+
+                if approval_webhook_view is not None:
+                    csrf.exempt(approval_webhook_view)
+            except Exception:
+                logger.warning("approval webhook CSRF exempt not applied", exc_info=True)
 
 
 _register_blueprints()
@@ -329,7 +337,10 @@ def _startup_checks():
 
 
 def _on_start():
+    from config import require_production_secrets
     from services import startup
+
+    require_production_secrets()
 
     if getattr(Config, "USE_SQLITE", False):
         try:
@@ -374,7 +385,7 @@ def _on_start():
         f" Sample:  {pub_url}\n"
         f" APK dir: {Config.APK_DIR}\n"
         f" Jenkins: {Config.JENKINS_URL}\n"
-        f" Health:  /health | admin/admin123{https_hint}\n"
+        f" Health:  /health\n"
         "========================================"
     )
     try:

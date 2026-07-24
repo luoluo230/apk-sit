@@ -55,7 +55,11 @@ def login_session(base: str) -> urllib.request.OpenerDirector:
     if not csrf:
         raise RuntimeError("csrf_token not found on login page")
     form = urllib.parse.urlencode(
-        {"username": "admin", "password": "admin123", "csrf_token": csrf.group(1)}
+        {
+            "username": "admin",
+            "password": os.environ.get("PORTAL_DEV_ADMIN_PASSWORD") or os.environ.get("RELEASE_GATE_ADMIN_PASSWORD") or "",
+            "csrf_token": csrf.group(1),
+        }
     ).encode("utf-8")
     opener.open(f"{base}/login", data=form, timeout=20)
     return opener
@@ -152,7 +156,7 @@ def ensure_protocol_cluster_ready() -> dict:
       "State": "Online",
       "Metadata": {
         "ClusterRelayPort": "15503",
-        "ClusterRelayToken": "ma-cluster-relay-dev",
+        "ClusterRelayToken": os.environ.get("CLUSTER_RELAY_TOKEN", ""),
         "AgentWs": "ws://127.0.0.1:9009/agent/"
       }
     },

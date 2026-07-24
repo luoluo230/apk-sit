@@ -1,0 +1,44 @@
+---
+description: Python layering and file-size limits for architecture plan work in portals/core
+globs: portals/common/core/**/*.py,jenkins-clone/scripts/**/*.sh,scripts/**/*.ps1
+alwaysApply: false
+---
+
+# Plan Implementation — Python & Scripts
+
+## Module placement
+
+| Layer | Path | Allowed |
+|-------|------|---------|
+| Route | `routes/**` | Parse, auth, call service, return response |
+| Service | `services/**` | Business rules, orchestration |
+| Repository | `repositories/**` | SQL/JSON persistence |
+| Data | `data/**` | Catalogs, pure helpers |
+
+Routes must not embed publish/ops/topology business logic.
+
+## Size & split
+
+- New service file target **≤400 lines**; function **≤50 lines**
+- Extending `helpers.py` / `version_service.py`: **forbidden** for new features — extract module (P1-01)
+- Shell: shared logic in `*_common.sh`; platform scripts stay thin
+
+## Style
+
+```python
+# -*- coding: utf-8 -*-
+"""Purpose. Plan: Px-xx Step N."""
+
+def ensure_runtime_for_scope(project_id: str, env_key: str) -> dict[str, Any]:
+    """Return {active, run_id}. Raises ValueError with 中文 when topology missing."""
+    ...
+```
+
+- Type hints on public service functions
+- `ValueError` + 中文 for operator-facing errors
+- Module-level constants UPPER_SNAKE; no magic strings for scope/env — use `scope_ids`, `env_registry`
+
+## Tests
+
+- Co-locate in `tests/test_<feature>.py`
+- Refactor Steps: test before move; pytest must pass same count or increase

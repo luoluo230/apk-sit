@@ -1824,6 +1824,11 @@ def _agent_matches_env(item: Dict[str, Any], env_key: str = "") -> bool:
     if not env_key:
         return True
     env = _normalize_env_key(env_key)
+    if isinstance(item, dict):
+        aid = str(item.get("agent_id") or "").strip()
+        pid = str(item.get("project_id") or "").strip()
+        if aid == CANONICAL_LOCAL_AGENT_ID and pid and _project_uses_runtime_topology(pid):
+            return True
     agent_env = _normalize_env_key(str((item or {}).get("env_key") or (item or {}).get("env") or "production"))
     return agent_env == env
 
@@ -2423,7 +2428,9 @@ def _enrich_cluster_relay_metadata(
     relay_port = _cluster_relay_port_for_type(cluster_type, role)
     if relay_port > 0:
         meta.setdefault("ClusterRelayPort", str(relay_port))
-    meta.setdefault("ClusterRelayToken", _CLUSTER_RELAY_TOKEN_DEFAULT)
+    relay_token = _cluster_relay_token()
+    if relay_token:
+        meta.setdefault("ClusterRelayToken", relay_token)
     return meta
 
 
@@ -2564,7 +2571,9 @@ def _topology_to_cluster_payload(project_id: str, env_key: str, topology_id: str
         }
         if relay_port > 0:
             base_meta["ClusterRelayPort"] = str(relay_port)
-        base_meta["ClusterRelayToken"] = _CLUSTER_RELAY_TOKEN_DEFAULT
+        relay_token = _cluster_relay_token()
+        if relay_token:
+            base_meta["ClusterRelayToken"] = relay_token
         metadata = _enrich_cluster_relay_metadata(
             _build_daemon_metadata(node, contract, service_port, base_meta),
             cluster_type,
@@ -3959,8 +3968,12 @@ _CLUSTER_RELAY_PROBE_PORTS: Dict[str, int] = {
     "auth-cn-1": 15501,
     "game-cn-1": 15502,
 }
-_CLUSTER_RELAY_TOKEN_DEFAULT = "ma-cluster-relay-dev"
 _GAMESERVER_START_ORDER: Tuple[str, ...] = ("auth-cn-1", "game-cn-1", "ops-cn-1", "gateway-cn-1")
+
+
+def _cluster_relay_token() -> str:
+    """Plan P0-01: relay token from env only; never hardcode in source."""
+    return str(os.getenv("CLUSTER_RELAY_TOKEN") or "").strip()
 
 
 def _cluster_state_is_online(state: Any) -> bool:
@@ -6833,6 +6846,16 @@ def _services_for_project(project_id: str = "", env_key: str = "") -> List[Dict[
                     "source": "agent.compat",
                 }
             )
+    if out and str(project_id or "").strip():
+        try:
+            out = _refresh_services_live_state(
+                out,
+                project_id=str(project_id or "").strip(),
+                fast_probe=True,
+                probe_timeout=0.25,
+            )
+        except Exception:
+            pass
     return out
 
 def _status_rank(status: str) -> int:
@@ -6864,16 +6887,16 @@ def _member_registration_origin(item: Dict[str, Any]) -> str:
     return "unknown"
 
 def _effective_runtime_status(status: Any, run_state: Any, probe_status: Any = "") -> str:
+    run = str(run_state or "").strip().upper()
+    if run in ("STOPPED", "STOP"):
+        return "STOPPED"
     probe = str(probe_status or "").strip().upper()
     if probe == "FAIL":
         return "OFFLINE"
-    run = str(run_state or "").strip().upper()
     if run in ("RUNNING", "READY") and probe == "PASS":
         return "RUNNING"
     if run in ("STARTING", "STOPPING", "RESTARTING"):
         return run
-    if run in ("STOPPED", "STOP"):
-        return "STOPPED"
     base = str(status or "").strip().upper()
     if base in ("STOPPED", "OFFLINE", "FAILED"):
         return base
@@ -8022,12 +8045,19 @@ def _build_agent_detail(
                 break
 
     control_metrics = ((agent.get("metrics") or {}).get("control") if isinstance(agent.get("metrics"), dict) else {}) or {}
-    service_summary = {
-        "total": len(services),
-        "online": len([s for s in services if _effective_runtime_status(s.get("status"), s.get("run_state"), s.get("probe_status")) in ("ONLINE", "RUNNING", "READY")]),
-        "abnormal": len([s for s in services if _effective_runtime_status(s.get("status"), s.get("run_state"), s.get("probe_status")) in ("DEGRADED", "ERROR", "FAILED", "OFFLINE", "STOPPED")]),
-    }
-    service_summary["stopped"] = max(0, service_summary["total"] - service_summary["online"] - service_summary["abnormal"])
+    service_summary = {"total": len(services), "online": 0, "stopped": 0, "abnormal": 0}
+    for svc in services:
+        eff = _effective_runtime_status(svc.get("status"), svc.get("run_state"), svc.get("probe_status"))
+        run = str(svc.get("run_state") or "").upper()
+        st = str(svc.get("status") or "").upper()
+        if eff in ("ONLINE", "RUNNING", "READY"):
+            service_summary["online"] += 1
+        elif eff == "STOPPED" or run in ("STOPPED", "STOP") or st == "STOPPED":
+            service_summary["stopped"] += 1
+        elif eff in ("DEGRADED", "ERROR", "FAILED", "OFFLINE"):
+            service_summary["abnormal"] += 1
+        else:
+            service_summary["stopped"] += 1
 
     current_alerts = len([x for x in events if str(x.get("status") or "").lower() not in ("resolved", "closed", "done", "recovered")])
     healthy_ratio = 100

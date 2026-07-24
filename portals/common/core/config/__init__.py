@@ -12,7 +12,11 @@ if os.path.isfile(_config_py):
     DATA_DIR = _mod.DATA_DIR
     load_dotenv = _mod.load_dotenv
     get_jenkins_credentials = _mod.get_jenkins_credentials
+    require_production_secrets = _mod.require_production_secrets
     APK_SITE_ROOT = _mod.APK_SITE_ROOT
     JENKINS_CLONE_DIR = _mod.JENKINS_CLONE_DIR
     CONFIG_DIR = _mod.CONFIG_DIR
-    __all__ = ['Config', 'DATA_DIR', 'load_dotenv', 'get_jenkins_credentials', 'APK_SITE_ROOT', 'JENKINS_CLONE_DIR', 'CONFIG_DIR']
+    __all__ = [
+        'Config', 'DATA_DIR', 'load_dotenv', 'get_jenkins_credentials',
+        'require_production_secrets', 'APK_SITE_ROOT', 'JENKINS_CLONE_DIR', 'CONFIG_DIR',
+    ]

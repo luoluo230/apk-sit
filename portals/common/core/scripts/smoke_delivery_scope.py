@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -67,7 +68,7 @@ def main() -> int:
     parser.add_argument("--env-key", default="development")
     parser.add_argument("--channel-id", default="1001")
     parser.add_argument("--username", default="admin")
-    parser.add_argument("--password", default="admin123")
+    parser.add_argument("--password", default=os.getenv("PORTAL_DEV_ADMIN_PASSWORD") or "")
     args = parser.parse_args()
 
     results: list[tuple[str, bool, str]] = []

@@ -1,0 +1,35 @@
+---
+description: >-
+  Execute docs/architecture/plans with Plan Step scope, layered modules, UTF-8
+  Chinese, no monolith files. Use with skill architecture-plan-implementation.
+alwaysApply: true
+---
+
+# Architecture Plan Implementation (Core)
+
+## Trigger
+
+User mentions `docs/architecture/plans/`, P0/P1/P2 Plan IDs, or expert review remediation.
+
+**Read first**: `.cursor/skills/architecture-plan-implementation/SKILL.md` + active Plan doc.
+
+## Non-negotiables
+
+1. **One Plan Step at a time** — Step In/Out is scope; no drive-by refactors.
+2. **No monolith growth** — do not add features to `helpers.py`, `version_service.py`, `admin_routes.py`, `project_delivery.js`; add `services/<domain>/` modules instead.
+3. **Layers** — routes thin; business in services; DB in repositories (see skill STANDARDS.md).
+4. **UTF-8 & 中文** — user-visible text in correct Chinese; zero mojibake in templates/JS/Python.
+5. **Readable & concise** — short functions, clear names; comments for business rules only, not noise.
+6. **Validate before done** — Plan §测试与门禁 + `safe-change-workflow.md` syntax checks.
+
+## Forbidden
+
+- Single script/file absorbing whole Step (200+ line dump)
+- New `*_db = load_document()` global caches
+- `except: pass` on publish, ops, webhooks
+- Claiming Step/DoD without Plan acceptance checklist PASS
+
+## Also apply
+
+- `.cursor/rules/safe-change-workflow.md` — compile/test/restart gates
+- Design-pixel tasks → `design-faithful-ui` skill (overrides minimal-diff for UI only)

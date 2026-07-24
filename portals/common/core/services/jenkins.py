@@ -33,7 +33,9 @@ def _credentials_for_instance(instance_id=None):
             for inst in load_jenkins_instances():
                 if inst.get('id') == instance_id:
                     u = (Config.JENKINS_DEFAULT_USER or 'admin').strip() or 'admin'
-                    p = (Config.JENKINS_DEFAULT_PASSWORD or 'admin123').strip() or 'admin123'
+                    p = (Config.JENKINS_DEFAULT_PASSWORD or '').strip()
+                    if not p:
+                        return get_jenkins_credentials()
                     return (u, p)
         except Exception:
             pass
@@ -358,14 +360,15 @@ def stop_build(build_number, base_url=None, builds_dir=None, instance_id=None):
         return (False, str(e))
 
 
-def trigger_build(params, base_url=None, builds_dir=None, instance_id=None):
+def trigger_build(params, base_url=None, builds_dir=None, instance_id=None, job_name=None):
     """
-    触发 Jenkins 构建。params: dict。可选 base_url/builds_dir/instance_id 指定实例。
+    触发 Jenkins 构建。params: dict。可选 base_url/builds_dir/instance_id/job_name 指定实例与 Job。
     返回 (success: bool, build_number: int or None, error: str or None)。
     """
     import time
     url, bdir = _base_url_and_builds(base_url, builds_dir)
-    jenkins_url = url + "/job/" + JOB_NAME + "/buildWithParameters"
+    target_job = (job_name or JOB_NAME or "Android").strip()
+    jenkins_url = url + "/job/" + urllib.parse.quote(target_job, safe="") + "/buildWithParameters"
     auth = auth_header(instance_id)
     cookie_jar = http.cookiejar.CookieJar()
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
@@ -460,8 +463,8 @@ def trigger_build(params, base_url=None, builds_dir=None, instance_id=None):
             )
         if e.code == 401:
             err_msg = (
-                '认证失败(401)。若为「Jenkins 管理」内实例，请在管理中心停止该实例后重新启动一次，'
-                '以便注入固定账号（admin/admin123）后再构建。'
+                '认证失败(401)。若为「Jenkins 管理」内实例，请配置 JENKINS_DEFAULT_PASSWORD 或 jenkins_credentials.json，'
+                '或在 Jenkins 管理中重启实例以注入初始管理员。'
             )
         elif e.code == 403:
             user, token = _credentials_for_instance(instance_id)

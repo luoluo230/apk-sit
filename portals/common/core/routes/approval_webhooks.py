@@ -3,10 +3,7 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
-import os
 from typing import Any, Dict
 
 from flask import jsonify, request
@@ -14,27 +11,29 @@ from flask import jsonify, request
 from models.db import get_cursor, init_db
 from services.release.order_publish_flow import approve_release_order, scan_approval_sla_timeouts
 
-
-def _webhook_secret(provider: str) -> str:
-    key = f"APPROVAL_WEBHOOK_SECRET_{str(provider or '').strip().upper()}"
-    return str(os.getenv(key) or os.getenv("APPROVAL_WEBHOOK_SECRET") or "").strip()
+approval_webhook_view = None
 
 
 def verify_approval_signature(provider: str, body: bytes, headers: Dict[str, str]) -> bool:
-    secret = _webhook_secret(provider)
+    from services.security.webhook_auth import resolve_webhook_secret, verify_hmac_signature, webhook_auth_disabled
+
+    if webhook_auth_disabled():
+        return True
+    secret = resolve_webhook_secret(
+        f"APPROVAL_WEBHOOK_SECRET_{str(provider or '').strip().upper()}",
+        "APPROVAL_WEBHOOK_SECRET",
+    )
     if not secret:
         return False
     supplied = (
-        str(headers.get("X-Approval-Signature") or headers.get("X-Signature") or "").strip()
+        str(headers.get("X-Signature-SHA256") or "").strip()
+        or str(headers.get("X-Approval-Signature") or headers.get("X-Signature") or "").strip()
         or str(headers.get("X-Hub-Signature-256") or "").strip()
         or str(request.args.get("sign") or request.args.get("signature") or "").strip()
     )
     if not supplied:
         return False
-    if supplied.startswith("sha256="):
-        supplied = supplied.split("=", 1)[1]
-    expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(supplied.lower(), expected.lower())
+    return verify_hmac_signature(body, supplied, secret)
 
 
 def _find_order_for_approval(approval_id: str, release_order_id: str) -> Dict[str, Any]:
@@ -90,6 +89,8 @@ def handle_external_approval(provider: str, payload: Dict[str, Any], *, actor: s
 
 
 def register_approval_webhook_routes(bp) -> None:
+    global approval_webhook_view
+
     @bp.route("/api/webhooks/approval/<provider>", methods=["POST"])
     def approval_webhook(provider: str):
         scan_approval_sla_timeouts()
@@ -109,3 +110,5 @@ def register_approval_webhook_routes(bp) -> None:
             return jsonify({"ok": True, "data": result})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
+
+    approval_webhook_view = approval_webhook

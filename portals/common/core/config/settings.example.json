@@ -9,7 +9,9 @@
     "log_dir": "logs",
     "use_sqlite": true,
     "sqlite_mirror_json": false,
-    "sqlite_import_json_on_miss": false
+    "sqlite_import_json_on_miss": false,
+    "_production_note": "Set APP_ENV=production and inject secrets per docs/runbooks/production_secrets.md",
+    "env": "development"
   },
   "portal": {
     "_comment": "Split portal deployment",
@@ -39,8 +41,8 @@
     "image": "jenkins/jenkins:lts-jdk17",
     "container_name": "apk-site-jenkins",
     "default_user": "admin",
-    "default_password": "admin123",
-    "_note_user_token": "Set JENKINS_USER and JENKINS_TOKEN in .env or jenkins_credentials.json"
+    "_default_password_note": "Leave empty in repo. Set JENKINS_DEFAULT_PASSWORD in .env for local Jenkins init only.",
+    "default_password": ""
   },
   "security": {
     "_comment": "Security and login",
