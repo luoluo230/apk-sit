@@ -40,7 +40,12 @@
 
   var DL = window.PmDisplayLabels || {};
 
+  var fav = window.PmUserFavorites;
+
   function favoriteIds() {
+    if (fav && fav.readCache) {
+      return fav.readCache().project_favorites || [];
+    }
     try {
       return JSON.parse(localStorage.getItem("p01_project_favorites") || "[]");
     } catch (e) {
@@ -49,10 +54,21 @@
   }
 
   function isFavorite(id) {
+    if (fav && fav.isProjectFavorite) return fav.isProjectFavorite(id);
     return favoriteIds().indexOf(id) >= 0;
   }
 
   function toggleFavorite(id) {
+    if (fav && fav.toggleProjectFavorite) {
+      fav.toggleProjectFavorite(id).catch(function () {
+        var ids = favoriteIds();
+        var idx = ids.indexOf(id);
+        if (idx >= 0) ids.splice(idx, 1);
+        else ids.push(id);
+        localStorage.setItem("p01_project_favorites", JSON.stringify(ids));
+      });
+      return;
+    }
     var ids = favoriteIds();
     var idx = ids.indexOf(id);
     if (idx >= 0) ids.splice(idx, 1);
@@ -267,6 +283,16 @@
     resetCreateForm();
     openModal("createProjectModal");
     if (!String((el("newProjectGameId") || {}).value || "").trim()) generateProjectCredentials();
+  }
+
+  function openCreateFromTemplate() {
+    openCreateModal();
+    var templates = (state.projects || []).filter(function (p) { return p.is_template; });
+    if (!templates.length) return;
+    var pick = templates[0];
+    if (el("newProjectIntro")) {
+      el("newProjectIntro").value = "基于模板项目「" + (pick.name || pick.id) + "」创建";
+    }
   }
 
   function bindModalControls() {
@@ -1206,11 +1232,37 @@
 
   function bindEvents() {
     if (el("p01CreateBtn")) el("p01CreateBtn").onclick = openCreateModal;
-    if (el("p01QuickCreate")) el("p01QuickCreate").onclick = function () {
-      el("p01CreateBtn").click();
-    };
+    if (el("p01QuickCreate")) el("p01QuickCreate").onclick = openCreateFromTemplate;
     if (el("p01QuickImport")) el("p01QuickImport").onclick = function () {
-      alert("批量导入尚未开放，请联系管理员或通过 API 创建项目。");
+      var input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".csv,text/csv";
+      input.onchange = function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          fetch("/admin/projects/import-csv", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ csv: String(reader.result || "") }),
+          })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+              var d = res.data || {};
+              if (!res.ok || d.error) {
+                alert(d.error || (d.errors && d.errors.join("\n")) || "导入失败");
+                return;
+              }
+              alert("成功导入 " + (d.created_count || (d.created && d.created.length) || 0) + " 个项目");
+              loadProjects();
+            })
+            .catch(function () { alert("导入请求失败"); });
+        };
+        reader.readAsText(file, "utf-8");
+      };
+      input.click();
     };
     if (el("p01QuickArchive")) el("p01QuickArchive").onclick = function () {
       state.status = "archived";
@@ -1385,6 +1437,17 @@
     });
   }
 
+  document.addEventListener("pm-favorites-changed", function () {
+    renderProjects();
+  });
+
   bindEvents();
-  loadProjects();
+  var boot = function () {
+    loadProjects();
+  };
+  if (fav && fav.load) {
+    fav.load().then(boot).catch(boot);
+  } else {
+    boot();
+  }
 })();

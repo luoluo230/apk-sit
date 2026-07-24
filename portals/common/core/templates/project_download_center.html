@@ -42,7 +42,8 @@
     tbody.innerHTML = filtered.map(r => {
       const url = r.public_download_url || r.oss_download_url || r.local_download_url || '';
       const size = r.size_bytes ? `${(r.size_bytes / 1048576).toFixed(1)} MB` : '-';
-      return `<tr><td>${esc(r.version_name)}</td><td>${esc(r.version_code)}</td><td>${esc(envLabels[r.env_key] || r.env_key)} / ${esc(r.channel_name || r.channel_id)} / ${esc(r.platform)}</td><td>#${esc(r.build_number || '-')}</td><td>${esc(size)}</td><td class="pm-table-actions">${url ? `<a class="pm-btn pm-btn--compact pm-btn--primary" href="${esc(url)}" target="_blank" rel="noopener">下载</a>` : '<span class="pm-tag pm-tag--muted">未就绪</span>'}</td></tr>`;
+      const qr = url ? `<a class="pm-btn pm-btn--compact" href="/admin/projects/${encodeURIComponent(projectId)}/download-center?qr=${encodeURIComponent(url)}" target="_blank" rel="noopener">二维码</a>` : '';
+      return `<tr><td>${esc(r.version_name)}</td><td>${esc(r.version_code)}</td><td>${esc(envLabels[r.env_key] || r.env_key)} / ${esc(r.channel_name || r.channel_id)} / ${esc(r.platform)}</td><td>#${esc(r.build_number || '-')}</td><td>${esc(size)}</td><td class="pm-table-actions">${url ? `<a class="pm-btn pm-btn--compact pm-btn--primary" href="${esc(url)}" target="_blank" rel="noopener">下载</a> ${qr}` : '<span class="pm-tag pm-tag--muted">未就绪</span>'}</td></tr>`;
     }).join('');
   };
   const load = async () => {

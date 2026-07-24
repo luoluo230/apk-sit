@@ -226,6 +226,19 @@ def register_page_routes(bp) -> None:
             channel_id=cid,
         )
 
+    @bp.route("/admin/projects/<project_id>/activities")
+    @admin_required("projects")
+    def project_activities_page(project_id: str):
+        if project_id not in projects_db:
+            return "项目不存在", 404
+        return _page(
+            "project_activities.html",
+            "项目动态",
+            project_id,
+            "project-home",
+            breadcrumb_module="总览",
+        )
+
     @bp.route("/admin/projects/<project_id>/overview")
     @admin_required("projects")
     def project_overview_page(project_id: str):
@@ -414,18 +427,26 @@ def register_page_routes(bp) -> None:
     def project_docs_page(project_id: str):
         import os
 
+        from routes.docs_routes import DOCS_FILE, _docs_db
+
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
         doc_path = os.path.join(repo_root, "docs", "client_bootstrap_contract.md")
         docs_markdown = ""
         if os.path.isfile(doc_path):
             with open(doc_path, "r", encoding="utf-8") as fh:
                 docs_markdown = fh.read()
+        project_docs = [
+            row for row in (_docs_db() or [])
+            if isinstance(row, dict) and str(row.get("project_id") or "").strip() in ("", project_id)
+        ]
+        project_docs.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
         return _page(
             "project_docs_embed.html",
             "项目文档",
             project_id,
             "project-docs",
             docs_markdown=docs_markdown,
+            project_docs=project_docs[:30],
         )
 
     @bp.route("/admin/projects/<project_id>/settings")

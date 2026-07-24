@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import DATA_DIR
-
-_C2S_RE = re.compile(r'"([^"]+_c2s)"\s*:\s*\{[^}]*"MessageID"\s*:\s*(\d+)', re.MULTILINE)
 
 
 def _maclient_root_from_repo(game_server_repo: str) -> str:
@@ -35,75 +32,37 @@ def resolve_paths(game_server_repo: str) -> Dict[str, str]:
     }
 
 
-def _load_catalog_file(catalog_path: str, protocols_json: str) -> Tuple[Dict[str, Any], str]:
+def _load_catalog_file(catalog_path: str) -> Tuple[Dict[str, Any], str]:
     if os.path.isfile(catalog_path):
         with open(catalog_path, "r", encoding="utf-8-sig") as f:
             raw = json.load(f)
         mtime = datetime.fromtimestamp(os.path.getmtime(catalog_path), tz=timezone.utc).isoformat()
         return raw, mtime
 
-    if not os.path.isfile(protocols_json):
-        return {"protocols": [], "generatedFrom": protocols_json, "fallback": True}, ""
-
-    with open(protocols_json, "r", encoding="utf-8") as f:
-        text = f.read()
-    protocols: List[Dict[str, Any]] = []
-    for match in _C2S_RE.finditer(text):
-        req_type = match.group(1)
-        req_id = int(match.group(2))
-        base = req_type[:-4]
-        protocols.append(
-            {
-                "name": base,
-                "module": _guess_module(base),
-                "status": "stable" if req_id <= 10026 else "beta",
-                "requestId": req_id,
-                "responseId": req_id + 1,
-                "messages": [
-                    {"type": req_type, "id": req_id, "direction": "request"},
-                    {"type": base + "_s2c", "id": req_id + 1, "direction": "response"},
-                ],
-            }
-        )
     return {
-        "protocols": sorted(protocols, key=lambda x: x.get("requestId", 0)),
-        "generatedFrom": protocols_json,
-        "fallback": True,
-    }, datetime.fromtimestamp(os.path.getmtime(protocols_json), tz=timezone.utc).isoformat()
-
-
-def _guess_module(name: str) -> str:
-    prefixes = [
-        ("Login", "Auth"),
-        ("SelectServer", "Auth"),
-        ("CreateRole", "Auth"),
-        ("Logout", "Session"),
-        ("Heartbeat", "Session"),
-        ("Token", "Session"),
-        ("Session", "Session"),
-        ("Mail", "Mail"),
-        ("Friend", "Friend"),
-        ("Guild", "Guild"),
-        ("Team", "Team"),
-        ("Shop", "Shop"),
-        ("Task", "Task"),
-        ("Battle", "Battle"),
-        ("Arena", "Arena"),
-        ("Match", "Match"),
-        ("Inventory", "Inventory"),
-        ("Hero", "Progression"),
-        ("Level", "Progression"),
-        ("Player", "Profile"),
-    ]
-    for prefix, module in prefixes:
-        if name.startswith(prefix):
-            return module
-    return "General"
+        "protocols": [],
+        "error": "catalog_missing",
+        "catalog_path": catalog_path,
+    }, ""
 
 
 def build_catalog_view(game_server_repo: str) -> Dict[str, Any]:
     paths = resolve_paths(game_server_repo)
-    raw, mtime = _load_catalog_file(paths["catalog_path"], paths["protocols_json"])
+    raw, mtime = _load_catalog_file(paths["catalog_path"])
+    if raw.get("error") == "catalog_missing":
+        return {
+            "ok": False,
+            "error": "catalog_missing",
+            "catalog_path": paths["catalog_path"],
+            "generated_from": paths["catalog_path"],
+            "mtime": mtime,
+            "fallback": False,
+            "module_count": 0,
+            "protocol_count": 0,
+            "modules": [],
+            "protocols": [],
+            "paths": {k: v for k, v in paths.items() if k.endswith("_dir") or k.endswith("_path")},
+        }
     modules: Dict[str, List[Dict[str, Any]]] = {}
     protocols: List[Dict[str, Any]] = []
     for item in raw.get("protocols") or []:
@@ -219,6 +178,12 @@ def save_custom_plan(plan: Dict[str, Any], game_server_repo: str) -> Dict[str, A
     if not plan_id:
         return {"ok": False, "error": "missing_plan_id"}
     catalog = build_catalog_view(game_server_repo)
+    if not catalog.get("ok"):
+        return {
+            "ok": False,
+            "error": catalog.get("error") or "catalog_unavailable",
+            "catalog_path": catalog.get("catalog_path"),
+        }
     known = {p.get("request_type") for p in catalog.get("protocols") or []}
     steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
     invalid = [s.get("protocol") for s in steps if isinstance(s, dict) and s.get("protocol") not in known]
@@ -303,6 +268,8 @@ def resolve_gateway_endpoint(
 
 def validate_plan_dict(plan: Dict[str, Any], game_server_repo: str) -> List[str]:
     catalog = build_catalog_view(game_server_repo)
+    if not catalog.get("ok"):
+        return ["catalog_missing:" + str(catalog.get("catalog_path") or "")]
     known = {p.get("request_type") for p in catalog.get("protocols") or []}
     issues: List[str] = []
     steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []

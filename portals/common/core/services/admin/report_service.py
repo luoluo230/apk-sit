@@ -41,11 +41,49 @@ def create_template(username: str, data: Dict[str, Any]) -> Tuple[Dict[str, Any]
     return {"success": True, "id": tid}, 200
 
 
+def _compute_gate_pass_rate() -> float:
+    from services.build_history_service import _load_records, _resolve_build_status
+
+    records = _load_records()[-80:]
+    if not records:
+        return 1.0
+    cache: dict = {}
+    passed = total = 0
+    for rec in records:
+        status = str(_resolve_build_status(rec, cache).get("result") or "").upper()
+        if status not in {"SUCCESS", "FAILURE", "ABORTED", "UNSTABLE"}:
+            continue
+        total += 1
+        if status == "SUCCESS":
+            passed += 1
+    return round(passed / total, 3) if total else 1.0
+
+
+def _compute_cluster_health() -> tuple[int, int]:
+    try:
+        from services.ops.helpers import _load_agent_registry_v2
+
+        reg = _load_agent_registry_v2()
+        total = online = 0
+        for row in (reg or {}).values():
+            if not isinstance(row, dict):
+                continue
+            total += 1
+            st = str(row.get("effective_status") or row.get("status") or "").upper()
+            if st in ("ONLINE", "RUNNING", "READY"):
+                online += 1
+        return online, total
+    except Exception:
+        return 0, 0
+
+
 def dashboard_catalog(username: str) -> Tuple[Dict[str, Any], int]:
     """§11.3 dashboard: draggable cards, chart types, filters, scheduled email."""
     from repositories.admin import reports_repo
 
     download_total = sum(count for _, count in reports_repo.download_stats_items())
+    gate_pass_rate = _compute_gate_pass_rate()
+    cluster_online, cluster_total = _compute_cluster_health()
     cards = [
         {
             "id": "downloads",
@@ -61,7 +99,7 @@ def dashboard_catalog(username: str) -> Tuple[Dict[str, Any], int]:
             "chart": "line",
             "metric": "gate_pass_rate",
             "layout": {"x": 4, "y": 0, "w": 4, "h": 2},
-            "series": [{"label": "pass_rate", "value": 1.0}],
+            "series": [{"label": "pass_rate", "value": gate_pass_rate}],
         },
         {
             "id": "cluster",
@@ -69,7 +107,7 @@ def dashboard_catalog(username: str) -> Tuple[Dict[str, Any], int]:
             "chart": "stat",
             "metric": "cluster_health_passing",
             "layout": {"x": 8, "y": 0, "w": 4, "h": 2},
-            "series": [{"label": "passing", "value": 9}, {"label": "total", "value": 9}],
+            "series": [{"label": "passing", "value": cluster_online}, {"label": "total", "value": cluster_total}],
         },
         {
             "id": "heatmap",

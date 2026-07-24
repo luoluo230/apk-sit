@@ -32,6 +32,7 @@ from models.data import (
 )
 from config import Config, DATA_DIR
 from routes.admin.api_users import register_routes as register_user_api_routes
+from routes.admin.api_user_favorites import register_routes as register_user_favorites_api_routes
 from routes.admin.api_users_transfer import register_routes as register_user_transfer_routes
 from routes.admin.api_projects import register_routes as register_project_api_routes
 from routes.admin.api_projects_misc import register_routes as register_project_misc_api_routes
@@ -141,7 +142,7 @@ def _admin_layout(content, title, back_href='/admin'):
                         </a>
                         <form method="get" action="/admin/search" class="hidden sm:flex items-center bg-slate-900/20 rounded-lg px-2 py-1.5">
                             <i class="fas fa-search text-slate-300 text-xs mr-1.5"></i>
-                            <input type="text" name="q" placeholder="全局搜索…" class="bg-transparent outline-none border-0 text-xs text-slate-50 placeholder:text-slate-400 w-40 focus:ring-0">
+                            <input type="text" name="q" placeholder="搜索项目、文档、任务、版本、发布单…" class="bg-transparent outline-none border-0 text-xs text-slate-50 placeholder:text-slate-400 w-40 focus:ring-0">
                         </form>
                         <a href="{back_href}" class="inline-flex items-center gap-1.5 text-xs md:text-sm font-medium text-slate-100 hover:text-white hover:underline">
                             <i class="fas fa-arrow-left text-slate-200"></i><span>返回</span>
@@ -203,10 +204,17 @@ def _admin_layout(content, title, back_href='/admin'):
 @bp.route('/admin/search')
 @login_required
 def admin_search():
-    """全局搜索：项目、任务、用户。"""
+    """全局搜索：项目、任务、用户、发布单、版本、文档。"""
     q = (request.args.get('q') or '').strip()[:80]
     username = _current_username()
-    results = {'projects': [], 'tasks': [], 'users': []}
+    results = {
+        'projects': [],
+        'tasks': [],
+        'users': [],
+        'release_orders': [],
+        'versions': [],
+        'docs': [],
+    }
     if q:
         ql = q.lower()
         for pid, p in projects_db.items():
@@ -229,19 +237,117 @@ def admin_search():
             for uname in user_index:
                 if ql in (uname or '').lower():
                     results['users'].append({'id': uname, 'link': '/admin/users'})
-    proj_rows = ''.join('<tr><td class="px-4 py-2"><a href="%s" class="text-indigo-600 hover:underline">%s</a></td><td class="px-4 py-1.5 text-sm text-gray-500">%s</td></tr>' % (html.escape(p['link']), html.escape(p['name']), html.escape(p['id'])) for p in results['projects'][:20])
-    task_rows = ''.join('<tr><td class="px-4 py-2"><a href="%s" class="text-indigo-600 hover:underline">%s</a></td><td class="px-4 py-1.5 text-sm">%s</td></tr>' % (html.escape(t['link']), html.escape(t['title']), html.escape(t['project_id'])) for t in results['tasks'][:20])
-    user_rows = ''.join('<tr><td class="px-4 py-2"><a href="%s" class="text-indigo-600 hover:underline">%s</a></td></tr>' % (html.escape(u['link']), html.escape(u['id'])) for u in results['users'][:20])
+        try:
+            from models.db import init_db, _db_lock, _get_conn
+            from services.release.storage import _decode
+
+            init_db()
+            with _db_lock:
+                order_rows = _get_conn().execute(
+                    "SELECT project_id, release_order_id, version_name, version_code, status, payload FROM release_orders ORDER BY updated_at DESC LIMIT 400"
+                ).fetchall()
+            for row in order_rows or []:
+                pid = str(row['project_id'] or '')
+                if pid not in projects_db or not can_view_project(pid, username):
+                    continue
+                payload = _decode(row['payload'], {}) or {}
+                hay = ' '.join([
+                    str(row['release_order_id'] or ''),
+                    str(row['version_name'] or ''),
+                    str(row['version_code'] or ''),
+                    str(row['status'] or ''),
+                    str(payload.get('release_reason_type') or ''),
+                ]).lower()
+                if ql not in hay:
+                    continue
+                oid = str(row['release_order_id'] or '')
+                results['release_orders'].append({
+                    'id': oid,
+                    'project_id': pid,
+                    'title': '%s (%s)' % (row['version_name'] or oid, row['version_code'] or '-'),
+                    'link': '/admin/projects/%s/release-orders/%s' % (pid, oid),
+                })
+                if len(results['release_orders']) >= 20:
+                    break
+        except Exception:
+            pass
+        for pid, versions in (project_versions_db or {}).items():
+            if pid not in projects_db or not can_view_project(pid, username):
+                continue
+            for ver in versions or []:
+                if not isinstance(ver, dict):
+                    continue
+                hay = ' '.join([
+                    str(ver.get('id') or ''),
+                    str(ver.get('version_name') or ''),
+                    str(ver.get('version_code') or ''),
+                    str(ver.get('channel_id') or ver.get('channel') or ''),
+                    str(ver.get('platform') or ''),
+                ]).lower()
+                if ql not in hay:
+                    continue
+                vid = str(ver.get('id') or '')
+                results['versions'].append({
+                    'id': vid,
+                    'project_id': pid,
+                    'title': '%s / %s' % (ver.get('version_name') or vid, ver.get('version_code') or '-'),
+                    'link': '/admin/projects/%s/versions?version_id=%s' % (pid, quote(vid)),
+                })
+                if len(results['versions']) >= 20:
+                    break
+            if len(results['versions']) >= 20:
+                break
+        try:
+            docs_path = os.path.join(DATA_DIR, 'documents.json')
+            if os.path.isfile(docs_path):
+                with open(docs_path, 'r', encoding='utf-8') as fh:
+                    docs_payload = json.load(fh)
+                doc_rows = docs_payload if isinstance(docs_payload, list) else (docs_payload.get('documents') or [])
+                for doc in doc_rows or []:
+                    if not isinstance(doc, dict):
+                        continue
+                    hay = ' '.join([
+                        str(doc.get('id') or ''),
+                        str(doc.get('title') or ''),
+                        str(doc.get('summary') or doc.get('description') or ''),
+                        str(doc.get('module') or ''),
+                        str(doc.get('category') or ''),
+                    ]).lower()
+                    if ql not in hay:
+                        continue
+                    did = str(doc.get('id') or doc.get('slug') or '')
+                    results['docs'].append({
+                        'id': did,
+                        'title': str(doc.get('title') or did)[:60],
+                        'link': '/docs/%s' % quote(did) if did else '/docs',
+                    })
+                    if len(results['docs']) >= 20:
+                        break
+        except Exception:
+            pass
+    def _rows(items, cols):
+        if not items:
+            return '<tr><td class="px-4 py-2 text-gray-500">无结果</td></tr>'
+        out = []
+        for item in items[:20]:
+            if cols == 1:
+                out.append('<tr><td class="px-4 py-2"><a href="%s" class="text-indigo-600 hover:underline">%s</a></td></tr>' % (html.escape(item['link']), html.escape(str(item.get('title') or item.get('id') or ''))))
+            else:
+                out.append('<tr><td class="px-4 py-2"><a href="%s" class="text-indigo-600 hover:underline">%s</a></td><td class="px-4 py-1.5 text-sm text-gray-500">%s</td></tr>' % (html.escape(item['link']), html.escape(str(item.get('title') or item.get('name') or item.get('id') or '')), html.escape(str(item.get('project_id') or item.get('id') or ''))))
+        return ''.join(out)
     content = '''
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <form method="get" action="/admin/search" class="p-4 border-b flex gap-2">
-            <input type="text" name="q" value="''' + html.escape(q) + '''" placeholder="搜索项目、任务、用户…" class="flex-1 px-4 py-1.5 border border-gray-200 rounded-lg text-sm">
+            <input type="text" name="q" value="''' + html.escape(q) + '''" placeholder="搜索项目、文档、任务、版本、发布单、用户…" class="flex-1 px-4 py-1.5 border border-gray-200 rounded-lg text-sm">
             <button type="submit" class="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium">搜索</button>
         </form>
-        <div class="p-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div><h3 class="font-semibold text-gray-800 mb-2">项目</h3><table class="min-w-full text-sm">''' + (proj_rows or '<tr><td class="px-4 py-2 text-gray-500">无结果</td></tr>') + '''</table></div>
-            <div><h3 class="font-semibold text-gray-800 mb-2">任务</h3><table class="min-w-full text-sm">''' + (task_rows or '<tr><td class="px-4 py-2 text-gray-500">无结果</td></tr>') + '''</table></div>
-            <div><h3 class="font-semibold text-gray-800 mb-2">用户</h3><table class="min-w-full text-sm">''' + (user_rows or '<tr><td class="px-4 py-2 text-gray-500">无结果</td></tr>') + '''</table></div>
+        <div class="p-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div><h3 class="font-semibold text-gray-800 mb-2">项目</h3><table class="min-w-full text-sm">''' + _rows(results['projects'], 2) + '''</table></div>
+            <div><h3 class="font-semibold text-gray-800 mb-2">发布单</h3><table class="min-w-full text-sm">''' + _rows(results['release_orders'], 2) + '''</table></div>
+            <div><h3 class="font-semibold text-gray-800 mb-2">版本</h3><table class="min-w-full text-sm">''' + _rows(results['versions'], 2) + '''</table></div>
+            <div><h3 class="font-semibold text-gray-800 mb-2">文档</h3><table class="min-w-full text-sm">''' + _rows(results['docs'], 1) + '''</table></div>
+            <div><h3 class="font-semibold text-gray-800 mb-2">任务</h3><table class="min-w-full text-sm">''' + _rows(results['tasks'], 2) + '''</table></div>
+            <div><h3 class="font-semibold text-gray-800 mb-2">用户</h3><table class="min-w-full text-sm">''' + _rows([{'link': u['link'], 'title': u['id'], 'id': u['id']} for u in results['users']], 1) + '''</table></div>
         </div>
     </div>'''
     return _admin_layout(content, '全局搜索', back_href='/admin')
@@ -366,7 +472,7 @@ def _current_username():
     return session.get('user') or ''
 
 
-PROJECT_LIST_ASSET_VER = "20260701-p01-modal-v2"
+PROJECT_LIST_ASSET_VER = "20260723-favorites-sync"
 
 
 @bp.route('/admin/projects')
@@ -383,6 +489,7 @@ def admin_projects_page():
         f'<link rel="stylesheet" href="/static/project_list.css?v={PROJECT_LIST_ASSET_VER}">'
     )
     js = (
+        f'<script src="/static/user_favorites_sync.js?v={PROJECT_LIST_ASSET_VER}"></script>'
         f'<script src="/static/project_ui/pm-display-labels.js?v={PROJECT_LIST_ASSET_VER}"></script>'
         f'<script src="/static/project_list.js?v={PROJECT_LIST_ASSET_VER}"></script>'
     )
@@ -842,6 +949,7 @@ def _register_split_api_routes():
     register_media_api_routes(bp)
     register_site_config_api_routes(bp, visual_editor_normalize_modules)
     register_user_api_routes(bp, _password_min_length)
+    register_user_favorites_api_routes(bp, _current_username)
     register_user_transfer_routes(bp, _password_min_length)
     register_project_misc_api_routes(
         bp,

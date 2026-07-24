@@ -11,6 +11,7 @@ from services.release.release_order_service import (
     approve_release_order,
     cancel_release_order,
     create_release_order,
+    expand_gray_rollout,
     get_release_order,
     list_release_orders,
     precheck_release_order,
@@ -79,13 +80,19 @@ def register_release_order_routes(bp) -> None:
             ),
             "rollback": lambda: rollback_release_order(project_id, order_id, _actor()),
             "cancel": lambda: cancel_release_order(project_id, order_id, _actor()),
+            "expand-gray": lambda: expand_gray_rollout(
+                project_id,
+                order_id,
+                _actor(),
+                target_ratio=int(payload.get("target_ratio") or payload.get("rollout_percentage") or 100),
+            ),
         }
         try:
             return jsonify({"ok": True, "data": handlers[action]()})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    for _action in ("build", "precheck", "approve", "publish", "verify", "rollback", "cancel"):
+    for _action in ("build", "precheck", "approve", "publish", "verify", "rollback", "cancel", "expand-gray"):
         bp.add_url_rule(
             f"/api/projects/<project_id>/release-orders/<order_id>/{_action}",
             endpoint=f"release_order_{_action}",

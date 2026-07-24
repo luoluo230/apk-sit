@@ -91,68 +91,30 @@
     return { text: pct + "%", cls: cls };
   }
 
-  function renderKpiCard(opts) {
-    return (
-      '<article class="pm-kpi-card">' +
-      '<span class="pm-kpi-icon pm-kpi-icon--' +
-      opts.tone +
-      '"><img src="/static/project_ui/svg/' +
-      opts.icon +
-      '" alt=""></span>' +
-      '<div class="pm-kpi-body"><span class="pm-kpi-label">' +
-      esc(opts.label) +
-      '</span><div class="pm-kpi-value-row"><strong>' +
-      esc(opts.value) +
-      "</strong></div></div></article>"
-    );
-  }
-
-  function renderKpis(data, cards, latestOrder) {
+  function renderKpis(data) {
     var host = document.getElementById("overviewKpis");
     if (!host) return;
-    var healthy = cards.filter(function (c) {
-      return c.health === "healthy" || c.health === "processing";
-    }).length;
-    var healthPct = cards.length ? ((healthy / cards.length) * 100).toFixed(1) : "—";
-    var builds = cards.reduce(function (s, x) {
-      return s + (x.processing_count || 0);
-    }, 0);
-    var pending = cards.reduce(function (s, x) {
-      return s + (x.failed_count || 0) + (x.pending_approval_count || 0);
-    }, 0);
+    var k = data.kpis || {};
+    var links = k.links || {};
+    var versionText = k.current_version && k.current_version !== "—"
+      ? (k.current_version_code ? k.current_version + " / " + k.current_version_code : k.current_version)
+      : "—";
+    var healthVal = k.service_health_pct == null ? "—" : String(k.service_health_pct) + "%";
     var kpis = [
-      renderKpiCard({
-        icon: "kpi_version.svg",
-        label: "当前版本",
-        value: latestOrder && latestOrder.version_name ? latestOrder.version_name : "—",
-        tone: "violet",
-      }),
-      renderKpiCard({
-        icon: "kpi_health.svg",
-        label: "服务健康度",
-        value: healthPct === "—" ? "—" : healthPct + "%",
-        tone: "green",
-      }),
-      renderKpiCard({
-        icon: "kpi_build.svg",
-        label: "今日构建次数",
-        value: String(builds),
-        tone: "violet",
-      }),
-      renderKpiCard({
-        icon: "kpi_change.svg",
-        label: "待处理变更",
-        value: String(pending),
-        tone: "orange",
-      }),
-      renderKpiCard({
-        icon: "kpi_member.svg",
-        label: "项目成员",
-        value: String(memberCount),
-        tone: "cyan",
-      }),
+      { icon: "kpi_version.svg", label: "当前版本", value: versionText, tone: "violet", href: links.version },
+      { icon: "kpi_health.svg", label: "服务健康度", value: healthVal, tone: "green", href: links.health },
+      { icon: "kpi_build.svg", label: "今日构建次数", value: String(k.today_build_count != null ? k.today_build_count : 0), tone: "violet", href: links.builds },
+      { icon: "kpi_change.svg", label: "待处理变更", value: String(k.pending_changes != null ? k.pending_changes : 0), tone: "orange", href: links.changes },
+      { icon: "kpi_member.svg", label: "项目成员", value: String(k.member_count != null ? k.member_count : memberCount), tone: "cyan", href: links.members },
     ];
-    host.innerHTML = kpis.join("");
+    host.innerHTML = kpis.map(function (card) {
+      var foot = card.href ? '<a class="pm-kpi-footlink" href="' + esc(card.href) + '">查看详情 &gt;</a>' : "";
+      return (
+        '<article class="pm-kpi-card">' +
+        '<span class="pm-kpi-icon pm-kpi-icon--' + card.tone + '"><img src="/static/project_ui/svg/' + card.icon + '" alt=""></span>' +
+        '<div class="pm-kpi-body"><span class="pm-kpi-label">' + esc(card.label) + '</span><div class="pm-kpi-value-row"><strong>' + esc(card.value) + "</strong></div>" + foot + "</div></article>"
+      );
+    }).join("");
   }
 
   function renderEnvCards(data, cards) {
@@ -346,26 +308,16 @@
       return String(b.updated_at).localeCompare(String(a.updated_at));
     });
     var latestOrder = sortedOrders[0];
-    renderKpis(data, cards.filter(function (c) {
-      return STANDARD_ENVS.indexOf(String(c.env_key || "").toLowerCase()) >= 0;
-    }), latestOrder);
+    renderKpis(data);
     renderEnvCards(data, cards);
-    activityEvents = allOrders.map(function (item) {
+    activityEvents = (data.activities || []).map(function (item) {
       return {
-        kind: "release",
-        typeLabel: "发布",
-        title:
-          "发布单 " +
-          (item.release_order_id || "") +
-          " 已发布到 " +
-          (item.env_key || "") +
-          " · " +
-          (item.version_name || "") +
-          " / " +
-          (item.version_code || ""),
-        actor: item.created_by || "系统",
-        time: String(item.updated_at || "").slice(11, 16) || String(item.updated_at || "").slice(0, 16),
-        href: "/admin/projects/" + projectId + "/release-orders/" + encodeURIComponent(item.release_order_id || ""),
+        kind: item.kind || "release",
+        typeLabel: item.type_label || item.typeLabel || "发布",
+        title: item.title || "",
+        actor: item.actor || "系统",
+        time: item.time_short || String(item.time || "").slice(11, 16) || String(item.time || "").slice(0, 16),
+        href: item.href || "#",
       };
     });
     var activeTab =

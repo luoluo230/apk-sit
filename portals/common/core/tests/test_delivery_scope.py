@@ -136,6 +136,41 @@ class DeliveryScopeTests(unittest.TestCase):
         self.assertNotIn("development", douyin_cards)
         self.assertEqual(douyin_cards["production"]["delivery_line_count"], 1)
 
+    @patch("services.release.channel_journey_bff.list_project_env_keys", return_value=["development"])
+    @patch("services.release.channel_journey_bff.build_overview_kpis")
+    @patch("services.release.channel_journey_bff.build_overview_activities")
+    @patch("services.release.channel_journey_bff._core")
+    @patch("services.release.channel_journey_bff._delivery_lines_for_env", return_value=[])
+    @patch("models.data.projects_db", _mock_projects_db())
+    @patch("data.projects.projects_db", _mock_projects_db())
+    @patch("data.channels.channels_db", _MOCK_CHANNELS)
+    def test_project_overview_includes_activities(self, mock_lines, mock_core, mock_activities, mock_kpis, *_patches):
+        mock_core.return_value.list_release_orders.return_value = []
+        mock_activities.return_value = [
+            {"kind": "build", "type_label": "构建", "title": "Jenkins 构建 #1 成功", "actor": "admin", "time_short": "12:00", "href": "/x"},
+            {"kind": "alert", "type_label": "告警", "title": "服务异常", "actor": "Ops", "time_short": "12:01", "href": "/y"},
+            {"kind": "task", "type_label": "任务", "title": "任务更新", "actor": "admin", "time_short": "12:02", "href": "/z"},
+            {"kind": "doc", "type_label": "文档", "title": "文档更新", "actor": "admin", "time_short": "12:03", "href": "/d"},
+        ]
+        mock_kpis.return_value = {
+            "current_version": "1.0.1",
+            "current_version_code": "2",
+            "service_health_pct": 95.0,
+            "today_build_count": 3,
+            "pending_changes": 1,
+            "member_count": 4,
+            "links": {},
+        }
+        overview = project_overview(_TEST_PROJECT, {})
+        self.assertEqual(len(overview["activities"]), 4)
+        kinds = {row["kind"] for row in overview["activities"]}
+        self.assertIn("alert", kinds)
+        self.assertIn("task", kinds)
+        self.assertIn("doc", kinds)
+        self.assertEqual(overview["kpis"]["today_build_count"], 3)
+        mock_activities.assert_called_once_with(_TEST_PROJECT, {}, limit=40)
+        mock_kpis.assert_called_once()
+
 
 class ApiAuthJsonTests(unittest.TestCase):
     def setUp(self):

@@ -188,7 +188,7 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
 
 
 def update_project(data: Dict[str, Any]) -> Tuple[Dict[str, Any], int]:
-    project_id = str(data.get("id") or "").strip()
+    project_id = str(data.get("id") or data.get("project_id") or "").strip()
     v = projects_repo.get_project(project_id)
     if not project_id or not v:
         return attach_legacy_error(fail("项目不存在", code="not_found", legacy={"error": "项目不存在"})), 404
@@ -535,3 +535,41 @@ def delete_project(project_id: str, require_approval_for_delete: bool) -> Tuple[
     projects_repo.delete_project_versions(project_id)
     projects_repo.audit("delete_project", project_id)
     return ok({"project_id": project_id}, legacy={"success": True}), 200
+
+
+def import_projects_csv(csv_text: str, created_by: str, tenant_id: str = "default") -> Tuple[Dict[str, Any], int]:
+    import csv
+    import io
+
+    text = str(csv_text or "").strip()
+    if not text:
+        return attach_legacy_error(fail("CSV 内容为空", code="validation_error", legacy={"error": "CSV 内容为空"})), 400
+    reader = csv.DictReader(io.StringIO(text))
+    created: List[str] = []
+    errors: List[str] = []
+    for idx, row in enumerate(reader, start=2):
+        if not isinstance(row, dict):
+            continue
+        pid = str(row.get("project_id") or row.get("id") or "").strip()
+        name = str(row.get("name") or pid).strip()
+        if not pid:
+            errors.append(f"行 {idx}: 缺少 project_id")
+            continue
+        if projects_repo.has_project(pid):
+            errors.append(f"行 {idx}: 项目 {pid} 已存在")
+            continue
+        payload = {
+            "project_id": pid,
+            "name": name or pid,
+            "intro": str(row.get("intro") or "").strip(),
+            "channels": [x.strip() for x in str(row.get("channels") or "wechat").replace("，", ",").split(",") if x.strip()],
+        }
+        result, status = create_project(payload, created_by, tenant_id)
+        if status >= 400:
+            err = result.get("error") or result.get("message") or "创建失败"
+            errors.append(f"行 {idx}: {err}")
+            continue
+        created.append(pid)
+    if not created and errors:
+        return attach_legacy_error(fail("导入失败", code="import_failed", legacy={"error": "; ".join(errors), "errors": errors})), 400
+    return ok({"created": created, "errors": errors, "created_count": len(created)}, legacy={"success": True}), 200

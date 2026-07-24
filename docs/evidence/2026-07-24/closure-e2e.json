@@ -1,0 +1,43 @@
+{
+  "started_at": "2026-07-24T09:56:38.360797",
+  "checks": {
+    "flask": {
+      "overview_200": true,
+      "overview_links_activities": true,
+      "activities_page_200": true,
+      "activities_api_ok": true,
+      "activities_api_has_list": true,
+      "settings_members_ui": true
+    },
+    "gray": {
+      "gray_hold_can_expand_false": true
+    },
+    "live": {
+      "live_overview_activities_link": true,
+      "live_activities_page": true,
+      "live_activities_api": true,
+      "live_settings_members": true
+    },
+    "protocol": {
+      "static_gate": true,
+      "static_coverage_empty": true,
+      "static_handler_GameProgressionBusinessHandler.cs": true,
+      "static_handler_SocialGameplayBusinessHandler.cs": true,
+      "static_handler_BattleSyncBusinessHandler.cs": true,
+      "static_gate_pass": true,
+      "cluster_config_ready": true,
+      "cluster_patched": false,
+      "protocol_gate_exit_code": 0,
+      "protocol_report_exists": true,
+      "strictCompletenessPassed": true,
+      "coverageStubCount": 0,
+      "backfilledCount": 0,
+      "isCompatible": true,
+      "report_path": "E:\\maclient\\game-server\\game-server\\bin\\Debug\\reports\\protocol-compatibility-report.json",
+      "protocol_gate_pass": true
+    }
+  },
+  "failed": [],
+  "live_server": true,
+  "finished_at": "2026-07-24T09:56:43.773132"
+}

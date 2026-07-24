@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-占位路由：管理中心、数据分析、构建管理、版本管理尚未迁移到独立 Blueprint 时，
-在此注册占位路由，避免 404。后续可将完整实现迁入 routes/admin、dashboard、build、versions。
+已废弃占位路由：本模块未在 app_new 中注册，真实入口见 admin_routes / project_delivery。
+保留仅供历史参考，勿再扩展。
 """
 
 from flask import redirect

@@ -69,16 +69,39 @@
         document.dispatchEvent(new CustomEvent("pm-shell-search", { detail: { query: shellSearch.value.trim() } }));
       }, 200);
     });
+    shellSearch.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      const q = shellSearch.value.trim();
+      if (!q) return;
+      window.location.href = "/admin/search?q=" + encodeURIComponent(q);
+    });
   }
 
+  const fav = window.PmUserFavorites;
   document.querySelectorAll(".pm-page-star").forEach((button) => {
     const key = button.dataset.favoriteKey || favoriteKey;
-    const sync = () => button.classList.toggle("is-favorite", localStorage.getItem(key) === "1");
+    const sync = () => {
+      const active = fav
+        ? fav.isPageFavorite(projectId, pageKey) || localStorage.getItem(key) === "1"
+        : localStorage.getItem(key) === "1";
+      button.classList.toggle("is-favorite", active);
+    };
     sync();
-    button.addEventListener("click", () => {
-      const next = localStorage.getItem(key) === "1" ? "0" : "1";
-      localStorage.setItem(key, next);
+    button.addEventListener("click", async () => {
+      if (fav) {
+        try {
+          await fav.togglePageFavorite(projectId, pageKey);
+        } catch (_) {
+          const next = localStorage.getItem(key) === "1" ? "0" : "1";
+          localStorage.setItem(key, next);
+        }
+      } else {
+        const next = localStorage.getItem(key) === "1" ? "0" : "1";
+        localStorage.setItem(key, next);
+      }
       sync();
     });
+    document.addEventListener("pm-favorites-changed", sync);
   });
 })();

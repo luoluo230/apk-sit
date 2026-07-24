@@ -8,7 +8,7 @@ from flask import render_template, request, session
 from models.data import projects_db
 from services.ops.helpers import _render_ops_page
 
-DELIVERY_ASSET_VER = "20260722-p19-browser-pass"
+DELIVERY_ASSET_VER = "20260724-closure-e2e"
 
 BREADCRUMB_BY_PAGE = {
     "project-home": "总览",
@@ -83,6 +83,15 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
             f'<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/project_overview.css?v={DELIVERY_ASSET_VER}">'
+        )
+    elif template_name == "project_activities.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_overview.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = (
+            f'<script src="/static/delivery_common.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_activities.js?v={DELIVERY_ASSET_VER}"></script>'
         )
     elif template_name == "project_environment_runtime.html":
         css = (

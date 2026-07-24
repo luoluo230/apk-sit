@@ -826,7 +826,17 @@
     document.getElementById("btnBatchProbe").onclick = batchProbe;
     document.getElementById("btnBatchRestart").onclick = batchRestart;
     document.getElementById("btnBatchBind").onclick = function () {
-      toast("批量绑定服务入口保留，当前请在详情页完成绑定与运维操作", "success");
+      const row = state.rows.find(function (r) { return state.selectedIds.has(r.rowId); });
+      if (!row) {
+        toast("请先勾选需要绑定的 Agent", "error");
+        return;
+      }
+      const agentId = String(row.agent_id || row.id || "").trim();
+      if (!agentId) {
+        toast("所选 Agent 缺少 agent_id", "error");
+        return;
+      }
+      window.location.href = "/admin/projects/" + encodeURIComponent(state.projectId) + "/agents/" + encodeURIComponent(agentId) + "?env_key=" + encodeURIComponent(state.envKey) + "&action=bind-service";
     };
     document.getElementById("btnCleanupExpired").onclick = cleanupExpired;
 

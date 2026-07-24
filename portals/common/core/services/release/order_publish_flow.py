@@ -255,6 +255,17 @@ def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
         result["runtime_run_id"] = ""
         result["runtime_active"] = False
         result["runtime_skipped"] = True
+    from services.release.validation_plan_runner import run_validation_plan
+
+    validation = run_validation_plan(
+        {**order, "project_id": project_id, "release_order_id": order_id, "payload": plan},
+        client_snapshot=version,
+        phase="precheck",
+    )
+    result["validation_plan"] = validation
+    if validation.get("items") and not validation.get("ok"):
+        result["ok"] = False
+        result["validation_error"] = "验证计划未通过"
     target = "awaiting_approval" if result.get("ok") and order["env_key"] == "production" else ("ready" if result.get("ok") else "precheck_failed")
     now = _now_iso()
     with get_cursor() as cur:
@@ -374,6 +385,8 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
     from services.release.bundle_service import build_client_bootstrap_snapshot
 
     client_snapshot = build_client_bootstrap_snapshot(version, scope)
+    gray_meta = _resolve_rollout_from_plan(plan)
+    client_snapshot["rollout_percentage"] = gray_meta["rollout_percentage"]
     client_snapshot["artifacts"] = [
         {
             "artifact_type": str(item.get("artifact_type") or ""),
@@ -403,6 +416,15 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
         "published_by": actor,
         "created_at": now,
         "updated_at": now,
+        "release_strategy": gray_meta["release_strategy"],
+        "gray_strategy": gray_meta["gray_strategy"],
+        "gray_ratio": gray_meta["gray_ratio"],
+        "gray_duration": gray_meta["gray_duration"],
+        "gray_success_action": gray_meta["gray_success_action"],
+        "gray_canary_list": plan.get("gray_canary_list") or plan.get("gray_canary_user_ids") or "",
+        "gray_regions": plan.get("gray_regions") or plan.get("gray_region_list") or "",
+        "rollout_percentage": gray_meta["rollout_percentage"],
+        "gray_status": "active" if gray_meta["is_gray_active"] else "full",
     }
     init_db()
     with get_cursor() as cur:
@@ -503,6 +525,87 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
     return published
 
 
+def _resolve_rollout_from_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(plan or {})
+    strategy = str(payload.get("release_strategy") or "standard").strip().lower()
+    gray_ratio_raw = str(payload.get("gray_ratio") or "").strip()
+    rollout = 100
+    if strategy == "gray":
+        try:
+            rollout = max(1, min(100, int(gray_ratio_raw or "10")))
+        except (TypeError, ValueError):
+            rollout = 10
+    elif gray_ratio_raw:
+        try:
+            rollout = max(0, min(100, int(gray_ratio_raw)))
+        except (TypeError, ValueError):
+            rollout = 100
+    return {
+        "release_strategy": strategy,
+        "gray_strategy": str(payload.get("gray_strategy") or "ratio").strip(),
+        "gray_ratio": str(rollout if strategy == "gray" else (gray_ratio_raw or rollout)),
+        "rollout_percentage": rollout,
+        "gray_duration": str(payload.get("gray_duration") or "").strip(),
+        "gray_success_action": str(payload.get("gray_success_action") or "manual").strip(),
+        "is_gray_active": strategy == "gray" and rollout < 100,
+    }
+
+
+def expand_gray_rollout(
+    project_id: str,
+    order_id: str,
+    actor: str,
+    *,
+    target_ratio: int = 100,
+) -> Dict[str, Any]:
+    order = _order_crud().get_release_order(project_id, order_id, include_details=True)
+    if not order:
+        raise ValueError("发布单不存在")
+    if str(order.get("status") or "") != "published":
+        raise ValueError("仅已发布订单可扩大灰度")
+    bundle_id = str(order.get("bundle_id") or "").strip()
+    if not bundle_id:
+        raise ValueError("发布单缺少 bundle")
+    plan = dict(order.get("payload") or {})
+    hold_action = str(plan.get("gray_success_action") or "manual").strip().lower()
+    if hold_action == "hold":
+        raise ValueError("灰度策略为保持当前比例，不可扩大放量")
+    try:
+        ratio = max(1, min(100, int(target_ratio)))
+    except (TypeError, ValueError):
+        ratio = 100
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute("SELECT payload FROM release_bundles WHERE bundle_id=?", (bundle_id,)).fetchone()
+        if not row:
+            raise ValueError("Bundle 不存在")
+        bundle = _decode(row["payload"], {}) or {}
+        client = dict(bundle.get("client") or {})
+        client["rollout_percentage"] = ratio
+        bundle["client"] = client
+        bundle["rollout_percentage"] = ratio
+        bundle["gray_ratio"] = str(ratio)
+        bundle["gray_status"] = "full" if ratio >= 100 else "active"
+        bundle["gray_expanded_at"] = now
+        bundle["gray_expanded_by"] = actor
+        bundle["updated_at"] = now
+        cur.execute(
+            "UPDATE release_bundles SET payload=?, updated_at=? WHERE bundle_id=?",
+            (_json(bundle), now, bundle_id),
+        )
+        plan = dict(order.get("payload") or {})
+        plan["gray_ratio"] = str(ratio)
+        if ratio >= 100:
+            plan["release_strategy"] = "standard"
+        cur.execute(
+            "UPDATE release_orders SET payload=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+            (_json(plan), now, project_id, order_id),
+        )
+        _event(cur, order_id, "gray_expanded", actor, "published", "published", {"bundle_id": bundle_id, "rollout_percentage": ratio})
+    return _order_crud().get_release_order(project_id, order_id)
+
+
 def run_bootstrap_smoke_for_order(project_id: str, order_id: str) -> Dict[str, Any]:
     """HTTP smoke against active bundle fields after publish (internal validation)."""
     order = _order_crud().get_release_order(project_id, order_id, include_details=False)
@@ -556,6 +659,10 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
     if ok:
         smoke_report = run_bootstrap_smoke_for_order(project_id, order_id)
         smoke_ok = bool(smoke_report.get("ok"))
+    from services.release.validation_plan_runner import run_validation_plan
+
+    validation = run_validation_plan({**order, "project_id": project_id, "release_order_id": order_id}, phase="verify")
+    smoke_ok = smoke_ok and bool(validation.get("ok", True))
     target = "verified" if smoke_ok else "verify_failed"
     return _order_crud()._transition(
         project_id,
@@ -563,7 +670,7 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
         actor,
         target,
         "verified" if smoke_ok else "verify_failed",
-        {"ok": smoke_ok, "smoke": smoke_report},
+        {"ok": smoke_ok, "smoke": smoke_report, "validation_plan": validation},
     )
 
 

@@ -62,6 +62,23 @@
           <footer class="build-pagination"><span data-result-count>共 0 条记录</span><div><button type="button" data-prev><img src="/static/project_ui/svg/action_back.svg" alt=""></button><span data-page-text>1 / 1</span><button type="button" data-next><img src="/static/project_ui/svg/action_next.svg" alt=""></button></div></footer>
         </div>
       </section>
+
+      <section class="build-panel build-artifacts-panel">
+        <div class="build-panel-title">
+          <div><h2>产物列表</h2><p>按构建记录聚合的安装包与 Bundle 产物</p></div>
+        </div>
+        <nav class="build-artifact-tabs" data-artifact-tabs>
+          <button type="button" class="active" data-artifact-view="latest">最新产物</button>
+          <button type="button" data-artifact-view="by-build">按构建</button>
+          <button type="button" data-artifact-view="by-type">按类型</button>
+        </nav>
+        <div class="build-table-wrap" data-artifact-wrap>
+          <table class="build-table build-artifact-table">
+            <thead><tr><th>产物</th><th>类型</th><th>构建 #</th><th>版本</th><th>SHA256</th><th>操作</th></tr></thead>
+            <tbody data-artifact-rows></tbody>
+          </table>
+        </div>
+      </section>
     </main>
 
     <aside class="build-side">

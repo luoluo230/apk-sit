@@ -100,6 +100,7 @@ def runtime_bootstrap():
     platform = str(request.args.get("platform") or "").strip().lower()
     device_id = str(request.args.get("device_id") or "").strip()
     user_id = str(request.args.get("user_id") or "").strip()
+    region = str(request.args.get("region") or request.args.get("client_region") or "").strip()
     if not game_id or not game_key or not env_key or not channel or not is_valid_platform_id(platform):
         return jsonify({"ok": False, "error": "game_id、game_key、env_key、channel、platform 必填"}), 400
     project_id = next((
@@ -128,7 +129,7 @@ def runtime_bootstrap():
         return jsonify({"ok": False, "error": "当前作用域没有已发布 Bundle"}), 404
     from services.release.bundle_service import resolve_gray_rollout_bundle
 
-    rollout = resolve_gray_rollout_bundle(bundle, device_id=device_id, user_id=user_id)
+    rollout = resolve_gray_rollout_bundle(bundle, device_id=device_id, user_id=user_id, region=region)
     effective = rollout.get("bundle") if isinstance(rollout.get("bundle"), dict) else {}
     if rollout.get("gray_miss") and not effective:
         return make_response(

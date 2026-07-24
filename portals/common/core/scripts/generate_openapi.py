@@ -35,26 +35,23 @@ def _path_params(rule: str) -> list[dict]:
 
 
 def _operation(method: str, endpoint: str, rule: str) -> dict:
+    import importlib.util
+
+    registry_path = os.path.join(os.path.dirname(__file__), "openapi_schema_registry.py")
+    spec = importlib.util.spec_from_file_location("openapi_schema_registry", registry_path)
+    registry = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(registry)
+    enrich_operation = registry.enrich_operation
+
     op: dict = {
         "summary": endpoint.replace("_", " "),
         "operationId": f"{endpoint}_{method.lower()}",
-        "responses": {
-            "200": {"description": "OK"},
-            "400": {"description": "Bad request"},
-            "401": {"description": "Unauthorized"},
-            "403": {"description": "Forbidden"},
-            "404": {"description": "Not found"},
-        },
     }
     params = _path_params(rule)
     if params:
         op["parameters"] = params
-    if method in ("POST", "PUT", "PATCH"):
-        op["requestBody"] = {
-            "required": False,
-            "content": {"application/json": {"schema": {"type": "object"}}},
-        }
-    return op
+    return enrich_operation(method, endpoint, rule, op)
 
 
 def collect_paths() -> dict:
@@ -80,14 +77,24 @@ def collect_paths() -> dict:
 
 
 def build_spec() -> dict:
+    import importlib.util
+
+    registry_path = os.path.join(os.path.dirname(__file__), "openapi_schema_registry.py")
+    spec = importlib.util.spec_from_file_location("openapi_schema_registry", registry_path)
+    registry = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(registry)
+    build_components = registry.build_components
+
     paths = collect_paths()
     return {
         "openapi": "3.0.3",
         "info": {
             "title": "apk-site Admin / Release / Ops API",
-            "version": "2.0.0",
-            "description": "Auto-generated from Flask url_map (admin portal mode).",
+            "version": "2.1.0",
+            "description": "Auto-generated from Flask url_map with typed request/response schemas.",
         },
+        "components": build_components(),
         "paths": paths,
     }
 
@@ -111,6 +118,42 @@ def main() -> int:
         )
         return 1
 
+    ops_with_body = 0
+    ops_with_schema = 0
+    missing_schema_ops: list[str] = []
+    for path, entry in spec["paths"].items():
+        for method, op in entry.items():
+            if op.get("requestBody"):
+                ops_with_body += 1
+            resp200 = (op.get("responses") or {}).get("200") or {}
+            content = resp200.get("content") or {}
+            typed = False
+            for media in content.values():
+                schema = media.get("schema") or {}
+                if schema.get("$ref") or schema.get("type"):
+                    typed = True
+                    break
+            if typed:
+                ops_with_schema += 1
+            else:
+                missing_schema_ops.append(f"{method.upper()} {path}")
+
+    total_ops = sum(len(entry) for entry in spec["paths"].values())
+    if missing_schema_ops:
+        sample = ", ".join(missing_schema_ops[:8])
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": f"{len(missing_schema_ops)}/{total_ops} operations missing typed 200 response schema",
+                    "sample": sample,
+                },
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+
     if args.check:
         if not os.path.isfile(OUT):
             print(f"FAIL: missing {OUT}; run generate_openapi.py", file=sys.stderr)
@@ -120,13 +163,13 @@ def main() -> int:
         if on_disk != spec:
             print(f"FAIL: {OUT} is out of date; rerun generate_openapi.py", file=sys.stderr)
             return 1
-        print(json.dumps({"ok": True, "paths": path_count}, ensure_ascii=False))
+        print(json.dumps({"ok": True, "paths": path_count, "operations": total_ops, "ops_with_body": ops_with_body, "ops_with_schema": ops_with_schema}, ensure_ascii=False))
         return 0
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as handle:
         json.dump(spec, handle, ensure_ascii=False, indent=2)
-    print(f"Wrote {path_count} paths to {OUT}")
+    print(f"Wrote {path_count} paths / {total_ops} operations ({ops_with_body} request bodies, {ops_with_schema} typed responses) to {OUT}")
     return 0
 
 

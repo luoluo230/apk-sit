@@ -121,7 +121,37 @@ def activate_commercial_release():
 @bp.route("/admin/build/commercial-release/plan-preview", methods=["POST"])
 @admin_required_any("projects", "build")
 def preview_commercial_plan():
-    """Legacy plan preview — pass-through only."""
+    """Legacy plan preview — diff against pipeline defaults or redirect hint."""
     data = request.get_json(silent=True) or {}
     plan = data.get("plan") or {}
-    return jsonify({"plan": plan, "deprecated": True})
+    project_id = str(data.get("project_id") or data.get("_project_id") or "").strip()
+    version_id = str(data.get("version_id") or data.get("_version_id") or "").strip()
+    if not plan and project_id and version_id:
+        return jsonify({
+            "deprecated": True,
+            "redirect": f"/admin/projects/{project_id}/release-orders/new?version_id={version_id}",
+            "message": "请使用发版单表单预览计划",
+        }), 200
+    baseline: dict = {}
+    if project_id and version_id:
+        from models.data import project_versions_db
+        from services.commercial_release_plan import plan_defaults_from_pipeline
+
+        version = next((row for row in (project_versions_db.get(project_id) or []) if str(row.get("id") or "") == version_id), None)
+        if isinstance(version, dict):
+            baseline = plan_defaults_from_pipeline(version, project_id)
+    diff = []
+    keys = sorted(set(list(plan.keys()) + list(baseline.keys())))
+    for key in keys:
+        old = baseline.get(key)
+        new = plan.get(key)
+        if old != new:
+            diff.append({"key": key, "from": old, "to": new})
+    return jsonify({
+        "plan": plan,
+        "baseline": baseline,
+        "diff": diff,
+        "changed_count": len(diff),
+        "deprecated": True,
+        "prefer": f"/admin/projects/{project_id}/release-orders/new" if project_id else "",
+    })

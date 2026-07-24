@@ -10,12 +10,22 @@
     <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=environments"><img src="/static/project_ui/svg/nav_environment.svg" alt="">环境与交付范围</a>
     <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=channels"><img src="/static/project_ui/svg/nav_binding.svg" alt="">渠道白名单</a>
     <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=platforms"><img src="/static/project_ui/svg/file_android.svg" alt="">平台白名单</a>
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview"><img src="/static/project_ui/svg/nav_roles_member.svg" alt="">成员与权限</a>
+    <a class="pm-btn" href="/admin/projects/{{ project_id }}/settings?tab=members"><img src="/static/project_ui/svg/nav_roles_member.svg" alt="">成员与权限</a>
   </div>
-  <div class="pm-placeholder-page" style="margin-top:16px">
+  <div class="pm-placeholder-page" style="margin-top:16px" {% if request.args.get('tab') == 'members' %}hidden{% endif %}>
     <img src="/static/project_ui/svg/nav_project_setting.svg" alt="">
     <h2>设置项已分散在项目总览</h2>
-    <p>为避免重复业务逻辑，环境、渠道、平台与成员管理仍在项目总览对应 Tab 中维护；此处提供快捷入口。</p>
-    <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/overview?tab=environments">打开环境管理</a>
+    <p>环境、渠道、平台在总览 Tab 中维护；成员邀请请进入「成员与权限」。</p>
+    <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/settings?tab=members">成员与权限</a>
   </div>
+  <section id="projectSettingsMembers" class="pm-rail-panel" style="margin-top:16px" {% if request.args.get('tab') != 'members' %}hidden{% endif %}>
+    <div class="p02-rail-head"><h2>项目成员</h2></div>
+    <div id="settingsMemberList" class="p02-member-list"><div class="p02-empty">正在加载成员...</div></div>
+    <div class="pm-form-grid" style="margin-top:16px;max-width:520px">
+      <label><span>用户名</span><input id="settingsInviteUsername" type="text" placeholder="系统内已有用户名"></label>
+      <label><span>角色</span><select id="settingsInviteRole"><option value="viewer">查看者</option><option value="editor">编辑者</option></select></label>
+      <div><button id="settingsInviteBtn" class="pm-btn pm-btn--primary" type="button">邀请成员</button></div>
+    </div>
+  </section>
 </section>
+<script src="/static/project_settings.js?v=20260723-p1"></script>

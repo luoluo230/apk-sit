@@ -11,6 +11,7 @@ from services.admin import project_env_service, project_service
 from services.authz import admin_required
 from services.ops.environment_runtime_service import build_environment_runtime_overview
 from services.release.bundle_service import list_publishable_bundles
+from services.release.overview_feed_service import build_overview_activities
 from services.release.release_order_service import (
     activate_bundle_on_scope,
     context_options,
@@ -112,6 +113,24 @@ def register_scope_routes(bp) -> None:
             for key in ("env_key", "channel_id", "platform", "health")
         }
         return jsonify({"ok": True, "data": project_overview(project_id, filters)})
+
+    @bp.route("/api/projects/<project_id>/activities")
+    @admin_required("projects")
+    def project_activities_api(project_id: str):
+        if project_id not in projects_db:
+            return jsonify({"ok": False, "error": "项目不存在"}), 404
+        filters = {
+            key: str(request.args.get(key) or "").strip()
+            for key in ("env_key", "channel_id", "platform")
+        }
+        kind = str(request.args.get("kind") or request.args.get("tab") or "").strip().lower()
+        try:
+            limit = int(request.args.get("limit") or 200)
+        except (TypeError, ValueError):
+            limit = 200
+        limit = max(1, min(limit, 500))
+        activities = build_overview_activities(project_id, filters, limit=limit, kind=kind)
+        return jsonify({"ok": True, "data": {"activities": activities, "total": len(activities), "kind": kind or "all"}})
 
     def _project_channel_mutation(project_id: str, action: str):
         if project_id not in projects_db:

@@ -29,6 +29,13 @@ def projects_update_response():
     return jsonify(payload), status
 
 
+def projects_import_csv_response(created_by: str, tenant_id: str):
+    data = request.get_json(force=True, silent=True) or {}
+    csv_text = str(data.get("csv") or data.get("content") or "").strip()
+    payload, status = project_service.import_projects_csv(csv_text, created_by, tenant_id)
+    return jsonify(payload), status
+
+
 def projects_channels_add_response(project_id: str):
     data = request.get_json(force=True, silent=True) or {}
     cid = (data.get("channel_id") or data.get("channel") or "").strip()
@@ -241,6 +248,12 @@ def register_routes(bp, current_username_getter, tenant_id_getter):
     )
     bp.add_url_rule("/admin/projects/get/<project_id>", endpoint="admin_projects_get", view_func=_projects_get)
     bp.add_url_rule("/admin/projects/update", endpoint="admin_projects_update", view_func=_projects_update, methods=["POST"])
+
+    @admin_required("projects")
+    def _projects_import_csv():
+        return projects_import_csv_response(current_username_getter(), tenant_id_getter())
+
+    bp.add_url_rule("/admin/projects/import-csv", endpoint="admin_projects_import_csv", view_func=_projects_import_csv, methods=["POST"])
     bp.add_url_rule(
         "/admin/projects/<project_id>/channels/add",
         endpoint="admin_projects_channels_add",

@@ -20,7 +20,8 @@ from services.release.scope_resolver import resolve_network_profile, resolve_sco
 from services.release.storage import find_manifest
 
 from services.release.order_constants import EDITABLE_PLAN_FIELDS, PUBLISHABLE_STATUSES, TERMINAL_STATUSES
-from services.release.order_helpers import _find_version
+from services.release.order_helpers import _find_version, _decode
+from services.release.overview_feed_service import build_overview_activities, build_overview_kpis
 
 
 def _core():
@@ -142,6 +143,42 @@ def _channel_entry_urls(project_id: str, env_key: str, channel_id: str) -> Dict[
     }
 
 
+def _gray_rollout_view(order: Dict[str, Any] | None, active_bundle: Dict[str, Any] | None) -> Dict[str, Any]:
+    order = order if isinstance(order, dict) else {}
+    bundle = active_bundle if isinstance(active_bundle, dict) else {}
+    plan = dict(order.get("payload") or {})
+    client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
+    strategy = str(plan.get("release_strategy") or bundle.get("release_strategy") or "standard").strip().lower()
+    try:
+        rollout = int(
+            client.get("rollout_percentage")
+            if client.get("rollout_percentage") is not None
+            else bundle.get("rollout_percentage")
+            if bundle.get("rollout_percentage") is not None
+            else plan.get("gray_ratio")
+            if plan.get("gray_ratio") not in (None, "")
+            else 100
+        )
+    except (TypeError, ValueError):
+        rollout = 100
+    rollout = max(0, min(100, rollout))
+    gray_status = str(bundle.get("gray_status") or ("active" if strategy == "gray" and rollout < 100 else "full"))
+    return {
+        "release_strategy": strategy,
+        "gray_strategy": str(plan.get("gray_strategy") or bundle.get("gray_strategy") or "ratio"),
+        "gray_ratio": str(plan.get("gray_ratio") or bundle.get("gray_ratio") or rollout),
+        "gray_duration": str(plan.get("gray_duration") or bundle.get("gray_duration") or ""),
+        "gray_success_action": str(plan.get("gray_success_action") or bundle.get("gray_success_action") or "manual"),
+        "rollout_percentage": rollout,
+        "gray_status": gray_status,
+        "is_gray_active": strategy == "gray" and rollout < 100 and gray_status != "full",
+        "can_expand_gray": bool(order.get("release_order_id"))
+        and str(order.get("status") or "") == "published"
+        and rollout < 100
+        and str(plan.get("gray_success_action") or bundle.get("gray_success_action") or "manual").strip().lower() != "hold",
+    }
+
+
 def _platform_state_for_journey(project_id: str, env_key: str, line: Dict[str, Any]) -> Dict[str, Any]:
     from services.release.release_policy_service import assess_delivery_readiness, build_config_href
 
@@ -156,6 +193,10 @@ def _platform_state_for_journey(project_id: str, env_key: str, line: Dict[str, A
     order_status = str(order.get("status") or "") if order else ""
     artifact_ready = bool(version and str(version.get("apk_status") or "") == "found") or order_status == "artifacts_ready"
     active_bundle = find_active_bundle(scope_id, platform=platform) if scope_id else {}
+    order_full = None
+    if order and order.get("release_order_id"):
+        order_full = _core().get_release_order(project_id, str(order.get("release_order_id") or ""))
+    gray = _gray_rollout_view(order_full or order, active_bundle)
     return {
         "platform": platform,
         "platform_label": line.get("platform_label") or platform,
@@ -173,6 +214,7 @@ def _platform_state_for_journey(project_id: str, env_key: str, line: Dict[str, A
         "build_config_href": build_config_href(project_id, version) if version else "",
         "versions": _versions_for_channel_platform(project_id, env_key, cid, platform),
         "publishable_bundles": list_publishable_bundles(scope_id, platform=platform) if scope_id else [],
+        **gray,
     }
 
 
@@ -351,8 +393,10 @@ def resolve_channel_release_journey(
         order = _core().find_release_order_for_version(project_id, selected_vid)
         if order:
             enriched = {**state, "order_status": order.get("status"), "release_order_id": order.get("release_order_id")}
+            full = _core().get_release_order(project_id, str(order.get("release_order_id") or ""))
+            if full:
+                enriched.update(_gray_rollout_view(full, find_active_bundle(str(state.get("scope_id") or ""), platform=plat)))
             if str(order.get("status") or "") == "precheck_failed":
-                full = _core().get_release_order(project_id, str(order.get("release_order_id") or ""))
                 if full:
                     from services.release.order_diagnostics import summarize_order_diagnostic_issues
 
@@ -500,6 +544,61 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
     return lines
 
 
+_EVENT_KIND_LABELS: Dict[str, Tuple[str, str]] = {
+    "build_requested": ("build", "构建"),
+    "build_completed": ("build", "构建"),
+    "build_failed": ("build", "构建"),
+    "build_finalize_failed": ("build", "构建"),
+    "published": ("release", "发布"),
+    "rollback_restored": ("release", "发布"),
+    "publish_started": ("release", "发布"),
+    "verify_started": ("release", "发布"),
+    "precheck_started": ("release", "发布"),
+    "prechecked": ("release", "发布"),
+    "approved": ("approval", "审批"),
+    "created": ("change", "变更"),
+    "draft_updated": ("change", "变更"),
+    "cancelled": ("change", "变更"),
+}
+
+
+def _activity_title(event_type: str, order_id: str, env_key: str, version_name: str, version_code: str, payload: Dict[str, Any]) -> str:
+    base = f"{version_name} / {version_code}".strip(" /")
+    env = env_key or "—"
+    oid = order_id or "—"
+    if event_type == "build_requested":
+        bn = payload.get("build_number") or payload.get("build_job_id") or "—"
+        return f"触发 Jenkins 构建 #{bn} · {base} · {env}"
+    if event_type == "build_completed":
+        bn = payload.get("build_number") or "—"
+        return f"Jenkins 构建 #{bn} 成功 · {base} · {env}"
+    if event_type in {"build_failed", "build_finalize_failed"}:
+        hint = str(payload.get("failure_summary") or payload.get("error") or "失败")[:80]
+        return f"Jenkins 构建失败 · {oid} · {hint}"
+    if event_type == "published":
+        return f"发布单 {oid} 已发布到 {env} · {base}"
+    if event_type == "rollback_restored":
+        return f"发布单 {oid} 已回滚恢复 · {env} · {base}"
+    if event_type == "approved":
+        return f"发布单 {oid} 审批通过 · {env} · {base}"
+    if event_type == "prechecked":
+        return f"发布单 {oid} 预检通过 · {env} · {base}"
+    if event_type in {"precheck_started", "publish_started", "verify_started"}:
+        label = {"precheck_started": "预检中", "publish_started": "发布中", "verify_started": "验收中"}.get(event_type, event_type)
+        return f"发布单 {oid} {label} · {env} · {base}"
+    if event_type == "created":
+        return f"发布单 {oid} 已创建 · {env} · {base}"
+    if event_type == "draft_updated":
+        return f"发布单 {oid} 计划已更新 · {env} · {base}"
+    if event_type == "cancelled":
+        return f"发布单 {oid} 已取消 · {env}"
+    return f"发布单 {oid} · {event_type} · {env} · {base}"
+
+
+def _overview_activities(project_id: str, filters: Optional[Dict[str, str]] = None, *, limit: int = 40) -> List[Dict[str, Any]]:
+    return build_overview_activities(project_id, filters, limit=limit)
+
+
 def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     init_db()
     filters = filters or {}
@@ -583,6 +682,8 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
         "project_id": project_id,
         "project": projects_db.get(project_id) or {},
         "environments": cards,
+        "activities": _overview_activities(project_id, filters),
+        "kpis": build_overview_kpis(project_id, filters, cards),
         "environment_options": [
             {"env_key": key, "env_label": project_env_label(project_id, key)}
             for key in list_project_env_keys(project_id)

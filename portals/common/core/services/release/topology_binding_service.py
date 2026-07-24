@@ -16,6 +16,19 @@ def _now_iso() -> str:
     return datetime.now().isoformat()
 
 
+def _count_topology_bundle_refs(topology_id: str) -> int:
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return 0
+    init_db()
+    with _db_lock:
+        row = _get_conn().execute(
+            "SELECT COUNT(*) FROM release_bundles WHERE topology_id=?",
+            (tid,),
+        ).fetchone()
+    return int(row[0] if row else 0)
+
+
 def _binding_level(env_key: str, channel_id: str, platform: str, version_name: str) -> str:
     if version_name:
         return "version"
@@ -370,7 +383,7 @@ def build_topology_binding_picker(
                 },
                 "binding_refs": binding_refs,
                 "binding_ref_count": len(binding_refs),
-                "bundle_ref_count": 0,
+                "bundle_ref_count": _count_topology_bundle_refs(tid),
                 "flags": {
                     "is_current_hit": is_current_hit,
                     "is_same_env": is_same_env,

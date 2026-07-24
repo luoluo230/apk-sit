@@ -1070,17 +1070,19 @@
     const allOrders = cards.flatMap((item) => item.latest_orders || []);
     const sortedOrders = [...allOrders].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
     const latestOrder = sortedOrders[0];
-    const healthyCount = cards.filter((item) => item.health === "healthy").length;
-    const healthPct = cards.length ? ((healthyCount / cards.length) * 100).toFixed(1) : "—";
-    const processingTotal = cards.reduce((s, x) => s + (x.processing_count || 0), 0);
-    const pendingChanges = cards.reduce((s, x) => s + (x.failed_count || 0) + (x.pending_approval_count || 0), 0);
     const memberCount = Number(page.dataset.memberCount || 0);
+    const k = data.kpis || {};
+    const links = k.links || {};
+    const versionText = k.current_version && k.current_version !== "—"
+      ? (k.current_version_code ? `${k.current_version} / ${k.current_version_code}` : k.current_version)
+      : "—";
+    const healthVal = k.service_health_pct == null ? "—" : `${k.service_health_pct}%`;
     const kpis = [
-      ["kpi_version.svg", "当前版本", latestOrder?.version_name || "—", "blue", "", scopeHref(`/admin/projects/${projectId}/versions`, { env_key: overviewFilterParams().env_key || "production" })],
-      ["kpi_health.svg", "服务健康度", `${healthPct}%`, "green", healthyCount > 0 ? `↑ ${healthyCount} 环境正常` : "", `/admin/projects/${projectId}/overview`],
-      ["kpi_build.svg", "今日构建次数", processingTotal, "violet", "", `/admin/projects/${projectId}/versions?env_key=${encodeURIComponent(scope?.env_key || "production")}`],
-      ["kpi_change.svg", "待处理变更", pendingChanges, "orange", "", `/admin/projects/${projectId}/change-governance`],
-      ["kpi_member.svg", "项目成员", memberCount, "cyan", "", `/admin/projects/${projectId}/settings`],
+      ["kpi_version.svg", "当前版本", versionText, "blue", "", links.version || scopeHref(`/admin/projects/${projectId}/versions`, { env_key: overviewFilterParams().env_key || "production" })],
+      ["kpi_health.svg", "服务健康度", healthVal, "green", k.service_health_source === "ops" ? "Ops 探针" : "", links.health || `/admin/projects/${projectId}/environments/${encodeURIComponent(overviewFilterParams().env_key || "production")}/runtime`],
+      ["kpi_build.svg", "今日构建次数", String(k.today_build_count ?? 0), "violet", "", links.builds || `/admin/projects/${projectId}/build-history`],
+      ["kpi_change.svg", "待处理变更", String(k.pending_changes ?? 0), "orange", "", links.changes || `/admin/projects/${projectId}/release-orders?status=awaiting_approval`],
+      ["kpi_member.svg", "项目成员", String(k.member_count ?? memberCount), "cyan", "", links.members || `/admin/projects/${projectId}/settings?tab=members`],
     ];
     document.getElementById("overviewKpis").innerHTML = kpis.map(([icon, label, value, tone, sub, link], i) => {
       return `<article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--${tone}"><img src="/static/project_ui/svg/${icon}" alt=""></span><div class="pm-kpi-body"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="pm-kpi-trend up">${sub}</span>` : ""}${link ? `<a class="pm-kpi-footlink" href="${link}">${label === "当前版本" ? "版本详情" : label === "服务健康度" ? "健康概览" : label === "今日构建次数" ? "构建与产物" : label === "待处理变更" ? "变更治理" : "成员管理"} &gt;</a>` : ""}</div></article>`;
@@ -1119,13 +1121,13 @@
     </article>`;
         }).join("")
       : '<div class="p02-empty">当前筛选下无匹配环境</div>';
-    overviewActivityEvents = allOrders.map((item) => ({
-      kind: "release",
-      typeLabel: "发布",
-      title: `发布单 ${item.release_order_id || ""} · ${item.version_name || ""} / ${item.version_code || ""}`,
-      actor: "系统",
-      time: String(item.updated_at || "").slice(11, 16) || String(item.updated_at || ""),
-      href: `/admin/projects/${projectId}/release-orders/${item.release_order_id}`,
+    overviewActivityEvents = (data.activities || []).map((item) => ({
+      kind: item.kind || "release",
+      typeLabel: item.type_label || item.typeLabel || "发布",
+      title: item.title || "",
+      actor: item.actor || "系统",
+      time: item.time_short || String(item.time || "").slice(11, 16) || String(item.time || "").slice(0, 16),
+      href: item.href || "#",
     }));
     const activeTab = document.querySelector("[data-activity-tab].active")?.dataset.activityTab || "all";
     renderOverviewActivity(activeTab);
@@ -1261,6 +1263,44 @@
     const descCount=document.getElementById("orderDescCount");
     const syncDescCount=()=>{if(descCount&&descArea)descCount.textContent=`${(descArea.value||"").length} / 500`;};
     if(descArea){descArea.addEventListener("input",syncDescCount);syncDescCount();}
+    const syncGrayFieldVisibility=()=>{
+      const isGray=(form.release_strategy?.value||"standard")==="gray";
+      ["gray_strategy","gray_ratio","gray_duration","gray_success_action"].forEach((name)=>{
+        const field=form[name];
+        if(!field)return;
+        const label=field.closest("label");
+        if(label)label.classList.toggle("is-hidden",!isGray);
+        field.disabled=!isGray;
+      });
+      const grayPanel=document.getElementById("orderGrayPlanPanel");
+      const grayList=document.getElementById("orderGrayPlanList");
+      const journeyLink=document.getElementById("orderGrayJourneyLink");
+      if(grayPanel)grayPanel.classList.toggle("is-hidden",!isGray);
+      if(grayList&&isGray){
+        const ratio=form.gray_ratio?.value||"10";
+        const strategy=form.gray_strategy?.selectedOptions?.[0]?.textContent||form.gray_strategy?.value||"ratio";
+        const duration=form.gray_duration?.value||"—";
+        const action=form.gray_success_action?.selectedOptions?.[0]?.textContent||form.gray_success_action?.value||"manual";
+        grayList.innerHTML=[
+          `灰度比例：${esc(ratio)}%`,
+          `灰度策略：${esc(strategy)}`,
+          `观察时长：${esc(duration)} 分钟`,
+          `成功后：${esc(action)}`,
+        ].map((x)=>`<li>${x}</li>`).join("");
+      }
+      if(journeyLink){
+        const env=form.env_key?.value||"";
+        const channel=form.channel_id?.value||"";
+        const platform=form.platform?.value||"";
+        if(env&&channel&&platform){
+          const qs=new URLSearchParams({env_key:env,channel_id:channel,platform});
+          journeyLink.href=`/admin/projects/${projectId}/environments/${encodeURIComponent(env)}/channels/${encodeURIComponent(channel)}/release?${qs}`;
+          journeyLink.classList.remove("is-hidden");
+        }else{
+          journeyLink.classList.add("is-hidden");
+        }
+      }
+    };
     const updateRiskPanel=()=>{
       const levelEl=document.getElementById("orderRiskLevel");
       const listEl=document.getElementById("orderRiskList");
@@ -1348,6 +1388,7 @@
       Object.entries(preset).forEach(([key,val])=>{if(form[key])form[key].value=val;});
       page.querySelectorAll("[data-tag-field]").forEach((input)=>{if(input.dataset.tagBound){input.dispatchEvent(new Event("input",{bubbles:true}));}});
       syncDescCount();
+      syncGrayFieldVisibility();
       updateRiskPanel();
       updateCompleteness();
       touchAutosave(false);
@@ -1883,9 +1924,14 @@
     [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());updateRiskPanel();const prod=document.getElementById("orderProductionBanner");if(prod)prod.classList.toggle("is-hidden",form.env_key.value!=="production");}));
     const prodBanner=document.getElementById("orderProductionBanner");if(prodBanner&&form.env_key.value==="production")prodBanner.classList.remove("is-hidden");
     form.version_id.addEventListener("change",()=>{renderPlanPreview();loadFormContext(selectedVersion());updateRiskPanel();});
-    form.release_strategy?.addEventListener("change",updateRiskPanel);
+    form.release_strategy?.addEventListener("change",()=>{syncGrayFieldVisibility();updateRiskPanel();});
+    ["gray_strategy","gray_ratio","gray_duration","gray_success_action"].forEach((name)=>{
+      form[name]?.addEventListener("input",syncGrayFieldVisibility);
+      form[name]?.addEventListener("change",syncGrayFieldVisibility);
+    });
     form.target_audience?.addEventListener("change",updateRiskPanel);
     form.addEventListener("input",updateCompleteness);
+    syncGrayFieldVisibility();
 
     if(orderId){
       const order=await api(`/api/projects/${projectId}/release-orders/${orderId}`);

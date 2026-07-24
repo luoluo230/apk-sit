@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
-from flask import current_app, jsonify, redirect, render_template, render_template_string, request, session
+from flask import current_app, has_request_context, jsonify, redirect, render_template, render_template_string, request, session
 
 from config import DATA_DIR
 from models.data import (
@@ -48,6 +48,16 @@ from services.legacy_gm_bridge_client import LegacyGmBridgeClient
 import services.ops.constants as _ops_constants
 import services.ops.storage as _ops_storage
 from services.ops.agent_service import _default_agent_policy, _load_agent_policy, _save_agent_policy
+
+
+def _session_username(default: str = "system") -> str:
+    try:
+        if has_request_context():
+            return str(session.get("user") or default)
+    except Exception:
+        pass
+    return default
+
 from services.ops.runtime_service import _runtime_active_for_scope
 from services.ops.topology_service import (
     _default_env_options,
@@ -637,7 +647,7 @@ PM_UI_CSS = (
     '<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v=20260625-pm9">'
 )
 
-OPS_SHELL_ASSET_VER = "20260717-workspace-v5"
+OPS_SHELL_ASSET_VER = "20260723-favorites-v1"
 OPS_WORKSPACE_CSS = (
     '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260717-workspace-v5">'
     '<link rel="stylesheet" href="/static/ops_workspace_pages.css?v=20260717-workspace-v5">'
@@ -723,70 +733,60 @@ def _render_standalone_page(content: str, title: str):
     return _render_ops_page(content, title)
 
 
-def _ensure_design_demo_registry(project_id: str) -> None:
-    """设计稿管理弹窗 demo：四环境各一条拓扑注册记录（存在则同步元数据）。"""
+def _is_design_demo_topology_row(row: Dict[str, Any]) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if row.get("design_demo_node_count") is not None:
+        return True
+    tid = str(row.get("topology_id") or "").strip()
+    if tid.startswith("topology-design-"):
+        return True
+    desc = str(row.get("description") or "").strip()
+    if "设计稿 demo" in desc or desc == "设计稿 demo 拓扑":
+        return True
+    return False
+
+
+def _purge_design_demo_topology_registry(project_id: str = "") -> Dict[str, int]:
+    """Remove seeded design-demo topology registry rows and contents."""
     pid = str(project_id or "").strip()
-    if not pid:
-        return
-    if _project_has_cluster_json(pid):
-        return
     rows = _load_topology_registry()
     if not isinstance(rows, list):
-        rows = []
-    demo_specs = [
-        {"env_key": "production", "name": "生产环境拓扑", "version_label": "v2.3.1", "owner": "运维管理员", "is_default": True, "status": "draft", "updated_at": "2025-05-20T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
-        {"env_key": "staging", "name": "预发环境拓扑", "version_label": "v2.1.4", "owner": "张三", "status": "draft", "updated_at": "2025-05-19T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
-        {"env_key": "testing", "name": "测试环境拓扑", "version_label": "v1.8.7", "owner": "李四", "status": "stopped", "updated_at": "2025-05-16T12:34:00+08:00", "design_demo_node_count": 5, "design_demo_edge_count": 6},
-        {"env_key": "development", "name": "开发环境拓扑", "version_label": "v1.5.2", "owner": "王五", "status": "draft", "updated_at": "2025-05-12T12:34:00+08:00", "design_demo_node_count": 4, "design_demo_edge_count": 5},
-    ]
-    changed = False
-    contents = _load_topology_contents()
-    for spec in demo_specs:
-        env = _normalize_env_key(spec.get("env_key"))
-        hit_idx = -1
-        for i, row in enumerate(rows):
-            if not isinstance(row, dict):
-                continue
-            if str(row.get("project_id") or "") == pid and _normalize_env_key(row.get("env_key")) == env:
-                hit_idx = i
-                break
-        if hit_idx >= 0:
-            merged = dict(rows[hit_idx])
-            merged["name"] = spec["name"]
-            merged["version_label"] = spec["version_label"]
-            merged["owner"] = spec["owner"]
-            merged["status"] = spec.get("status") or merged.get("status")
-            if spec.get("is_default"):
-                merged["is_default"] = True
-            merged["design_demo_node_count"] = spec.get("design_demo_node_count")
-            merged["design_demo_edge_count"] = spec.get("design_demo_edge_count")
-            merged["updated_at"] = spec.get("updated_at") or merged.get("updated_at")
-            rows[hit_idx] = _normalize_topology_registry_row(merged)
-            changed = True
+        return {"removed_registry": 0, "removed_contents": 0}
+    kept: List[Dict[str, Any]] = []
+    removed_ids: List[str] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            kept.append(item)
             continue
-        row = _normalize_topology_registry_row(
-            {
-                "topology_id": f"topology-design-{pid.replace('/', '-').replace(' ', '-').lower()}-{env}",
-                "project_id": pid,
-                "env_key": env,
-                "name": spec["name"],
-                "version_label": spec["version_label"],
-                "owner": spec["owner"],
-                "is_default": bool(spec.get("is_default")),
-                "status": spec.get("status") or "running",
-                "description": "设计稿 demo 拓扑",
-                "created_at": spec.get("updated_at") or _now_iso(),
-                "updated_at": spec.get("updated_at") or _now_iso(),
-                "design_demo_node_count": spec.get("design_demo_node_count"),
-                "design_demo_edge_count": spec.get("design_demo_edge_count"),
-            }
-        )
-        rows.append(row)
-        contents[row["topology_id"]] = _core_minimal_topology_content(pid, env, runtime_ids=False)
-        changed = True
-    if changed:
-        _save_topology_registry(rows)
+        row = _normalize_topology_registry_row(item)
+        if pid and str(row.get("project_id") or "") != pid:
+            kept.append(row)
+            continue
+        if _is_design_demo_topology_row(row):
+            removed_ids.append(str(row.get("topology_id") or ""))
+            continue
+        kept.append(row)
+    removed_registry = len(rows) - len(kept)
+    if removed_registry:
+        _save_topology_registry(kept)
+    contents = _load_topology_contents()
+    removed_contents = 0
+    for tid in removed_ids:
+        if tid and tid in contents:
+            contents.pop(tid, None)
+            removed_contents += 1
+    if removed_contents:
         _save_topology_contents(contents)
+    if pid and removed_registry:
+        for tid in removed_ids:
+            _purge_design_demo_project_state(pid, tid)
+    return {"removed_registry": removed_registry, "removed_contents": removed_contents}
+
+
+def _ensure_design_demo_registry(project_id: str) -> None:
+    """Deprecated — design demo seeds removed; purge any legacy rows instead."""
+    _purge_design_demo_topology_registry(project_id)
 
 
 def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1592,63 +1592,36 @@ def _ensure_design_reference_bindings(topology_id: str) -> None:
 
 
 def _ensure_design_reference_agents(project_id: str) -> None:
-    """设计稿 demo：保证 game-01 可绑定 agent-01 并在 Inspector/节点卡展示。"""
+    """Sync real cluster agents and bind topology nodes — never seed synthetic ONLINE agents."""
     pid = str(project_id or "").strip()
     if not pid:
         return
+    try:
+        _sync_cluster_to_agents(pid)
+    except Exception:
+        pass
     registry = _load_agent_registry_v2()
-    if not isinstance(registry, dict):
-        registry = {}
-    aid = "agent-01"
-    existing = registry.get(aid) if isinstance(registry.get(aid), dict) else {}
-    if str(existing.get("project_id") or "").strip() and str(existing.get("project_id") or "").strip() != pid:
+    if not isinstance(registry, dict) or not registry:
         return
-    if existing.get("agent_id") == aid and str(existing.get("probe_status") or "").upper() == "PASS":
-        return
-    now = _now_iso()
-    registry[aid] = {
-        "agent_id": aid,
-        "device_id": "device-game-01",
-        "display_name": aid,
-        "project_id": pid,
-        "node_id": "game-01",
-        "host_name": "10.0.1.15",
-        "host_ip": "10.0.1.15",
-        "port": 9501,
-        "remote_game_server_port": 9501,
-        "status": "ONLINE",
-        "probe_status": "PASS",
-        "probe_at": now,
-        "last_seen": now,
-        "version": "v2.3.1",
-        "services": [
-            {
-                "service_id": "svc-game-01-a",
-                "agent_id": aid,
-                "node_id": "game-01",
-                "service_port": 9501,
-                "status": "ONLINE",
-                "probe_status": "PASS",
-            },
-            {
-                "service_id": "svc-game-01-b",
-                "agent_id": aid,
-                "node_id": "game-01",
-                "service_port": 9502,
-                "status": "ONLINE",
-                "probe_status": "PASS",
-            },
-            {
-                "service_id": "svc-game-01-c",
-                "agent_id": aid,
-                "node_id": "game-01",
-                "service_port": 9503,
-                "status": "ONLINE",
-                "probe_status": "PASS",
-            },
-        ],
-    }
-    _save_agent_registry_v2(registry)
+    store = _load_node_agent_bindings()
+    if not isinstance(store, dict):
+        store = {}
+    changed = False
+    for aid, row in registry.items():
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("project_id") or "").strip() != pid:
+            continue
+        node_id = str(row.get("node_id") or "").strip()
+        if not node_id:
+            continue
+        key = _scope_binding_key("", node_id)
+        if str(store.get(key) or "").strip() == str(aid).strip():
+            continue
+        store[key] = str(aid).strip()
+        changed = True
+    if changed:
+        _save_node_agent_bindings(store)
 
 
 def _default_topology_content_from_nodes(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1776,12 +1749,14 @@ def _list_topologies(project_id: str = "", env_key: Optional[str] = None) -> Lis
         _migrate_gomeku_design_topology_contents(pid)
     env_filter = _normalize_env_key(env_key) if (env_key is not None and str(env_key).strip()) else None
     if pid:
-        _ensure_design_demo_registry(pid)
+        _purge_design_demo_topology_registry(pid)
     out: List[Dict[str, Any]] = []
     for item in _load_topology_registry():
         if not isinstance(item, dict):
             continue
         row = _normalize_topology_registry_row(item)
+        if _is_design_demo_topology_row(row):
+            continue
         if pid and row.get("project_id") != pid:
             continue
         if env_filter and row.get("env_key") != env_filter:
@@ -1809,7 +1784,7 @@ def _ensure_topology_for_scope(project_id: str, env_key: str) -> Dict[str, Any]:
             "env_key": env,
             "name": _env_label(env) + "主拓扑",
             "version_label": "v1.0.0",
-            "owner": str(session.get("user") or "system"),
+            "owner": _session_username("system"),
             "description": "自动创建的默认拓扑",
             "is_default": True,
             "status": "running" if env == "production" else "draft",
@@ -3952,7 +3927,19 @@ def _probe_by_protocol(host: str, port: int, proto: str = "tcp", timeout: float 
     if key in ("kafka_tcp",):
         return _tcp_probe(host, port, timeout)
     if key in ("cluster_embedded",):
-        return {"ok": False, "rtt_ms": 0.0, "error": "cluster_embedded probe deferred"}
+        host_str = str(host or "127.0.0.1").strip()
+        probe_port = int(port or 0) or _CLUSTER_RELAY_PROBE_PORTS.get("game-cn-1", 15502)
+        tcp = _tcp_probe(host_str, probe_port, timeout)
+        if tcp.get("ok"):
+            return {**tcp, "probe_method": "cluster-relay-tcp"}
+        cluster = _fetch_cluster_runtime_status()
+        online = any(_cluster_state_is_online(state) for state in cluster.values())
+        return {
+            "ok": online,
+            "rtt_ms": tcp.get("rtt_ms", 0.0),
+            "error": "" if online else "cluster embedded offline",
+            "probe_method": "cluster-runtime-status",
+        }
     return _tcp_probe(host, port, timeout)
 
 

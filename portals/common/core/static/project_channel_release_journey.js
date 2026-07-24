@@ -259,18 +259,33 @@
     });
   };
 
+  const grayPlanRows = (state) => {
+    if (String(state.release_strategy || "") !== "gray") return [];
+    const ratio = state.gray_ratio || state.rollout_percentage || "—";
+    const strategy = state.gray_strategy || "ratio";
+    const duration = state.gray_duration ? `${state.gray_duration} 分钟` : "—";
+    return [
+      ["发布方式", "灰度发布", "ready"],
+      ["灰度策略", esc(strategy), "ready"],
+      ["灰度比例", esc(`${ratio}%`), "ready"],
+      ["灰度时长", esc(duration), state.gray_duration ? "ready" : "pending"],
+    ];
+  };
+
   const renderWorkspace = (data, state) => {
     const oid = state.release_order_id || "";
     const detailHref = oid ? `/admin/projects/${projectId}/release-orders/${oid}` : "";
     const editHref = oid ? `${detailHref}/edit` : "";
     const status = String(state.order_status || "");
     const vc = state.version_name && state.version_code ? `${state.version_name} / ${state.version_code}` : "未选择";
+    const grayRows = grayPlanRows(state);
     const rows = [
       ["版本组", esc(state.version_name || "—"), state.version_name ? "ready" : "pending"],
       ["VersionCode", esc(vc), versionId ? "ready" : "pending"],
       ["发布单", esc(oid || "—"), oid ? "ready" : "pending"],
       ["当前阶段", esc(status || "待开始"), status ? "ready" : "pending"],
-      ["Bundle", esc(bundleId || state.bundle_id || "—"), bundleId || state.bundle_id ? "ready" : "pending"],
+      ["Bundle", esc(bundleId || state.bundle_id || state.active_bundle_id || "—"), bundleId || state.bundle_id || state.active_bundle_id ? "ready" : "pending"],
+      ...grayRows,
     ];
 
     if (!platform) {
@@ -315,22 +330,40 @@
     }
 
     if (status === "prechecking" || status === "ready" || status === "approved") {
+      const isGray = String(state.release_strategy || "") === "gray";
+      const publishLabel = isGray
+        ? `灰度发布 (${esc(state.gray_ratio || state.rollout_percentage || "10")}%)`
+        : "全量发布";
+      const publishHint = isGray
+        ? "预检已通过，将按发布计划中的灰度比例写入 bootstrap rollout。"
+        : (status === "approved" || data.form_depth !== "full" ? "预检已通过，可执行发布。" : "预检已通过，等待审批。");
       return panel(
         "发布操作",
-        status === "approved" || data.form_depth !== "full" ? "预检已通过，可执行发布。" : "预检已通过，等待审批。",
+        publishHint,
         summaryGrid(rows),
-        `<button type="button" class="cj-btn release" id="cjPublish">全量发布</button>
+        `<button type="button" class="cj-btn release" id="cjPublish">${publishLabel}</button>
+        ${oid ? `<a class="cj-btn neutral" href="${esc(editHref)}">编辑计划</a>` : ""}
         ${oid ? `<a class="cj-btn neutral" href="${esc(detailHref)}">查看详情</a>` : ""}`,
         "pending",
       );
     }
 
     if (status === "published") {
+      const grayActive = !!state.is_gray_active;
+      const rolloutPct = esc(state.rollout_percentage ?? state.gray_ratio ?? "100");
+      const grayMonitor = grayActive
+        ? `<p class="cj-section-label">灰度放量</p>
+           <p class="cj-empty-hint">当前 rollout ${rolloutPct}%，客户端 bootstrap 仅对该比例设备生效。</p>`
+        : "";
+      const expandBtn = state.can_expand_gray
+        ? `<button type="button" class="cj-btn release" id="cjExpandGray">扩大至 100%</button>`
+        : "";
       return panel(
-        "验证",
-        "发布已完成，请验证核心链路。",
-        summaryGrid([...rows, ["验证", esc(state.verify_status || "待验证"), "pending"]]),
-        `<button type="button" class="cj-btn release" id="cjVerifyPass">验证通过</button>
+        grayActive ? "灰度验证" : "验证",
+        grayActive ? "灰度发布已生效，请验证核心链路后再全量放量。" : "发布已完成，请验证核心链路。",
+        `${grayMonitor}${summaryGrid([...rows, ["Rollout", `${rolloutPct}%`, grayActive ? "pending" : "ready"], ["验证", esc(state.verify_status || "待验证"), "pending"]])}`,
+        `${expandBtn}
+        <button type="button" class="cj-btn release" id="cjVerifyPass">验证通过</button>
         <button type="button" class="cj-btn warn" id="cjVerifyFail">验证失败</button>
         ${oid ? `<a class="cj-btn neutral" href="${esc(detailHref)}">查看详情</a>` : ""}`,
         "pending",
@@ -411,6 +444,18 @@
     };
 
     document.getElementById("cjPublish")?.addEventListener("click", () => publish().catch((e) => toast(e.message, "error")));
+
+    document.getElementById("cjExpandGray")?.addEventListener("click", async () => {
+      if (!oid) return toast("缺少发布单", "error");
+      try {
+        await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(oid)}/expand-gray`, {
+          method: "POST",
+          body: JSON.stringify({ target_ratio: 100 }),
+        });
+        toast("已扩大至 100%");
+        load();
+      } catch (e) { toast(e.message, "error"); }
+    });
 
     document.getElementById("cjVerifyPass")?.addEventListener("click", async () => {
       if (!oid) return toast("缺少发布单", "error");

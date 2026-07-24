@@ -1,0 +1,55 @@
+<section class="p02-overview p02-activities-page" data-activities-page data-project-id="{{ project_id }}" data-project-name="{{ project.name or project_id }}">
+  <header class="p02-head">
+    <div class="p02-head-main">
+      <a class="p02-back-link" href="/admin/projects/{{ project_id }}/overview?env_key={{ env_key or 'production' }}"><img src="/static/project_ui/svg/action_back.svg" alt="">返回项目总览</a>
+      <div>
+        <h1>项目动态</h1>
+        <p class="p02-head-sub">汇总发布、构建、变更、告警、审批、任务与文档相关活动。</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="p02-filter-strip pm-filter-bar" id="activitiesFilterStrip">
+    <div class="p02-filter-item">
+      <span class="p02-filter-pill p02-filter-pill--project" title="项目">{{ project.name or project_id }}</span>
+    </div>
+    <div class="p02-filter-item">
+      <select class="p02-filter-pill-select p02-filter-pill-select--env" id="activitiesFilterEnv" aria-label="环境">
+        <option value="">全部环境</option>
+      </select>
+    </div>
+    <div class="p02-filter-item">
+      <select class="p02-filter-pill-select p02-filter-pill-select--channel" id="activitiesFilterChannel" aria-label="渠道">
+        <option value="">全部渠道</option>
+      </select>
+    </div>
+    <div class="p02-filter-item">
+      <span class="p02-filter-label">平台</span>
+      <select class="p02-filter-pill-select p02-filter-pill-select--platform" id="activitiesFilterPlatform" aria-label="平台">
+        <option value="">多平台</option>
+      </select>
+    </div>
+    <div class="p02-filter-meta">
+      <b id="activitiesUpdatedAt" title="更新时间">--</b>
+      <button class="p02-icon-btn" data-refresh-activities type="button" title="刷新" aria-label="刷新"><img src="/static/project_ui/svg/action_refresh.svg" alt=""></button>
+    </div>
+  </div>
+
+  <section class="p02-panel p02-list-panel">
+    <div class="p02-panel-head">
+      <h2>全部动态</h2>
+      <span class="p02-panel-meta" id="activitiesCount">0 条</span>
+    </div>
+    <nav class="p02-activity-tabs" id="activitiesTabs" aria-label="动态类型">
+      <button type="button" class="p02-activity-tab active" data-activity-tab="all">全部</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="release">发布</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="build">构建</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="change">变更</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="alert">告警</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="approval">审批</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="task">任务</button>
+      <button type="button" class="p02-activity-tab" data-activity-tab="doc">文档</button>
+    </nav>
+    <div class="p02-activity-list" id="activitiesList"><div class="p02-empty">正在加载动态...</div></div>
+  </section>
+</section>

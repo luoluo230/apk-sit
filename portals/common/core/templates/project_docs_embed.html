@@ -8,9 +8,20 @@
   </div>
   <div class="pm-docs-embed" style="margin-top:16px;padding:20px;background:#fff;border:1px solid #e5e7eb;border-radius:12px">
     <div class="pm-docs-actions" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <a class="pm-btn pm-btn--primary" href="/docs">打开知识中心</a>
+      <a class="pm-btn pm-btn--primary" href="/docs?project_id={{ project_id }}">项目文档库</a>
       <a class="pm-btn" href="/docs/client_bootstrap_contract">Bootstrap 契约（Markdown）</a>
     </div>
+    {% if project_docs %}
+    <div class="pm-docs-list" style="margin-bottom:16px">
+      <h2 style="font-size:16px;margin:0 0 8px">关联文档</h2>
+      <ul style="margin:0;padding-left:18px">
+        {% for doc in project_docs %}
+        <li style="margin:6px 0"><a href="/docs/{{ doc.id }}">{{ doc.title or doc.id }}</a> <span style="color:#98a2b3;font-size:12px">{{ doc.updated_at or '' }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <h2 style="font-size:16px;margin:0 0 8px">Bootstrap 契约摘要</h2>
     <article class="pm-markdown-body" style="font-size:14px;line-height:1.65;color:#334155;white-space:pre-wrap">{{ docs_markdown|e }}</article>
   </div>
 </section>

@@ -26,6 +26,8 @@
     rows: root.querySelector('[data-build-rows]'),
     state: root.querySelector('[data-state]'),
     tableWrap: root.querySelector('[data-table-wrap]'),
+    artifactRows: root.querySelector('[data-artifact-rows]'),
+    artifactTabs: root.querySelector('[data-artifact-tabs]'),
     search: root.querySelector('[data-search]'),
     status: root.querySelector('[data-status]'),
     platform: root.querySelector('[data-platform]'),
@@ -55,6 +57,7 @@
   let selected = null;
   let page = 1;
   let pendingDelete = [];
+  let artifactView = 'latest';
 
   const icon = (name) => `/static/project_ui/svg/${name}.svg`;
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({
@@ -113,6 +116,58 @@
   };
 
   const isMissingArtifact = (row) => statusKey(row) === 'SUCCESS' && !hasArtifact(row);
+
+  const collectArtifacts = (sourceRecords) => {
+    const out = [];
+    sourceRecords.forEach((row) => {
+      const dl = row.apk_download && typeof row.apk_download === 'object' ? row.apk_download : {};
+      const url = dl.public_download_url || dl.local_download_url || dl.oss_download_url || '';
+      const buildNumber = row.build_number || row.number || '-';
+      const version = `${row.version_name || '-'} / ${row.version_code || '-'}`;
+      if (hasArtifact(row)) {
+        out.push({
+          name: dl.filename || row.apk_name || `build-${buildNumber}.apk`,
+          type: 'apk',
+          buildNumber,
+          version,
+          sha256: dl.sha256 || row.apk_sha256 || row.sha256 || '-',
+          url,
+        });
+      }
+      if (isMissingArtifact(row)) {
+        out.push({
+          name: '缺失产物',
+          type: 'missing',
+          buildNumber,
+          version,
+          sha256: '-',
+          url: '',
+        });
+      }
+    });
+    return out;
+  };
+
+  const renderArtifacts = () => {
+    if (!ui.artifactRows) return;
+    let items = collectArtifacts(records);
+    if (artifactView === 'latest') {
+      const seen = new Set();
+      items = items.filter((item) => {
+        const key = `${item.type}:${item.buildNumber}:${item.name}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 40);
+    } else if (artifactView === 'by-type') {
+      items = [...items].sort((a, b) => String(a.type).localeCompare(String(b.type)));
+    } else {
+      items = [...items].sort((a, b) => String(b.buildNumber).localeCompare(String(a.buildNumber)));
+    }
+    ui.artifactRows.innerHTML = items.length
+      ? items.map((item) => `<tr><td>${esc(item.name)}</td><td>${esc(item.type)}</td><td>${esc(item.buildNumber)}</td><td>${esc(item.version)}</td><td>${esc(item.sha256)}</td><td>${item.url ? `<a href="${esc(item.url)}" target="_blank" rel="noopener">下载</a>` : '-'}</td></tr>`).join('')
+      : '<tr><td colspan="6">暂无产物记录</td></tr>';
+  };
 
   const applyScopeUi = () => {
     if (!isScoped) return;
@@ -216,6 +271,7 @@
 
     page = 1;
     renderRows();
+    renderArtifacts();
   }
 
   const formatFileSize = (bytes) => {
@@ -509,6 +565,7 @@
       selected = null;
       setKpis();
       applyFilters();
+      renderArtifacts();
       const initial = scopeBuildNumber
         ? records.find((row) => String(row.build_number || row.number) === scopeBuildNumber)
         : records[0];
@@ -521,6 +578,16 @@
       ui.tableWrap.hidden = true;
       ui.state.innerHTML = `<img src="${icon('status_error')}" alt="" style="width:32px"><strong>构建历史加载失败</strong><p>${esc(error.message)}</p>`;
     }
+  }
+
+  if (ui.artifactTabs) {
+    ui.artifactTabs.addEventListener('click', (event) => {
+      const btn = event.target.closest('[data-artifact-view]');
+      if (!btn) return;
+      artifactView = btn.getAttribute('data-artifact-view') || 'latest';
+      ui.artifactTabs.querySelectorAll('button').forEach((node) => node.classList.toggle('active', node === btn));
+      renderArtifacts();
+    });
   }
 
   applyScopeUi();

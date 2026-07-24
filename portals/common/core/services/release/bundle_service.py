@@ -45,6 +45,7 @@ def resolve_gray_rollout_bundle(
     *,
     device_id: str = "",
     user_id: str = "",
+    region: str = "",
 ) -> Dict[str, Any]:
     """Return effective bundle for client; on gray miss use superseded bundle or empty."""
     if not isinstance(bundle, dict) or not bundle:
@@ -63,20 +64,42 @@ def resolve_gray_rollout_bundle(
         rollout_percentage = 100
     scope_id = str(bundle.get("scope_id") or "")
     bundle_id = str(bundle.get("bundle_id") or "")
+    gray_strategy = str(bundle.get("gray_strategy") or client.get("gray_strategy") or "ratio").strip().lower()
     rollout_bucket = compute_rollout_bucket(
         device_id=device_id,
         user_id=user_id,
         scope_id=scope_id,
         bundle_id=bundle_id,
     )
+
+    def _identity_in_rollout() -> bool:
+        if rollout_percentage >= 100:
+            return True
+        if gray_strategy == "canary":
+            canary_list = bundle.get("gray_canary_list") or client.get("gray_canary_list") or []
+            if isinstance(canary_list, str):
+                canary_list = [part.strip() for part in canary_list.split(",") if part.strip()]
+            identity = str(device_id or user_id or "").strip()
+            return bool(identity) and identity in {str(item).strip() for item in canary_list}
+        if gray_strategy == "region":
+            allowed = bundle.get("gray_regions") or client.get("gray_regions") or []
+            if isinstance(allowed, str):
+                allowed = [part.strip() for part in allowed.split(",") if part.strip()]
+            region_norm = str(region or "").strip().lower()
+            if not region_norm:
+                return rollout_bucket < rollout_percentage
+            return region_norm in {str(item).strip().lower() for item in allowed}
+        return rollout_bucket < rollout_percentage
+
     base = {
         "rollout_percentage": rollout_percentage,
         "rollout_bucket": rollout_bucket,
+        "gray_strategy": gray_strategy,
         "gray_miss": False,
         "superseded_bundle_id": "",
         "target_bundle_id": bundle_id,
     }
-    if rollout_percentage >= 100 or rollout_bucket < rollout_percentage:
+    if _identity_in_rollout():
         return {**base, "in_rollout": True, "bundle": bundle}
     superseded_id = str(bundle.get("supersedes_bundle_id") or "").strip()
     if superseded_id:

@@ -340,6 +340,7 @@ def _on_start():
             logger.warning("SQLite init failed", exc_info=True)
 
     _startup_checks()
+    startup.purge_design_demo_topology_seeds()
     base_url = startup.write_base_url_file()
     startup.write_jenkins_clone_env()
     startup.apply_jenkins_clone_overlay()

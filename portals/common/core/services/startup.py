@@ -176,26 +176,39 @@ def _run_scheduled_backup():
 
 
 def run_background_scheduler():
-    """后台：每小时告警检查，每日定点发报表邮件，每日定点备份。"""
+    """后台：每小时告警/报表/备份；灰度自动放量每 60 秒检查。"""
     import time
     last_report_date = None
     last_backup_date = None
+    last_gray_tick = 0.0
+    last_hourly = 0.0
     backup_hour = int(os.getenv('BACKUP_HOUR', str(getattr(Config, 'BACKUP_HOUR', 2))))
     while True:
         try:
             now = datetime.now()
-            _run_alert_check()
-            if Config.REPORT_EMAIL_TO and now.hour == getattr(Config, 'REPORT_HOUR', 8):
-                if last_report_date is None or last_report_date != now.date():
-                    _send_report_email()
-                    last_report_date = now.date()
-            # 商业级：每日定点备份（可配置 BACKUP_SCHEDULED=false 禁用）
-            if getattr(Config, 'BACKUP_SCHEDULED', True) and now.hour == backup_hour and (last_backup_date is None or last_backup_date != now.date()):
-                _run_scheduled_backup()
-                last_backup_date = now.date()
+            now_ts = time.time()
+            if now_ts - last_hourly >= 3600:
+                _run_alert_check()
+                if Config.REPORT_EMAIL_TO and now.hour == getattr(Config, 'REPORT_HOUR', 8):
+                    if last_report_date is None or last_report_date != now.date():
+                        _send_report_email()
+                        last_report_date = now.date()
+                if getattr(Config, 'BACKUP_SCHEDULED', True) and now.hour == backup_hour and (last_backup_date is None or last_backup_date != now.date()):
+                    _run_scheduled_backup()
+                    last_backup_date = now.date()
+                last_hourly = now_ts
+            if now_ts - last_gray_tick >= 60:
+                try:
+                    from services.release.gray_rollout_scheduler import run_gray_rollout_tick
+                    stat = run_gray_rollout_tick()
+                    if stat.get("expanded_count"):
+                        logger.info("gray auto-expand: %s", stat)
+                except Exception as exc:
+                    logger.warning("gray rollout tick failed: %s", exc)
+                last_gray_tick = now_ts
         except Exception as e:
             logger.warning("scheduler: %s", e)
-        time.sleep(3600)
+        time.sleep(15)
 
 
 def start_download_service():
@@ -223,6 +236,24 @@ def start_download_service():
         logger.info("下载直链服务已启动: http://0.0.0.0:%s（目录: %s）", download_port, Config.APK_DIR)
     except Exception as e:
         logger.warning("启动下载直链服务失败: %s", e)
+
+
+def purge_design_demo_topology_seeds() -> dict:
+    """Remove legacy design-demo topology registry rows on startup."""
+    try:
+        from services.ops import helpers as ops_helpers
+
+        stat = ops_helpers._purge_design_demo_topology_registry("")
+        if stat.get("removed_registry") or stat.get("removed_contents"):
+            logger.info(
+                "purged design-demo topology seeds: registry=%s contents=%s",
+                stat.get("removed_registry"),
+                stat.get("removed_contents"),
+            )
+        return stat
+    except Exception:
+        logger.warning("design-demo topology purge failed", exc_info=True)
+        return {"removed_registry": 0, "removed_contents": 0}
 
 
 def write_base_url_file():

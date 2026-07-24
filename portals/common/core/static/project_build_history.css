@@ -320,6 +320,31 @@
   font-size: 11px;
 }
 
+.build-artifact-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.build-artifact-tabs button {
+  border: 1px solid #dce4f2;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.build-artifact-tabs button.active {
+  border-color: #1677ff;
+  color: #1677ff;
+  background: #eef5ff;
+}
+
+.build-artifact-table td {
+  font-size: 12px;
+}
+
 /* Loading / empty state */
 .build-state {
   min-height: 280px;

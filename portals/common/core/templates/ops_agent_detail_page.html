@@ -6,8 +6,8 @@
       <div class="agent-detail-topbar-right">
         <span class="agent-detail-toplink">帮助中心</span>
         <span class="agent-detail-notice">◔</span>
-        <span class="agent-shell-avatar">运</span>
-        <span class="agent-shell-user">运维管理员</span>
+        <span class="agent-shell-avatar">{{ (current_username or '管')[:1] }}</span>
+        <span class="agent-shell-user">{{ current_username or '管理员' }}</span>
         <span class="agent-shell-user-arrow">▾</span>
       </div>
     </header>

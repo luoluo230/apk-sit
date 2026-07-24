@@ -40,8 +40,12 @@ def _load_dictionary_ids(path: str) -> dict[str, int]:
 
 def main() -> int:
     if not os.path.isfile(PROTOCOLS_JSON):
-        print(f"SKIP: protocols.json not found: {PROTOCOLS_JSON}")
-        return 0
+        allow_skip = str(os.environ.get("ALLOW_PROTOCOL_SKIP", "")).lower() in ("1", "true", "yes")
+        if allow_skip:
+            print(f"SKIP: protocols.json not found: {PROTOCOLS_JSON}")
+            return 0
+        print(f"FAIL: protocols.json not found: {PROTOCOLS_JSON}", file=sys.stderr)
+        return 1
     if not os.path.isfile(PROTOCOL_DICT):
         print(f"FAIL: ProtocolDictionary missing: {PROTOCOL_DICT}")
         return 1

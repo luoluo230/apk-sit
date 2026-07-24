@@ -448,7 +448,22 @@
       try {
         nextAction = await api(`/api/projects/${projectId}/release-orders/${orderId}/next-action`);
       } catch (nextError) {
-        nextAction = { primary: { label: "查看详情", disabled: true, reason: nextError.message || "下一步动作暂不可用" }, more: [], phases: ["准备", "构建", "发版"], phase_index: 0 };
+        const status = String(item.status || "");
+        const scopeLinks = orderScopeLinks(item);
+        const fallbackHref = status.includes("failed") || status === "artifacts_ready"
+          ? scopeLinks.build || `/admin/projects/${projectId}/channels/${encodeURIComponent(item.channel_id || "wechat")}/build?env_key=${encodeURIComponent(item.env_key || "development")}&version_id=${encodeURIComponent(item.version_id || "")}`
+          : `/admin/projects/${projectId}/release-orders/${encodeURIComponent(orderId)}`;
+        nextAction = {
+          primary: {
+            label: status === "awaiting_approval" ? "前往审批" : status.includes("failed") ? "查看问题并修复" : "继续发版流程",
+            href: fallbackHref,
+            disabled: false,
+            reason: nextError.message || "下一步动作接口暂不可用，已提供备用入口",
+          },
+          more: [],
+          phases: ["准备", "构建", "发版"],
+          phase_index: status.includes("published") ? 2 : status.includes("build") ? 1 : 0,
+        };
       }
     } catch (error) {
       document.getElementById("orderSubtitle").textContent = error.message || "加载失败";

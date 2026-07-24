@@ -157,7 +157,16 @@ def ops_platform_agent_detail_page(project_id: str = ""):
     if redirect_resp is not None:
         return redirect_resp
     agent_id = str(request.args.get("agent_id") or "").strip()
-    content = ops_helpers._render_local_template("ops_agent_detail_page.html", project_id=project_id, env_key=env_key, agent_id=agent_id)
+    from flask import session
+
+    current_username = str(session.get("username") or session.get("user") or "管理员")
+    content = ops_helpers._render_local_template(
+        "ops_agent_detail_page.html",
+        project_id=project_id,
+        env_key=env_key,
+        agent_id=agent_id,
+        current_username=current_username,
+    )
     return ops_helpers._render_ops_page(content, "Agent 详情", active_page="agent-detail", project_id=project_id, env_key=env_key)
 
 

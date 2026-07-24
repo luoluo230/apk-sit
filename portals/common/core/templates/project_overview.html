@@ -56,7 +56,7 @@
       <section class="p02-panel p02-list-panel">
         <div class="p02-panel-head">
           <h2>最近动态</h2>
-          <a class="p02-panel-link" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a>
+          <a class="p02-panel-link" id="overviewActivitiesLink" href="/admin/projects/{{ project_id }}/activities?env_key={{ env_key or 'production' }}">查看全部<img src="/static/project_ui/svg/action_next.svg" alt=""></a>
         </div>
         <nav class="p02-activity-tabs" id="overviewActivityTabs" aria-label="动态类型">
           <button type="button" class="p02-activity-tab active" data-activity-tab="all">全部</button>
@@ -92,23 +92,23 @@
           {% endif %}
         </div>
         <div class="p02-member-invite">
-          <a href="/admin/projects/{{ project_id }}/settings">+ 邀请成员</a>
+          <a href="/admin/projects/{{ project_id }}/settings?tab=members">+ 邀请成员</a>
         </div>
       </section>
 
       <section class="p02-rail-panel pm-rail-panel p02-support">
         <div class="p02-rail-head"><h2>帮助与支持</h2></div>
         <a href="/docs"><img src="/static/project_ui/svg/support_doc.svg" alt="">使用文档</a>
-        <a href="/docs?tab=faq"><img src="/static/project_ui/svg/support_faq.svg" alt="">常见问题</a>
-        <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/support_ticket.svg" alt="">提交工单</a>
-        <a href="/docs?tab=contact"><img src="/static/project_ui/svg/support_contact.svg" alt="">联系我们</a>
+        <a href="/docs?category=faq"><img src="/static/project_ui/svg/support_faq.svg" alt="">常见问题</a>
+        <a href="/admin/projects/{{ project_id }}/tasks?action=create"><img src="/static/project_ui/svg/support_ticket.svg" alt="">提交工单</a>
+        <a href="/docs?category=ops"><img src="/static/project_ui/svg/support_contact.svg" alt="">联系我们</a>
       </section>
 
       <section class="p02-rail-panel pm-rail-panel">
         <div class="p02-rail-head"><h2>快捷入口</h2></div>
         <div class="p02-quick-grid">
           <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""><span>版本代码</span></a>
-          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""><span>版本代码</span></a>
+          <a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""><span>构建产物</span></a>
           <a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt=""><span>拓扑资产</span></a>
           <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/nav_task.svg" alt=""><span>项目任务</span></a>
         </div>
