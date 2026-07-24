@@ -6,10 +6,12 @@ from datetime import datetime
 
 from config import Config
 from data._store import CHANGELOG_FILE, PROJECT_VERSIONS_FILE, VERSIONS_FILE, load_document, save_document
+from repositories.registry._proxies import ProjectVersionsDbProxy
+from repositories.registry.version_row_repo import get_version_row_repository
 
 versions_db = load_document(VERSIONS_FILE, {})
 changelog_db = load_document(CHANGELOG_FILE, {})
-project_versions_db = load_document(PROJECT_VERSIONS_FILE, {})
+project_versions_db = ProjectVersionsDbProxy()
 
 
 def _normalize_version_platforms():
@@ -32,7 +34,7 @@ def _normalize_version_platforms():
 
 
 if _normalize_version_platforms():
-    save_document(PROJECT_VERSIONS_FILE, project_versions_db)
+    save_project_versions()
 
 
 def save_versions():
@@ -44,7 +46,7 @@ def save_changelog():
 
 
 def save_project_versions():
-    save_document(PROJECT_VERSIONS_FILE, project_versions_db)
+    get_version_row_repository()._mirror_all()
 
 
 def get_version_download_count(project_id, version):

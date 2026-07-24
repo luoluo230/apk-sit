@@ -87,8 +87,8 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **验收**
 
-- [ ] `project_service.create_project` 走 repo，重启进程后数据仍在
-- [ ] 双写：repo save 同时更新 JSON mirror（`SAVE_JSON_MIRROR=true`）
+- [x] `project_service.create_project` 走 repo，重启进程后数据仍在
+- [x] 双写：repo save 同时更新 JSON mirror（`SAVE_JSON_MIRROR=true`）
 
 ---
 

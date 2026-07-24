@@ -4,46 +4,42 @@ from __future__ import annotations
 
 from typing import Dict, Any, List
 
+from repositories.registry.project_repo import get_project_repository
 from models.data import (
-    projects_db,
     channels_db,
     project_versions_db,
-    save_projects,
-    save_project_versions,
     log_audit,
 )
 
 
 def list_projects() -> Dict[str, Dict[str, Any]]:
-    return projects_db
+    return get_project_repository().list()
 
 
 def get_project(project_id: str) -> Dict[str, Any] | None:
-    return projects_db.get(project_id)
+    return get_project_repository().get(project_id)
 
 
 def has_project(project_id: str) -> bool:
-    return project_id in projects_db
+    return get_project_repository().get(project_id) is not None
 
 
 def upsert_project(project_id: str, payload: Dict[str, Any]) -> None:
-    projects_db[project_id] = payload
-    save_projects()
+    get_project_repository().save(project_id, payload)
 
 
 def save_projects_repo() -> None:
-    save_projects()
+    get_project_repository()._mirror_all()
 
 
 def delete_project(project_id: str) -> None:
-    projects_db.pop(project_id, None)
-    save_projects()
+    get_project_repository().delete(project_id)
 
 
 def delete_project_versions(project_id: str) -> None:
-    if project_id in project_versions_db:
-        project_versions_db.pop(project_id, None)
-        save_project_versions()
+    from repositories.registry.version_row_repo import get_version_row_repository
+
+    get_version_row_repository().delete_project(project_id)
 
 
 def list_users() -> Dict[str, Dict[str, Any]]:

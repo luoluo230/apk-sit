@@ -137,6 +137,120 @@ def _migrate_release_scopes_platform(conn) -> None:
         conn.execute("DELETE FROM release_scopes WHERE scope_id=?", (sid,))
 
 
+def _load_legacy_json_file(filename: str, default=None):
+    path = os.path.join(DATA_DIR, filename)
+    if not os.path.isfile(path):
+        return default
+    try:
+        with open(path, 'r', encoding='utf-8') as fp:
+            return json.load(fp)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return default
+
+
+def _read_json_document_row(conn, document_key, default=None):
+    row = conn.execute(
+        'SELECT payload FROM json_documents WHERE document_key=?',
+        (document_key,),
+    ).fetchone()
+    if not row:
+        return default
+    try:
+        return json.loads(row['payload'])
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def _migrate_config_registry(conn) -> None:
+    """Seed typed registry tables from json_documents or legacy JSON files. Plan P0-02."""
+    now = datetime.now().isoformat()
+
+    project_count = conn.execute('SELECT COUNT(*) AS cnt FROM projects').fetchone()
+    if int(project_count['cnt'] if project_count else 0) == 0:
+        projects_data = _read_json_document_row(conn, 'data/projects.json', None)
+        if projects_data is None:
+            projects_data = _load_legacy_json_file('projects.json', {})
+        if isinstance(projects_data, dict):
+            for project_id, payload in projects_data.items():
+                pid = str(project_id or '').strip()
+                if not pid:
+                    continue
+                body = payload if isinstance(payload, dict) else {}
+                conn.execute(
+                    'INSERT OR IGNORE INTO projects (project_id, payload, updated_at) VALUES (?, ?, ?)',
+                    (pid, json.dumps(body, ensure_ascii=False), now),
+                )
+        if conn.execute('SELECT COUNT(*) AS cnt FROM projects').fetchone()['cnt'] == 0:
+            default_project = {
+                'name': '垃圾回收站',
+                'description': '垃圾回收站游戏',
+                'created_at': now,
+                'order': 1,
+                'status': 'active',
+            }
+            conn.execute(
+                'INSERT OR IGNORE INTO projects (project_id, payload, updated_at) VALUES (?, ?, ?)',
+                ('RecycleTycoon', json.dumps(default_project, ensure_ascii=False), now),
+            )
+
+    channel_count = conn.execute('SELECT COUNT(*) AS cnt FROM channels').fetchone()
+    if int(channel_count['cnt'] if channel_count else 0) == 0:
+        channels_data = _read_json_document_row(conn, 'data/channels.json', None)
+        if channels_data is None:
+            channels_data = _load_legacy_json_file('channels.json', [])
+        if isinstance(channels_data, list):
+            for item in channels_data:
+                if not isinstance(item, dict):
+                    continue
+                cid = str(item.get('id') or '').strip()
+                if not cid:
+                    continue
+                conn.execute(
+                    'INSERT OR IGNORE INTO channels (channel_id, payload, updated_at) VALUES (?, ?, ?)',
+                    (cid, json.dumps(item, ensure_ascii=False), now),
+                )
+        if conn.execute('SELECT COUNT(*) AS cnt FROM channels').fetchone()['cnt'] == 0:
+            for item in (
+                {'id': 'dev', 'name': '开发版', 'description': '内部开发、自测使用', 'order': 10, 'apk_subdir': 'dev', 'build_param': 'CHANNEL=dev'},
+                {'id': 'test', 'name': '测试版', 'description': '功能联调、提测与回归测试使用', 'order': 20, 'apk_subdir': 'test', 'build_param': 'CHANNEL=test'},
+                {'id': 'production', 'name': '线上版', 'description': '正式对外发布给用户的版本', 'order': 30, 'apk_subdir': '', 'build_param': 'CHANNEL=production'},
+            ):
+                cid = str(item.get('id') or '').strip()
+                conn.execute(
+                    'INSERT OR IGNORE INTO channels (channel_id, payload, updated_at) VALUES (?, ?, ?)',
+                    (cid, json.dumps(item, ensure_ascii=False), now),
+                )
+
+    version_count = conn.execute('SELECT COUNT(*) AS cnt FROM project_versions').fetchone()
+    if int(version_count['cnt'] if version_count else 0) == 0:
+        versions_data = _read_json_document_row(conn, 'data/project_versions.json', None)
+        if versions_data is None:
+            versions_data = _load_legacy_json_file('project_versions.json', {})
+        if isinstance(versions_data, dict):
+            for project_id, rows in versions_data.items():
+                pid = str(project_id or '').strip()
+                if not pid or not isinstance(rows, list):
+                    continue
+                for index, item in enumerate(rows):
+                    if not isinstance(item, dict):
+                        continue
+                    vid = str(item.get('id') or '').strip()
+                    if not vid:
+                        vn = str(item.get('version_name') or '').strip()
+                        vc = str(item.get('version_code') or '').strip()
+                        vid = (
+                            f"{pid}:{vn}:{vc}:{index}"
+                            if (vn or vc)
+                            else f"{pid}:row:{index}"
+                        )
+                    body = dict(item)
+                    body['id'] = vid
+                    conn.execute(
+                        'INSERT OR IGNORE INTO project_versions (version_id, project_id, payload, updated_at) VALUES (?, ?, ?, ?)',
+                        (vid, pid, json.dumps(body, ensure_ascii=False), now),
+                    )
+
+
 def init_db():
     global _schema_initialized
     with _db_lock:
@@ -409,6 +523,27 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_release_approvals_order
             ON release_approvals(release_order_id, created_at);
+
+        CREATE TABLE IF NOT EXISTS projects (
+            project_id TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS channels (
+            channel_id TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS project_versions (
+            version_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_project_versions_project
+            ON project_versions(project_id);
         '''
         )
         scope_columns = {row["name"] for row in conn.execute("PRAGMA table_info(release_scopes)").fetchall()}
@@ -422,6 +557,7 @@ def init_db():
             "ON release_scopes(project_id, env_key, channel_id, platform)"
         )
         _migrate_release_scopes_platform(conn)
+        _migrate_config_registry(conn)
         binding_columns = {row["name"] for row in conn.execute("PRAGMA table_info(topology_bindings)").fetchall()}
         if "platform" not in binding_columns:
             conn.execute("ALTER TABLE topology_bindings ADD COLUMN platform TEXT DEFAULT ''")

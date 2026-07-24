@@ -7,7 +7,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 
 from config import Config
-from data._store import PROJECTS_FILE, load_document, save_document
+from data._store import PROJECTS_FILE
 from repositories.admin import users_repo as _users_repo
 
 
@@ -15,19 +15,14 @@ def _user_role(username: str) -> str:
     row = _users_repo.get_user(username) or {}
     return str(row.get("role") or "user")
 
-projects_db = load_document(PROJECTS_FILE, {
-    'RecycleTycoon': {
-        'name': '垃圾回收站',
-        'description': '垃圾回收站游戏',
-        'created_at': datetime.now().isoformat(),
-        'order': 1,
-        'status': 'active'
-    }
-})
+from repositories.registry._proxies import ProjectsDbProxy
+from repositories.registry.project_repo import get_project_repository
+
+projects_db = ProjectsDbProxy()
 
 
 def save_projects():
-    save_document(PROJECTS_FILE, projects_db)
+    get_project_repository()._mirror_all()
 
 
 def _normalize_project_token(value):

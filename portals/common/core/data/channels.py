@@ -2,18 +2,29 @@
 """Distribution channel configuration."""
 
 from data._store import CHANNELS_FILE, load_document, save_document
+from repositories.registry._proxies import ChannelsDbProxy
+from repositories.registry.channel_repo import get_channel_repository
 
 _default_channels = [
     {'id': 'dev', 'name': '开发版', 'description': '内部开发、自测使用', 'order': 10, 'apk_subdir': 'dev', 'build_param': 'CHANNEL=dev'},
     {'id': 'test', 'name': '测试版', 'description': '功能联调、提测与回归测试使用', 'order': 20, 'apk_subdir': 'test', 'build_param': 'CHANNEL=test'},
     {'id': 'production', 'name': '线上版', 'description': '正式对外发布给用户的版本', 'order': 30, 'apk_subdir': '', 'build_param': 'CHANNEL=production'},
 ]
-channels_db = load_document(CHANNELS_FILE, _default_channels)
+channels_db = ChannelsDbProxy()
+
+
+def _ensure_default_channels():
+    if get_channel_repository().list():
+        return
+    get_channel_repository().replace_all(list(_default_channels))
+
+
+_ensure_default_channels()
 
 
 def save_channels():
-    """保存渠道配置列表到 channels.json。"""
-    save_document(CHANNELS_FILE, channels_db)
+    """Persist channel list via registry repository."""
+    get_channel_repository()._mirror_all()
 
 
 def get_project_assigned_channel_ids(project_id: str) -> list:
