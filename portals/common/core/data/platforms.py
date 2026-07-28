@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from repositories.registry.accessors import get_project
+
 # Unity BuildTarget 对齐的交付平台目录（用于项目白名单与交付线 env×channel×platform）
 PLATFORM_CATALOG: List[Dict[str, Any]] = [
     {"id": "android", "name": "Android", "description": "Unity BuildTarget.Android", "order": 10, "unity_build_target": "Android"},
@@ -13,6 +15,15 @@ PLATFORM_CATALOG: List[Dict[str, Any]] = [
     {"id": "macos", "name": "macOS", "description": "Unity BuildTarget.StandaloneOSX", "order": 40, "unity_build_target": "StandaloneOSX"},
     {"id": "linux", "name": "Linux (64-bit)", "description": "Unity BuildTarget.StandaloneLinux64", "order": 50, "unity_build_target": "StandaloneLinux64"},
     {"id": "webgl", "name": "WebGL", "description": "Unity BuildTarget.WebGL", "order": 60, "unity_build_target": "WebGL"},
+    {
+        "id": "wechat_minigame",
+        "name": "微信小游戏",
+        "description": "Unity WebGL + WX-WASM-SDK-V2 转换导出",
+        "order": 65,
+        "unity_build_target": "WebGL",
+        "artifact_types": ["wxgame_bundle"],
+        "build_agent_label": "build-wxminigame",
+    },
     {"id": "tvos", "name": "tvOS", "description": "Unity BuildTarget.tvOS", "order": 70, "unity_build_target": "tvOS"},
     {"id": "visionos", "name": "visionOS", "description": "Unity BuildTarget.VisionOS", "order": 80, "unity_build_target": "VisionOS"},
     {"id": "switch", "name": "Nintendo Switch", "description": "Unity BuildTarget.Switch", "order": 90, "unity_build_target": "Switch"},
@@ -52,9 +63,7 @@ def get_platform_by_id(platform_id: str) -> Dict[str, Any] | None:
 
 def get_project_assigned_platform_ids(project_id: str) -> List[str]:
     """返回项目白名单平台；未配置时默认 Android + iOS。"""
-    from data.projects import projects_db
-
-    proj = projects_db.get(project_id) or {}
+    proj = get_project(project_id) or {}
     raw = proj.get("platforms")
     if isinstance(raw, list) and raw:
         return [_normalize_platform_id(x) for x in raw if _normalize_platform_id(x)]
@@ -63,9 +72,7 @@ def get_project_assigned_platform_ids(project_id: str) -> List[str]:
 
 def get_disabled_platform_ids(project_id: str) -> List[str]:
     """返回项目内已禁用的平台（仍在白名单，不参与交付线/发布）。"""
-    from data.projects import projects_db
-
-    proj = projects_db.get(project_id) or {}
+    proj = get_project(project_id) or {}
     raw = proj.get("disabled_platforms")
     if not isinstance(raw, list):
         return []

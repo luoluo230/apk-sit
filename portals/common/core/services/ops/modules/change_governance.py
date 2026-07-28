@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from models.data import approvals_db
-import services.ops.helpers as ops_helpers
+from services.ops import deps as ops_helpers
 from services.ops.constants import OPS_EVENT_LOG_KEY
 
 

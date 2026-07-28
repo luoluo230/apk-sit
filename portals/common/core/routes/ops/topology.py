@@ -14,7 +14,7 @@ from services.release.topology_binding_service import (
     resolve_topology_binding,
     upsert_topology_binding,
 )
-import services.ops.helpers as ops_helpers
+from routes.ops import deps as ops_helpers
 from routes.ops import bp
 
 

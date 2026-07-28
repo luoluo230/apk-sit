@@ -4,8 +4,11 @@ from flask import Blueprint
 
 bp = Blueprint("project_ops", __name__)
 
-# Load shared helpers before route modules (avoid partial import NameError)
-import services.ops.helpers  # noqa: F401, E402
+# Load shared ops symbols (submodules + facade auth/render) before route modules
+from routes.ops import deps as _ops_deps  # noqa: F401, E402
+from services.ops import cross_bind
+
+cross_bind.wire_all()
 
 from routes.ops import pages  # noqa: F401, E402
 from routes.ops import overview  # noqa: F401, E402

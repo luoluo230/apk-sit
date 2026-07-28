@@ -5,9 +5,14 @@ import os
 from datetime import datetime
 
 from config import Config
-from data._store import CHANGELOG_FILE, PROJECT_VERSIONS_FILE, VERSIONS_FILE, load_document, save_document
+from data._store import CHANGELOG_FILE, VERSIONS_FILE, load_document, save_document
 from repositories.registry._proxies import ProjectVersionsDbProxy
-from repositories.registry.version_row_repo import get_version_row_repository
+from repositories.registry.accessors import (
+    list_all_project_versions,
+    list_project_versions,
+    mirror_project_versions_json,
+    save_project_versions,
+)
 
 versions_db = load_document(VERSIONS_FILE, {})
 changelog_db = load_document(CHANGELOG_FILE, {})
@@ -16,11 +21,13 @@ project_versions_db = ProjectVersionsDbProxy()
 
 def _normalize_version_platforms():
     changed = False
-    if not isinstance(project_versions_db, dict):
+    grouped = list_all_project_versions()
+    if not isinstance(grouped, dict):
         return changed
-    for project_id, versions in list(project_versions_db.items()):
+    for project_id, versions in list(grouped.items()):
         if not isinstance(versions, list):
             continue
+        project_changed = False
         for version in versions:
             if not isinstance(version, dict):
                 continue
@@ -29,12 +36,15 @@ def _normalize_version_platforms():
                 apk_path = version.get('apk_path') or ''
                 ext = os.path.splitext(apk_path or '')[1].lower()
                 version['platform'] = 'ios' if ext == '.ipa' else 'android'
+                project_changed = True
                 changed = True
+        if project_changed:
+            save_project_versions(project_id, versions)
     return changed
 
 
 if _normalize_version_platforms():
-    save_project_versions()
+    mirror_project_versions_json()
 
 
 def save_versions():
@@ -45,8 +55,8 @@ def save_changelog():
     save_document(CHANGELOG_FILE, changelog_db)
 
 
-def save_project_versions():
-    get_version_row_repository()._mirror_all()
+def save_project_versions_snapshot():
+    mirror_project_versions_json()
 
 
 def get_version_download_count(project_id, version):
@@ -74,12 +84,11 @@ def get_channel_for_apk(project_id, filename, project_versions=None):
     """根据 project_versions 匹配 filename，返回渠道标签；无匹配返回空"""
     from data.packages import detect_platform, extract_version_from_filename
 
-    versions = project_versions if project_versions is not None else (project_versions_db.get(project_id) or [])
+    versions = project_versions if project_versions is not None else list_project_versions(project_id)
     if not isinstance(versions, list):
         return ''
     ver_from_file = extract_version_from_filename(filename)
     fn_lower = filename.lower()
-    proj_lower = (project_id or '').lower()
     for v in versions:
         platform = (v.get('platform') or '').strip().lower()
         if platform in ('android', 'ios') and platform != detect_platform(filename):
@@ -140,11 +149,9 @@ def get_changelog_for_file(filename):
             return raw.get('text', ''), bool(raw.get('recommended'))
         return (str(raw)[:500], False)
     project_id = extract_project_name(filename)
-    versions = project_versions_db.get(project_id) or []
+    versions = list_project_versions(project_id)
     if not isinstance(versions, list):
         return '', False
-    ver_name = ''
-    ver_code = ''
     for v in versions:
         vkey = 'version:' + project_id + ':' + (v.get('id') or '')
         vch = changelog_db.get(vkey)

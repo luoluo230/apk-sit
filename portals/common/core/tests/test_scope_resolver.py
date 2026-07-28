@@ -10,6 +10,10 @@ class ScopeResolverTests(unittest.TestCase):
         self.assertEqual(build_scope_id("gomeku", "production", "1001"), "gomeku:production:1001")
         self.assertEqual(build_scope_id("gomeku", "production", "1001", "android"), "gomeku:production:1001:android")
         self.assertEqual(build_scope_id("gomeku", "production", "1001", "ios"), "gomeku:production:1001:ios")
+        self.assertEqual(
+            build_scope_id("gomeku", "production", "1001", "wechat_minigame"),
+            "gomeku:production:1001:wechat_minigame",
+        )
 
     def test_project_slug(self):
         self.assertEqual(project_slug("GomeKu"), "gomeku")

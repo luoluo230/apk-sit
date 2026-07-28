@@ -106,7 +106,7 @@ def resolve_topology_id(scope: Dict[str, Any], version_name: str = "") -> str:
 
 
 def _load_topology_for_scope(scope: Dict[str, Any], version_name: str = "") -> Dict[str, Any]:
-    from services.ops.helpers import _load_topology_scoped
+    from services.ops.topology_registry import _load_topology_scoped
 
     project_id = str(scope.get("project_id") or "").strip()
     env_key = normalize_release_env_key(scope.get("env_key"))

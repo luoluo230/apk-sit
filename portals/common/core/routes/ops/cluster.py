@@ -6,7 +6,7 @@ from flask import jsonify, redirect, render_template_string, request, session
 
 from models.data import log_audit
 from services.authz import admin_required
-import services.ops.helpers as ops_helpers
+from routes.ops import deps as ops_helpers
 from routes.ops import bp
 
 @bp.route("/api/ops-platform/cluster/sync", methods=["POST"])
@@ -17,7 +17,7 @@ def ops_platform_cluster_sync():
     payload = request.get_json(silent=True) or {}
     project_id = str(payload.get("project_id") or request.args.get("project_id") or "GomeKu").strip()
     repo = ops_helpers._resolve_game_server_repo()
-    cluster_path = CLUSTER_JSON_PATH
+    cluster_path = ops_helpers.CLUSTER_JSON_PATH
     if not os.path.isfile(cluster_path):
         return jsonify({
             "ok": False,

@@ -61,7 +61,7 @@ def _compute_gate_pass_rate() -> float:
 
 def _compute_cluster_health() -> tuple[int, int]:
     try:
-        from services.ops.helpers import _load_agent_registry_v2
+        from services.ops.storage import _load_agent_registry_v2
 
         reg = _load_agent_registry_v2()
         total = online = 0

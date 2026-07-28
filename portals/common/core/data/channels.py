@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """Distribution channel configuration."""
 
-from data._store import CHANNELS_FILE, load_document, save_document
 from repositories.registry._proxies import ChannelsDbProxy
-from repositories.registry.channel_repo import get_channel_repository
+from repositories.registry.accessors import get_channel, list_channels, mirror_channels_json, replace_all_channels
 
 _default_channels = [
     {'id': 'dev', 'name': '开发版', 'description': '内部开发、自测使用', 'order': 10, 'apk_subdir': 'dev', 'build_param': 'CHANNEL=dev'},
@@ -14,39 +13,38 @@ channels_db = ChannelsDbProxy()
 
 
 def _ensure_default_channels():
-    if get_channel_repository().list():
+    if list_channels():
         return
-    get_channel_repository().replace_all(list(_default_channels))
+    replace_all_channels(list(_default_channels))
 
 
 _ensure_default_channels()
 
 
 def save_channels():
-    """Persist channel list via registry repository."""
-    get_channel_repository()._mirror_all()
+    mirror_channels_json()
 
 
 def get_project_assigned_channel_ids(project_id: str) -> list:
     """返回项目白名单渠道 ID；未配置白名单时视为全局渠道库全部可用。"""
-    from data.projects import projects_db
+    from repositories.registry.accessors import get_project
 
-    proj = projects_db.get(project_id) or {}
+    proj = get_project(project_id) or {}
     raw = proj.get('channels')
     if isinstance(raw, list) and raw:
         return [str(x).strip() for x in raw if str(x).strip()]
     return [
         str(c.get('id') or '').strip()
-        for c in (channels_db if isinstance(channels_db, list) else [])
+        for c in list_channels()
         if str(c.get('id') or '').strip()
     ]
 
 
 def get_disabled_channel_ids(project_id: str) -> list:
     """返回项目内已禁用的渠道 ID（仍在白名单，不参与交付线/发布）。"""
-    from data.projects import projects_db
+    from repositories.registry.accessors import get_project
 
-    proj = projects_db.get(project_id) or {}
+    proj = get_project(project_id) or {}
     raw = proj.get('disabled_channels')
     if not isinstance(raw, list):
         return []
@@ -67,8 +65,7 @@ def get_channels_for_project(project_id, enabled_only=True):
     out = []
     allowed_ids = set(get_project_assigned_channel_ids(project_id))
     disabled_ids = set(get_disabled_channel_ids(project_id)) if enabled_only else set()
-    raw = channels_db if isinstance(channels_db, list) else []
-    for c in raw:
+    for c in list_channels():
         cid = (c.get('id') or '').strip()
         if not cid or cid not in allowed_ids:
             continue
@@ -81,8 +78,11 @@ def get_channels_for_project(project_id, enabled_only=True):
 
 def get_channel_by_id(channel_id):
     """根据 ID 获取渠道完整信息（含 apk_subdir、build_param）。"""
-    raw = channels_db if isinstance(channels_db, list) else []
-    for c in raw:
-        if (c.get('id') or '').strip() == (channel_id or '').strip():
+    row = get_channel(channel_id)
+    if isinstance(row, dict) and str(row.get('id') or '').strip():
+        return row
+    cid = str(channel_id or '').strip()
+    for c in list_channels():
+        if (c.get('id') or '').strip() == cid:
             return c
     return None

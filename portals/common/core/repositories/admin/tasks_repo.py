@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from models.data import projects_db, project_tasks_db, save_project_tasks, log_audit, can_view_project, can_edit_project
+from models.data import project_tasks_db, save_project_tasks, log_audit, can_view_project, can_edit_project
+from repositories.registry.accessors import get_project, has_project, list_projects, save_project, list_channels, list_project_versions, save_project_versions
 
 
 def has_project(project_id: str) -> bool:
-    return project_id in projects_db
+    return has_project(project_id)
 
 
 def get_project(project_id: str) -> Dict[str, Any] | None:
-    return projects_db.get(project_id)
+    return get_project(project_id)
 
 
 def can_view(project_id: str, username: str) -> bool:

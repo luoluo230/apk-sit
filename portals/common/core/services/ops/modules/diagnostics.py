@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-import services.ops.helpers as ops_helpers
+from services.ops import deps as ops_helpers
 
 
 def build_summary(project_id: str = "", env_key: str = "production") -> Dict[str, Any]:

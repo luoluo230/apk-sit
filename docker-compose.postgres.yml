@@ -1,0 +1,21 @@
+# PostgreSQL skeleton for Config + Release registry (Plan P0-02 Step 6).
+# Usage: docker compose -f docker-compose.postgres.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: apk_site
+      POSTGRES_PASSWORD: apk_site_dev
+      POSTGRES_DB: apk_site
+    ports:
+      - "5432:5432"
+    volumes:
+      - apk_site_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apk_site -d apk_site"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  apk_site_pgdata:

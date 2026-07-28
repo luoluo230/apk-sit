@@ -79,3 +79,10 @@ def _topology_content_counts(topology_id: str) -> Tuple[int, int]:
     nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []
     edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
     return len(nodes), len(edges)
+
+
+def _runtime_default_topology_id(project_id: str = "", env_key: str = "") -> str:
+    pid = str(project_id or "").strip() or "GomeKu"
+    env = _normalize_env_key(env_key or "production")
+    safe = pid.replace("/", "-").replace(" ", "-").lower() or "default"
+    return f"topology-{safe}-{env}-default"

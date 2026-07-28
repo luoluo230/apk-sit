@@ -149,7 +149,7 @@ def _build_instance_donut(service_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _aggregate_resource_trends(agents: List[Dict[str, Any]]) -> Dict[str, Any]:
-    from services.ops.helpers import _realtime_metric_points
+    from services.ops.agent_registry import _realtime_metric_points
 
     agent_ids: List[str] = []
     for ag in agents:

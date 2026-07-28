@@ -14,7 +14,7 @@ from services.business_test_catalog import (
     save_custom_plan,
     validate_plan_dict,
 )
-import services.ops.helpers as ops_helpers
+from routes.ops import deps as ops_helpers
 from routes.ops import bp
 
 @bp.route("/api/ops-platform/business-test/catalog", methods=["GET"])

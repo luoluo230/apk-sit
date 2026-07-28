@@ -179,7 +179,7 @@ def _resolve_runtime_start_node(project_id: str, env_key: str, topology_id: str)
     if not tid:
         return ""
     try:
-        from services.ops.helpers import _load_topology_scoped
+        from services.ops.topology_registry import _load_topology_scoped
 
         topo = _load_topology_scoped(str(project_id or ""), str(env_key or ""), tid)
         nodes = topo.get("nodes") if isinstance(topo.get("nodes"), list) else []

@@ -8,7 +8,7 @@ from flask import jsonify, redirect, render_template_string, request, session
 
 from models.data import log_audit
 from services.authz import admin_required
-import services.ops.helpers as ops_helpers
+from routes.ops import deps as ops_helpers
 from routes.ops import bp
 
 def _page_scope(project_id_override: str = ""):

@@ -122,16 +122,16 @@ def build_game_server(results: dict) -> None:
 
 
 def ensure_runtime(results: dict, order: dict) -> bool:
-    from services.ops.helpers import _runtime_active_for_scope, _spawn_runtime_start_orchestration
+    from services.ops.runtime_service import _runtime_active_for_scope
+    from services.ops.runtime_orchestrator import _spawn_runtime_start_orchestration
     from services.release.scope_resolver import resolve_scope, resolve_topology_binding_for_scope
-    from services.ops.helpers import (
+    from services.ops.topology_registry import (
         _load_topology_scoped,
         _load_scope_agent_bindings,
         _load_scope_service_bindings,
         _project_uses_runtime_topology,
-        _upsert_runtime_run,
-        _now_iso,
     )
+    from services.ops.storage import _upsert_runtime_run, _now_iso
 
     env_key = str(order.get("env_key") or "development")
     topology_id = str(order.get("topology_id") or "")

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Route dependency injection — direct ops submodule imports (Plan P1-01 Step 6)."""
+"""Internal ops dependency injection — direct submodule imports (Plan P1-01 Step 6)."""
 
 from __future__ import annotations
 
@@ -7,21 +7,9 @@ from services.ops import cross_bind
 
 cross_bind.wire_all()
 
-# Facade-only: auth + page render
-from services.ops.helpers import (  # noqa: E402
-    _allow_gm_execute,
-    _allow_ops_execute,
-    _allow_ops_view,
-    _ops_csrf_token,
-    _render_local_template,
-    _render_ops_page,
-    _render_page,
-    _render_standalone_page,
-    _session_username,
-)
-
 from services.ops import (  # noqa: E402
     agent_registry,
+    agent_service,
     cluster_importer,
     diagnostics,
     runtime_orchestrator,
@@ -42,6 +30,7 @@ for _mod in (
     topology_contracts,
     topology_registry,
     agent_registry,
+    agent_service,
     runtime_orchestrator,
     diagnostics,
 ):

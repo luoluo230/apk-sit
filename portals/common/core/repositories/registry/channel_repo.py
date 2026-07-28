@@ -7,7 +7,6 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from data._store import CHANNELS_FILE
 from repositories.registry._db import get_cursor, init_db
 from repositories.registry._mirror import write_json_mirror
 

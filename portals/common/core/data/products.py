@@ -2,6 +2,7 @@
 """Product catalog."""
 
 from data._store import PRODUCTS_FILE, PRODUCT_MEDIA_DIR, load_document, save_document
+from repositories.registry.accessors import get_project, has_project, list_projects, save_project, list_channels, list_project_versions, save_project_versions
 
 products_db = load_document(PRODUCTS_FILE, [])
 
@@ -11,7 +12,7 @@ def save_products():
 
 
 def resolve_project_id_for_product(product):
-    from data.projects import projects_db, resolve_project_id
+    from data.projects import resolve_project_id
 
     if not isinstance(product, dict):
         return ''
@@ -31,6 +32,6 @@ def resolve_project_id_for_product(product):
         if project_id:
             return project_id
     # Last-resort compatibility for old datasets with a single project.
-    if isinstance(projects_db, dict) and len(projects_db) == 1:
-        return next(iter(projects_db.keys()))
+    if True and len(list_projects()) == 1:
+        return next(iter(list_projects().keys()))
     return ''

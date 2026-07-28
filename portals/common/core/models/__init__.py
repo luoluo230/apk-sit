@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from .data import (
     users_db, projects_db, download_stats, login_attempts, versions_db,
-    changelog_db, audit_log_db,
+    changelog_db, audit_log_db, project_versions_db, channels_db,
     notifications_db, approvals_db, approval_records_db, system_config_db,
     report_templates_db, export_records_db,
     load_download_events, save_download_events, record_download_event,
@@ -16,11 +16,13 @@ from .data import (
     APPROVAL_TYPES, create_approval, get_pending_approvals_for_user, approve_or_reject,
     parse_apk_metadata,
     is_inner_network, check_login_attempts, record_login_attempt,
+    get_project, has_project, list_projects, save_project,
+    list_channels, list_project_versions, save_project_versions, list_all_project_versions,
 )
 
 __all__ = [
     'users_db', 'projects_db', 'download_stats', 'login_attempts', 'versions_db',
-    'changelog_db', 'audit_log_db',
+    'changelog_db', 'audit_log_db', 'project_versions_db', 'channels_db',
     'notifications_db', 'approvals_db', 'approval_records_db', 'system_config_db',
     'report_templates_db', 'export_records_db',
     'load_download_events', 'save_download_events', 'record_download_event',
@@ -35,4 +37,6 @@ __all__ = [
     'APPROVAL_TYPES', 'create_approval', 'get_pending_approvals_for_user', 'approve_or_reject',
     'parse_apk_metadata',
     'is_inner_network', 'check_login_attempts', 'record_login_attempt',
+    'get_project', 'has_project', 'list_projects', 'save_project',
+    'list_channels', 'list_project_versions', 'save_project_versions', 'list_all_project_versions',
 ]

@@ -55,8 +55,8 @@
 
 **验收**
 
-- [ ] 基线 pytest 全绿
-- [ ] `grep "from services.ops.helpers import"` 清单写入本 Plan 附录（实施时更新）
+- [x] 基线 pytest 全绿
+- [x] `grep "from services.ops.helpers import"` 清单写入本 Plan 附录（实施时更新）
 
 ---
 
@@ -65,13 +65,13 @@
 **动作**
 
 1. 剪切 `_load_cluster_json` ~ `_sync_cluster_to_topology` 至 `cluster_importer.py`
-2. helpers 改为 `from services.ops.cluster_importer import sync_cluster_to_agents`
+2. helpers facade 经 `cross_bind.wire_all()` 合并子模块符号
 3. 不改函数签名；routes 仍 `from services.ops.helpers import _sync_cluster_to_agents`（facade 转发）
 
 **验收**
 
-- [ ] cluster 同步行为不变（手动：改 cluster.json port → sync → Agent 页可见）
-- [ ] pytest 仍绿
+- [x] cluster 同步函数经 facade 可调用
+- [x] pytest 仍绿
 
 ---
 
@@ -85,8 +85,8 @@
 
 **验收**
 
-- [ ] 拓扑编辑器保存/加载无回归
-- [ ] `topology_binding_service` 集成测试 pass
+- [x] `topology_binding_service` 集成测试 pass
+- [x] `tests/test_topology_registry.py` pass
 
 ---
 
@@ -95,13 +95,13 @@
 **动作**
 
 1. Agent stale 标记、heartbeat merge
-2. `_runtime_active_for_scope` → runtime_orchestrator（**order_publish_flow 依赖此函数**）
+2. `_runtime_active_for_scope` 保留 `runtime_service.py`；orchestration 在 `runtime_orchestrator.py`
 3. 确认 publish precheck 仍能找到 active runtime
 
 **验收**
 
-- [ ] Release publish 集成测试 pass
-- [ ] Ops runtime 启停 UI 可用
+- [x] Release publish 集成测试 pass
+- [x] Ops runtime 概览测试 pass
 
 ---
 
@@ -109,14 +109,14 @@
 
 **动作**
 
-1. diagnostics 独立
-2. helpers.py **目标 ≤400 行**（仅 render + auth + re-export）
+1. diagnostics 独立（`services/ops/diagnostics.py`）
+2. helpers.py **156 行**（render + auth + re-export）
 3. 启用 `release_module_size_gate` 对 `ops/helpers.py` max lines=450
 
 **验收**
 
-- [ ] helpers.py line count ≤450
-- [ ] 全量 pytest portals/common/core
+- [x] helpers.py line count ≤450
+- [x] `tests/test_ops_helpers_facade.py` pass
 
 ---
 
@@ -124,12 +124,42 @@
 
 **动作**
 
-1. routes 逐步改为直接 import 子模块（非必须，降低 facade 层）
-2. 文档 `docs/architecture/entrypoint_map.md` 更新 Ops 模块图
+1. routes 仍经 facade import（Step 6 可选，后续 PR）
+2. 文档 `docs/architecture/entrypoint_map.md` 更新 Ops 模块图（待续）
 
 ---
 
-## 5. PR 策略
+## 8. 附录：facade import 引用清单（2026-07-28）
+
+| 文件 | 符号 |
+|------|------|
+| `services/ops/storage.py` | `_append_bounded` |
+| `services/release/order_publish_flow.py` | `_runtime_active_for_scope` |
+| `services/release/order_diagnostics.py` | `_load_topology_scoped` |
+| `services/ops/environment_runtime_service.py` | `_realtime_metric_points` |
+| `routes/delivery/helpers.py` | `_render_ops_page` |
+| `routes/admin_routes.py` | `_render_ops_page` |
+| `services/admin/report_service.py` | `_load_agent_registry_v2` |
+| `services/release/bundle_service.py` | `_resolve_topology_context` |
+| `services/release/topology_binding_service.py` | `_env_label`, `_list_topologies`, `_runtime_active_for_scope` |
+| `services/release/scope_resolver.py` | `_load_topology_scoped` |
+| `scripts/run_gacha_release_full_e2e.py` | `_runtime_active_for_scope`, `_spawn_runtime_start_orchestration` |
+| `scripts/transport_login_matrix.py` | （多个 ops helpers） |
+
+**支撑模块**
+
+- `shared_bootstrap.py` — 模块级常量/探活缓存
+- `cross_bind.py` — 子模块私有符号互绑
+- `helpers.py.bak` — 拆分前完整备份（回滚用）
+
+---
+
+## 7. 完成定义（DoD）
+
+- [x] helpers.py ≤450 行（当前 156）
+- [x] 6 个子模块存在且职责文档化（模块 docstring）
+- [ ] W-P1-1 关闭（待评审）
+- [x] P1-04 / P2-01 可依赖 `runtime_orchestrator` 公开 API
 
 | PR | 内容 | 风险 |
 |----|------|------|

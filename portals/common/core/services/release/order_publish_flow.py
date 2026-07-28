@@ -237,7 +237,7 @@ def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
     runtime_run_id = ""
     if runtime_mode != "skip":
         try:
-            from services.ops.helpers import _runtime_active_for_scope
+            from services.ops.runtime_service import _runtime_active_for_scope
             runtime = _runtime_active_for_scope(project_id, order["env_key"], str(result.get("topology_id") or ""))
             if runtime.get("active"):
                 runtime_run_id = str(runtime.get("run_id") or "")
@@ -373,7 +373,7 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
     profile, profile_source = resolve_network_profile(scope, order["version_name"])
     runtime_run_id = ""
     try:
-        from services.ops.helpers import _runtime_active_for_scope
+        from services.ops.runtime_service import _runtime_active_for_scope
         runtime = _runtime_active_for_scope(project_id, order["env_key"], topology_id)
         runtime_run_id = str(runtime.get("run_id") or "") if runtime.get("active") else ""
     except Exception:

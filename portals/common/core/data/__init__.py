@@ -55,9 +55,9 @@ from data.projects import (
     get_project_portal_urls,
     get_project_record,
     normalize_public_url,
-    projects_db,
     resolve_project_id,
     save_projects,
+    projects_db,
 )
 from data.versions import (
     changelog_db,
@@ -67,7 +67,7 @@ from data.versions import (
     get_version_platform,
     project_versions_db,
     save_changelog,
-    save_project_versions,
+    save_project_versions_snapshot,
     save_versions,
     version_has_apk,
     version_is_recommended,
@@ -79,6 +79,23 @@ from data.channels import (
     get_channels_for_project,
     save_channels,
 )
+from repositories.registry.accessors import (
+    delete_project,
+    delete_project_versions,
+    get_channel,
+    get_project,
+    has_project,
+    list_all_project_versions,
+    list_channels,
+    list_project_versions,
+    list_projects,
+    replace_all_channels,
+    save_channel,
+    save_project,
+    save_project_versions,
+)
+
+save_project_versions = save_project_versions_snapshot
 from data.builds import (
     get_build_records_for_version,
     load_jenkins_instances,
@@ -259,4 +276,11 @@ __all__ = [
     'can_edit_project',
     'get_total_downloads',
     'get_active_projects_count',
+    'get_project',
+    'has_project',
+    'list_projects',
+    'save_project',
+    'list_channels',
+    'list_project_versions',
+    'list_all_project_versions',
 ]

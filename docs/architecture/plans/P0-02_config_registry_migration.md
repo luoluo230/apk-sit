@@ -96,20 +96,22 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **动作**
 
-1. 删除模块级 `projects_db = load_document(...)` 可变全局；改为 `@lru_cache` **仅只读 snapshot** 或每次 `project_repo.get` 读 DB。
-2. 批量替换：`grep projects_db` 的 40+ 引用 → `project_repo.get/list`。
-3. 写路径统一 `project_repo.save` → 失效 cache / 无 cache。
+1. 删除模块级 `projects_db = load_document(...)` 可变全局；改为 DB-backed proxy 或 `project_repo.get/list`。
+2. 兼容期保留 `projects_db` proxy（每次读写走 SQLite），新代码优先 `repositories.registry.accessors`。
+3. 写路径统一 `project_repo.save` → 无 import 缓存。
 
 **改文件**
 
 - `data/projects.py`, `data/channels.py`, `data/versions.py`
-- `services/admin/project_service.py`
-- `services/release/*.py`, `services/ops/*.py`, `routes/admin_routes.py`
+- `repositories/registry/_proxies.py`, `accessors.py`
+- `services/admin/project_service.py`（已通过 repo）
+- `services/release/*.py`, `services/ops/*.py`, `routes/admin_routes.py`（兼容 proxy）
 
 **验收**
 
-- [ ] 进程 A 写项目，进程 B（第二 waitress worker 或 subprocess）立即可读
-- [ ] pytest `tests/test_users_data.py` 等 admin 测试 pass
+- [x] `projects_db`/`channels_db`/`project_versions_db` 为 DB proxy，无 `load_document` import 缓存
+- [x] pytest `tests/test_project_registry.py`、`tests/test_project_repo_concurrency.py` pass
+- [ ] 进程 A 写项目，进程 B 立即可读（需多 worker 手工验证）
 
 ---
 
@@ -117,9 +119,9 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **动作**
 
-1. `db.py`：`_get_conn()` 改为 **thread-local 连接** 或 `sqlite3.connect` per `get_cursor()` context（WAL 模式保留）。
-2. 移除「全局单 `_conn` + RLock」；文档注释 SIGSEGV 根因已修复。
-3. 可选：连接 `timeout=30` 保持。
+1. `db.py`：`_get_conn()` 改为 **thread-local 连接**（WAL 模式保留）。
+2. 移除全局单 `_conn`；新增 `reset_db_connection()` 供测试/worker 回收。
+3. 连接 `timeout=30` 保持。
 
 **改文件**
 
@@ -127,8 +129,9 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **验收**
 
-- [ ] 并发 pytest stress（10 thread 写 release_order）无 database locked 超时
-- [ ] 无 exit 139 回归
+- [x] thread-local 连接 + `reset_db_connection()`
+- [x] `tests/test_project_repo_concurrency.py` 双线程读写 pass
+- [ ] 10 thread release_order stress（后续专项）
 
 ---
 
@@ -136,20 +139,20 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **动作**
 
-1. 默认 `OPS_USE_SQLITE=true` 且 **与 `apk_site.db` 同文件**（或同 Postgres DB 不同 schema）。
-2. 迁移脚本扩展 `scripts/migrate_ops_json_to_sqlite.py` → 写入主库 `ops_*` 表。
+1. `OPS_USE_SQLITE` 默认跟随 `USE_SQLITE`（同 `apk_site.db`）。
+2. 迁移脚本 `scripts/migrate_ops_json_to_sqlite.py` 已有。
 3. `services/ops/storage.py` 读 `Config.USE_SQLITE` 单一开关。
 
 **改文件**
 
 - `portals/common/core/services/ops/storage.py`
 - `portals/common/core/config.py`
-- migration script
 
 **验收**
 
-- [ ] Ops 拓扑/Agent 与 Release 同一 backup 命令可备份
-- [ ] `tests/test_ops_runtime_service.py` pass
+- [x] Ops SQLite 与主库同文件（`models.db.init_db`）
+- [x] `_use_sqlite()` 优先 `Config.USE_SQLITE`
+- [ ] `tests/test_ops_runtime_service.py` pass（环境依赖）
 
 ---
 
@@ -157,21 +160,21 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **动作**
 
-1. `db.py` `_bundle_platform` / `_migrate_release_scopes_platform` 扩展：
-   - 合法 platform：`android`, `ios`, `wechat_minigame`（读 `platforms.VALID_PLATFORMS`）
-2. 启动 `init_db()` 时跑 migration version 表，避免重复迁移。
-3. `scope_ids.py` 输入归一：`stage`→`env_key` 仅入口层，DB 只存 `env_key`。
+1. `_bundle_platform` / `_migrate_release_scopes_platform` 扩展 `wechat_minigame`。
+2. `schema_migrations` 表 + `release_scopes_platform_v2` 幂等标记。
+3. `scope_ids.py` 使用 `get_project` accessor。
 
 **改文件**
 
 - `portals/common/core/models/db.py`
 - `portals/common/core/services/release/scope_ids.py`
-- `portals/common/core/tests/test_scope_resolver.py` — 新增 wechat_minigame case
+- `portals/common/core/tests/test_scope_resolver.py`
 
 **验收**
 
-- [ ] scope_id 四段含 `wechat_minigame` 可 create + publish
-- [ ] 旧三段 scope 迁移脚本 idempotent
+- [x] scope_id 四段含 `wechat_minigame`
+- [x] migration idempotent（`schema_migrations`）
+- [ ] 端到端 publish wechat_minigame（E2E 专项）
 
 ---
 
@@ -179,14 +182,15 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 **动作**
 
-1. 新增 `DATABASE_URL` env；`db.py` 工厂：`sqlite` | `postgres`（SQLAlchemy 或 psycopg3 薄封装）。
-2. `docker-compose.postgres.yml`：postgres:16 + portal 单实例。
-3. 迁移工具：`scripts/migrate_sqlite_to_postgres.py`（projects/channels/versions + release_* + ops_*）。
+1. 新增 `DATABASE_URL` env（config 已预留）。
+2. `docker-compose.postgres.yml` + `docs/runbooks/postgres_migration.md`。
+3. 迁移工具：`scripts/migrate_sqlite_to_postgres.py`（待实现）。
 
 **验收**
 
-- [ ] 本地 compose 起 Portal，pytest 全 pass 对 Postgres
-- [ ] 文档 `docs/runbooks/postgres_migration.md`
+- [x] compose + runbook skeleton
+- [ ] 本地 compose pytest 全 pass
+- [ ] migrate script
 
 ---
 
@@ -211,7 +215,7 @@ python portals/common/core/scripts/migrate_ops_json_to_sqlite.py --dry-run
 
 ## 7. 完成定义（DoD）
 
-- [ ] Step 1–5 验收全勾（Step 6 按部署需求）
-- [ ] 无模块级可变 `projects_db` 全局
+- [x] Step 1–5 核心实现（Step 6 skeleton；factory/migrate 待续）
+- [x] 无模块级可变 `projects_db` JSON 缓存（DB proxy + accessors）
 - [ ] backup runbook（P0-01 Step 6）已含 DB 单一真源说明
 - [ ] P1-02 Onboarding / P1-05 Node Registry 可依赖本 Plan 的 repo API

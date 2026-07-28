@@ -24,8 +24,9 @@ def registry_db(tmp_path, monkeypatch):
     monkeypatch.setattr('data._store.DATA_DIR', str(data_dir))
     monkeypatch.setattr('models.db.DATA_DIR', str(data_dir))
     monkeypatch.setattr('models.db.DB_PATH', str(db_path))
-    monkeypatch.setattr('models.db._conn', None)
-    monkeypatch.setattr('models.db._schema_initialized', False)
+    from models import db as db_mod
+
+    db_mod.reset_db_connection(close_all=True)
 
     import repositories.registry._db as registry_db_mod
     import repositories.registry.project_repo as project_repo_mod
@@ -40,8 +41,7 @@ def registry_db(tmp_path, monkeypatch):
     db_mod = registry_db_mod.db_module()
     monkeypatch.setattr(db_mod, 'DB_PATH', str(db_path))
     monkeypatch.setattr(db_mod, 'DATA_DIR', str(data_dir))
-    monkeypatch.setattr(db_mod, '_conn', None)
-    monkeypatch.setattr(db_mod, '_schema_initialized', False)
+    db_mod.reset_db_connection(close_all=True)
     db_mod.init_db()
 
     yield str(db_path), str(data_dir)

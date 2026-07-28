@@ -5,28 +5,28 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from models.data import (
-    projects_db,
-    project_versions_db,
+    can_edit_project,
+    can_view_project,
     changelog_db,
-    save_project_versions,
-    save_changelog,
-    log_audit,
+    extract_project_name,
+    get_approved_approval,
+    get_platform_label,
     get_project_download_count,
+    get_system_config,
     get_version_download_count,
+    load_download_events,
+    log_audit,
+    save_changelog,
+    save_project_versions,
     version_has_apk,
     version_is_recommended,
-    get_platform_label,
-    can_view_project,
-    can_edit_project,
-    get_approved_approval,
-    get_system_config,
-    load_download_events,
-    extract_project_name,
 )
+from repositories.registry.accessors import has_project as registry_has_project
+from repositories.registry.accessors import list_project_versions
 
 
 def has_project(project_id: str) -> bool:
-    return project_id in projects_db
+    return registry_has_project(project_id)
 
 
 def can_view(project_id: str, username: str) -> bool:
@@ -38,13 +38,12 @@ def can_edit(project_id: str, username: str) -> bool:
 
 
 def list_versions(project_id: str) -> List[Dict[str, Any]]:
-    versions = project_versions_db.get(project_id) or []
+    versions = list_project_versions(project_id) or []
     return versions if isinstance(versions, list) else []
 
 
 def save_versions(project_id: str, versions: List[Dict[str, Any]]) -> None:
-    project_versions_db[project_id] = versions
-    save_project_versions()
+    save_project_versions(project_id, versions)
 
 
 def save_changelog_item(key: str, payload: Dict[str, Any] | None) -> None:

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
+from models.data import log_audit
+from repositories.registry.accessors import list_channels as registry_list_channels
 from repositories.registry.project_repo import get_project_repository
-from models.data import (
-    channels_db,
-    project_versions_db,
-    log_audit,
-)
 
 
 def list_projects() -> Dict[str, Dict[str, Any]]:
@@ -49,7 +46,7 @@ def list_users() -> Dict[str, Dict[str, Any]]:
 
 
 def list_channels() -> List[Dict[str, Any]]:
-    return channels_db if isinstance(channels_db, list) else []
+    return registry_list_channels()
 
 
 def audit(action: str, target: str) -> None:

@@ -11,28 +11,54 @@ from datetime import datetime
 from config import DATA_DIR
 
 DB_PATH = os.path.join(DATA_DIR, 'apk_site.db')
-_conn = None
-# waitress 多线程 + 后台 scheduler 共用单连接时，无锁会触发 libsqlite3 SIGSEGV（exit 139）
+_local = threading.local()
+# Per-thread SQLite connections (WAL). Replaces global _conn — avoids SIGSEGV under Waitress.
 _db_lock = threading.RLock()
 _schema_initialized = False
 
 
 def _get_conn():
-    global _conn
-    if _conn is None:
+    conn = getattr(_local, 'conn', None)
+    if conn is None:
         os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
-        _conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
-        _conn.row_factory = sqlite3.Row
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
+        conn.row_factory = sqlite3.Row
         try:
-            _conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA journal_mode=WAL')
         except sqlite3.Error:
             pass
-    return _conn
+        _local.conn = conn
+    return conn
+
+
+def reset_db_connection(close_all: bool = False) -> None:
+    """Close thread-local DB handle (tests / worker recycle)."""
+    global _schema_initialized
+    conn = getattr(_local, 'conn', None)
+    if conn is not None:
+        try:
+            conn.close()
+        except sqlite3.Error:
+            pass
+    _local.conn = None
+    if close_all:
+        _schema_initialized = False
+
+
+def _release_scope_platforms():
+    from data.platforms import VALID_PLATFORMS
+
+    preferred = ('android', 'ios', 'wechat_minigame')
+    return tuple(p for p in preferred if p in VALID_PLATFORMS) or ('android', 'ios')
+
+
+def _is_scope_platform(plat: str) -> bool:
+    return str(plat or '').strip().lower() in set(_release_scope_platforms())
 
 
 def _bundle_platform(row) -> str:
     plat = str(row["platform"] or "").strip().lower() if "platform" in row.keys() else ""
-    if plat in {"android", "ios"}:
+    if _is_scope_platform(plat):
         return plat
     try:
         payload = json.loads(row["payload"] or "{}")
@@ -40,7 +66,22 @@ def _bundle_platform(row) -> str:
         plat = str(client.get("platform") or "android").strip().lower()
     except (TypeError, json.JSONDecodeError, AttributeError):
         plat = "android"
-    return plat if plat in {"android", "ios"} else "android"
+    return plat if _is_scope_platform(plat) else "android"
+
+
+def _migration_applied(conn, name: str) -> bool:
+    try:
+        row = conn.execute('SELECT 1 FROM schema_migrations WHERE name=?', (name,)).fetchone()
+        return bool(row)
+    except sqlite3.Error:
+        return False
+
+
+def _mark_migration(conn, name: str) -> None:
+    conn.execute(
+        'INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)',
+        (name, datetime.now().isoformat()),
+    )
 
 
 def _migrate_release_scopes_platform(conn) -> None:
@@ -52,7 +93,7 @@ def _migrate_release_scopes_platform(conn) -> None:
         parts = [p for p in sid.split(":") if p]
         if len(parts) == 3:
             legacy_ids.append(sid)
-        elif len(parts) == 4 and parts[3] in {"android", "ios"} and not str(row["platform"] or "").strip():
+        elif len(parts) == 4 and parts[3] in set(_release_scope_platforms()) and not str(row["platform"] or "").strip():
             conn.execute("UPDATE release_scopes SET platform=? WHERE scope_id=?", (parts[3], sid))
     if not legacy_ids:
         return
@@ -67,7 +108,7 @@ def _migrate_release_scopes_platform(conn) -> None:
             continue
         parts = [p for p in sid.split(":") if p]
         slug, env_key, channel_id = parts[0], parts[1], parts[2]
-        active_by_platform = {"android": "", "ios": ""}
+        active_by_platform = {plat: "" for plat in _release_scope_platforms()}
         bundles = conn.execute(
             "SELECT bundle_id, platform, payload, publish_status FROM release_bundles WHERE scope_id=?",
             (sid,),
@@ -84,7 +125,7 @@ def _migrate_release_scopes_platform(conn) -> None:
                     break
             if not any(active_by_platform.values()):
                 active_by_platform["android"] = legacy_active
-        for plat in ("android", "ios"):
+        for plat in _release_scope_platforms():
             new_sid = f"{slug}:{env_key}:{channel_id}:{plat}"
             conn.execute(
                 """
@@ -127,7 +168,7 @@ def _migrate_release_scopes_platform(conn) -> None:
             (sid,),
         ).fetchall():
             plat = str(order["platform"] or "android").strip().lower()
-            if plat not in {"android", "ios"}:
+            if not _is_scope_platform(plat):
                 plat = "android"
             new_sid = f"{slug}:{env_key}:{channel_id}:{plat}"
             conn.execute(
@@ -524,6 +565,11 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_release_approvals_order
             ON release_approvals(release_order_id, created_at);
 
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS projects (
             project_id TEXT PRIMARY KEY,
             payload TEXT NOT NULL,
@@ -556,8 +602,10 @@ def init_db():
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_release_scope_target "
             "ON release_scopes(project_id, env_key, channel_id, platform)"
         )
-        _migrate_release_scopes_platform(conn)
         _migrate_config_registry(conn)
+        if not _migration_applied(conn, 'release_scopes_platform_v2'):
+            _migrate_release_scopes_platform(conn)
+            _mark_migration(conn, 'release_scopes_platform_v2')
         binding_columns = {row["name"] for row in conn.execute("PRAGMA table_info(topology_bindings)").fetchall()}
         if "platform" not in binding_columns:
             conn.execute("ALTER TABLE topology_bindings ADD COLUMN platform TEXT DEFAULT ''")

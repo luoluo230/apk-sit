@@ -267,7 +267,7 @@ def resolve_topology_binding(
 
 
 def _topology_name_map(project_id: str) -> Dict[str, str]:
-    from services.ops.helpers import _list_topologies
+    from services.ops.topology_registry import _list_topologies
 
     out: Dict[str, str] = {}
     for item in _list_topologies(project_id, None):
@@ -308,7 +308,9 @@ def build_topology_binding_picker(
     version_name: str = "",
 ) -> Dict[str, Any]:
     from models.data import get_channels_for_project
-    from services.ops.helpers import _env_label, _list_topologies, _runtime_active_for_scope
+    from services.ops.topology_service import _env_label
+    from services.ops.topology_registry import _list_topologies
+    from services.ops.runtime_service import _runtime_active_for_scope
     from services.release.scope_resolver import resolve_scope, resolve_topology_binding_for_scope
 
     pid = str(project_id or "").strip()

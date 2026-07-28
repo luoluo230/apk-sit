@@ -204,6 +204,7 @@ class Config:
     DISK_ALERT_GB = float(os.getenv('DISK_ALERT_GB') or _get('feishu.disk_alert_gb') or '5')
 
     USE_SQLITE = str(os.getenv('USE_SQLITE') or _get('app.use_sqlite') or 'true').lower() in ('true', '1', 'yes')
+    DATABASE_URL = (os.getenv('DATABASE_URL') or _get('app.database_url') or '').strip()
     SQLITE_MIRROR_JSON = str(os.getenv('SQLITE_MIRROR_JSON') or _get('app.sqlite_mirror_json') or 'false').lower() in ('true', '1', 'yes')
     SQLITE_IMPORT_JSON_ON_MISS = str(
         os.getenv('SQLITE_IMPORT_JSON_ON_MISS') or _get('app.sqlite_import_json_on_miss') or 'false'

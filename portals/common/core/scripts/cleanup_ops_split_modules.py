@@ -1,4 +1,102 @@
 # -*- coding: utf-8 -*-
+"""Fix shared bootstrap and dedupe imports on split ops modules."""
+
+from __future__ import annotations
+
+import os
+import re
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+OPS = os.path.join(ROOT, "services", "ops")
+BOOT = os.path.join(OPS, "shared_bootstrap.py")
+MODULES = (
+    "diagnostics",
+    "topology_contracts",
+    "cluster_importer",
+    "topology_registry",
+    "agent_registry",
+    "runtime_orchestrator",
+)
+
+
+def fix_bootstrap() -> None:
+    with open(BOOT, encoding="utf-8") as fp:
+        body = fp.read()
+    body = re.sub(r"from __future__ import annotations\s*\n\s*from __future__ import annotations", "from __future__ import annotations", body)
+    if "from services.ops.encoding import" not in body:
+        body = body.replace(
+            "from services.legacy_gm_bridge_client import LegacyGmBridgeClient\n",
+            "from services.legacy_gm_bridge_client import LegacyGmBridgeClient\n"
+            "from services.ops.encoding import repair_legacy_node_text, text_has_mojibake\n"
+            "from concurrent.futures import ThreadPoolExecutor, as_completed\n"
+            "import time as _time_mod\n",
+        )
+    body = re.sub(
+        r"\nCLUSTER_JSON_PATH = os\.path\.join\(_resolve_game_server_repo\(\), \"config\", \"cluster\.json\"\)\n",
+        "\n",
+        body,
+    )
+    with open(BOOT, "w", encoding="utf-8") as fp:
+        fp.write(body)
+
+
+def strip_module(path: str) -> None:
+    with open(path, encoding="utf-8") as fp:
+        lines = fp.readlines()
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if i == 0 or (i < 8 and (line.startswith('"""') or line.startswith("#") or line.strip() == "" or "from __future__" in line or "shared_bootstrap" in line)):
+            if "from __future__" in line and any("from __future__" in x for x in out):
+                i += 1
+                continue
+            out.append(line)
+            i += 1
+            continue
+        if line.startswith("def ") or line.startswith("@") or line.startswith("class "):
+            out.extend(lines[i:])
+            break
+        i += 1
+    with open(path, "w", encoding="utf-8") as fp:
+        fp.writelines(out)
+
+
+def fix_cluster_path() -> None:
+    path = os.path.join(OPS, "cluster_importer.py")
+    with open(path, encoding="utf-8") as fp:
+        body = fp.read()
+    marker = "    return env or ordered[0]\n\n\ndef _load_cluster_json"
+    insert = (
+        "    return env or ordered[0]\n\n\n"
+        "CLUSTER_JSON_PATH = os.path.join(_resolve_game_server_repo(), \"config\", \"cluster.json\")\n\n\n"
+        "def _load_cluster_json"
+    )
+    if "CLUSTER_JSON_PATH =" not in body:
+        body = body.replace(marker, insert)
+    with open(path, "w", encoding="utf-8") as fp:
+        fp.write(body)
+
+
+BOOT_IMPORT = (
+    "from services.ops import shared_bootstrap as _boot\n\n"
+    "globals().update({k: getattr(_boot, k) for k in dir(_boot) if not k.startswith('__')})\n"
+)
+
+
+def fix_private_bootstrap_imports() -> None:
+    paths = [os.path.join(OPS, f"{n}.py") for n in MODULES] + [os.path.join(OPS, "helpers.py")]
+    for path in paths:
+        with open(path, encoding="utf-8") as fp:
+            body = fp.read()
+        body = body.replace("from services.ops.shared_bootstrap import *  # noqa: F403\n", BOOT_IMPORT)
+        with open(path, "w", encoding="utf-8") as fp:
+            fp.write(body)
+
+
+def fix_helpers_facade() -> None:
+    path = os.path.join(OPS, "helpers.py")
+    helpers_body = '''# -*- coding: utf-8 -*-
 """Ops platform thin facade — re-exports domain modules. Plan P1-01."""
 
 from __future__ import annotations
@@ -20,49 +118,18 @@ from services.ops.topology_service import (
     _load_topology_contents,
     _load_topology_registry,
     _normalize_env_key,
-    _runtime_default_topology_id,
     _save_topology_contents,
     _save_topology_registry,
     _scope_binding_key,
     _topology_content_counts,
 )
 
-
-def _merge_ops_module(mod) -> None:
-    globals().update({k: getattr(mod, k) for k in dir(mod) if not k.startswith("__")})
-
-
-import services.ops.diagnostics as _ops_diagnostics
-import services.ops.topology_contracts as _ops_topology_contracts
-import services.ops.cluster_importer as _ops_cluster_importer
-import services.ops.topology_registry as _ops_topology_registry
-import services.ops.agent_registry as _ops_agent_registry
-import services.ops.runtime_orchestrator as _ops_runtime_orchestrator
-
-for _mod in (
-    _ops_diagnostics,
-    _ops_topology_contracts,
-    _ops_cluster_importer,
-    _ops_topology_registry,
-    _ops_agent_registry,
-    _ops_runtime_orchestrator,
-):
-    _merge_ops_module(_mod)
-
-from services.ops import cross_bind
-
-cross_bind.wire_all()
-for _mod in (
-    _ops_diagnostics,
-    _ops_topology_contracts,
-    _ops_cluster_importer,
-    _ops_topology_registry,
-    _ops_agent_registry,
-    _ops_runtime_orchestrator,
-):
-    _merge_ops_module(_mod)
-
-del _mod, _merge_ops_module, cross_bind
+from services.ops.diagnostics import *  # noqa: F403
+from services.ops.topology_contracts import *  # noqa: F403
+from services.ops.cluster_importer import *  # noqa: F403
+from services.ops.topology_registry import *  # noqa: F403
+from services.ops.agent_registry import *  # noqa: F403
+from services.ops.runtime_orchestrator import *  # noqa: F403
 
 
 def _session_username(default: str = "system") -> str:
@@ -190,3 +257,21 @@ def _render_standalone_page(content: str, title: str):
 
 
 __all__ = []
+'''
+    with open(path, "w", encoding="utf-8") as fp:
+        fp.write(helpers_body)
+
+
+def main() -> int:
+    fix_bootstrap()
+    for name in MODULES:
+        strip_module(os.path.join(OPS, f"{name}.py"))
+    fix_cluster_path()
+    fix_helpers_facade()
+    fix_private_bootstrap_imports()
+    print("cleanup done")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

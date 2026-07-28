@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-import services.ops.helpers as ops_helpers
+from services.ops import deps as ops_helpers
 
 
 def list_catalog() -> List[Dict[str, Any]]:

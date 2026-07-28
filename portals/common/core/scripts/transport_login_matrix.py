@@ -24,7 +24,7 @@ DEFAULT_KCP_UDP_PORT = int(os.environ.get("KCP_UDP_PORT", "5602"))
 
 def _import_smoke_probes():
     try:
-        from services.ops.helpers import (
+        from services.ops.runtime_orchestrator import (
             _business_test_login_probe,
             _probe_tcp_open,
             _ws_handshake_probe,

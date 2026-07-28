@@ -27,8 +27,20 @@ def _now_iso() -> str:
 
 
 def _use_sqlite() -> bool:
-    v = get_system_config("OPS_USE_SQLITE", "")
-    return str(v).lower() in ("true", "1", "yes")
+    try:
+        from config import Config
+
+        if getattr(Config, 'USE_SQLITE', False):
+            return True
+    except ImportError:
+        pass
+    ops_flag = get_system_config('OPS_USE_SQLITE', '')
+    if str(ops_flag).lower() in ('true', '1', 'yes'):
+        return True
+    if str(ops_flag).lower() in ('false', '0', 'no'):
+        return False
+    core_flag = get_system_config('USE_SQLITE', '')
+    return str(core_flag).lower() in ('true', '1', 'yes')
 
 
 # ── JSON backend (existing) ─────────────────────────────────────────
@@ -208,7 +220,7 @@ def _append_event(entry: Dict[str, Any]) -> None:
     if _use_sqlite():
         _sqlite_append_event(entry)
         return
-    from services.ops.helpers import _append_bounded
+    from services.ops.diagnostics import _append_bounded
     _append_bounded(OPS_EVENT_LOG_KEY, entry, limit=800, description="Ops platform event timeline")
 
 

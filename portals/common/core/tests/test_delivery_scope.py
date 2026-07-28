@@ -78,11 +78,17 @@ def _mock_projects_db():
     return {_TEST_PROJECT: dict(_MOCK_PROJECT)}
 
 
+def _mock_get_project(project_id):
+    return _mock_projects_db().get(str(project_id or '').strip())
+
+
 class DeliveryScopeTests(unittest.TestCase):
     @patch("models.data.projects_db", _mock_projects_db())
     @patch("data.projects.projects_db", _mock_projects_db())
-    @patch("data.channels.channels_db", _MOCK_CHANNELS)
-    def test_get_env_delivery_scope_no_name_error(self):
+    @patch("repositories.registry.accessors.get_project", side_effect=_mock_get_project)
+    @patch("data.platforms.get_project", side_effect=_mock_get_project)
+    @patch("data.channels.list_channels", return_value=list(_MOCK_CHANNELS))
+    def test_get_env_delivery_scope_no_name_error(self, _mock_list_channels, _mock_plat_get, _mock_acc_get):
         scope = get_env_delivery_scope(_TEST_PROJECT, "development")
         self.assertEqual(scope["env_key"], "development")
         self.assertFalse(scope["inherits_project_channels"])
@@ -94,8 +100,10 @@ class DeliveryScopeTests(unittest.TestCase):
 
     @patch("models.data.projects_db", _mock_projects_db())
     @patch("data.projects.projects_db", _mock_projects_db())
-    @patch("data.channels.channels_db", _MOCK_CHANNELS)
-    def test_env_channel_platform_subset(self):
+    @patch("repositories.registry.accessors.get_project", side_effect=_mock_get_project)
+    @patch("data.platforms.get_project", side_effect=_mock_get_project)
+    @patch("data.channels.list_channels", return_value=list(_MOCK_CHANNELS))
+    def test_env_channel_platform_subset(self, _mock_list_channels, _mock_plat_get, _mock_acc_get):
         channels = get_channels_for_env(_TEST_PROJECT, "development")
         platforms = get_platforms_for_env(_TEST_PROJECT, "development")
         self.assertEqual([c["id"] for c in channels], ["wechat"])
@@ -111,8 +119,10 @@ class DeliveryScopeTests(unittest.TestCase):
     @patch("services.release.channel_journey_bff._delivery_lines_for_env")
     @patch("models.data.projects_db", _mock_projects_db())
     @patch("data.projects.projects_db", _mock_projects_db())
-    @patch("data.channels.channels_db", _MOCK_CHANNELS)
-    def test_project_overview_channel_filter_counts(self, mock_lines, mock_core, *_patches):
+    @patch("repositories.registry.accessors.get_project", side_effect=_mock_get_project)
+    @patch("data.platforms.get_project", side_effect=_mock_get_project)
+    @patch("data.channels.list_channels", return_value=list(_MOCK_CHANNELS))
+    def test_project_overview_channel_filter_counts(self, _mock_list_channels, _mock_plat_get, _mock_acc_get, mock_lines, mock_core, *_patches):
         mock_core.return_value.list_release_orders.return_value = []
         def _lines(project_id, env_key):
             if env_key == "development":
@@ -143,8 +153,10 @@ class DeliveryScopeTests(unittest.TestCase):
     @patch("services.release.channel_journey_bff._delivery_lines_for_env", return_value=[])
     @patch("models.data.projects_db", _mock_projects_db())
     @patch("data.projects.projects_db", _mock_projects_db())
-    @patch("data.channels.channels_db", _MOCK_CHANNELS)
-    def test_project_overview_includes_activities(self, mock_lines, mock_core, mock_activities, mock_kpis, *_patches):
+    @patch("repositories.registry.accessors.get_project", side_effect=_mock_get_project)
+    @patch("data.platforms.get_project", side_effect=_mock_get_project)
+    @patch("data.channels.list_channels", return_value=list(_MOCK_CHANNELS))
+    def test_project_overview_includes_activities(self, _mock_list_channels, _mock_plat_get, _mock_acc_get, mock_lines, mock_core, mock_activities, mock_kpis, *_patches):
         mock_core.return_value.list_release_orders.return_value = []
         mock_activities.return_value = [
             {"kind": "build", "type_label": "构建", "title": "Jenkins 构建 #1 成功", "actor": "admin", "time_short": "12:00", "href": "/x"},

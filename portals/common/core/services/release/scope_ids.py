@@ -7,7 +7,8 @@ import re
 from typing import Any, Dict, List
 
 from data.platforms import is_valid_platform_id
-from models.data import get_channel_by_id, projects_db
+from repositories.registry.accessors import get_project
+from models.data import get_channel_by_id
 from services.release.env_registry import normalize_release_env_key
 from services.release.storage import find_manifest
 
@@ -80,7 +81,7 @@ def _channel_defs(manifest: Dict[str, Any], project_id: str) -> List[Dict[str, A
             })
         if out:
             return out
-    proj = projects_db.get(project_id) if isinstance(projects_db, dict) else {}
+    proj = get_project(project_id) or {}
     ids = proj.get("channels") if isinstance(proj, dict) and isinstance(proj.get("channels"), list) else []
     disabled = set()
     raw_disabled = proj.get("disabled_channels") if isinstance(proj, dict) else []

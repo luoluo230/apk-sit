@@ -397,7 +397,7 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
     runtime_aligned = True
     runtime_topology_id = ""
     try:
-        from services.ops.helpers import _resolve_topology_context
+        from services.ops.topology_registry import _resolve_topology_context
 
         ctx = _resolve_topology_context(str(scope.get("project_id") or ""), str(scope.get("env_key") or ""), topology_id)
         runtime_topology_id = str((ctx.get("row") or {}).get("topology_id") or ctx.get("topology_id") or "")

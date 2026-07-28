@@ -3,26 +3,18 @@
 
 import os
 import re
-from datetime import datetime
 from difflib import SequenceMatcher
 
 from config import Config
-from data._store import PROJECTS_FILE
 from repositories.admin import users_repo as _users_repo
-
-
-def _user_role(username: str) -> str:
-    row = _users_repo.get_user(username) or {}
-    return str(row.get("role") or "user")
-
 from repositories.registry._proxies import ProjectsDbProxy
-from repositories.registry.project_repo import get_project_repository
+from repositories.registry.accessors import get_project, has_project, list_projects, mirror_projects_json
 
 projects_db = ProjectsDbProxy()
 
 
 def save_projects():
-    get_project_repository()._mirror_all()
+    mirror_projects_json()
 
 
 def _normalize_project_token(value):
@@ -35,14 +27,15 @@ def _normalize_project_token(value):
 def resolve_project_id(project_ref):
     """Resolve a project reference to the canonical project id."""
     project_ref = str(project_ref or '').strip()
-    if not project_ref or not isinstance(projects_db, dict):
+    projects = list_projects()
+    if not project_ref or not isinstance(projects, dict):
         return ''
-    if project_ref in projects_db:
+    if project_ref in projects:
         return project_ref
     lowered = project_ref.lower()
     normalized_ref = _normalize_project_token(project_ref)
     best_match = ('', 0.0)
-    for project_id, project in projects_db.items():
+    for project_id, project in projects.items():
         payload = project if isinstance(project, dict) else {}
         aliases_raw = payload.get('aliases') or payload.get('alias') or []
         if isinstance(aliases_raw, str):
@@ -64,7 +57,6 @@ def resolve_project_id(project_ref):
                 ratio = SequenceMatcher(None, normalized_ref, normalized_alias).ratio()
                 if ratio > best_match[1]:
                     best_match = (str(project_id), ratio)
-    # Fuzzy fallback for legacy typo / transliteration drift (e.g. GameKu vs GomeKu).
     if best_match[0] and best_match[1] >= 0.82:
         return best_match[0]
     return ''
@@ -74,7 +66,7 @@ def get_project_record(project_ref):
     project_id = resolve_project_id(project_ref)
     if not project_id:
         return None, None
-    payload = projects_db.get(project_id)
+    payload = get_project(project_id)
     if not isinstance(payload, dict):
         payload = {}
     return project_id, payload
@@ -121,13 +113,12 @@ def can_view_project(project_id, username):
     role = _user_role(username)
     if role in ('super_admin', 'admin'):
         return True
-    if project_id not in projects_db:
+    if not has_project(project_id):
         return False
-    p = projects_db[project_id]
+    p = get_project(project_id) or {}
     created_by = p.get('created_by')
     editors = p.get('editors') or []
     viewers = p.get('viewers') or []
-    # 旧项目：无创建者且未配置查看/编辑名单，视为所有有模块权限的用户可查看
     if not created_by and not editors and not viewers:
         return True
     if created_by == username:
@@ -144,18 +135,23 @@ def can_edit_project(project_id, username):
     role = _user_role(username)
     if role in ('super_admin', 'admin'):
         return True
-    if project_id not in projects_db:
+    if not has_project(project_id):
         return False
-    p = projects_db[project_id]
+    p = get_project(project_id) or {}
     created_by = p.get('created_by')
     editors = p.get('editors') or []
     if not created_by and not editors:
-        return False  # 旧项目仅管理员可编辑
+        return False
     if created_by == username:
         return True
     if username in editors:
         return True
     return False
+
+
+def _user_role(username: str) -> str:
+    row = _users_repo.get_user(username) or {}
+    return str(row.get("role") or "user")
 
 
 def get_project_apk_count(project_id):
