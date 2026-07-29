@@ -68,9 +68,16 @@ def register_release_order_routes(bp) -> None:
 
     def _order_action(project_id: str, order_id: str, action: str):
         payload = request.get_json(silent=True) or {}
+        auto_flag = request.args.get("auto_ensure_runtime")
+        auto_ensure = auto_flag in ("1", "true", "yes") or bool(payload.get("auto_ensure_runtime"))
         handlers = {
             "build": lambda: request_build(project_id, order_id, _actor()),
-            "precheck": lambda: precheck_release_order(project_id, order_id, _actor()),
+            "precheck": lambda: precheck_release_order(
+                project_id,
+                order_id,
+                _actor(),
+                auto_ensure_runtime=auto_ensure,
+            ),
             "approve": lambda: approve_release_order(
                 project_id, order_id, _actor(), str(payload.get("note") or "")
             ),

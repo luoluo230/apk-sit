@@ -62,6 +62,15 @@
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const isDevEnv = () => String(envKey || "").toLowerCase() === "development";
+
+  const precheckUrl = (orderId, forceAuto = false) => {
+    const qs = new URLSearchParams();
+    if (forceAuto || isDevEnv()) qs.set("auto_ensure_runtime", "1");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return `/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(orderId)}/precheck${suffix}`;
+  };
+
   const pollRuntimeActive = async (scope, tries = 24) => {
     const qs = new URLSearchParams({
       project_id: scope.project_id || projectId,
@@ -102,7 +111,7 @@
         data-runtime-project="${esc(action.project_id || projectId)}"
         data-runtime-env="${esc(action.env_key || envKey)}"
         data-runtime-topology="${esc(action.topology_id || "")}"
-        data-runtime-node="${esc(action.node_id || "")}">一键启动 Runtime</button>
+        data-runtime-node="${esc(action.node_id || "")}">自动启动 Runtime 并重试预检</button>
     </div>`;
   };
 
@@ -110,23 +119,13 @@
     const btn = document.getElementById("cjStartRuntime");
     if (!btn) return;
     btn.onclick = async () => {
-      const action = {
-        project_id: btn.dataset.runtimeProject || projectId,
-        env_key: btn.dataset.runtimeEnv || envKey,
-        topology_id: btn.dataset.runtimeTopology || "",
-        node_id: btn.dataset.runtimeNode || "",
-      };
+      const oid = state.release_order_id || "";
+      if (!oid) return toast("缺少发布单，无法重试预检", "error");
       btn.disabled = true;
       try {
-        toast("正在启动 Runtime…");
-        await startRuntimeRemote(action);
-        const oid = state.release_order_id || "";
-        if (oid) {
-          await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(oid)}/precheck`, { method: "POST", body: "{}" });
-          toast("Runtime 已启动，预检已自动重试");
-        } else {
-          toast("Runtime 已启动");
-        }
+        toast("正在自动启动 Runtime 并重试预检…");
+        await api(precheckUrl(oid, true), { method: "POST", body: "{}" });
+        toast("预检已重试");
         load();
       } catch (e) {
         toast(e.message, "error");
@@ -136,6 +135,7 @@
     };
   };
 
+  const renderContext = (data, state) => {
     const host = document.getElementById("cjReleaseContext");
     if (!host) return;
     const vc = state.version_name ? `${state.version_name} / ${state.version_code}` : versionId ? "已选 VC" : "待选";
@@ -430,7 +430,7 @@
       }
       if (!orderId) return toast("请先选择 VersionCode 并创建发布单", "error");
       try {
-        await api(`/api/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(orderId)}/precheck`, { method: "POST", body: "{}" });
+        await api(precheckUrl(orderId), { method: "POST", body: "{}" });
         toast("预检已执行");
         load();
       } catch (e) { toast(e.message, "error"); }

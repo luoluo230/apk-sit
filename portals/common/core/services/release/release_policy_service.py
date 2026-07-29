@@ -16,6 +16,7 @@ FORM_DEPTH_FULL = "full"
 
 RUNTIME_REQUIRED_BLOCK = "block"
 RUNTIME_REQUIRED_WARN = "warn"
+RUNTIME_REQUIRED_AUTO = "auto"
 RUNTIME_REQUIRED_SKIP = "skip"
 
 ENV_DEFAULT_FORM_DEPTH = {
@@ -26,10 +27,17 @@ ENV_DEFAULT_FORM_DEPTH = {
 }
 
 ENV_DEFAULT_RUNTIME_REQUIRED = {
-    "development": RUNTIME_REQUIRED_WARN,
+    "development": RUNTIME_REQUIRED_AUTO,
     "testing": RUNTIME_REQUIRED_WARN,
     "staging": RUNTIME_REQUIRED_BLOCK,
     "production": RUNTIME_REQUIRED_BLOCK,
+}
+
+ENV_DEFAULT_AUTO_ENSURE_RUNTIME = {
+    "development": True,
+    "testing": False,
+    "staging": False,
+    "production": False,
 }
 
 DEFAULT_RELEASE_DEFAULTS: Dict[str, str] = {
@@ -52,6 +60,7 @@ DEFAULT_RELEASE_POLICY: Dict[str, Any] = {
     "require_approval": False,
     "allow_gray_release": True,
     "runtime_required": RUNTIME_REQUIRED_BLOCK,
+    "auto_ensure_runtime": False,
 }
 
 
@@ -81,6 +90,7 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
     policy = dict(DEFAULT_RELEASE_POLICY)
     policy["form_depth"] = ENV_DEFAULT_FORM_DEPTH.get(ek, FORM_DEPTH_STANDARD)
     policy["runtime_required"] = ENV_DEFAULT_RUNTIME_REQUIRED.get(ek, RUNTIME_REQUIRED_BLOCK)
+    policy["auto_ensure_runtime"] = bool(ENV_DEFAULT_AUTO_ENSURE_RUNTIME.get(ek, False))
     if ek in ("production", "prod"):
         policy["require_approval"] = True
     if isinstance(raw, dict):
@@ -88,8 +98,12 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
         if depth in (FORM_DEPTH_MINIMAL, FORM_DEPTH_STANDARD, FORM_DEPTH_FULL):
             policy["form_depth"] = depth
         runtime_mode = str(raw.get("runtime_required") or "").strip().lower()
-        if runtime_mode in (RUNTIME_REQUIRED_BLOCK, RUNTIME_REQUIRED_WARN, RUNTIME_REQUIRED_SKIP):
+        if runtime_mode in (RUNTIME_REQUIRED_BLOCK, RUNTIME_REQUIRED_WARN, RUNTIME_REQUIRED_AUTO, RUNTIME_REQUIRED_SKIP):
             policy["runtime_required"] = runtime_mode
+        if "auto_ensure_runtime" in raw:
+            policy["auto_ensure_runtime"] = bool(raw.get("auto_ensure_runtime"))
+        elif ek in ENV_DEFAULT_AUTO_ENSURE_RUNTIME:
+            policy["auto_ensure_runtime"] = bool(ENV_DEFAULT_AUTO_ENSURE_RUNTIME.get(ek))
         if "require_approval" in raw:
             policy["require_approval"] = bool(raw.get("require_approval"))
         if "allow_gray_release" in raw:
@@ -117,6 +131,15 @@ def get_env_release_policy(project_id: str, env_key: str) -> Dict[str, Any]:
         policy["release_description"] = defaults.get("release_description") or ""
     policy["env_key"] = normalize_release_env_key(env_key, project_id=project_id)
     return policy
+
+
+def should_auto_ensure_runtime(project_id: str, env_key: str, policy: Optional[Dict[str, Any]] = None) -> bool:
+    """True when development-style policy allows precheck to auto-start runtime."""
+    row = policy if isinstance(policy, dict) else get_env_release_policy(project_id, env_key)
+    if not bool(row.get("auto_ensure_runtime")):
+        return False
+    mode = str(row.get("runtime_required") or RUNTIME_REQUIRED_BLOCK).strip().lower()
+    return mode in (RUNTIME_REQUIRED_WARN, RUNTIME_REQUIRED_AUTO)
 
 
 def resolve_jenkins_job(

@@ -130,7 +130,14 @@ def quick_publish_delivery(
     order = _order_crud().get_release_order(project_id, order_id) or order
     status = str(order.get("status") or "")
     if status in {"draft", "artifacts_ready", "precheck_failed"}:
-        order = _order_publish_flow().precheck_release_order(project_id, order_id, actor)
+        from services.release.release_policy_service import should_auto_ensure_runtime
+
+        order = _order_publish_flow().precheck_release_order(
+            project_id,
+            order_id,
+            actor,
+            auto_ensure_runtime=should_auto_ensure_runtime(project_id, ek),
+        )
         status = str(order.get("status") or "")
     if status == "awaiting_approval":
         return {"phase": "awaiting_approval", "release_order_id": order_id, "order": order}

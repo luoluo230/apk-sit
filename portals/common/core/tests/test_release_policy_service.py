@@ -26,9 +26,10 @@ class ReleasePolicyServiceTests(unittest.TestCase):
         fields = rps.get_required_plan_fields("any_project", "development")
         self.assertEqual(fields, ["reason", "owner"])
 
-    def test_development_runtime_required_defaults_warn(self):
+    def test_development_runtime_required_defaults_auto(self):
         policy = rps.normalize_release_policy({}, "development")
-        self.assertEqual(policy.get("runtime_required"), rps.RUNTIME_REQUIRED_WARN)
+        self.assertEqual(policy.get("runtime_required"), rps.RUNTIME_REQUIRED_AUTO)
+        self.assertTrue(policy.get("auto_ensure_runtime"))
 
     def test_production_runtime_required_defaults_block(self):
         policy = rps.normalize_release_policy({}, "production")

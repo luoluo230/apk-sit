@@ -657,11 +657,39 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
                 if label and label not in seen_platform_labels:
                     seen_platform_labels.add(label)
                     channel_platform_labels.append(label)
+        runtime_status = ""
+        runtime_label = ""
+        if configured_lines:
+            try:
+                from services.ops.runtime_service import _runtime_active_for_scope
+                from services.release.scope_resolver import resolve_scope, resolve_topology_binding_for_scope
+
+                probe_line = configured_lines[0]
+                scope = resolve_scope(
+                    project_id,
+                    env_key,
+                    str(probe_line.get("channel_id") or ""),
+                    platform=str(probe_line.get("platform") or "android"),
+                    auto_create=False,
+                )
+                tid = ""
+                if scope:
+                    binding = resolve_topology_binding_for_scope(scope, "")
+                    tid = str(binding.get("topology_id") or "")
+                if tid:
+                    rt = _runtime_active_for_scope(project_id, env_key, tid)
+                    runtime_status = "running" if rt.get("active") else "stopped"
+                    runtime_label = "运行中" if rt.get("active") else "已停止"
+            except Exception:
+                runtime_status = ""
+                runtime_label = ""
         cards.append(
             {
                 "env_key": env_key,
                 "env_label": project_env_label(project_id, env_key),
                 "health": health,
+                "runtime_status": runtime_status,
+                "runtime_label": runtime_label,
                 "delivery_line_count": len(delivery_lines),
                 "configured_line_count": len(configured_lines),
                 "unconfigured_line_count": unconfigured_count,

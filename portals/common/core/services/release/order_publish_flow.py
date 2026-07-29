@@ -194,15 +194,23 @@ def _sync_version_row_from_publish(project_id: str, order: Dict[str, Any], bundl
         save_project_versions()
 
 
-def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
+def precheck_release_order(
+    project_id: str,
+    order_id: str,
+    actor: str,
+    *,
+    auto_ensure_runtime: bool = False,
+) -> Dict[str, Any]:
     order = _order_crud().get_release_order(project_id, order_id, include_details=False)
     if not order:
         raise ValueError("发布单不存在")
-    from services.release.release_policy_service import get_env_release_policy
+    from services.release.release_policy_service import get_env_release_policy, should_auto_ensure_runtime
 
-    runtime_mode = str(get_env_release_policy(project_id, order["env_key"]).get("runtime_required") or "block").strip().lower()
-    if runtime_mode not in {"block", "warn", "skip"}:
+    policy = get_env_release_policy(project_id, order["env_key"])
+    runtime_mode = str(policy.get("runtime_required") or "block").strip().lower()
+    if runtime_mode not in {"block", "warn", "auto", "skip"}:
         runtime_mode = "block"
+    try_auto_ensure = bool(auto_ensure_runtime) or should_auto_ensure_runtime(project_id, order["env_key"], policy)
     _order_crud()._transition(project_id, order_id, actor, "prechecking", "precheck_started", {})
     version = _find_version(project_id, order["version_id"], order["version_code"])
     from services.admin.version_service import enrich_version_client_urls
@@ -234,23 +242,35 @@ def precheck_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
     else:
         binding = resolve_topology_binding_for_scope(scope, str(version.get("version_name") or ""))
         result = run_scope_precheck(scope, version, validate_artifacts=True)
+        if not str(result.get("topology_id") or "").strip():
+            result["topology_id"] = str(binding.get("topology_id") or "")
+    topology_id = str(result.get("topology_id") or "").strip()
     runtime_run_id = ""
     if runtime_mode != "skip":
+        runtime_ensure: Dict[str, Any] = {}
+        if try_auto_ensure and topology_id and runtime_mode in {"warn", "auto"}:
+            from services.ops.runtime_ensure_service import ensure_runtime_for_scope
+
+            runtime_ensure = ensure_runtime_for_scope(project_id, order["env_key"], topology_id, actor)
+            result["runtime_ensure"] = runtime_ensure
         try:
             from services.ops.runtime_service import _runtime_active_for_scope
-            runtime = _runtime_active_for_scope(project_id, order["env_key"], str(result.get("topology_id") or ""))
+            runtime = _runtime_active_for_scope(project_id, order["env_key"], topology_id)
             if runtime.get("active"):
-                runtime_run_id = str(runtime.get("run_id") or "")
+                runtime_run_id = str(runtime.get("run_id") or runtime_ensure.get("run_id") or "")
         except Exception:
-            runtime_run_id = ""
+            runtime_run_id = str(runtime_ensure.get("run_id") or "") if runtime_ensure else ""
         result["runtime_run_id"] = runtime_run_id
         result["runtime_active"] = bool(runtime_run_id)
         if not runtime_run_id:
+            ensure_err = str(runtime_ensure.get("error") or "").strip()
             if runtime_mode == "block":
                 result["ok"] = False
-                result["runtime_error"] = "目标拓扑没有运行中的 runtime"
+                result["runtime_error"] = ensure_err or "目标拓扑没有运行中的 runtime"
+                result["fix_action"] = "start_runtime"
             else:
-                result["runtime_warning"] = "目标拓扑没有运行中的 runtime（development 策略：warn）"
+                result["runtime_warning"] = ensure_err or "目标拓扑没有运行中的 runtime（development 策略：自动启服后仍不可用）"
+                result["fix_action"] = "start_runtime"
     else:
         result["runtime_run_id"] = ""
         result["runtime_active"] = False

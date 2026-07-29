@@ -148,6 +148,13 @@
                 ? "未配置"
                 : "预警";
         var iconCls = envIconClass(item.env_key);
+        var runtimePill = item.runtime_status
+          ? '<div class="p02-env-kv"><span class="p02-env-kv__label">Runtime</span><strong class="p02-env-kv__value"><span class="p02-env-badge ' +
+            (item.runtime_status === "running" ? "running" : "warning") +
+            '">' +
+            esc(item.runtime_label || (item.runtime_status === "running" ? "运行中" : "已停止")) +
+            "</span></strong></div>"
+          : "";
         return (
           '<article class="p02-env-card">' +
           '<header class="p02-env-card-head">' +
@@ -172,6 +179,7 @@
           '">' +
           esc(hp.text) +
           "</strong></div>" +
+          runtimePill +
           '<div class="p02-env-kv p02-env-kv--instances"><span class="p02-env-kv__label">实例</span><strong class="p02-env-kv__value p02-env-kv__value--instances">' +
           esc(instances) +
           "</strong></div></div>" +

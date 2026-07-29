@@ -216,6 +216,7 @@ def _resolve_issue_fix(
         node_id = _resolve_runtime_start_node(pid, env_key, topology_id)
         return {
             "fix": "runtime",
+            "fix_action": "start_runtime",
             "fix_section": "",
             "fix_label": "启动运行态",
             "highlight_fields": ["runtime_topology"],
@@ -472,6 +473,7 @@ def summarize_order_diagnostic_issues(
                 "label": "Runtime 运行态",
                 "hint": runtime_hint or "目标拓扑未运行，需启动 Runtime",
                 "fix": "runtime",
+                "fix_action": "start_runtime",
                 "fix_section": "",
                 "fix_label": "启动运行态",
                 "highlight_fields": ["runtime_topology"],
