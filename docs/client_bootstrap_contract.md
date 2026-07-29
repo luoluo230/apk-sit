@@ -1,11 +1,19 @@
-# Client Bootstrap Contract
+# Client Bootstrap Contract v2
 
-This document aligns with `commercial_startup_sequence_gate.py` and `bundle_service.build_client_bootstrap_snapshot`.
+Contract version: **v2** (P2-02). Shared fixture:
+
+- Web: `portals/common/core/tests/fixtures/runtime_bootstrap_contract_v2.sample.json`
+- maclient: `Assets/Editor/Tests/Fixtures/runtime_bootstrap_contract_v2.sample.json`
+
+Validation module: `services/release/bootstrap_contract.py`  
+Tests: `tests/e2e/test_bootstrap_contract.py`, `Assets/Editor/Tests/BootstrapContractTests.cs`
 
 ## Entry point
 
-- **Primary:** `GET /api/public/runtime-bootstrap`
-- **Deprecated:** `GET /api/runtime/version-resolve` (merges `bundle.client` when active bundle exists; response includes `deprecated` and `prefer_runtime_bootstrap`)
+- **Primary (production):** `GET /api/public/runtime-bootstrap`
+- **Deprecated (compat layer):** `GET /api/runtime/version-resolve` — response headers `Deprecation: true`, `Link: </api/public/runtime-bootstrap>; rel="successor-version"`
+
+Production maclient builds (`DEVELOPMENT` not defined) **must not** silently fall back to OSS `version_metadata.json`.
 
 ## Required query parameters (runtime-bootstrap)
 
@@ -26,51 +34,55 @@ This document aligns with `commercial_startup_sequence_gate.py` and `bundle_serv
   "project_id": "...",
   "scope_id": "slug:development:channel:android",
   "active_bundle_id": "...",
+  "network_profile": { "gateway_ws": "ws://127.0.0.1:15050/ws" },
   "bootstrap": { }
 }
 ```
 
-## Required `bootstrap` fields (gate T2–T3)
+## Required `bootstrap` fields (v2 gate)
 
 | Field | Type | Gate rule |
 |-------|------|-----------|
-| `resource_relative_path` | string | Must use lowercase `android` segment, not `Android` |
+| `resource_relative_path` | string | Lowercase `android` segment, not `Android` |
 | `catalog_file_name` | string | Non-empty when bundle published |
 | `min_client_version` | string | Semver-like label |
 | `max_client_version` | string | Semver-like label |
 | `rollout_percentage` | int | 0–100 |
-| `force_update` | bool | Required key; CI may require `true` when `REQUIRE_FORCE_UPDATE=1` |
+| `force_update` | bool | Required key |
 | `is_revoked` | bool | Required key |
 
-## Optional but recommended client fields
+## Required `network_profile` fields (v2)
 
-- `catalog_url`, `config_manifest_url`, `code_manifest_url`
-- `apk_url` (Android)
-- `resource_server_url`
-- `version_code`, `platform`
+| Field | Type | Notes |
+|-------|------|-------|
+| `gateway_ws` | string | CI fixture must include `:15050` |
+| `login_http` | string | Recommended |
+| `game_ws` | string | Recommended |
+| `ops_http` | string | Recommended |
 
-## Network profile (top-level on bootstrap response when available)
+## Config bake single entry (dev / CI)
 
-- `network_profile.gateway_ws` must include port `:15050` in CI fixture environments.
+**唯一写 HotUpdateConfig 的自动化路径：**
 
-## Version-resolve compatibility
+1. Jenkins / CI: `HotUpdateConfigSyncCli` (Unity batchmode)
+2. 本机 DevStack: `scripts/Sync-DevStackClientConfig.ps1`
 
-When scope has an active published bundle:
+手工修改 `HotUpdateConfig.asset` / `ProtocolNetworkSettings.asset` 不应提交；开发请运行 Sync 脚本。
 
-1. `version-resolve` merges non-empty fields from `bundle.client`.
-2. Response `data.source` is `bundle` (otherwise `version_row`).
-3. Meta includes `prefer_runtime_bootstrap: /api/public/runtime-bootstrap`.
+`ProtocolNetworkSettings` dev 默认 `ws://127.0.0.1:15050`；生产网络地址来自 bootstrap `network_profile` inject。
 
-## Editor / maclient notes
+## Client startup order (maclient Main.cs)
 
-- Non-Editor builds must not silently override bootstrap network settings from local `ProtocolNetworkSettings`.
-- Development Editor may use local overrides; production clients must honor published bundle only.
+1. Unified `runtime-bootstrap` (always in production)
+2. `#if DEVELOPMENT` only: optional `version-resolve` retry
+3. `#if DEVELOPMENT` only: OSS `version_metadata` when `AllowOssMetadataFallback=true`
+4. Failure → explicit error UI (no silent OSS fallback in production)
 
-## Verification chain (Web)
+## Verification chain
 
-1. `bootstrap_gate_e2e.py` — bootstrap field presence
-2. `commercial_startup_sequence_gate.py` — full T2–T3 web sequence
-3. Release order verify — HTTP HEAD smoke on catalog/config/code URLs (`order_publish_flow.run_bootstrap_smoke_for_order`)
+1. `tests/e2e/test_bootstrap_contract.py` — fixture contract
+2. `bootstrap_gate_e2e.py` — live bootstrap + catalog HEAD + scope API
+3. `Assets/Editor/Tests/BootstrapContractTests.cs` — maclient JSON parse gate
 
 ## Related APIs
 

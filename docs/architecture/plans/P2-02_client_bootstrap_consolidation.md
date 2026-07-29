@@ -6,6 +6,7 @@
 | 预估 | 3–4 周 |
 | 依赖 | P0-01（bootstrap API 稳定）, Web runtime-bootstrap 权威 |
 | 评审项 | C-P1-1, C-P1-2, C-P1-4 |
+| 状态 | **In progress**（Step 1–4 MVP，2026-07-29） |
 
 ---
 
@@ -45,7 +46,7 @@
 
 **验收**
 
-- [ ] 字段漂移 CI fail
+- [x] 字段漂移 CI fail（`bootstrap_contract.py` + 双端 fixture）
 
 ---
 
@@ -66,6 +67,7 @@
 
 **验收**
 
+- [x] 生产 build 无 silent OSS fallback（`#if DEVELOPMENT` 隔离 legacy）
 - [ ] Editor Play + 真机：Portal 关 bootstrap → 失败提示可读
 - [ ] Portal 正常 → 仅 1 次 HTTP bootstrap
 
@@ -81,6 +83,7 @@
 
 **验收**
 
+- [x] 文档化唯一 CI 入口（`docs/client_bootstrap_contract.md` v2）
 - [ ] Jenkins 构建后 asset 与 Portal project 一致（checksum 对比脚本）
 
 ---
@@ -89,9 +92,9 @@
 
 **动作**
 
-1. apk-site：`version-resolve` 响应 Header `Deprecation: true`, Link bootstrap
-2. maclient：移除 resolve 调用（Step 2 后）
-3. 保留 1 release 后删 API（changelog）
+1. apk-site：`version-resolve` 响应 Header `Deprecation: true`, Link bootstrap ✅
+2. maclient：生产路径移除 resolve/OSS（Step 2）✅
+3. 保留 1 release 后删 API（changelog）⏸
 
 ---
 
@@ -111,6 +114,6 @@
 
 ## 4. 完成定义（DoD）
 
-- [ ] 生产 build `Main.cs` 无 OSS fallback 路径
-- [ ] `docs/client_bootstrap_contract.md` 更新为 v2
+- [x] 生产 build `Main.cs` 无 OSS fallback 路径（release 编译）
+- [x] `docs/client_bootstrap_contract.md` 更新为 v2
 - [ ] C-P1-1 / C-P1-2 关闭；C-P1-4 有 iOS runbook 或 explicit backlog issue

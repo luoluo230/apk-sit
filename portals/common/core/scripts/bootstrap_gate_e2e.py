@@ -56,28 +56,13 @@ def _fetch_scope(base_url: str, scope_id: str, platform: str) -> dict:
 
 
 def _check_gate_fields(payload: dict) -> list[str]:
-    errors: list[str] = []
-    if not payload.get("ok"):
-        errors.append(f"bootstrap ok=false: {payload.get('error')}")
+    from services.release.bootstrap_contract import validate_bootstrap_contract
+
+    errors = validate_bootstrap_contract(payload)
+    if errors:
         return errors
 
     bootstrap = payload.get("bootstrap") or {}
-    if "force_update" not in bootstrap:
-        errors.append("bootstrap missing force_update")
-    if "rollout_percentage" not in bootstrap:
-        errors.append("bootstrap missing rollout_percentage")
-
-    rollout = bootstrap.get("rollout_percentage")
-    try:
-        rollout_val = int(rollout)
-        if rollout_val < 0 or rollout_val > 100:
-            errors.append(f"rollout_percentage out of range: {rollout_val}")
-    except (TypeError, ValueError):
-        errors.append(f"rollout_percentage not int: {rollout}")
-
-    if not isinstance(bootstrap.get("force_update"), bool):
-        errors.append("force_update must be boolean")
-
     if os.environ.get("REQUIRE_FORCE_UPDATE", "").strip() in ("1", "true", "yes"):
         if bootstrap.get("force_update") is not True:
             errors.append(f"force_update must be true, got {bootstrap.get('force_update')!r}")

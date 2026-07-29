@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "project_id": "GomeKu",
+  "scope_id": "gomeku:development:1001:android",
+  "active_bundle_id": "bundle-contract-v2",
+  "release_order_id": "ro-contract-fixture",
+  "topology_id": "topo-dev-1",
+  "network_profile": {
+    "gateway_ws": "ws://127.0.0.1:15050/ws",
+    "login_http": "http://127.0.0.1:15051",
+    "game_ws": "ws://127.0.0.1:15052/ws",
+    "ops_http": "http://127.0.0.1:5504",
+    "notice_url": "http://127.0.0.1:5003/api/public/notices"
+  },
+  "bootstrap": {
+    "version_name": "1.0.0",
+    "version_code": "12",
+    "platform": "android",
+    "resource_relative_path": "development/wechat/android/Version_1.0.0/12",
+    "config_relative_path": "development/wechat/android/Version_1.0.0/12/config",
+    "code_relative_path": "development/wechat/android/Version_1.0.0/12/code",
+    "catalog_file_name": "catalog_1.0.0.bin",
+    "catalog_url": "https://example.oss.aliyuncs.com/bucket/development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
+    "min_client_version": "1.0.0",
+    "max_client_version": "9.9.9",
+    "rollout_percentage": 100,
+    "force_update": false,
+    "is_revoked": false,
+    "resource_server_url": "https://example.oss.aliyuncs.com/bucket"
+  },
+  "rollout_percentage": 100,
+  "rollout_bucket": 42
+}

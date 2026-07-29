@@ -3,7 +3,7 @@
 
 import os
 from datetime import datetime
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, make_response, request, Response
 
 from config import Config
 from services.authz import login_required
@@ -372,7 +372,7 @@ def resolve_runtime_version():
         }
     data_payload = merge_version_resolve_with_active_bundle(data_payload, release_ctx, platform=row_platform)
 
-    return jsonify({
+    body = {
         'ok': True,
         'data': data_payload,
         'meta': {
@@ -392,7 +392,12 @@ def resolve_runtime_version():
                 'scope_id': scope_id_param,
             },
         },
-    })
+    }
+    resp = make_response(jsonify(body))
+    resp.headers['Deprecation'] = 'true'
+    resp.headers['Link'] = '</api/public/runtime-bootstrap>; rel="successor-version"'
+    resp.headers['X-Prefer-Runtime-Bootstrap'] = '/api/public/runtime-bootstrap'
+    return resp
 
 
 @bp.route('/notifications/stream')
