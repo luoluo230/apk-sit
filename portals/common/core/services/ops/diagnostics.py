@@ -536,6 +536,7 @@ def _validate_ops_request(payload: Dict[str, Any], node: Dict[str, Any]) -> Dict
         "stop_all",
         "smoke_test",
         "stress_test",
+        "deploy_server_artifact",
     }
     unsupported = bool(action_type) and (action_type not in agent_supported_actions)
     if unsupported:

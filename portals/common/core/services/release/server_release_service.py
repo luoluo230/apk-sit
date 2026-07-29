@@ -183,6 +183,62 @@ def deploy_server_release(project_id: str, server_release_id: str, actor: str) -
     return updated or row
 
 
+def record_agent_deploy_result(
+    project_id: str,
+    server_release_id: str,
+    *,
+    service_id: str,
+    ok: bool,
+    actor: str = "system",
+    detail: Optional[dict] = None,
+) -> Dict[str, Any]:
+    """Record per-service deploy callback; finalize release when all targets report."""
+    row = get_server_release(project_id, server_release_id)
+    if not row:
+        raise ValueError("服务端发布单不存在")
+    sid = str(service_id or "").strip()
+    if not sid:
+        raise ValueError("service_id 必填")
+
+    payload = dict(row.get("payload") or {})
+    results = dict(payload.get("deploy_results") or {})
+    results[sid] = {
+        "ok": bool(ok),
+        "detail": detail or {},
+        "at": _now_iso(),
+        "actor": actor,
+    }
+    payload["deploy_results"] = results
+    row = server_release_repo.update_release_fields(
+        server_release_id, payload=payload, updated_at=_now_iso()
+    ) or row
+
+    targets = _normalize_targets(row.get("target_services"))
+    if not targets:
+        jobs = payload.get("deploy_jobs") if isinstance(payload.get("deploy_jobs"), list) else []
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            val = str(job.get("target") or job.get("node_id") or "").strip()
+            if val and val not in targets:
+                targets.append(val)
+
+    if not targets or any(t not in results for t in targets):
+        return row
+
+    all_ok = all(bool((results.get(t) or {}).get("ok")) for t in targets)
+    current = str(row.get("status") or "")
+    if current != "deploying":
+        return row
+    return transition_server_release(
+        project_id,
+        server_release_id,
+        "deployed" if all_ok else "failed",
+        actor,
+        detail={"deploy_results": results, "service_id": sid},
+    )
+
+
 def complete_deploy_server_release(
     project_id: str,
     server_release_id: str,
@@ -190,7 +246,18 @@ def complete_deploy_server_release(
     ok: bool,
     actor: str = "system",
     detail: Optional[dict] = None,
+    service_id: str = "",
 ) -> Dict[str, Any]:
+    sid = str(service_id or "").strip()
+    if sid:
+        return record_agent_deploy_result(
+            project_id,
+            server_release_id,
+            service_id=sid,
+            ok=ok,
+            actor=actor,
+            detail=detail,
+        )
     target = "deployed" if ok else "failed"
     return transition_server_release(project_id, server_release_id, target, actor, detail=detail or {})
 

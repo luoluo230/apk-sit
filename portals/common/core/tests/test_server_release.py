@@ -84,6 +84,37 @@ class ServerReleaseTransitionTests(unittest.TestCase):
         out = srs.complete_deploy_server_release("GomeKu", rid, ok=True, actor="agent")
         self.assertEqual(out.get("status"), "deployed")
 
+    def test_agent_deploy_result_waits_for_all_targets(self):
+        release = srs.create_server_release(
+            "GomeKu",
+            {
+                "topology_id": "topo-dev",
+                "artifact_id": self.artifact["artifact_id"],
+                "target_services": ["game-cn-1", "auth-cn-1"],
+                "env_key": "development",
+            },
+            "tester",
+        )
+        rid = release["server_release_id"]
+        with mock.patch("services.ops.server_deploy_dispatch.enqueue_deploy_server_artifact") as enqueue:
+            enqueue.return_value = [
+                {"job_id": "job-1", "target": "game-cn-1"},
+                {"job_id": "job-2", "target": "auth-cn-1"},
+            ]
+            srs.deploy_server_release("GomeKu", rid, "tester")
+        partial = srs.record_agent_deploy_result(
+            "GomeKu", rid, service_id="game-cn-1", ok=True, actor="agent:game-cn-1"
+        )
+        self.assertEqual(partial.get("status"), "deploying")
+        final = srs.record_agent_deploy_result(
+            "GomeKu", rid, service_id="auth-cn-1", ok=True, actor="agent:auth-cn-1"
+        )
+        self.assertEqual(final.get("status"), "deployed")
+        payload = final.get("payload") if isinstance(final.get("payload"), dict) else {}
+        results = payload.get("deploy_results") if isinstance(payload.get("deploy_results"), dict) else {}
+        self.assertIn("game-cn-1", results)
+        self.assertIn("auth-cn-1", results)
+
     def test_precheck_gate_passes_when_deployed(self):
         rid = self.release["server_release_id"]
         with mock.patch("services.ops.server_deploy_dispatch.enqueue_deploy_server_artifact") as enqueue:

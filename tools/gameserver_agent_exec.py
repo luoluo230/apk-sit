@@ -4,11 +4,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import time
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -201,6 +205,129 @@ def _stop_service(service_id: str) -> Dict[str, Any]:
     return {"ok": True, "message": f"{sid} stopped pid={pid}"}
 
 
+def _verify_checksum(path: Path, checksum: str) -> bool:
+    raw = str(checksum or "").strip().lower()
+    if raw.startswith("sha256:"):
+        raw = raw[7:]
+    if not raw:
+        return True
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().lower() == raw
+
+
+def _zip_content_root(staging: Path) -> Path:
+    entries = [p for p in staging.iterdir()]
+    if len(entries) == 1 and entries[0].is_dir() and not list(staging.glob("*.exe")):
+        return entries[0]
+    return staging
+
+
+def _merge_tree(source: Path, dest: Path) -> None:
+    for root, _dirs, files in os.walk(source):
+        rel = Path(root).relative_to(source)
+        target_root = dest / rel
+        target_root.mkdir(parents=True, exist_ok=True)
+        for name in files:
+            src = Path(root) / name
+            dst = target_root / name
+            shutil.copy2(src, dst)
+
+
+def _deploy_server_artifact(repo: Path, payload: Dict[str, Any], reason: str = "") -> Dict[str, Any]:
+    service_id = str(payload.get("service_id") or "").strip().lower()
+    bundle_path = str(payload.get("bundle_path") or "").strip()
+    if not service_id:
+        return {"ok": False, "message": "deploy_server_artifact requires service_id"}
+    if service_id not in _SERVICE_IDS:
+        return {"ok": False, "message": f"unsupported service_id: {service_id}"}
+    bundle = Path(bundle_path)
+    if not bundle.is_file():
+        return {"ok": False, "message": f"bundle not found: {bundle_path}"}
+    if not _verify_checksum(bundle, str(payload.get("checksum") or "")):
+        return {"ok": False, "message": "checksum mismatch"}
+
+    stop = _stop_service(service_id)
+    if not stop.get("ok"):
+        return stop
+
+    inst = _instance_dir(repo, service_id)
+    inst.mkdir(parents=True, exist_ok=True)
+    artifact_tag = str(payload.get("artifact_id") or bundle.stem or "deploy")
+    staging = inst / f".staging-{artifact_tag}"
+    try:
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(bundle, "r") as zf:
+            zf.extractall(staging)
+        content_root = _zip_content_root(staging)
+        _merge_tree(content_root, inst)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    launch = _launch_service(repo, service_id, reason or "deploy_server_artifact")
+    launch["instance_dir"] = str(inst)
+    launch["artifact_id"] = artifact_tag
+    launch["version_label"] = str(payload.get("version_label") or "")
+    return launch
+
+
+def callback_server_deploy(
+    base: str,
+    token: str,
+    node_id: str,
+    agent_id: str,
+    job: Dict[str, Any],
+    exec_result: Dict[str, Any],
+    *,
+    timeout: int = 10,
+) -> Dict[str, Any]:
+    if str(job.get("action_type") or "").strip().lower() != "deploy_server_artifact":
+        return {"ok": True, "skipped": True}
+    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    project_id = str(payload.get("project_id") or "").strip()
+    server_release_id = str(payload.get("server_release_id") or "").strip()
+    service_id = str(payload.get("service_id") or job.get("target") or node_id).strip()
+    if not project_id or not server_release_id:
+        return {"ok": False, "error": "missing project_id or server_release_id"}
+
+    body = {
+        "node_id": node_id,
+        "agent_id": agent_id,
+        "project_id": project_id,
+        "server_release_id": server_release_id,
+        "service_id": service_id,
+        "ok": bool(exec_result.get("ok")),
+        "detail": {
+            "message": exec_result.get("message"),
+            "artifact_id": payload.get("artifact_id"),
+            "version_label": payload.get("version_label"),
+            "exec": exec_result,
+        },
+        "token": token,
+    }
+    try:
+        import requests
+
+        headers = {"Content-Type": "application/json", "X-Agent-Token": token}
+        resp = requests.post(
+            base.rstrip("/") + "/api/ops-platform/agent/complete-server-deploy",
+            headers=headers,
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            timeout=timeout,
+        )
+        if "application/json" not in (resp.headers.get("content-type") or "").lower():
+            return {"ok": False, "error": f"non-json:{resp.status_code}"}
+        out = resp.json()
+        out["_status"] = resp.status_code
+        return out
+    except Exception as ex:
+        return {"ok": False, "error": str(ex)}
+
+
 def execute_ops_job(job: Dict[str, Any], repo: Optional[Path] = None) -> Dict[str, Any]:
     repo_path = repo or _resolve_repo()
     action = str(job.get("action_type") or "").strip().lower()
@@ -253,4 +380,6 @@ def execute_ops_job(job: Dict[str, Any], repo: Optional[Path] = None) -> Dict[st
     if action in ("status", "health_check", "ready_check", "runtime_snapshot"):
         rows = {sid: _service_live(sid) for sid in _SERVICE_IDS}
         return {"ok": True, "message": "status ready", "services": rows}
+    if action == "deploy_server_artifact":
+        return _deploy_server_artifact(repo_path, payload, reason)
     return {"ok": False, "message": f"unsupported action: {action}"}

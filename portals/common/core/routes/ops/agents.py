@@ -1335,6 +1335,45 @@ def ops_platform_agent_policy():
 
 
 
+@bp.route("/api/ops-platform/agent/complete-server-deploy", methods=["POST"])
+def ops_platform_agent_complete_server_deploy():
+    """Agent callback after deploy_server_artifact job (P2-01)."""
+    payload = request.get_json(silent=True) or {}
+    node_id = str(payload.get("node_id") or "").strip()
+    agent_id = str(payload.get("agent_id") or "").strip()
+    token = str(request.headers.get("X-Agent-Token") or payload.get("token") or "").strip()
+    cert_fp = str(request.headers.get("X-Client-Cert-Fingerprint") or payload.get("cert_fingerprint") or "").strip()
+    node = ops_helpers._auth_agent_node(node_id, token, cert_fp=cert_fp)
+    if not node:
+        return jsonify({"ok": False, "error": "agent_auth_failed"}), 403
+
+    project_id = str(payload.get("project_id") or "").strip()
+    server_release_id = str(payload.get("server_release_id") or "").strip()
+    service_id = str(payload.get("service_id") or node_id or "").strip()
+    if not project_id or not server_release_id:
+        return jsonify({"ok": False, "error": "missing_project_or_release_id"}), 400
+
+    detail = payload.get("detail") if isinstance(payload.get("detail"), dict) else {}
+    detail["node_id"] = node_id
+    if agent_id:
+        detail["agent_id"] = agent_id
+
+    from services.release import server_release_service as srs
+
+    try:
+        row = srs.complete_deploy_server_release(
+            project_id,
+            server_release_id,
+            ok=bool(payload.get("ok", True)),
+            actor=f"agent:{node_id}",
+            detail=detail,
+            service_id=service_id,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "data": row})
+
+
 @bp.route("/api/ops-platform/agent/upgrade/report", methods=["POST"])
 def ops_platform_agent_upgrade_report():
     payload = request.get_json(silent=True) or {}

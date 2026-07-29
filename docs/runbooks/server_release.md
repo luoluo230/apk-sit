@@ -19,7 +19,7 @@
 1. **登记制品** → `POST /api/admin/projects/{id}/server-artifacts`
 2. **创建 Server Release** → `POST /api/admin/projects/{id}/server-releases`
 3. **部署** → `POST .../server-releases/{id}/deploy`（队列 Agent job）
-4. **确认完成** → Agent 回调或 `POST .../complete-deploy`
+4. **确认完成** → Agent 自动回调 `POST /api/ops-platform/agent/complete-server-deploy`（或管理员手动 `POST .../complete-deploy`）
 5. **关联 Client ReleaseOrder** → payload 填 `server_release_id` + 可选 `min_server_version`
 6. **Client precheck** → 联合 gate：production/staging 要求 server deployed
 
@@ -65,7 +65,27 @@ Content-Type: application/json
 POST /api/admin/projects/GomeKu/server-releases/{server_release_id}/deploy
 ```
 
-Portal 为每个 `target_service` 入队 `deploy_server_artifact` Agent job。
+Portal 为每个 `target_service` 入队 `deploy_server_artifact` Agent job。ServerAgent 执行：停服 → 解压制品 → 替换实例目录 → 重启 → 回调 complete-deploy。
+
+### Agent 回调（自动）
+
+```http
+POST /api/ops-platform/agent/complete-server-deploy
+X-Agent-Token: {agent_token}
+Content-Type: application/json
+
+{
+  "node_id": "game-cn-1",
+  "agent_id": "agent-game-cn-1",
+  "project_id": "GomeKu",
+  "server_release_id": "sro-xxxx",
+  "service_id": "game-cn-1",
+  "ok": true,
+  "detail": { "message": "deployed and running" }
+}
+```
+
+多 `target_services` 时 Portal 聚合各节点回调，全部成功后才转为 `deployed`。
 
 ### 关联 Client ReleaseOrder
 

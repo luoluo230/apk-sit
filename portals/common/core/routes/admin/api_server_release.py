@@ -107,5 +107,6 @@ def register_routes(bp):
             ok=bool(body.get("ok", True)),
             actor=actor,
             detail=body.get("detail") if isinstance(body.get("detail"), dict) else {},
+            service_id=str(body.get("service_id") or "").strip(),
         )
         return jsonify({"ok": True, "data": row})

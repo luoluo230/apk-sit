@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from gameserver_agent_exec import execute_ops_job  # noqa: E402
+from gameserver_agent_exec import callback_server_deploy, execute_ops_job  # noqa: E402
 from dev.tools.ops_ecosystem_chain import (  # noqa: E402
     AGENT_TOKEN,
     _cluster_agents,
@@ -136,6 +136,7 @@ def heartbeat_once(base: str, project_id: str, ops_port: int) -> bool:
             },
         )
         exec_result = execute_ops_job(job)
+        callback_server_deploy(base, AGENT_TOKEN, "ops-cn-1", CANONICAL_ID, job, exec_result)
         _post(
             base,
             "/api/ops-platform/agent/report",

@@ -18,7 +18,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gameserver_agent_exec import execute_ops_job
+from gameserver_agent_exec import callback_server_deploy, execute_ops_job
 
 try:
     import psutil  # type: ignore
@@ -52,6 +52,7 @@ def run_job(base: str, node_id: str, token: str, agent_id: str, job: Dict[str, A
     }
     post_json(f"{base}/api/ops-platform/agent/report", running, token)
     exec_result = execute_ops_job(job)
+    callback_server_deploy(base, token, node_id, agent_id, job, exec_result)
     result = {
         "node_id": node_id,
         "agent_id": agent_id,
@@ -109,7 +110,7 @@ def agent_loop(base: str, node_id: str, token: str, project_id: str, agent_name:
         "local_bus_enabled": True,
         "local_bus_endpoint": f"pipe://{device_id}/{agent_id}",
         "local_bus_auth_mode": "token",
-        "capabilities": ["health_check", "start", "stop", "restart", "stress_test"],
+        "capabilities": ["health_check", "start", "stop", "restart", "stress_test", "deploy_server_artifact"],
         "token": token,
     }
     reg = post_json(f"{base}/api/ops-platform/agent/register", register_payload, token)
