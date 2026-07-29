@@ -98,8 +98,15 @@ def check_health_and_smoke():
                 print("versions/list status:", vlist.status_code)
                 return False
             r = c.get("/api/runtime/version-resolve?project_id=%s&version_name=1.0.0&status=active" % pid)
-            if r.status_code != 200:
-                print("version-resolve status:", r.status_code, r.get_data(as_text=True))
+            if r.status_code != 410:
+                print("version-resolve should be 410 gone:", r.status_code, r.get_data(as_text=True))
+                return False
+            r2 = c.get(
+                "/api/public/runtime-bootstrap?"
+                "game_id=x&game_key=y&env_key=development&channel=wechat&platform=android"
+            )
+            if r2.status_code not in (401, 404):
+                print("runtime-bootstrap smoke unexpected:", r2.status_code)
                 return False
         finally:
             project_versions_db.pop(pid, None)

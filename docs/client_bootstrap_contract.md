@@ -11,7 +11,7 @@ Tests: `tests/e2e/test_bootstrap_contract.py`, `Assets/Editor/Tests/BootstrapCon
 ## Entry point
 
 - **Primary (production):** `GET /api/public/runtime-bootstrap`
-- **Deprecated (compat layer):** `GET /api/runtime/version-resolve` — response headers `Deprecation: true`, `Link: </api/public/runtime-bootstrap>; rel="successor-version"`
+- **Removed:** `GET /api/runtime/version-resolve` — returns **410 Gone** with `Link: </api/public/runtime-bootstrap>`
 
 Production maclient builds (`DEVELOPMENT` not defined) **must not** silently fall back to OSS `version_metadata.json`.
 

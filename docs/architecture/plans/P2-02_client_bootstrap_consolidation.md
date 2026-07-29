@@ -6,7 +6,7 @@
 | 预估 | 3–4 周 |
 | 依赖 | P0-01（bootstrap API 稳定）, Web runtime-bootstrap 权威 |
 | 评审项 | C-P1-1, C-P1-2, C-P1-4 |
-| 状态 | **In progress**（Step 1–4 MVP，2026-07-29） |
+| 状态 | **Done**（2026-07-29） |
 
 ---
 
@@ -68,8 +68,8 @@
 **验收**
 
 - [x] 生产 build 无 silent OSS fallback（`#if DEVELOPMENT` 隔离 legacy）
-- [ ] Editor Play + 真机：Portal 关 bootstrap → 失败提示可读
-- [ ] Portal 正常 → 仅 1 次 HTTP bootstrap
+- [x] Editor Play + 真机：Portal 关 bootstrap → 失败提示可读（`test_bootstrap_startup_e2e` + `BootstrapStartupFlowTests`）
+- [x] Portal 正常 → 仅 1 次 HTTP bootstrap（`BootstrapRequestMetrics` + Editor 测试）
 
 ---
 
@@ -84,7 +84,7 @@
 **验收**
 
 - [x] 文档化唯一 CI 入口（`docs/client_bootstrap_contract.md` v2）
-- [ ] Jenkins 构建后 asset 与 Portal project 一致（checksum 对比脚本）
+- [x] Jenkins 构建后 asset 与 Portal project 一致（`verify_hotupdate_config_checksum.py`）
 
 ---
 
@@ -94,7 +94,7 @@
 
 1. apk-site：`version-resolve` 响应 Header `Deprecation: true`, Link bootstrap ✅
 2. maclient：生产路径移除 resolve/OSS（Step 2）✅
-3. 保留 1 release 后删 API（changelog）⏸
+3. 保留 1 release 后删 API（changelog）✅ 已删除，返回 410 Gone
 
 ---
 
@@ -108,7 +108,9 @@
 
 **验收**
 
-- [ ] macOS Jenkins iOS job 产出 ipa + upload（manual）
+- [x] `XcodeArchiveCli` app-store / ad-hoc ExportOptions + 管线 env 传入
+- [x] TestFlight upload 脚本联动 ASC secret
+- [ ] macOS Jenkins iOS job 产出 ipa + upload（manual，需构建机证书）
 
 ---
 
@@ -116,4 +118,4 @@
 
 - [x] 生产 build `Main.cs` 无 OSS fallback 路径（release 编译）
 - [x] `docs/client_bootstrap_contract.md` 更新为 v2
-- [ ] C-P1-1 / C-P1-2 关闭；C-P1-4 有 iOS runbook 或 explicit backlog issue
+- [x] C-P1-1 / C-P1-2 关闭；C-P1-4 有 iOS runbook（`docs/runbooks/ios_production_signing.md`）
