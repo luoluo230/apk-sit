@@ -61,13 +61,21 @@ def register_scope_routes(bp) -> None:
     @bp.route("/api/release/platform-catalog")
     @admin_required("projects")
     def platform_catalog_api():
+        from services.build.platform_capability import resolve_platform_capability
+
         catalog = []
         for row in list_platform_catalog():
+            pid = str(row.get("id") or "").strip().lower()
+            cap = resolve_platform_capability(pid)
             catalog.append({
-                "id": str(row.get("id") or "").strip().lower(),
+                "id": pid,
                 "name": str(row.get("name") or row.get("id") or ""),
                 "description": str(row.get("description") or ""),
                 "unity_build_target": str(row.get("unity_build_target") or ""),
+                "can_build": cap.get("can_build"),
+                "catalog_only": cap.get("catalog_only"),
+                "badge": cap.get("badge"),
+                "badge_label": cap.get("badge_label"),
             })
         return jsonify({"ok": True, "data": catalog})
 

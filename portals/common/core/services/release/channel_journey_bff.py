@@ -310,12 +310,26 @@ def resolve_channel_build_journey(
     if not lines:
         raise ValueError("该环境下未配置此渠道")
     channel_name = str(lines[0].get("channel_name") or cid)
-    platforms = [{"value": str(l["platform"]), "label": str(l.get("platform_label") or l["platform"])} for l in lines]
+    from services.build.platform_capability import can_build
+
+    platforms = [
+        {"value": str(l["platform"]), "label": str(l.get("platform_label") or l["platform"])}
+        for l in lines
+        if can_build(str(l.get("platform") or ""))
+    ]
     plat = str(platform or "").strip().lower()
     if not plat and platforms:
         plat = platforms[0]["value"]
-    line = next((l for l in lines if str(l.get("platform") or "") == plat), lines[0] if lines else None)
-    per_platform = {str(l["platform"]): _platform_state_for_journey(project_id, ek, l) for l in lines}
+    line = next((l for l in lines if str(l.get("platform") or "") == plat), None)
+    if not line and lines:
+        line = next((l for l in lines if can_build(str(l.get("platform") or ""))), lines[0])
+    if not platforms and line:
+        platforms = [{"value": str(line["platform"]), "label": str(line.get("platform_label") or line["platform"])}]
+    per_platform = {
+        str(l["platform"]): _platform_state_for_journey(project_id, ek, l)
+        for l in lines
+        if can_build(str(l.get("platform") or ""))
+    }
     state = per_platform.get(plat) or {}
     selected_vid = str(version_id or state.get("version_id") or "").strip()
     if selected_vid:

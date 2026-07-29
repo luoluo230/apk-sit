@@ -58,6 +58,10 @@ def resolve_scope(
                 return legacy
     if not auto_create:
         return {}
+    from services.build.platform_capability import assert_scope_creation_allowed
+
+    if plat and is_valid_platform_id(plat):
+        assert_scope_creation_allowed(plat)
     slug = project_slug(pid)
     scope = {
         "scope_id": sid,

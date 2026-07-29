@@ -148,6 +148,10 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     if order.get("status") in TERMINAL_STATUSES:
         raise ValueError("当前发布单不可重新构建")
     version = _find_version(project_id, order["version_id"], order["version_code"])
+    platform = str(order.get("platform") or version.get("platform") or "android").strip().lower()
+    from services.build.build_node_service import assert_build_ready
+
+    assert_build_ready(platform)
     plan = dict(order.get("payload") or {})
     from services.admin.version_service import (
         resolve_effective_pipeline,
@@ -553,6 +557,7 @@ def find_release_order_for_version(project_id: str, version_id: str) -> Optional
 def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]:
     """BFF: primary/secondary actions for a VersionCode (versions hub + env matrix)."""
     from urllib.parse import urlencode
+    from services.build.platform_capability import can_build, resolve_platform_capability
     from services.release.release_policy_service import (
         FORM_DEPTH_FULL,
         FORM_DEPTH_MINIMAL,
@@ -659,8 +664,18 @@ def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]
         status_hint = "生产环境 · 请先填写发布计划"
         secondary = [_action("build_history", "构建产物", href=build_history_href)]
     elif form_depth == FORM_DEPTH_MINIMAL or pipeline_ready:
-        primary = _action("trigger_build", "触发构建", api_action="quick_build", version_id=version_id)
-        status_hint = "管线就绪 · 可触发构建"
+        if can_build(platform):
+            primary = _action("trigger_build", "触发构建", api_action="quick_build", version_id=version_id)
+            status_hint = "管线就绪 · 可触发构建"
+        else:
+            cap = resolve_platform_capability(platform)
+            primary = _action(
+                "configure_pipeline",
+                "暂不支持构建",
+                disabled=True,
+                reason=f"平台 {cap.get('name') or platform} 未接入构建网格",
+            )
+            status_hint = primary.get("reason") or "平台未接入构建网格"
         secondary = [
             _action("build_history", "构建产物", href=build_history_href),
             _action("versions", "版本代码", href=versions_href),

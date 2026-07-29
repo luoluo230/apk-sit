@@ -36,6 +36,7 @@ from routes.admin.api_user_favorites import register_routes as register_user_fav
 from routes.admin.api_users_transfer import register_routes as register_user_transfer_routes
 from routes.admin.api_projects import register_routes as register_project_api_routes
 from routes.admin.api_project_onboarding import register_routes as register_project_onboarding_api_routes
+from routes.admin.api_platform_capabilities import register_routes as register_platform_capabilities_api_routes
 from routes.admin.api_projects_misc import register_routes as register_project_misc_api_routes
 from routes.admin.api_approval import register_routes as register_approval_api_routes
 from routes.admin.api_channels import register_routes as register_channel_api_routes
@@ -986,6 +987,7 @@ def _register_split_api_routes():
         projects_db=projects_db,
         can_edit_lookup=lambda project_id: can_edit_project(project_id, _current_username()),
     )
+    register_platform_capabilities_api_routes(bp)
     register_channel_api_routes(bp)
     register_notification_api_routes(bp, _current_username)
     register_audit_api_routes(bp)

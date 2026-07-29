@@ -261,14 +261,47 @@
       : '<span class="channel-chip muted">未配置渠道</span>';
   };
   let platformCatalogCache = null;
+  let platformCapabilityCache = null;
+  const loadPlatformCapabilities = async () => {
+    if (platformCapabilityCache) return platformCapabilityCache;
+    const result = await fetch("/api/admin/platforms/capabilities", { credentials: "same-origin" }).then((r) => r.json());
+    if (!result.ok) throw new Error(result.error || "平台能力加载失败");
+    const rows = (result.data && result.data.platforms) || result.data || [];
+    platformCapabilityCache = rows.reduce((acc, row) => {
+      const id = String(row.platform_id || row.id || "").toLowerCase();
+      if (id) acc[id] = row;
+      return acc;
+    }, {});
+    return platformCapabilityCache;
+  };
+  const platformBadgeHtml = (cap) => {
+    if (!cap) return "";
+    const badge = String(cap.badge || "");
+    const label = String(cap.badge_label || "");
+    if (!label) return "";
+    const cls = badge === "buildable" ? "cap-badge cap-badge--buildable" : badge === "client_only" ? "cap-badge cap-badge--client" : "cap-badge cap-badge--catalog";
+    const icon = badge === "buildable" ? "🟢" : badge === "client_only" ? "🟡" : "⚪";
+    return `<span class="${cls}" title="${esc(label)}">${icon} ${esc(label)}</span>`;
+  };
   const loadPlatformCatalog = async () => {
     if (platformCatalogCache) return platformCatalogCache;
-    const result = await fetch("/api/release/platform-catalog", { credentials: "same-origin" }).then((r) => r.json());
-    if (!result.ok) throw new Error(result.error || "平台目录加载失败");
-    platformCatalogCache = (result.data || []).map((row) => ({
-      id: String(row.id || "").toLowerCase(),
-      name: String(row.name || row.id || ""),
-    }));
+    const [catalogResult, capabilityMap] = await Promise.all([
+      fetch("/api/release/platform-catalog", { credentials: "same-origin" }).then((r) => r.json()),
+      loadPlatformCapabilities().catch(() => ({})),
+    ]);
+    if (!catalogResult.ok) throw new Error(catalogResult.error || "平台目录加载失败");
+    platformCatalogCache = (catalogResult.data || []).map((row) => {
+      const id = String(row.id || "").toLowerCase();
+      const cap = capabilityMap[id] || row;
+      return {
+        id,
+        name: String(row.name || row.id || ""),
+        can_build: Boolean(cap.can_build),
+        catalog_only: Boolean(cap.catalog_only),
+        badge: String(cap.badge || ""),
+        badge_label: String(cap.badge_label || ""),
+      };
+    });
     return platformCatalogCache;
   };
   const renderPlatformList = (host, assigned, { manageable = false } = {}) => {
@@ -286,7 +319,9 @@
           const remove = manageable
             ? `<button class="channel-remove" type="button" data-remove-platform="${esc(item.id)}">移除</button>`
             : "";
-          return `<div class="channel-item${status}"><div><strong>${esc(item.name)}</strong><small>ID: ${esc(item.id)}${meta}</small></div><div class="channel-actions">${toggle}${remove}</div></div>`;
+          const badge = platformBadgeHtml(item);
+          const buildHint = item.can_build ? "" : " · 暂不支持构建";
+          return `<div class="channel-item${status}"><div><strong>${esc(item.name)}</strong> ${badge}<small>ID: ${esc(item.id)}${meta}${buildHint}</small></div><div class="channel-actions">${toggle}${remove}</div></div>`;
         }).join("")
       : '<div class="ui-empty">尚未配置项目平台</div>';
     if (!manageable) return;
@@ -375,6 +410,10 @@
           id: pid,
           name: String(row.name || row.id || id),
           enabled: !disabledIds.has(pid),
+          can_build: Boolean(row.can_build),
+          catalog_only: Boolean(row.catalog_only),
+          badge: String(row.badge || ""),
+          badge_label: String(row.badge_label || ""),
         };
       });
       renderPlatformList(listHost, assigned, { manageable: listHost.id === "projectPlatformList" });
@@ -395,7 +434,7 @@
     const host = document.getElementById("overviewPlatformChipsList");
     if (!host) return;
     host.innerHTML = assigned.length
-      ? assigned.map((item) => `<span class="channel-chip${item.enabled ? "" : " is-disabled"}">${esc(item.name)}${item.enabled ? "" : "（已禁用）"}</span>`).join("")
+      ? assigned.map((item) => `<span class="channel-chip${item.enabled ? "" : " is-disabled"}">${esc(item.name)}${platformBadgeHtml(item)}${item.enabled ? "" : "（已禁用）"}</span>`).join("")
       : '<span class="channel-chip muted">未配置平台</span>';
   };
   const overviewFilterParams = () => {
