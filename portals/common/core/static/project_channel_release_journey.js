@@ -279,12 +279,17 @@
     const status = String(state.order_status || "");
     const vc = state.version_name && state.version_code ? `${state.version_name} / ${state.version_code}` : "未选择";
     const grayRows = grayPlanRows(state);
+    const buildNode = data.recommended_build_node || {};
+    const buildNodeRow = buildNode.display_name || buildNode.hint
+      ? [["推荐构建节点", esc(buildNode.available ? (buildNode.display_name || buildNode.hostname || "在线") : (buildNode.hint || "无在线节点")), buildNode.available ? "ready" : "pending"]]
+      : [];
     const rows = [
       ["版本组", esc(state.version_name || "—"), state.version_name ? "ready" : "pending"],
       ["VersionCode", esc(vc), versionId ? "ready" : "pending"],
       ["发布单", esc(oid || "—"), oid ? "ready" : "pending"],
       ["当前阶段", esc(status || "待开始"), status ? "ready" : "pending"],
       ["Bundle", esc(bundleId || state.bundle_id || state.active_bundle_id || "—"), bundleId || state.bundle_id || state.active_bundle_id ? "ready" : "pending"],
+      ...buildNodeRow,
       ...grayRows,
     ];
 

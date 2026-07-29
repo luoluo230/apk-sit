@@ -1,0 +1,57 @@
+{% extends "admin_shell.html" %}
+{% block title %}基础设施节点{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto p-6 space-y-6">
+  <div class="flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">基础设施节点</h1>
+      <p class="text-sm text-slate-500 mt-1">统一视图：构建 Agent（Jenkins label）与 Runtime 集群节点（cluster.json 同步）</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="inline-flex rounded-lg border border-slate-200 bg-white p-1 text-sm" id="bnTabs">
+        <button type="button" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white" data-plane="build">构建节点</button>
+        <button type="button" class="px-3 py-1.5 rounded-md text-slate-600" data-plane="runtime">运行节点</button>
+        <button type="button" class="px-3 py-1.5 rounded-md text-slate-600" data-plane="all">全部</button>
+      </div>
+      <button id="bnRefresh" type="button" class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm">刷新</button>
+    </div>
+  </div>
+  <div id="bnBuildSection">
+    <div id="bnRoleCards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"></div>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-100 font-medium text-slate-800" id="bnTableTitle">已注册节点</div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-slate-50 text-slate-600" id="bnTableHead">
+          <tr>
+            <th class="px-4 py-2 text-left">节点</th>
+            <th class="px-4 py-2 text-left">角色</th>
+            <th class="px-4 py-2 text-left">OS</th>
+            <th class="px-4 py-2 text-left">Unity</th>
+            <th class="px-4 py-2 text-left">状态</th>
+            <th class="px-4 py-2 text-left">最近心跳</th>
+            <th class="px-4 py-2 text-left">操作</th>
+          </tr>
+        </thead>
+        <tbody id="bnNodeRows" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 text-sm text-slate-600" id="bnInstallHelp">
+    <div class="font-medium text-slate-800 mb-2">安装命令</div>
+    <pre class="whitespace-pre-wrap text-xs bg-white border rounded-lg p-3"># Node0 控制面 (Windows)
+powershell -ExecutionPolicy Bypass -File scripts\Install-ReleasePlatform.ps1 -Role control
+
+# Node1 Android (Windows)
+powershell -ExecutionPolicy Bypass -File scripts\Install-ReleasePlatform.ps1 -Role build-android -JenkinsMasterUrl http://&lt;control&gt;:8082
+
+# Node2 iOS (macOS)
+./scripts/install_release_platform.sh --role build-ios --jenkins-master-url http://&lt;control&gt;:8082
+
+# Node3 微信小游戏 (Windows)
+powershell -ExecutionPolicy Bypass -File scripts\Install-ReleasePlatform.ps1 -Role build-wxminigame -JenkinsMasterUrl http://&lt;control&gt;:8082</pre>
+  </div>
+</div>
+<script src="/static/build_nodes.js?v=20260728-infra-nodes-v1"></script>
+{% endblock %}

@@ -99,7 +99,16 @@ def resolve_pipeline_script(platform: str) -> str:
 
 def resolve_assigned_node(platform: str) -> str:
     role = resolve_build_role_for_platform(platform)
-    return str((BUILD_ROLES.get(role) or {}).get("label") or "")
+    label = str((BUILD_ROLES.get(role) or {}).get("label") or "")
+    try:
+        from services.infra.infra_node_registry import resolve_online_build_node
+
+        node = resolve_online_build_node(platform)
+        if node:
+            return str(node.get("jenkins_label") or node.get("expected_label") or label)
+    except Exception:
+        pass
+    return label
 
 
 def list_build_roles() -> List[Dict[str, Any]]:

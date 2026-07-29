@@ -235,6 +235,9 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
         _save_agent_registry_v2(reg)
         _sync_cluster_to_nodes(servers, pid)
         topo_stat = _sync_cluster_to_topology(pid, servers)
+        from services.infra.infra_node_registry import sync_runtime_nodes_from_cluster
+
+        infra_stat = sync_runtime_nodes_from_cluster(pid, servers)
         return {
             "synced": len(servers),
             "added": 0,
@@ -242,6 +245,7 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
             "stale": stale_count,
             "topology": topo_stat,
             "canonical": True,
+            "infra_nodes": infra_stat,
         }
 
     reg = _load_agent_registry_v2()
@@ -419,8 +423,19 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
     _sync_cluster_to_nodes(servers, project_id)
     topo_stat = _sync_cluster_to_topology(project_id, servers)
     canonical_stat = _consolidate_runtime_agents_to_canonical(project_id)
+    from services.infra.infra_node_registry import sync_runtime_nodes_from_cluster
 
-    return {"synced": len(servers), "added": added, "updated": updated, "stale": stale_count, "topology": topo_stat, "canonical": canonical_stat}
+    infra_stat = sync_runtime_nodes_from_cluster(project_id, servers)
+
+    return {
+        "synced": len(servers),
+        "added": added,
+        "updated": updated,
+        "stale": stale_count,
+        "topology": topo_stat,
+        "canonical": canonical_stat,
+        "infra_nodes": infra_stat,
+    }
 
 def _cluster_topology_role_kind(srv: Dict[str, Any]) -> Tuple[str, str]:
     srv_type = str(srv.get("Type") or "").strip().lower()

@@ -590,6 +590,27 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_project_versions_project
             ON project_versions(project_id);
+
+        CREATE TABLE IF NOT EXISTS infra_nodes (
+            node_id TEXT PRIMARY KEY,
+            project_id TEXT DEFAULT '',
+            role TEXT NOT NULL,
+            display_name TEXT DEFAULT '',
+            host TEXT DEFAULT '',
+            port INTEGER DEFAULT 0,
+            jenkins_label TEXT DEFAULT '',
+            jenkins_instance_id TEXT DEFAULT '',
+            capabilities TEXT DEFAULT '{}',
+            agent_ws_url TEXT DEFAULT '',
+            status TEXT DEFAULT 'unknown',
+            last_heartbeat_at TEXT DEFAULT '',
+            payload TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_infra_nodes_role ON infra_nodes(role);
+        CREATE INDEX IF NOT EXISTS idx_infra_nodes_project ON infra_nodes(project_id);
+        CREATE INDEX IF NOT EXISTS idx_infra_nodes_status ON infra_nodes(status);
         '''
         )
         scope_columns = {row["name"] for row in conn.execute("PRAGMA table_info(release_scopes)").fetchall()}

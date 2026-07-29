@@ -442,6 +442,14 @@ def resolve_channel_release_journey(
         row for row in _core().list_release_orders(project_id, {"env_key": ek, "channel_id": cid})
         if str(row.get("platform") or "").strip().lower() == plat
     ][:20]
+    recommended_build_node = {}
+    if plat:
+        try:
+            from services.infra.infra_node_registry import recommended_build_node_for_platform
+
+            recommended_build_node = recommended_build_node_for_platform(plat)
+        except Exception:
+            recommended_build_node = {}
     return {
         "project_id": project_id,
         "env_key": ek,
@@ -457,6 +465,7 @@ def resolve_channel_release_journey(
         "selected_version_id": selected_vid,
         "selected_bundle_id": selected_bundle,
         "release_orders": orders,
+        "recommended_build_node": recommended_build_node,
         "links": {
             "build_journey": urls["build"],
             "release_journey": urls["release"],
