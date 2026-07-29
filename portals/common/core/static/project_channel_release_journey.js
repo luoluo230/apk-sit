@@ -280,6 +280,10 @@
     const vc = state.version_name && state.version_code ? `${state.version_name} / ${state.version_code}` : "未选择";
     const grayRows = grayPlanRows(state);
     const buildNode = data.recommended_build_node || {};
+    const serverGate = (state.latest_precheck || {}).payload?.server_release_gate || state.server_release_gate || {};
+    const serverRow = serverGate.server_release_id
+      ? [["服务端发布", esc(serverGate.ok ? (serverGate.version_label || "已部署") : (serverGate.hint || "未就绪")), serverGate.ok ? "ready" : "pending"]]
+      : [];
     const buildNodeRow = buildNode.display_name || buildNode.hint
       ? [["推荐构建节点", esc(buildNode.available ? (buildNode.display_name || buildNode.hostname || "在线") : (buildNode.hint || "无在线节点")), buildNode.available ? "ready" : "pending"]]
       : [];
@@ -290,6 +294,7 @@
       ["当前阶段", esc(status || "待开始"), status ? "ready" : "pending"],
       ["Bundle", esc(bundleId || state.bundle_id || state.active_bundle_id || "—"), bundleId || state.bundle_id || state.active_bundle_id ? "ready" : "pending"],
       ...buildNodeRow,
+      ...serverRow,
       ...grayRows,
     ];
 

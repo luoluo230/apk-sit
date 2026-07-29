@@ -31,4 +31,9 @@ EDITABLE_PLAN_FIELDS = (
     "rollback_condition",
     "rollback_method",
     "rollback_timeout_minutes",
+    "server_release_id",
+    "linked_server_release_id",
+    "min_server_version",
+    "waive_server_release_check",
+    "deploy_server_with_client",
 )

@@ -286,6 +286,28 @@ def precheck_release_order(
     if validation.get("items") and not validation.get("ok"):
         result["ok"] = False
         result["validation_error"] = "验证计划未通过"
+    server_release_id = str(
+        plan.get("server_release_id") or plan.get("linked_server_release_id") or ""
+    ).strip()
+    min_server_version = str(plan.get("min_server_version") or "").strip()
+    waive_server = bool(plan.get("waive_server_release_check"))
+    if server_release_id:
+        from services.release.server_release_service import assess_server_release_for_precheck
+
+        server_gate = assess_server_release_for_precheck(
+            project_id,
+            server_release_id,
+            min_server_version=min_server_version,
+            waive=waive_server,
+        )
+        result["server_release_gate"] = server_gate
+        env_key = str(order.get("env_key") or "development").strip().lower()
+        if not server_gate.get("ok"):
+            if env_key in ("production", "staging") and not waive_server:
+                result["ok"] = False
+                result["server_release_error"] = str(server_gate.get("hint") or server_gate.get("reason") or "服务端未就绪")
+            else:
+                result["server_release_warning"] = str(server_gate.get("hint") or server_gate.get("reason") or "服务端未部署")
     target = "awaiting_approval" if result.get("ok") and order["env_key"] == "production" else ("ready" if result.get("ok") else "precheck_failed")
     now = _now_iso()
     with get_cursor() as cur:

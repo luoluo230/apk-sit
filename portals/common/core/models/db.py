@@ -611,6 +611,34 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_infra_nodes_role ON infra_nodes(role);
         CREATE INDEX IF NOT EXISTS idx_infra_nodes_project ON infra_nodes(project_id);
         CREATE INDEX IF NOT EXISTS idx_infra_nodes_status ON infra_nodes(status);
+
+        CREATE TABLE IF NOT EXISTS server_artifacts (
+            artifact_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            version_label TEXT DEFAULT '',
+            bundle_path TEXT DEFAULT '',
+            checksum TEXT DEFAULT '',
+            protocol_version TEXT DEFAULT '',
+            payload TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_server_artifacts_project ON server_artifacts(project_id);
+
+        CREATE TABLE IF NOT EXISTS server_release_orders (
+            server_release_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            env_key TEXT NOT NULL,
+            topology_id TEXT NOT NULL,
+            artifact_id TEXT DEFAULT '',
+            status TEXT NOT NULL,
+            target_services TEXT DEFAULT '[]',
+            payload TEXT DEFAULT '{}',
+            created_by TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_server_release_project ON server_release_orders(project_id, env_key);
+        CREATE INDEX IF NOT EXISTS idx_server_release_status ON server_release_orders(status);
         '''
         )
         scope_columns = {row["name"] for row in conn.execute("PRAGMA table_info(release_scopes)").fetchall()}

@@ -38,6 +38,7 @@ from routes.admin.api_projects import register_routes as register_project_api_ro
 from routes.admin.api_project_onboarding import register_routes as register_project_onboarding_api_routes
 from routes.admin.api_platform_capabilities import register_routes as register_platform_capabilities_api_routes
 from routes.admin.api_infra_nodes import register_routes as register_infra_nodes_api_routes
+from routes.admin.api_server_release import register_routes as register_server_release_api_routes
 from routes.admin.api_build_nodes import register_routes as register_build_nodes_api_routes
 from routes.admin.pages_infra_nodes import register_routes as register_infra_nodes_page_routes
 from routes.admin.api_projects_misc import register_routes as register_project_misc_api_routes
@@ -992,6 +993,7 @@ def _register_split_api_routes():
     )
     register_platform_capabilities_api_routes(bp)
     register_infra_nodes_api_routes(bp)
+    register_server_release_api_routes(bp)
     register_build_nodes_api_routes(bp)
     register_infra_nodes_page_routes(bp)
     register_channel_api_routes(bp)
