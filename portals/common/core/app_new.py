@@ -227,6 +227,7 @@ def _register_blueprints():
         from routes.gm_ops_release import bp as gm_ops_release_bp
         from routes.internal_jenkins import bp as internal_jenkins_bp
         from routes.internal_build_nodes import bp as internal_build_nodes_bp
+        from routes.internal_metrics import bp as internal_metrics_bp
         from routes.project_delivery import bp as project_delivery_bp
         from routes.release import bp as release_scopes_bp
         from routes.ops import bp as project_ops_bp
@@ -256,6 +257,7 @@ def _register_blueprints():
         app.register_blueprint(gm_ops_release_bp)
         app.register_blueprint(internal_jenkins_bp)
         app.register_blueprint(internal_build_nodes_bp)
+        app.register_blueprint(internal_metrics_bp)
         app.register_blueprint(project_delivery_bp)
         app.register_blueprint(release_scopes_bp)
         app.register_blueprint(project_ops_bp)

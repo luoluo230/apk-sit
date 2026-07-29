@@ -48,7 +48,7 @@
 
 **验收**
 
-- [ ] 模拟 verify fail → 测试 webhook 收到 payload
+- [x] 模拟 verify fail → 测试 webhook 收到 payload
 
 ---
 
@@ -62,7 +62,7 @@
 
 **验收**
 
-- [ ] staging 环境 e2e：verify fail → rollback → bootstrap 指旧 bundle
+- [x] staging 环境 e2e：verify fail → rollback → bootstrap 指旧 bundle
 
 ---
 
@@ -83,7 +83,7 @@
 
 **验收**
 
-- [ ] Prometheus scrape 成功（local docker）
+- [x] Prometheus scrape 成功（local docker）
 
 ---
 
@@ -96,13 +96,13 @@
 
 **验收**
 
-- [ ] Overview 显示真实 DB 数据
+- [x] Overview 显示真实 DB 数据
 
 ---
 
 ## 4. 完成定义（DoD）
 
-- [ ] 至少 1 种 notify channel 生产可用
-- [ ] auto rollback 策略可配置且默认 Prod 安全
-- [ ] metrics endpoint + grafana doc
-- [ ] runbook `docs/runbooks/incident_release_rollback.md`
+- [x] 至少 1 种 notify channel 生产可用
+- [x] auto rollback 策略可配置且默认 Prod 安全
+- [x] metrics endpoint + grafana doc
+- [x] runbook `docs/runbooks/incident_release_rollback.md`

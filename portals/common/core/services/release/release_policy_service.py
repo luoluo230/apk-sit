@@ -40,6 +40,13 @@ ENV_DEFAULT_AUTO_ENSURE_RUNTIME = {
     "production": False,
 }
 
+ENV_DEFAULT_AUTO_ROLLBACK_ON_VERIFY_FAIL = {
+    "development": False,
+    "testing": False,
+    "staging": True,
+    "production": False,
+}
+
 DEFAULT_RELEASE_DEFAULTS: Dict[str, str] = {
     "validation_plan": (
         "1. 客户端冷启动与登录\n"
@@ -61,6 +68,7 @@ DEFAULT_RELEASE_POLICY: Dict[str, Any] = {
     "allow_gray_release": True,
     "runtime_required": RUNTIME_REQUIRED_BLOCK,
     "auto_ensure_runtime": False,
+    "auto_rollback_on_verify_fail": False,
 }
 
 
@@ -91,6 +99,7 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
     policy["form_depth"] = ENV_DEFAULT_FORM_DEPTH.get(ek, FORM_DEPTH_STANDARD)
     policy["runtime_required"] = ENV_DEFAULT_RUNTIME_REQUIRED.get(ek, RUNTIME_REQUIRED_BLOCK)
     policy["auto_ensure_runtime"] = bool(ENV_DEFAULT_AUTO_ENSURE_RUNTIME.get(ek, False))
+    policy["auto_rollback_on_verify_fail"] = bool(ENV_DEFAULT_AUTO_ROLLBACK_ON_VERIFY_FAIL.get(ek, False))
     if ek in ("production", "prod"):
         policy["require_approval"] = True
     if isinstance(raw, dict):
@@ -108,6 +117,8 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
             policy["require_approval"] = bool(raw.get("require_approval"))
         if "allow_gray_release" in raw:
             policy["allow_gray_release"] = bool(raw.get("allow_gray_release"))
+        if "auto_rollback_on_verify_fail" in raw:
+            policy["auto_rollback_on_verify_fail"] = bool(raw.get("auto_rollback_on_verify_fail"))
         for src, dst in (
             ("default_validation_plan", "validation_plan"),
             ("default_rollback_plan", "rollback_plan"),
@@ -140,6 +151,12 @@ def should_auto_ensure_runtime(project_id: str, env_key: str, policy: Optional[D
         return False
     mode = str(row.get("runtime_required") or RUNTIME_REQUIRED_BLOCK).strip().lower()
     return mode in (RUNTIME_REQUIRED_WARN, RUNTIME_REQUIRED_AUTO)
+
+
+def should_auto_rollback_on_verify_fail(project_id: str, env_key: str, policy: Optional[Dict[str, Any]] = None) -> bool:
+    """True when verify failure should trigger automatic rollback (staging default on, production off)."""
+    row = policy if isinstance(policy, dict) else get_env_release_policy(project_id, env_key)
+    return bool(row.get("auto_rollback_on_verify_fail"))
 
 
 def resolve_jenkins_job(

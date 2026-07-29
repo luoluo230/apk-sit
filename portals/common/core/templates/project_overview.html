@@ -38,6 +38,19 @@
     <div class="p02-main pm-page-main">
       <div class="pm-kpi-row" id="overviewKpis"></div>
 
+      <section class="p02-panel p02-list-panel" id="releaseHealthPanel">
+        <div class="p02-panel-head">
+          <div class="p02-panel-title">
+            <h2>发布健康（近 7 天）</h2>
+            <p class="p02-panel-subtitle">基于 release_order_events 实时聚合</p>
+          </div>
+        </div>
+        <div class="p02-release-health" id="releaseHealthSummary">
+          <div class="p02-empty">正在加载发布健康数据…</div>
+        </div>
+        <div class="p02-release-failures" id="releaseFailureList"></div>
+      </section>
+
       <section class="p02-panel p02-list-panel">
         <div class="p02-panel-head">
           <div class="p02-panel-title">

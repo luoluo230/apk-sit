@@ -419,6 +419,12 @@ def build_overview_activities(
     return merged[:limit]
 
 
+def build_release_health_summary(project_id: str, *, days: int = 7) -> Dict[str, Any]:
+    from services.monitor.release_metrics import build_release_health_summary as _summary
+
+    return _summary(project_id, days=days)
+
+
 def build_overview_kpis(
     project_id: str,
     filters: Optional[Dict[str, str]],
@@ -489,6 +495,7 @@ def build_overview_kpis(
 
     member_count = _project_member_count(project_id)
     env_for_link = filter_env or "production"
+    release_health = build_release_health_summary(project_id, days=7)
     return {
         "current_version": current_version,
         "current_version_code": current_version_code,
@@ -497,6 +504,7 @@ def build_overview_kpis(
         "today_build_count": today_build_count,
         "pending_changes": pending_changes,
         "member_count": member_count,
+        "release_health": release_health,
         "links": {
             "version": f"/admin/projects/{project_id}/versions?env_key={env_for_link}",
             "health": f"/admin/projects/{project_id}/environments/{env_for_link}/runtime",

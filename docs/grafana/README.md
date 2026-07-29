@@ -5,6 +5,10 @@
 | Metric | Type | Labels | Source |
 |--------|------|--------|--------|
 | `apk_site_gate_pass_total` | counter | `gate`, `result` (`pass`/`fail`) | `GET /metrics` on admin portal |
+| `release_orders_total` | gauge | `status` | `GET /api/internal/metrics/release` |
+| `release_verify_failures_total` | counter | — | release order events |
+| `release_publish_failures_total` | counter | — | release order events |
+| `bootstrap_smoke_duration_seconds` | summary | — | verify_started → verified/verify_failed |
 
 Gate scripts increment counters when they pass or fail:
 
@@ -21,7 +25,26 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ['127.0.0.1:5003']
+  - job_name: apk-site-release
+    metrics_path: /api/internal/metrics/release
+    static_configs:
+      - targets: ['127.0.0.1:5003']
 ```
+
+> `/api/internal/metrics/release` 默认仅允许 `INTERNAL_WEBHOOK_IPS`（127.0.0.1）访问；开发环境可设 `WEBHOOK_AUTH_DISABLED=1`。
+
+### Agent / game-server metrics (federation)
+
+When Ops Agent or game-server exposes Prometheus metrics at `/ops/metrics`, add a second scrape job:
+
+```yaml
+  - job_name: game-server-ops
+    metrics_path: /ops/metrics
+    static_configs:
+      - targets: ['127.0.0.1:8080']
+```
+
+Federate into the same Grafana dashboard as release metrics. See `docs/runbooks/incident_release_rollback.md` for incident workflow.
 
 ## Dashboard
 
@@ -40,6 +63,7 @@ Alert suggestion: fire when `sum(apk_site_gate_pass_total{result="fail"})` incre
 
 ```bash
 curl -s http://127.0.0.1:5003/metrics | grep apk_site_gate_pass_total
+curl -s http://127.0.0.1:5003/api/internal/metrics/release | grep release_orders_total
 cd portals/common/core && python scripts/bootstrap_gate_e2e.py
 curl -s http://127.0.0.1:5003/metrics | grep bootstrap_gate_e2e
 python scripts/grafana_smoke_gate.py

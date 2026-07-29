@@ -58,19 +58,21 @@ def _notify_awaiting_approval(project_id: str, order_id: str, order: Dict[str, A
         "requested_by": actor,
     }
     try:
-        from services.webhook import fire_dingtalk, fire_feishu, fire_webhook
+        from services.notify.outbound_webhook import notify_release_event
 
-        fire_webhook("release_awaiting_approval", payload)
-        summary = (
-            f"project={project_id}\n"
-            f"order={order_id}\n"
-            f"approval={approval_id}\n"
-            f"version={order.get('version_name')}/{order.get('version_code')}\n"
-            f"env={order.get('env_key')}\n"
-            f"actor={actor}"
+        notify_release_event(
+            "release_awaiting_approval",
+            payload,
+            title="发布单待审批",
+            summary=(
+                f"project={project_id}\n"
+                f"order={order_id}\n"
+                f"approval={approval_id}\n"
+                f"version={order.get('version_name')}/{order.get('version_code')}\n"
+                f"env={order.get('env_key')}\n"
+                f"actor={actor}"
+            ),
         )
-        fire_feishu("发布单待审批", summary)
-        fire_dingtalk("发布单待审批", summary)
     except Exception:
         pass
 
@@ -121,9 +123,9 @@ def scan_approval_sla_timeouts(*, project_id: str = "") -> int:
                 {"approval_id": row["approval_id"], "sla_hours": sla_hours},
             )
             try:
-                from services.webhook import fire_webhook
+                from services.notify.outbound_webhook import notify_release_event
 
-                fire_webhook(
+                notify_release_event(
                     "approval_sla_timeout",
                     {
                         "approval_id": row["approval_id"],
@@ -370,7 +372,7 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
     try:
         return _publish_release_order_body(project_id, order_id, actor, order)
     except Exception as exc:
-        _order_crud()._transition(
+        failed = _order_crud()._transition(
             project_id,
             order_id,
             actor,
@@ -378,6 +380,12 @@ def publish_release_order(project_id: str, order_id: str, actor: str) -> Dict[st
             "publish_failed",
             {"error": str(exc)[:500]},
         )
+        try:
+            from services.release.incident_loop_service import handle_publish_failure
+
+            handle_publish_failure(project_id, failed, actor, str(exc))
+        except Exception:
+            pass
         raise
 
 
@@ -706,7 +714,7 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
     validation = run_validation_plan({**order, "project_id": project_id, "release_order_id": order_id}, phase="verify")
     smoke_ok = smoke_ok and bool(validation.get("ok", True))
     target = "verified" if smoke_ok else "verify_failed"
-    return _order_crud()._transition(
+    result = _order_crud()._transition(
         project_id,
         order_id,
         actor,
@@ -714,6 +722,20 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
         "verified" if smoke_ok else "verify_failed",
         {"ok": smoke_ok, "smoke": smoke_report, "validation_plan": validation},
     )
+    if not smoke_ok:
+        try:
+            from services.release.incident_loop_service import handle_verify_failure
+
+            handle_verify_failure(
+                project_id,
+                result,
+                actor,
+                smoke_report=smoke_report,
+                validation=validation,
+            )
+        except Exception:
+            pass
+    return result
 
 
 def rollback_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:

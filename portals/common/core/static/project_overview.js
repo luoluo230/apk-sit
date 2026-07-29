@@ -100,9 +100,12 @@
       ? (k.current_version_code ? k.current_version + " / " + k.current_version_code : k.current_version)
       : "—";
     var healthVal = k.service_health_pct == null ? "—" : String(k.service_health_pct) + "%";
+    var releaseHealth = k.release_health || {};
+    var releaseRate = releaseHealth.success_rate_pct == null ? "—" : String(releaseHealth.success_rate_pct) + "%";
     var kpis = [
       { icon: "kpi_version.svg", label: "当前版本", value: versionText, tone: "violet", href: links.version },
       { icon: "kpi_health.svg", label: "服务健康度", value: healthVal, tone: "green", href: links.health },
+      { icon: "kpi_build.svg", label: "近7天发布成功率", value: releaseRate, tone: "violet", href: links.changes },
       { icon: "kpi_build.svg", label: "今日构建次数", value: String(k.today_build_count != null ? k.today_build_count : 0), tone: "violet", href: links.builds },
       { icon: "kpi_change.svg", label: "待处理变更", value: String(k.pending_changes != null ? k.pending_changes : 0), tone: "orange", href: links.changes },
       { icon: "kpi_member.svg", label: "项目成员", value: String(k.member_count != null ? k.member_count : memberCount), tone: "cyan", href: links.members },
@@ -304,6 +307,56 @@
     });
   }
 
+  function renderReleaseHealth(data) {
+    var summaryHost = document.getElementById("releaseHealthSummary");
+    var listHost = document.getElementById("releaseFailureList");
+    if (!summaryHost || !listHost) return;
+    var health = (data.kpis && data.kpis.release_health) || {};
+    var verified = health.verified_count != null ? health.verified_count : 0;
+    var verifyFailed = health.verify_failed_count != null ? health.verify_failed_count : 0;
+    var publishFailed = health.publish_failed_count != null ? health.publish_failed_count : 0;
+    var rate = health.success_rate_pct == null ? "—" : String(health.success_rate_pct) + "%";
+    summaryHost.innerHTML =
+      '<div class="p02-release-health-grid">' +
+      '<article><span>发布成功率</span><strong>' + esc(rate) + "</strong></article>" +
+      '<article><span>验证通过</span><strong>' + esc(String(verified)) + "</strong></article>" +
+      '<article><span>验证失败</span><strong>' + esc(String(verifyFailed)) + "</strong></article>" +
+      '<article><span>发布失败</span><strong>' + esc(String(publishFailed)) + "</strong></article>" +
+      "</div>";
+    var failures = health.recent_failures || [];
+    if (!failures.length) {
+      listHost.innerHTML = '<div class="p02-empty">近 7 天无 verify / publish 失败记录</div>';
+      return;
+    }
+    listHost.innerHTML =
+      '<ul class="p02-release-failure-list">' +
+      failures
+        .map(function (row) {
+          var label =
+            esc(row.version_name || "") +
+            " / " +
+            esc(row.version_code || "") +
+            " · " +
+            esc(row.env_key || "") +
+            " · " +
+            esc(row.event_type || "");
+          var err = row.error ? '<span class="p02-release-failure-error">' + esc(row.error) + "</span>" : "";
+          return (
+            '<li><a href="' +
+            esc(row.href || "#") +
+            '"><strong>' +
+            label +
+            "</strong><time>" +
+            esc(String(row.created_at || "").slice(0, 16)) +
+            "</time></a>" +
+            err +
+            "</li>"
+          );
+        })
+        .join("") +
+      "</ul>";
+  }
+
   async function loadOverview() {
     var data = await api("/api/projects/" + encodeURIComponent(projectId) + "/overview" + queryString());
     populateFilters(data);
@@ -317,6 +370,7 @@
     });
     var latestOrder = sortedOrders[0];
     renderKpis(data);
+    renderReleaseHealth(data);
     renderEnvCards(data, cards);
     activityEvents = (data.activities || []).map(function (item) {
       return {
