@@ -308,3 +308,166 @@
     margin-bottom: 12px;
   }
 }
+
+.ios-signing-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #d8e2f2;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.ios-signing-guide {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #eef4ff;
+  border: 1px solid #c7d6f3;
+}
+
+.ios-signing-guide-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.ios-signing-guide-head strong {
+  font-size: 14px;
+  color: #17243d;
+}
+
+.ios-signing-guide-head span {
+  font-size: 12px;
+  color: #476291;
+}
+
+.ios-signing-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: #344054;
+  line-height: 1.55;
+}
+
+.ios-signing-steps li + li {
+  margin-top: 6px;
+}
+
+.ios-signing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ios-signing-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #d0d5dd;
+  color: #667085;
+  background: #fff;
+}
+
+.ios-signing-badge[data-state="pass"] {
+  border-color: #abefc6;
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.ios-signing-badge[data-state="fail"] {
+  border-color: #fecdca;
+  color: #b42318;
+  background: #fef3f2;
+}
+
+.ios-signing-badge[data-state="warn"] {
+  border-color: #fedf89;
+  color: #b54708;
+  background: #fffaeb;
+}
+
+.ios-signing-checklist {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ios-signing-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #e4e7ec;
+  background: #fff;
+  font-size: 12px;
+}
+
+.ios-signing-checklist li[data-status="pass"] {
+  border-color: #abefc6;
+}
+
+.ios-signing-checklist li[data-status="fail"] {
+  border-color: #fecdca;
+  background: #fffafa;
+}
+
+.ios-signing-checklist li[data-status="warn"] {
+  border-color: #fedf89;
+  background: #fffdf5;
+}
+
+.ios-signing-checklist .check-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.ios-signing-checklist .check-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ios-signing-checklist .check-title {
+  font-weight: 600;
+  color: #101828;
+}
+
+.ios-signing-checklist .check-detail {
+  margin-top: 2px;
+  color: #667085;
+  word-break: break-word;
+}
+
+.ios-signing-checklist .check-action {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #1677ff;
+  white-space: nowrap;
+}
+
+.ios-signing-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #667085;
+  line-height: 1.5;
+}
+
+.ios-signing-form .preview-card-link {
+  font-size: 12px;
+  margin-right: 12px;
+}
+
+.ios-signing-form .preview-card-link + .preview-card-link {
+  margin-left: 0;
+}
+

@@ -228,6 +228,73 @@ def _get_group_meta(
     return dict(groups[idx])
 
 
+def get_version_group_meta(
+    project_id: str,
+    version_name: str,
+    env_key: str = "",
+    platform: str = "android",
+) -> dict:
+    """Public accessor for version-group metadata (ios_signing, wx_minigame, etc.)."""
+    vn = str(version_name or "").strip()
+    if not vn:
+        return {}
+    ek = normalize_release_env_key(env_key or "", project_id=project_id) if env_key else ""
+    pk = _normalize_group_platform(platform) if platform else ""
+    return _get_group_meta(project_id, vn, ek or None, pk or None)
+
+
+def update_version_group_platform_config(
+    project_id: str,
+    version_name: str,
+    env_key: str,
+    platform: str,
+    patch: Dict[str, Any],
+    *,
+    actor: str = "admin",
+) -> dict:
+    from services.build.platform_signing_service import (
+        merge_platform_config_into_group_meta,
+        normalize_ios_signing,
+        sanitize_ios_signing_for_api,
+    )
+
+    vn = str(version_name or "").strip()
+    if not vn:
+        raise ValueError("缺少版本号")
+    ek = normalize_release_env_key(env_key or "", project_id=project_id) if env_key else ""
+    pk = _normalize_group_platform(platform) if platform else ""
+    groups = _load_version_groups_meta(project_id)
+    idx = _find_group_meta_index(groups, vn, ek, project_id, platform=pk or None)
+    if idx < 0:
+        _ensure_version_group_meta(project_id, vn, actor, env_key=ek or None, platform=pk or None)
+        groups = _load_version_groups_meta(project_id)
+        idx = _find_group_meta_index(groups, vn, ek, project_id, platform=pk or None)
+    if idx < 0:
+        raise ValueError("版本组不存在")
+    row = merge_platform_config_into_group_meta(dict(groups[idx]), patch if isinstance(patch, dict) else {})
+    groups[idx] = row
+    _save_version_groups_meta(project_id, groups)
+    versions_repo.audit("update_version_group_platform_config", "%s %s %s" % (project_id, ek or "-", vn))
+    out = dict(row)
+    if isinstance(out.get("ios_signing"), dict):
+        out["ios_signing"] = sanitize_ios_signing_for_api(out["ios_signing"])
+    return out
+
+
+def resolve_effective_ios_signing(project_id: str, version_row: Dict[str, Any]) -> dict:
+    from services.build.platform_signing_service import normalize_ios_signing
+
+    if not isinstance(version_row, dict):
+        return normalize_ios_signing({})
+    version_name = str(version_row.get("version_name") or "").strip()
+    if not version_name:
+        return normalize_ios_signing({})
+    env_key = _version_row_env_key(version_row, project_id)
+    platform = _version_row_platform(version_row)
+    meta = _get_group_meta(project_id, version_name, env_key, platform)
+    return normalize_ios_signing(meta.get("ios_signing") if isinstance(meta, dict) else {})
+
+
 def resolve_effective_pipeline(project_id: str, version_row: Dict[str, Any]) -> Dict[str, Any]:
     """Return the effective build pipeline for a VC.
 
@@ -966,6 +1033,9 @@ def _version_group_row(
         "anchor_version_id": anchor_id,
         "pipeline_ready": bool(readiness.get("ready")),
         "pipeline_readiness": readiness,
+        "ios_signing": meta.get("ios_signing") if isinstance(meta.get("ios_signing"), dict) else {},
+        "wx_minigame": meta.get("wx_minigame") if isinstance(meta.get("wx_minigame"), dict) else {},
+        "unity_version": str(meta.get("unity_version") or "").strip(),
     }
 
 

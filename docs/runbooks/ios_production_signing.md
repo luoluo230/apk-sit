@@ -15,22 +15,42 @@
 
 ---
 
-## 1. Portal 配置 ios_signing
+## 1. Portal 配置 ios_signing（Web UI 引导）
 
-版本组 metadata 示例：
+**推荐路径：** 版本组 → **配置管线** → **安装包（Step 04）** → **iOS 签名与 TestFlight 自动化**
+
+页面提供四步引导：
+
+1. 安装 macOS 构建节点（`build-ios` label）
+2. 在 Jenkins Credentials 创建 ASC / 证书 / 描述文件凭据
+3. 填写 Team ID、Bundle ID、Export Method 与 **Credential ID**（Portal 不存密钥）
+4. 点击 **校验 iOS 签名配置**，全部通过后 **保存配置**
+
+**API：**
+
+- `GET /api/admin/projects/<id>/version-groups/platform-config?version_name=&env_key=&platform=ios`
+- `PUT` 同上路径保存 `ios_signing`
+- `POST /api/admin/projects/<id>/version-groups/ios-signing/validate` 返回 checklist
+
+版本组 metadata 示例（混合密钥模型）：
 
 ```json
 {
   "ios_signing": {
-    "mode": "upload",
+    "secret_mode": "jenkins",
     "team_id": "ABCDE12345",
     "bundle_id": "com.example.gomeku",
-    "asc_api_key_id": "XXXXXXXXXX",
-    "asc_api_issuer": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "asc_api_key_path": "/secure/AuthKey_XXXXXXXXXX.p8"
+    "export_method": "app-store",
+    "provisioning_profile_name": "GomeKu AppStore",
+    "jenkins_asc_credential_id": "gomeku-asc-api-key",
+    "jenkins_cert_credential_id": "gomeku-ios-dist-cert",
+    "jenkins_profile_credential_id": "gomeku-ios-appstore-profile",
+    "auto_upload_testflight": true
   }
 }
 ```
+
+> **注意：** `.p8` / `.p12` / 密码仅存在于 Jenkins Credentials；触发构建时通过 `IOS_SIGNING_JSON` 传递元数据与 Credential ID 引用。
 
 字段规范化见 `services/build/platform_signing_service.py`。
 
@@ -64,7 +84,7 @@ export EXTERNAL_UPLOAD_TESTFLIGHT=true
    - 生成 `ExportOptions.plist`（app-store / ad-hoc / development）
    - 输出 `IPA_FILE` 环境变量
 4. **Step 7** — `archive_build_artifact.py` OSS 备份
-5. **Step 8** — `upload_testflight.py`（需 ASC API Key；未配置则 SKIP）
+5. **Step 8** — `upload_testflight.py`（Production 环境缺 ASC 凭据时 **失败**；Development 可 SKIP）
 
 ---
 

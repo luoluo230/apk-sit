@@ -301,6 +301,23 @@ def plan_to_jenkins_params(
 
     apply_release_mode(params, plan, release_mode, release_targets)
 
+    plat_norm = normalize_release_platform(release_platform).lower()
+    if plat_norm == "ios" and pid and isinstance(version_obj, dict):
+        try:
+            from services.admin.version_service import resolve_effective_ios_signing
+            from services.build.platform_signing_service import ios_signing_json_for_jenkins
+
+            signing = resolve_effective_ios_signing(pid, version_obj)
+            params["IOS_SIGNING_JSON"] = ios_signing_json_for_jenkins(signing)
+            params["IOS_BUILD_ENABLED"] = "true" if plan.get("apkBuildEnabled") else "false"
+            params["EXTERNAL_UPLOAD_TESTFLIGHT"] = (
+                "true" if signing.get("auto_upload_testflight") else "false"
+            )
+            if signing.get("export_method"):
+                params["IOS_EXPORT_METHOD"] = str(signing.get("export_method"))
+        except Exception:
+            pass
+
     plan_patch = {
         "versionCode": version_code,
         "configRemotePrefix": config_prefix,

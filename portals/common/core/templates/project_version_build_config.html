@@ -1,5 +1,5 @@
 <link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">
-<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260625-bc-layered1">
+<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260729-ios-signing-v1">
 <style>
   .build-config-app .workflow-section:not(.active) { display: none !important; }
   .build-config-app .workflow-section.active { display: block; }
@@ -186,6 +186,86 @@
               <a class="ui-secondary" id="buildHistoryLink" href="/admin/projects/{{ project_id }}/build-history?scoped=1&amp;env_key={{ env_key }}">查看构建历史与产物</a>
             </div>
           </div>
+
+          <div id="iosSigningPanel" class="ios-signing-panel span-4" hidden>
+            <div class="ios-signing-guide">
+              <div class="ios-signing-guide-head">
+                <strong>iOS 签名与 TestFlight 自动化</strong>
+                <span>密钥存 Jenkins Credentials，Portal 只存元数据与 Credential ID</span>
+              </div>
+              <ol class="ios-signing-steps" id="iosSigningGuideSteps"></ol>
+            </div>
+            <div class="ios-signing-toolbar">
+              <button type="button" class="ui-secondary" id="btnValidateIosSigning">校验 iOS 签名配置</button>
+              <span id="iosSigningStatusBadge" class="ios-signing-badge" data-state="unknown">未校验</span>
+            </div>
+            <ul id="iosSigningChecklist" class="ios-signing-checklist" aria-live="polite"></ul>
+            <div class="form-grid ios-signing-form">
+              <label>
+                <span>Secret 模式</span>
+                <select name="ios_secret_mode" id="iosSecretModeSelect">
+                  <option value="jenkins">Jenkins Credentials（推荐）</option>
+                  <option value="path">构建机本地路径（高级）</option>
+                </select>
+              </label>
+              <label>
+                <span>Export Method</span>
+                <select name="ios_export_method" id="iosExportMethodSelect">
+                  <option value="app-store">app-store（App Store / TestFlight）</option>
+                  <option value="ad-hoc">ad-hoc（内测分发）</option>
+                  <option value="development">development（开发调试）</option>
+                  <option value="enterprise">enterprise（企业签）</option>
+                </select>
+              </label>
+              <label>
+                <span>Apple Team ID</span>
+                <input name="ios_team_id" id="iosTeamIdInput" placeholder="10 位 Team ID，如 ABCDE12345" autocomplete="off">
+              </label>
+              <label>
+                <span>Bundle ID</span>
+                <input name="ios_bundle_id" id="iosBundleIdInput" placeholder="com.example.gomeku" autocomplete="off">
+              </label>
+              <label>
+                <span>Provisioning Profile 名称</span>
+                <input name="ios_provisioning_profile_name" id="iosProfileNameInput" placeholder="App Store 描述文件名称（可选）">
+              </label>
+              <label class="span-2 checkbox-row">
+                <input type="checkbox" name="ios_auto_upload_testflight" id="iosAutoUploadTestflight" checked>
+                <span>构建成功后自动上传 TestFlight</span>
+              </label>
+              <div class="ios-jenkins-cred-fields span-4" id="iosJenkinsCredFields">
+                <p class="ios-signing-hint">在 Jenkins → Credentials 创建 Secret file / Username+Password 后，填写 Credential ID（不是密钥内容）。</p>
+                <label>
+                  <span>ASC API Key Credential ID</span>
+                  <input name="ios_jenkins_asc_credential_id" id="iosAscCredInput" placeholder="如 gomeku-asc-api-key">
+                </label>
+                <label>
+                  <span>Distribution 证书 Credential ID</span>
+                  <input name="ios_jenkins_cert_credential_id" id="iosCertCredInput" placeholder="如 gomeku-ios-dist-cert">
+                </label>
+                <label>
+                  <span>Provisioning Profile Credential ID</span>
+                  <input name="ios_jenkins_profile_credential_id" id="iosProfileCredInput" placeholder="如 gomeku-ios-appstore-profile">
+                </label>
+                <a class="preview-card-link" href="/admin/jenkins" target="_blank" rel="noopener noreferrer">打开 Jenkins 管理 →</a>
+                <a class="preview-card-link" href="/admin/infra-nodes?role=build-ios" target="_blank" rel="noopener noreferrer">安装 macOS 构建节点 →</a>
+              </div>
+              <div class="ios-path-cred-fields span-4" id="iosPathCredFields" hidden>
+                <p class="ios-signing-hint">path 模式：证书与 .p8 放在 macOS 构建机本地，仅适合单机调试。</p>
+                <label class="span-2">
+                  <span>证书 .p12 路径（构建机）</span>
+                  <input name="ios_cert_p12_path" id="iosCertPathInput" placeholder="/secure/certs/dist.p12">
+                </label>
+                <label class="span-2">
+                  <span>描述文件路径（构建机）</span>
+                  <input name="ios_provisioning_profile_path" id="iosProfilePathInput" placeholder="/secure/profiles/appstore.mobileprovision">
+                </label>
+                <label><span>ASC Key ID</span><input name="ios_asc_key_id" id="iosAscKeyIdInput"></label>
+                <label><span>ASC Issuer ID</span><input name="ios_asc_issuer" id="iosAscIssuerInput"></label>
+                <label class="span-2"><span>ASC .p8 路径</span><input name="ios_asc_key_path" id="iosAscKeyPathInput"></label>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="workflow-section" data-section="client_policy" hidden>
@@ -247,4 +327,4 @@
     <span id="vcConfigStatus" class="build-config-status"></span>
   </div>
 </section>
-<script src="/static/project_version_build_config.js?v=20260706-bc-default-rss1"></script>
+<script src="/static/project_version_build_config.js?v=20260729-ios-signing-v1"></script>

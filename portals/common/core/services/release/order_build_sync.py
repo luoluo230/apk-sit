@@ -159,6 +159,21 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     from services.build.build_node_service import assert_build_ready
 
     assert_build_ready(platform)
+    if platform == "ios":
+        from services.admin.version_service import resolve_effective_ios_signing
+        from services.build.platform_signing_service import assess_ios_signing_setup, validate_ios_signing_for_build
+
+        signing = resolve_effective_ios_signing(project_id, version)
+        release_env = str(order.get("env_key") or version.get("env_key") or "")
+        assessment = assess_ios_signing_setup(
+            signing,
+            project_id=project_id,
+            release_environment=release_env,
+        )
+        if not assessment.get("ready"):
+            err = validate_ios_signing_for_build(signing)
+            guide = "请前往版本组「配置管线 → 安装包 → iOS 签名」完成引导步骤并校验通过。"
+            raise ValueError(f"{err or 'iOS 签名配置未就绪'}。{guide}")
     plan = dict(order.get("payload") or {})
     from services.admin.version_service import (
         resolve_effective_pipeline,

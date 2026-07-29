@@ -36,7 +36,7 @@ _log_ios "Step 6: xcodebuild archive + export IPA"
 PY=$(_pipeline_resolve_python)
 SIGN="$SCRIPT_DIR/resolve_ios_signing_env.py"
 if [ -n "$PY" ] && [ -f "$SIGN" ]; then
-  eval "$($PY)" || true
+  eval "$($PY "$SIGN")" || exit 1
 fi
 ARCHIVE_ARGS="-releaseVersion \"${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}\""
 ARCHIVE_ARGS="$ARCHIVE_ARGS -versionCode \"${VERSION_CODE:-1}\""
@@ -72,7 +72,7 @@ if [ "${EXTERNAL_UPLOAD_TESTFLIGHT:-false}" = "true" ]; then
   _log_ios "Step 8: TestFlight upload"
   UP="$SCRIPT_DIR/upload_testflight.py"
   if [ -n "$PY" ] && [ -f "$UP" ]; then
-    $PY || echo "WARN: TestFlight upload failed (non-fatal if ASC not configured)"
+    $PY "$UP" || exit 1
   fi
 fi
 

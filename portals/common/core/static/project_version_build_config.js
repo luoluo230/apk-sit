@@ -15,8 +15,182 @@
   const form = document.getElementById("versionBuildConfigForm");
   const statusEl = document.getElementById("vcConfigStatus");
   const saveBtn = document.getElementById("btnSaveBuildConfig");
+  const iosSigningPanel = document.getElementById("iosSigningPanel");
+  const iosSigningChecklist = document.getElementById("iosSigningChecklist");
+  const iosSigningGuideSteps = document.getElementById("iosSigningGuideSteps");
+  const iosSigningStatusBadge = document.getElementById("iosSigningStatusBadge");
+  const btnValidateIosSigning = document.getElementById("btnValidateIosSigning");
+  const iosSecretModeSelect = document.getElementById("iosSecretModeSelect");
+  const iosJenkinsCredFields = document.getElementById("iosJenkinsCredFields");
+  const iosPathCredFields = document.getElementById("iosPathCredFields");
+
+  const iosSigningScope = (version) => ({
+    version_name: String(groupVersionName || version?.version_name || "").trim(),
+    env_key: String(groupEnvKey || version?.env_key || "").trim(),
+    platform: normalizePlatform(groupPlatform || version?.platform || "android"),
+    release_environment: deriveVersionContext(version || currentVersion || {}).releaseEnv || "",
+  });
+
+  const syncIosSecretModeFields = () => {
+    const mode = iosSecretModeSelect?.value || "jenkins";
+    if (iosJenkinsCredFields) iosJenkinsCredFields.hidden = mode !== "jenkins";
+    if (iosPathCredFields) iosPathCredFields.hidden = mode !== "path";
+  };
+
+  const toggleIosSigningPanel = (version) => {
+    const show = normalizePlatform(version?.platform || groupPlatform) === "ios";
+    if (iosSigningPanel) iosSigningPanel.hidden = !show;
+    if (!show) return;
+    syncIosSecretModeFields();
+  };
+
+  const renderIosSigningGuide = (steps) => {
+    if (!iosSigningGuideSteps) return;
+    iosSigningGuideSteps.innerHTML = (steps || [])
+      .map(
+        (row) =>
+          `<li><strong>步骤 ${esc(row.step)} · ${esc(row.title)}</strong> — ${esc(row.body || "")}</li>`,
+      )
+      .join("");
+  };
+
+  const renderIosSigningChecklist = (assessment) => {
+    if (!iosSigningChecklist) return;
+    const checklist = assessment?.checklist || [];
+    iosSigningChecklist.innerHTML = checklist
+      .map((item) => {
+        const icon = item.status === "pass" ? "✓" : item.status === "warn" ? "!" : "✕";
+        const action = item.action_url
+          ? `<a class="check-action" href="${esc(item.action_url)}" target="_blank" rel="noopener noreferrer">${esc(item.action_label || "去处理")}</a>`
+          : "";
+        return `<li data-status="${esc(item.status || "fail")}"><span class="check-icon">${icon}</span><div class="check-body"><div class="check-title">${esc(item.title || "")}</div><div class="check-detail">${esc(item.detail || "")}</div></div>${action}</li>`;
+      })
+      .join("");
+    if (iosSigningStatusBadge) {
+      const ready = Boolean(assessment?.ready);
+      const hasFail = checklist.some((item) => item.status === "fail");
+      iosSigningStatusBadge.dataset.state = ready ? "pass" : hasFail ? "fail" : "warn";
+      iosSigningStatusBadge.textContent = ready ? "校验通过" : hasFail ? "存在阻断项" : "部分就绪";
+    }
+    renderIosSigningGuide(assessment?.guide_steps);
+  };
+
+  const fillIosSigningForm = (signing) => {
+    const cfg = signing && typeof signing === "object" ? signing : {};
+    currentIosSigning = cfg;
+    const setVal = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.value = value ?? "";
+    };
+    const setCheck = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.checked = Boolean(value);
+    };
+    if (iosSecretModeSelect) iosSecretModeSelect.value = cfg.secret_mode === "path" ? "path" : "jenkins";
+    setVal("iosTeamIdInput", cfg.team_id || "");
+    setVal("iosBundleIdInput", cfg.bundle_id || "");
+    setVal("iosExportMethodSelect", cfg.export_method || "app-store");
+    setVal("iosProfileNameInput", cfg.provisioning_profile_name || "");
+    setCheck("iosAutoUploadTestflight", cfg.auto_upload_testflight !== false);
+    setVal("iosAscCredInput", cfg.jenkins_asc_credential_id || "");
+    setVal("iosCertCredInput", cfg.jenkins_cert_credential_id || "");
+    setVal("iosProfileCredInput", cfg.jenkins_profile_credential_id || "");
+    setVal("iosCertPathInput", cfg.cert_p12_path || "");
+    setVal("iosProfilePathInput", cfg.provisioning_profile_path || "");
+    setVal("iosAscKeyIdInput", cfg.asc_api_key_id || "");
+    setVal("iosAscIssuerInput", cfg.asc_api_issuer || "");
+    setVal("iosAscKeyPathInput", cfg.asc_api_key_path || "");
+    syncIosSecretModeFields();
+  };
+
+  const collectIosSigningFromForm = () => {
+    const secretMode = iosSecretModeSelect?.value || "jenkins";
+    return {
+      secret_mode: secretMode,
+      team_id: document.getElementById("iosTeamIdInput")?.value.trim() || "",
+      bundle_id: document.getElementById("iosBundleIdInput")?.value.trim() || "",
+      export_method: document.getElementById("iosExportMethodSelect")?.value.trim() || "app-store",
+      provisioning_profile_name: document.getElementById("iosProfileNameInput")?.value.trim() || "",
+      auto_upload_testflight: Boolean(document.getElementById("iosAutoUploadTestflight")?.checked),
+      jenkins_asc_credential_id: document.getElementById("iosAscCredInput")?.value.trim() || "",
+      jenkins_cert_credential_id: document.getElementById("iosCertCredInput")?.value.trim() || "",
+      jenkins_profile_credential_id: document.getElementById("iosProfileCredInput")?.value.trim() || "",
+      cert_p12_path: document.getElementById("iosCertPathInput")?.value.trim() || "",
+      provisioning_profile_path: document.getElementById("iosProfilePathInput")?.value.trim() || "",
+      asc_api_key_id: document.getElementById("iosAscKeyIdInput")?.value.trim() || "",
+      asc_api_issuer: document.getElementById("iosAscIssuerInput")?.value.trim() || "",
+      asc_api_key_path: document.getElementById("iosAscKeyPathInput")?.value.trim() || "",
+    };
+  };
+
+  const loadIosSigningConfig = async (version) => {
+    if (normalizePlatform(version?.platform || groupPlatform) !== "ios") return;
+    const scope = iosSigningScope(version);
+    if (!scope.version_name) return;
+    const params = new URLSearchParams({
+      version_name: scope.version_name,
+      env_key: scope.env_key,
+      platform: scope.platform,
+      release_environment: scope.release_environment,
+    });
+    try {
+      const response = await fetch(
+        `/api/admin/projects/${projectId}/version-groups/platform-config?${params.toString()}`,
+        { credentials: "same-origin" },
+      );
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || "加载 iOS 签名配置失败");
+      fillIosSigningForm(data.ios_signing || {});
+      if (data.ios_signing_assessment) renderIosSigningChecklist(data.ios_signing_assessment);
+    } catch (error) {
+      toast(error.message || "加载 iOS 签名配置失败", "error");
+    }
+  };
+
+  const saveIosSigningConfig = async (version) => {
+    if (normalizePlatform(version?.platform || groupPlatform) !== "ios") return;
+    const scope = iosSigningScope(version);
+    if (!scope.version_name) return;
+    const response = await fetch(`/api/admin/projects/${projectId}/version-groups/platform-config`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        version_name: scope.version_name,
+        env_key: scope.env_key,
+        platform: scope.platform,
+        ios_signing: collectIosSigningFromForm(),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "保存 iOS 签名配置失败");
+    fillIosSigningForm(data.ios_signing || collectIosSigningFromForm());
+  };
+
+  const validateIosSigning = async (version) => {
+    if (normalizePlatform(version?.platform || groupPlatform) !== "ios") return null;
+    const scope = iosSigningScope(version);
+    const response = await fetch(`/api/admin/projects/${projectId}/version-groups/ios-signing/validate`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        version_name: scope.version_name,
+        env_key: scope.env_key,
+        platform: scope.platform,
+        release_environment: scope.release_environment,
+        ios_signing: collectIosSigningFromForm(),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "校验失败");
+    renderIosSigningChecklist(data);
+    return data;
+  };
+
   let currentVersion = null;
   let currentGroupMeta = null;
+  let currentIosSigning = null;
   let previewTimer = null;
 
   const esc = (value) =>
@@ -464,6 +638,12 @@
     applyDerivedFields(version);
     syncHotPresetHighlight();
     loadUnityVersions(apkBuild.unity_version || "");
+    toggleIosSigningPanel(version);
+    if (normalizePlatform(version.platform) === "ios") {
+      const fromMeta = currentGroupMeta?.ios_signing;
+      if (fromMeta && typeof fromMeta === "object") fillIosSigningForm(fromMeta);
+      loadIosSigningConfig(version);
+    }
   };
 
   const buildPipelineFromForm = (version) => {
@@ -687,7 +867,7 @@
     const warnings = document.getElementById("jenkinsPreviewWarnings");
     if (!list || !currentVersion) return;
     const plan = buildPlanFromForm(currentVersion);
-    renderPreviewRows(list, [
+    const rows = [
       ["CONFIG_EXPORT_ENABLED", plan.configEnabled ? "true" : "false"],
       ["RESOURCE_BUILD_ENABLED", plan.resourceEnabled ? "true" : "false"],
       ["HOT_RELEASE_ENABLED", plan.hotReleaseEnabled ? "true" : "false"],
@@ -698,11 +878,31 @@
       ["UNITY_VERSION", plan.unityVersion || "-"],
       ["PACKAGE_FORMAT", plan.packageFormat || "-"],
       ["OUTPUT_BASE_DIR", plan.outputBaseDir || "-"],
-    ]);
+    ];
+    if (normalizePlatform(currentVersion.platform) === "ios") {
+      const ios = collectIosSigningFromForm();
+      rows.push(
+        ["IOS_BUILD_ENABLED", plan.apkBuildEnabled ? "true" : "false"],
+        ["IOS_EXPORT_METHOD", ios.export_method || "app-store"],
+        ["IOS_TEAM_ID", ios.team_id || "-"],
+        ["IOS_SIGNING_BUNDLE_ID", ios.bundle_id || "-"],
+        ["EXTERNAL_UPLOAD_TESTFLIGHT", ios.auto_upload_testflight ? "true" : "false"],
+        ["IOS_JENKINS_ASC_CREDENTIAL_ID", ios.jenkins_asc_credential_id || "-"],
+      );
+    }
+    renderPreviewRows(list, rows);
     const missing = [];
     if (plan.configEnabled && !String(plan.configRemotePrefix || "").trim()) missing.push("配置远端前缀");
     if (plan.hotReleaseEnabled && !String(plan.releaseTargets || "").trim()) missing.push("热更发布对象");
-    if (plan.apkBuildEnabled && !String(plan.outputBaseDir || "").trim()) missing.push("APK 输出目录");
+    if (plan.apkBuildEnabled && !String(plan.outputBaseDir || "").trim()) {
+      missing.push(normalizePlatform(currentVersion.platform) === "ios" ? "IPA 输出目录" : "APK 输出目录");
+    }
+    if (normalizePlatform(currentVersion.platform) === "ios" && plan.apkBuildEnabled) {
+      const ios = collectIosSigningFromForm();
+      if (!ios.bundle_id) missing.push("iOS Bundle ID");
+      if (!ios.team_id) missing.push("Apple Team ID");
+      if (ios.secret_mode === "jenkins" && !ios.jenkins_cert_credential_id) missing.push("Jenkins 证书 Credential ID");
+    }
     warnings.textContent = missing.length ? `缺失：${missing.join("、")}` : "";
 
     const domain = {
@@ -875,6 +1075,7 @@
     });
     const data = await response.json();
     if (!response.ok || data.error) throw new Error(data.error || "保存失败");
+    await saveIosSigningConfig(currentVersion || { version_name: groupVersionName, platform: groupPlatform, env_key: groupEnvKey });
   };
 
   const save = async (version) => {
@@ -898,6 +1099,7 @@
       });
       const data = await response.json();
       if (!response.ok || data.error) throw new Error(data.error || "保存失败");
+      await saveIosSigningConfig(version);
       if (isGroupMode) {
         const channelKey = String(version?.channel || version?.channel_id || "").trim();
         const overrideJob = form.channel_jenkins_job_override?.value.trim() || "";
@@ -947,6 +1149,20 @@
   });
   root.querySelector("[data-refresh-preview]")?.addEventListener("click", () => renderJenkinsPreview());
   root.querySelector("[data-refresh-bootstrap]")?.addEventListener("click", () => scheduleRuntimePreview());
+  iosSecretModeSelect?.addEventListener("change", syncIosSecretModeFields);
+  btnValidateIosSigning?.addEventListener("click", async () => {
+    try {
+      btnValidateIosSigning.disabled = true;
+      const version = currentVersion || (await loadVersion());
+      const result = await validateIosSigning(version);
+      if (result?.ready) toast("iOS 签名配置校验通过");
+      else toast("iOS 签名存在待补项，请按清单处理", "error");
+    } catch (error) {
+      toast(error.message || "校验失败", "error");
+    } finally {
+      btnValidateIosSigning.disabled = !canEdit;
+    }
+  });
   saveBtn?.addEventListener("click", async () => {
     try {
       const version = currentVersion || await loadVersion();
@@ -958,6 +1174,7 @@
 
   if (!canEdit) {
     saveBtn.disabled = true;
+    btnValidateIosSigning && (btnValidateIosSigning.disabled = true);
     form.querySelectorAll("input, select, textarea").forEach((field) => {
       field.disabled = true;
     });
