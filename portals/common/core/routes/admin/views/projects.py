@@ -576,3 +576,28 @@ def render_projects_page() -> str:
     from flask import render_template
 
     return render_template("project_list.html", **projects_page_context())
+
+
+def onboarding_wizard_page_context() -> dict:
+    import json
+    import re
+
+    from data.platforms import PLATFORM_CATALOG
+    from models.data import channels_db
+
+    def _safe_json_for_script(value: object) -> str:
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        return re.sub(r"(?i)</script>", r"<\\u002fscript>", text)
+
+    all_channels = [
+        {
+            "id": (c.get("id") or "").strip(),
+            "name": (c.get("name") or c.get("id") or "").strip(),
+        }
+        for c in (channels_db if isinstance(channels_db, list) else [])
+        if (c.get("id") or "").strip()
+    ]
+    platforms = [{"value": row["id"], "label": row["name"]} for row in PLATFORM_CATALOG]
+    return {
+        "init_data_json": _safe_json_for_script({"channels": all_channels, "platforms": platforms}),
+    }

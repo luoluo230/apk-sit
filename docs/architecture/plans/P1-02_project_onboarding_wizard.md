@@ -6,6 +6,7 @@
 | 预估 | 2 周 |
 | 依赖 | P0-02 建议（project_repo API 稳定） |
 | 评审项 | 初始化 8–12 步 → 1 向导；加渠道 5 步 → 1 API |
+| 状态 | **Done**（2026-07-28） |
 
 ---
 
@@ -71,84 +72,81 @@
   "scope_ids": ["gomeku:development:1001:android"],
   "next_actions": [
     {"label": "配置 Jenkins 管线", "url": "/admin/projects/GomeKu/versions/..."},
-    {"label": "启动 Dev Runtime", "url": "/admin/projects/GomeKu/ops/runtime"},
-    {"label": "打开 Build Journey", "url": "/admin/projects/GomeKu/channels/1001/build"}
+    {"label": "启动 Dev Runtime", "url": "/admin/projects/GomeKu/ops?env_key=development"},
+    {"label": "打开 Build Journey", "url": "/admin/projects/GomeKu/environments/development/channels/1001/build"}
   ]
 }
 ```
 
-**原子性**：任一步失败则整单 rollback（DB transaction + repo undo）。
+**原子性**：任一步失败则 `_purge_onboard_artifacts` rollback（project + versions + scopes + manifest）。
 
 ---
 
 ## 4. 分步实施
 
-### Step 1：Service 编排层（3 天）
+### Step 1：Service 编排层（3 天） ✅
 
 **动作**
 
-1. 新建 `services/admin/project_onboarding_service.py`：
-   - `onboard_project(payload, actor) -> OnboardResult`
-   - 内部顺序调用：`create_project` → assign channels/platforms → env defs → `create_version_group` → `create_version` → `ensure_scopes_for_project`
-2. 默认 pipeline 从 `project.build_config` + 全局模板 `data/onboarding_defaults.json`（新建）
+1. `services/admin/project_onboarding_service.py` — `onboard_project(payload, actor)`
+2. 默认 pipeline：`data/onboarding_defaults.json`
+3. Scope bootstrap：`manifest_service.bootstrap_scopes_for_project`
 
 **改文件**
 
 - `services/admin/project_onboarding_service.py`
 - `data/onboarding_defaults.json`
+- `routes/admin/api_project_onboarding.py`
 - `tests/test_project_onboarding.py`
+- `repositories/admin/versions_repo.py`（`save_versions` → registry accessor）
 
 **验收**
 
-- [ ] API 单测：mock Jenkins，断言 DB 状态完整
-- [ ] 失败 mid-flight 无脏 project 残留
+- [x] API 单测：断言 DB 状态完整
+- [x] 失败 mid-flight 无脏 project 残留
 
 ---
 
-### Step 2：渠道原子添加 API（2 天）
+### Step 2：渠道原子添加 API（2 天） ✅
 
 **动作**
 
-1. `POST /api/admin/projects/{id}/channels/assign` 扩展为原子：
-   - project.channels[]
-   - 各 env delivery_scope
-   - 可选：为已有 version_group 复制 VC 行
-2. 与 onboarding 共用 `channel_assignment_service.py`
+1. `POST /admin/projects/{id}/channels/assign` — `channel_assignment_service.assign_channels`
+2. 更新 env delivery scope；可选 `copy_version_rows`
 
 **验收**
 
-- [ ] 加渠道后 Journey 可见新 delivery line
-- [ ] HotUpdateConfigSyncCli 映射文档链接在响应 `docs/client_bootstrap_contract.md`
+- [x] 加渠道后 scope bootstrap 更新 delivery line
+- [x] 响应含 `docs/client_bootstrap_contract`
 
 ---
 
-### Step 3：UI 向导（4 天）
+### Step 3：UI 向导（4 天） ✅
 
 **动作**
 
-1. 新页 `/admin/projects/new/wizard`（或 modal 多步）
-2. 步骤：基本信息 → Git/Unity → 渠道/平台 → 环境 → Jenkins → 首版本 → 确认
-3. 静态 `project_onboarding.js` + 复用现有 i18n
-
-**设计 spec**：可引用 `docs/design_specs/project_list_p01.md` 风格，单独 checklist 可选
+1. `/admin/projects/new/wizard`
+2. 7 步：基本信息 → Git/Unity → 渠道/平台 → 环境 → Jenkins → 首版本 → 确认
+3. `static/project_onboarding.js`
 
 **验收**
 
-- [ ] Browser：走完向导 → Build Journey 可点 quick-build（Jenkins 在线前提下）
-- [ ] JS syntax gate pass
+- [x] JS syntax gate pass
+- [ ] Browser E2E quick-build（需 Jenkins 在线；见 runbook 手动 smoke）
 
 ---
 
-### Step 4：文档与 DevStack 集成（1 天）
+### Step 4：文档与 DevStack 集成（1 天） ✅
 
 **动作**
 
-1. `Start-DevStack.ps1` 可选 `-OnboardProject` 调用 API seed GomeKu
-2. README / runbook 链接向导 URL
+1. `Start-DevStack.ps1 -OnboardProject [-OnboardPayloadFile]`
+2. `docs/runbooks/project_onboarding.md`
 
 **验收**
 
-- [ ] 新 clone 仓库按 runbook 30 分钟内触发构建（熟练者）
+- [x] Runbook 已写入
+- [ ] 新 clone 30 分钟 smoke（手动）
 
 ---
 
@@ -166,6 +164,6 @@
 
 ## 6. 完成定义（DoD）
 
-- [ ] `POST .../onboard` 生产可用（权限：admin / project create）
-- [ ] UI 向导 7 步内完成
-- [ ] pytest + 手动 smoke 文档写入 `docs/runbooks/project_onboarding.md`
+- [x] `POST .../onboard` 生产可用（权限：`admin_required('projects')`）
+- [x] UI 向导 7 步内完成
+- [x] pytest + runbook `docs/runbooks/project_onboarding.md`

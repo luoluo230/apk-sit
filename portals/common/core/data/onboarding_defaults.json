@@ -1,0 +1,46 @@
+{
+  "pipeline_template": {
+    "config_export": {
+      "enabled": true,
+      "remote_prefix": "{app_name}",
+      "environment": "Development",
+      "platform": "Android",
+      "include_code": false
+    },
+    "resource_build": {
+      "enabled": true,
+      "provider": "addressables-v2",
+      "scenario": "default"
+    },
+    "hot_release": {
+      "enabled": true,
+      "release_mode": "build-upload",
+      "release_environment": "Development",
+      "release_targets": "code,resource",
+      "release_upload_mode": "incremental",
+      "release_hot_labels": "hotupdate,aotmeta",
+      "code_enabled": true,
+      "code_compression": "Zip",
+      "code_encryption": "Aes",
+      "code_signature": "builtin-signature",
+      "code_units": "aotmeta, hotupdate, scriptpatch, symbols",
+      "resource_enabled": true,
+      "resource_compression": "None",
+      "resource_encryption": "None",
+      "resource_signature": "builtin-signature",
+      "resource_units": "addressable, hotupdate, optional, platform, hd, streaming"
+    },
+    "apk_build": {
+      "enabled": true,
+      "unity_version": "",
+      "output_base_dir": ""
+    },
+    "git_branch": "main"
+  },
+  "seed_version": {
+    "version_code": "1",
+    "version_mode": "general"
+  },
+  "default_env_keys": ["development", "testing"],
+  "default_platforms": ["android"]
+}

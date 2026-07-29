@@ -1,0 +1,28 @@
+<section class="p01-list space-y-6" data-page="project-onboarding-wizard">
+  <header class="p01-head">
+    <div class="p01-head-main">
+      <div>
+        <h1>新建项目向导</h1>
+        <p class="p01-sub">从 0 到可触发第一次 quick-build，一次完成项目、环境、版本与交付范围配置。</p>
+      </div>
+    </div>
+    <a href="/admin/projects" class="pm-btn pm-btn--ghost">返回项目列表</a>
+  </header>
+
+  <ol id="obWizardSteps" class="flex flex-wrap gap-2 text-xs text-slate-500"></ol>
+
+  <div id="obWizardPanel" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"></div>
+
+  <div class="flex items-center justify-between gap-3">
+    <button type="button" id="obWizardPrev" class="pm-btn pm-btn--ghost" disabled>上一步</button>
+    <div class="flex gap-2">
+      <button type="button" id="obWizardNext" class="pm-btn pm-btn--primary">下一步</button>
+      <button type="button" id="obWizardSubmit" class="pm-btn pm-btn--primary hidden">创建项目</button>
+    </div>
+  </div>
+
+  <div id="obWizardResult" class="hidden rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900"></div>
+  <div id="obWizardError" class="hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
+
+  <script type="application/json" id="obWizardInitData">{{ init_data_json | safe }}</script>
+</section>

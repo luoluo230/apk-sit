@@ -20,7 +20,9 @@ param(
     [switch]$SkipPortal,
     [switch]$SkipSeed,
     [switch]$SkipClientSync,
-    [switch]$RestartPortal
+    [switch]$RestartPortal,
+    [switch]$OnboardProject,
+    [string]$OnboardPayloadFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -245,6 +247,27 @@ if ($creds.GameId -and $creds.GameKey) {
     }
     catch {
         $bootstrapDetail = $_.Exception.Message
+    }
+}
+
+if ($OnboardProject) {
+    $payloadPath = $OnboardPayloadFile
+    if ([string]::IsNullOrWhiteSpace($payloadPath)) {
+        $payloadPath = Join-Path $ApkSiteRoot "tmp\onboard-gomeku.json"
+    }
+    if (-not (Test-Path $payloadPath)) {
+        Write-Warning "Onboard payload not found: $payloadPath"
+    }
+    else {
+        try {
+            $body = Get-Content -Raw -Encoding UTF8 $payloadPath
+            $onboardUrl = "$portal/api/admin/projects/onboard"
+            $resp = Invoke-RestMethod -Uri $onboardUrl -Method Post -ContentType "application/json; charset=utf-8" -Body $body -TimeoutSec 30
+            Write-Host "Onboard OK: $($resp.data.project_id)" -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "Onboard failed: $($_.Exception.Message)"
+        }
     }
 }
 

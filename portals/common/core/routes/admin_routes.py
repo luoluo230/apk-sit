@@ -35,6 +35,7 @@ from routes.admin.api_users import register_routes as register_user_api_routes
 from routes.admin.api_user_favorites import register_routes as register_user_favorites_api_routes
 from routes.admin.api_users_transfer import register_routes as register_user_transfer_routes
 from routes.admin.api_projects import register_routes as register_project_api_routes
+from routes.admin.api_project_onboarding import register_routes as register_project_onboarding_api_routes
 from routes.admin.api_projects_misc import register_routes as register_project_misc_api_routes
 from routes.admin.api_approval import register_routes as register_approval_api_routes
 from routes.admin.api_channels import register_routes as register_channel_api_routes
@@ -464,7 +465,7 @@ def _safe_json_for_script(s):
     return re.sub(r'(?i)</script>', r'<\\u002fscript>', s)
 
 from routes.admin.views.api_docs import render_api_docs_page
-from routes.admin.views.projects import projects_page_context
+from routes.admin.views.projects import projects_page_context, onboarding_wizard_page_context
 
 
 def _current_username():
@@ -472,6 +473,24 @@ def _current_username():
 
 
 PROJECT_LIST_ASSET_VER = "20260723-favorites-sync"
+ONBOARDING_WIZARD_ASSET_VER = "20260728-p102"
+
+
+@bp.route('/admin/projects/new/wizard')
+@admin_required('projects')
+def admin_project_onboarding_wizard_page():
+    from flask import render_template
+    from services.ops.helpers import _render_ops_page
+
+    content = render_template('project_onboarding_wizard.html', **onboarding_wizard_page_context())
+    js = f'<script src="/static/project_onboarding.js?v={ONBOARDING_WIZARD_ASSET_VER}"></script>'
+    return _render_ops_page(
+        content,
+        '新建项目向导',
+        active_page='projects',
+        breadcrumb_module='项目',
+        extra_js=js,
+    )
 
 
 @bp.route('/admin/projects')
@@ -959,6 +978,13 @@ def _register_split_api_routes():
         bp,
         current_username_getter=_current_username,
         tenant_id_getter=lambda: session.get('tenant_id') or 'default',
+    )
+    register_project_onboarding_api_routes(
+        bp,
+        current_username_getter=_current_username,
+        tenant_id_getter=lambda: session.get('tenant_id') or 'default',
+        projects_db=projects_db,
+        can_edit_lookup=lambda project_id: can_edit_project(project_id, _current_username()),
     )
     register_channel_api_routes(bp)
     register_notification_api_routes(bp, _current_username)

@@ -17,12 +17,12 @@ from models.data import (
     load_download_events,
     log_audit,
     save_changelog,
-    save_project_versions,
     version_has_apk,
     version_is_recommended,
 )
 from repositories.registry.accessors import has_project as registry_has_project
 from repositories.registry.accessors import list_project_versions
+from repositories.registry.accessors import save_project_versions as registry_save_project_versions
 
 
 def has_project(project_id: str) -> bool:
@@ -43,7 +43,7 @@ def list_versions(project_id: str) -> List[Dict[str, Any]]:
 
 
 def save_versions(project_id: str, versions: List[Dict[str, Any]]) -> None:
-    save_project_versions(project_id, versions)
+    registry_save_project_versions(project_id, versions)
 
 
 def save_changelog_item(key: str, payload: Dict[str, Any] | None) -> None:
