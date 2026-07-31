@@ -11,10 +11,10 @@
   const urlParams = new URLSearchParams(location.search);
   const lockChannelId = urlParams.get("channel_id") || root.dataset.channelFilter || "";
   const lockPlatform = urlParams.get("platform") || root.dataset.platformFilter || "";
-  const lockEnvKey = urlParams.get("env_key") || root.dataset.envKey || envKey || "";
+  const lockEnvKey = urlParams.get("env_key") || root.dataset.envKey || document.getElementById("versionEnvHidden")?.value || "";
   const lockChannelScoped = Boolean(lockChannelId);
   const lockDeliveryLine = urlParams.get("action") === "create_vc" && lockChannelId && lockPlatform;
-  const envScoped = true;
+  const envScoped = Boolean(lockEnvKey);
   const createVcAction = urlParams.get("action") === "create_vc";
   let rows = [];
   let versionGroups = [];
@@ -30,20 +30,14 @@
   const scopeApi = window.DeliveryScope || {};
   const buildScopeQuery = (scope = {}, extra = {}) => (scopeApi.buildQuery ? scopeApi.buildQuery(scope, extra) : "");
   const scopeHref = (path, scope = {}, extra = {}) => (scopeApi.href ? scopeApi.href(path, scope, extra) : path);
-  const startReleaseHref = (row) => scopeHref(`/admin/projects/${projectId}/release-orders/start`, {
+  const startReleaseHref = (row) => scopeHref(`/admin/projects/${projectId}/versions`, {
     env_key: normalizedEnv(row),
     channel_id: channelIdOf(row),
     platform: row.platform || "",
     version_id: row.id,
-    intent: "release",
+    action: "edit_release",
   });
-  const continueReleaseHref = (row) => scopeHref(`/admin/projects/${projectId}/release-orders/start`, {
-    env_key: normalizedEnv(row),
-    channel_id: channelIdOf(row),
-    platform: row.platform || "",
-    version_id: row.id,
-    intent: "release",
-  });
+  const continueReleaseHref = startReleaseHref;
   const releaseOrderDetailHref = (row, order) => {
     if (!order?.release_order_id) return continueReleaseHref(row);
     return scopeHref(`/admin/projects/${projectId}/release-orders/${order.release_order_id}`, {
@@ -113,7 +107,11 @@
     const hit = platforms.find((item) => item.value === platformValue);
     return hit?.label || platformValue || "-";
   };
-  const activeEnvKey = () => lockEnvKey || document.getElementById("versionEnv")?.value || "";
+  const activeEnvKey = () => {
+    const sel = document.getElementById("versionEnv");
+    if (sel?.value) return sel.value;
+    return lockEnvKey || document.getElementById("versionEnvHidden")?.value || "";
+  };
   const activePlatform = () => {
     const tab = document.querySelector(".version-platform-tab.active");
     if (tab?.dataset.platform) return tab.dataset.platform;
@@ -162,19 +160,7 @@
   });
 
   const updateScopeBanner = () => {
-    const title = document.getElementById("versionScopeTitle");
-    const desc = document.getElementById("versionScopeDesc");
-    const subtitle = document.getElementById("versionPageSubtitle");
     const env = activeEnvKey() || envKey || "production";
-    const platform = activePlatform();
-    const channel = lockChannelId || document.getElementById("versionChannel")?.value || "";
-    const channelLabel = channel ? channelNameOf(channel) : "—";
-    const parts = [envLabels[env] || env, channelLabel];
-    if (platform) parts.push(platformLabelOf(platform));
-    const text = parts.join(" · ");
-    if (title) title.textContent = `版本代码 · ${envLabels[env] || env}`;
-    if (desc) desc.textContent = `当前：${text}。环境/渠道/平台见顶部页签，表格仅展示版本组与 VC 明细。`;
-    if (subtitle) subtitle.textContent = `渠道 ${channelLabel} · 按平台页签管理 VersionCode。`;
     const envLink = document.getElementById("versionScopeEnvLink");
     if (envLink) envLink.href = `/admin/projects/${projectId}/environments/${encodeURIComponent(env)}`;
   };
@@ -317,17 +303,15 @@
     const building = isBuildInProgress(row);
     const artifactReady = row.apk_status === "found" || downloadInfo.public_download_url || downloadInfo.local_download_url;
     const buildHeadLabel = artifactReady ? "已完成" : (building ? "构建中" : "未构建");
-    const statusHint = cached.status_hint || (artifactReady ? "产物已归档" : (building ? "构建进行中，请稍候刷新" : "暂无产物，可触发构建"));
     const progressWidth = artifactReady ? 100 : (building ? 55 : 0);
     const progressHtml = progressWidth > 0
       ? `<div class="current-progress" style="height:6px;background:#eef1f6;border-radius:3px;margin:10px 0"><span style="display:block;height:100%;width:${progressWidth}%;background:#1677ff;border-radius:3px"></span></div>`
       : "";
     body.innerHTML = `<div class="pm-drawer-tags">${versionNameTagHtml(row, null)}<span class="pm-tag pm-tag--muted">${esc(row.version_name || "")}</span><span class="pm-tag pm-tag--muted">${esc(normalizedEnv(row))}</span><span class="pm-tag pm-tag--muted">${esc(row.channel_name || channelNameOf(channelIdOf(row)))}</span><span class="pm-tag pm-tag--muted">${esc(row.platform_label || row.platform || "")}</span></div>
     <div class="pm-drawer-section"><h3>当前构建</h3><div class="pm-drawer-build-head"><strong>${buildHeadLabel}</strong>${latestBuildHtml(row)}</div>
-    ${progressHtml}
-    <p class="pm-drawer-hint">${esc(statusHint)}</p></div>
+    ${progressHtml}</div>
     <div class="pm-drawer-section"><h3>产物完整性</h3><div class="pm-drawer-meta"><div><span>状态</span><b>${artifactReady ? "完整" : "不完整"}</b></div><div><span>发布</span><b>${row.active_bundle_id ? "已发布" : "未发布"}</b></div></div></div>
-    <div class="pm-drawer-section"><h3>关联发布单</h3><p class="pm-drawer-hint">${row.active_bundle_id ? "已有活跃 Bundle" : "构建与发版从版本代码行内操作"}</p></div>`;
+    <div class="pm-drawer-section"><h3>关联发布单</h3><div class="pm-drawer-meta"><div><span>Bundle</span><b>${row.active_bundle_id ? "活跃" : "无"}</b></div></div></div>`;
     const primary = cached.primary || {};
     const drawerPrimary = primary.api_action === "quick_build" && primary.version_id
       ? `<button class="pm-btn pm-btn--primary" type="button" data-quick-build="${esc(primary.version_id)}">${esc(primary.label || "触发构建")}</button>`
@@ -444,26 +428,28 @@
   };
 
   const rowActionsHtml = (row, group) => {
-    const scope = {
-      env_key: normalizedEnv(row),
-      channel_id: channelIdOf(row),
-      platform: row.platform || "",
-      version_id: row.id,
-      version_name: row.version_name || "",
-      version_code: row.version_code || "",
-      release_order_id: releaseOrderByVersion.get(String(row.id || ""))?.release_order_id || "",
-      artifact_ready: row.apk_status === "found",
-    };
-    const cached = deliveryActionsByVersion.get(String(row.id || ""));
-    const actionsPayload = cached && cached.primary
-      ? { primary: cached.primary, secondary: cached.secondary || [] }
-      : resolveLocalRowActions(row, group);
-    const links = (cached && cached.links) || {};
-    if (scopeApi.renderRowActions) {
-      return scopeApi.renderRowActions(actionsPayload, links, scope, projectId);
-    }
     const order = releaseOrderByVersion.get(String(row.id || ""));
-    return `<div class="version-row-actions"><a class="version-action-link primary" href="${releaseOrderDetailHref(row, order)}">继续发版</a></div>`;
+    const orderStatus = order?.status || "";
+    const vid = esc(row.id || "");
+    const menuId = `vc-more-${vid}`;
+    const canPublish = ["ready", "approved", "artifacts_ready"].includes(orderStatus);
+    const canRollback = ["published", "verified", "verify_failed"].includes(orderStatus) || Boolean(row.active_bundle_id);
+    const moreItems = [
+      `<button type="button" class="version-action-link" data-release-action="edit" data-version-id="${vid}">发版编辑</button>`,
+    ];
+    if (canPublish) moreItems.push(`<button type="button" class="version-action-link" data-release-action="publish" data-version-id="${vid}">发布到线上</button>`);
+    moreItems.push(`<button type="button" class="version-action-link" data-release-action="announce" data-version-id="${vid}">发布公告</button>`);
+    if (canRollback) moreItems.push(`<button type="button" class="version-action-link" data-release-action="rollback" data-version-id="${vid}">回滚</button>`);
+    moreItems.push(`<button type="button" class="version-action-link" data-release-action="server-pause" data-version-id="${vid}">服务器暂停</button>`);
+    return `<div class="version-row-actions">
+      <button type="button" class="version-btn release compact" data-edit-release="${vid}">发版编辑</button>
+      <button type="button" class="version-btn build compact" data-quick-build="${vid}">构建</button>
+      <div class="version-action-more-menu">
+        <button type="button" class="version-action-more" data-toggle-vc-more="${menuId}" aria-expanded="false" aria-label="更多发版操作"><img src="/static/project_ui/svg/action_more.svg" alt=""></button>
+        <div id="${menuId}" class="version-row-more-dropdown">${moreItems.join("")}</div>
+      </div>
+      <button type="button" class="version-btn neutral compact" data-open-vc-row="${vid}">详情</button>
+    </div>`;
   };
 
   const loadDeliveryActions = async (versionIds = []) => {
@@ -646,6 +632,24 @@
         handleDownloadClick(button.getAttribute("data-download-apk") || "");
       };
     });
+    document.querySelectorAll("[data-edit-release]").forEach((button) => {
+      button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const vid = button.getAttribute("data-edit-release") || "";
+        const row = rows.find((item) => String(item.id) === vid);
+        if (row && window.VersionReleaseEditor) window.VersionReleaseEditor.open(row);
+      };
+    });
+    document.querySelectorAll("[data-open-vc-row]").forEach((button) => {
+      button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const vid = button.getAttribute("data-open-vc-row") || "";
+        const row = rows.find((item) => String(item.id) === vid);
+        if (row) openVcDrawer(row);
+      };
+    });
     document.querySelectorAll("[data-download-pick]").forEach((button) => {
       button.onclick = (event) => {
         event.preventDefault();
@@ -727,11 +731,11 @@
     const filterChannel = document.getElementById("versionChannel");
     if (filterChannel && env) {
       const current = lockChannelId || filterChannel.value;
-      filterChannel.innerHTML = channels.map((x) => `<option value="${esc(x.channel_id)}">${esc(x.channel_name)}</option>`).join("");
-      if (current && channels.some((x) => x.channel_id === current)) filterChannel.value = current;
+      filterChannel.innerHTML = '<option value="">全部渠道</option>' + channels.map((x) => `<option value="${esc(x.channel_id)}">${esc(x.channel_name)}</option>`).join("");
+      if (current && (current === "" || channels.some((x) => x.channel_id === current))) filterChannel.value = current;
       else if (lockChannelId && channels.some((x) => x.channel_id === lockChannelId)) filterChannel.value = lockChannelId;
-      else if (channels.length) filterChannel.value = channels[0].channel_id;
       if (lockChannelScoped) filterChannel.disabled = true;
+      else filterChannel.disabled = false;
     }
   };
 
@@ -777,11 +781,19 @@
   };
 
   const applyEnvScopedUi = () => {
-    root.classList.add("is-env-scoped", "is-channel-scoped");
-    const channelSelect = document.getElementById("versionChannel");
-    if (channelSelect && lockChannelId) {
-      channelSelect.disabled = true;
-      channelSelect.classList.add("is-locked");
+    if (lockEnvKey) root.classList.add("is-env-scoped");
+    if (lockChannelId) {
+      root.classList.add("is-channel-scoped");
+      const channelSelect = document.getElementById("versionChannel");
+      if (channelSelect) {
+        channelSelect.disabled = true;
+        channelSelect.classList.add("is-locked");
+      }
+    }
+    const envSelect = document.getElementById("versionEnv");
+    if (envSelect && lockEnvKey) {
+      envSelect.value = lockEnvKey;
+      envSelect.disabled = true;
     }
   };
 
@@ -880,6 +892,18 @@
         env: envFilterValue,
         filterPlatformSelect: document.getElementById("versionPlatform"),
       });
+      const filterChannel = document.getElementById("versionChannel");
+      if (filterChannel && !envFilterValue) {
+        const uniq = new Map();
+        rows.forEach((row) => {
+          const cid = channelIdOf(row);
+          if (cid) uniq.set(cid, channelNameOf(cid));
+        });
+        const current = filterChannel.value;
+        filterChannel.innerHTML = '<option value="">全部渠道</option>' + [...uniq.entries()].map(([cid, name]) => `<option value="${esc(cid)}">${esc(name)}</option>`).join("");
+        if (current && (current === "" || uniq.has(current))) filterChannel.value = current;
+        filterChannel.disabled = Boolean(lockChannelId);
+      }
       if (!activePlatformKey && platforms.length) activePlatformKey = lockPlatform || platforms[0].value;
       renderPlatformTabs();
       refreshVersionNameSelect();
@@ -1135,7 +1159,14 @@
   });
 
   const envFilter = document.getElementById("versionEnv");
-  if (envFilter) envFilter.value = lockEnvKey || envKey || "";
+  if (envFilter) {
+    if (lockEnvKey) envFilter.value = lockEnvKey;
+    envFilter.addEventListener("change", async () => {
+      listPage = 1;
+      syncScopeUrl();
+      await load();
+    });
+  }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1146,10 +1177,11 @@
       return;
     }
     try {
+      const payload = buildVersionFormPayload();
       const result = await request(`/admin/projects/${projectId}/versions/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildVersionFormPayload()),
+        body: JSON.stringify(payload),
       });
       const created = Number(result.created_count || 0) || (result.version ? 1 : 0);
       const skipped = Number(result.skipped_count || 0);
@@ -1160,10 +1192,18 @@
       }
       closeVersionDialog();
       await load();
+      const createdVersion = result.version || (result.versions && result.versions[0]) || rows.find((r) => String(r.version_code) === String(payload.version_code));
+      const target = createdVersion || rows.find((r) => String(r.id) === String(result.version_id || ""));
+      if (target && window.VersionReleaseEditor) {
+        window.VersionReleaseEditor.open({ ...target, release_order_id: releaseOrderByVersion.get(String(target.id))?.release_order_id });
+      }
     } catch (error) {
       toast(error.message, "error");
     }
   });
+
+  window.__versionToast = toast;
+  window.__versionReload = load;
 
   load()
     .then(async () => {
@@ -1171,7 +1211,17 @@
         await openVersionDialog();
         urlParams.delete("action");
         const qs = urlParams.toString();
-        history.replaceState(null, "", `${location.pathname}${qs ? `?${qs}` : ""}`);
+        history.replaceState({}, "", qs ? `${location.pathname}?${qs}` : location.pathname);
+      }
+      const editReleaseId = urlParams.get("version_id");
+      if (urlParams.get("action") === "edit_release" && editReleaseId) {
+        const row = rows.find((item) => String(item.id) === editReleaseId);
+        if (row && window.VersionReleaseEditor) {
+          window.VersionReleaseEditor.open(row);
+          urlParams.delete("action");
+          const qs = urlParams.toString();
+          history.replaceState({}, "", qs ? `${location.pathname}?${qs}` : location.pathname);
+        }
       }
       const drawerId = urlParams.get("vc_drawer");
       if (drawerId) {
@@ -1189,6 +1239,23 @@
     .catch((error) => toast(error.message, "error"));
 
   root.addEventListener("click", (event) => {
+    const releaseBtn = event.target.closest("[data-release-action]");
+    if (releaseBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      document.querySelectorAll(".version-row-more-dropdown.open").forEach((node) => node.classList.remove("open"));
+      const vid = releaseBtn.getAttribute("data-version-id") || "";
+      const action = releaseBtn.getAttribute("data-release-action") || "";
+      const row = rows.find((item) => String(item.id) === vid);
+      if (!row || !window.VersionReleaseEditor) return;
+      const apiAction = action === "server-pause" ? "server-maintenance" : action;
+      if (action === "edit") {
+        window.VersionReleaseEditor.open(row);
+        return;
+      }
+      window.VersionReleaseEditor.runRowAction(row, apiAction, { tab: action === "announce" ? "announce" : "" }).catch((error) => toast(error.message || "操作失败", "error"));
+      return;
+    }
     const moreBtn = event.target.closest("[data-toggle-vc-more]");
     if (moreBtn) {
       event.preventDefault();

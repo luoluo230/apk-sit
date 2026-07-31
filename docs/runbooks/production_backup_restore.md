@@ -14,6 +14,15 @@
 
 **不要**将 `.env`、`jenkins_credentials.json`、`data/secret.key` 提交 git；备份文件应加密存储。
 
+## DB 单一真源（P0-02 DoD）
+
+| 存储 | 角色 | 说明 |
+|------|------|------|
+| `data/apk_site.db` | **真源** | projects/channels/versions registry、release_orders、infra_nodes、ops 表 |
+| `data/projects.json` 等 | Mirror | 仅当 `SAVE_JSON_MIRROR=true`；恢复时以 `.db` 为准 |
+| `build_nodes.json` | Mirror | `BUILD_NODES_JSON_MIRROR=1`；真源在 `infra_nodes` 表 |
+| PostgreSQL | 目标真源 | `DATABASE_URL` 切换后，见 [`postgres_migration.md`](./postgres_migration.md) |
+
 ## 一键打包（Windows）
 
 ```powershell
@@ -32,6 +41,6 @@ powershell -File scripts/Backup-PortalData.ps1 -OutputDir D:\backups\apk-site
 
 ## 验证清单
 
-- [ ] 备份脚本 `-DryRun` 列出预期文件  
-- [ ] 备份包可在另一目录解压且文件完整  
-- [ ] 恢复后 pytest smoke / 手动 Journey 预检可用  
+- [x] 备份脚本 `-DryRun` 列出预期文件（见 `docs/evidence/` backup evidence）
+- [x] 备份包可在另一目录解压且文件完整（`Backup-PortalData.ps1`）
+- [x] 恢复后 pytest smoke / 手动 Journey 预检可用（`bootstrap_gate_e2e.py`）

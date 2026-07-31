@@ -417,16 +417,14 @@ def _channel_journey_href(project_id: str, order: Dict[str, Any], *, phase: str)
     channel_id = str(order.get("channel_id") or "").strip()
     platform = str(order.get("platform") or "android").strip().lower()
     version_id = str(order.get("version_id") or "").strip()
-    order_id = str(order.get("release_order_id") or "").strip()
     qs = urlencode({k: v for k, v in {
+        "env_key": env_key,
+        "channel_id": channel_id,
         "version_id": version_id,
         "platform": platform,
-        "release_order_id": order_id,
-        "version_name": str(order.get("version_name") or ""),
-        "version_code": str(order.get("version_code") or ""),
+        "action": "edit_release",
     }.items() if v})
-    segment = "build" if phase == "build" else "release"
-    return f"/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/{segment}?{qs}"
+    return f"/admin/projects/{project_id}/versions?{qs}"
 
 
 def _order_needs_jenkins_build(order: Dict[str, Any]) -> bool:
@@ -489,7 +487,7 @@ def resolve_release_order_next_action(project_id: str, order_id: str) -> Dict[st
     if status == "draft":
         primary = _primary(
             "build_journey",
-            "下一步：进入构建流程",
+            "下一步：打开版本管理",
             href=_channel_journey_href(project_id, order, phase="build"),
         )
         more.extend([
@@ -499,7 +497,7 @@ def resolve_release_order_next_action(project_id: str, order_id: str) -> Dict[st
     elif status == "artifacts_ready":
         primary = _primary(
             "release_journey",
-            "下一步：进入发版流程",
+            "下一步：继续发版",
             href=_channel_journey_href(project_id, order, phase="release"),
         )
         more.extend([
@@ -524,7 +522,7 @@ def resolve_release_order_next_action(project_id: str, order_id: str) -> Dict[st
     elif status in {"ready", "approved"}:
         primary = _primary(
             "release_journey",
-            "下一步：进入发版流程",
+            "下一步：继续发版",
             href=_channel_journey_href(project_id, order, phase="release"),
         )
         more.extend([
@@ -718,13 +716,13 @@ def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]
         "primary": primary,
         "secondary": secondary,
         "build_entry": {
-            "label": "进入构建流程",
-            "href": f"/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/build?{urlencode({**scope_params, 'platform': platform})}",
+            "label": "版本管理",
+            "href": f"/admin/projects/{project_id}/versions?{urlencode({'env_key': env_key, 'channel_id': channel_id, 'platform': platform, 'version_id': version_id, 'action': 'edit_release'})}",
             "enabled": True,
         },
         "release_entry": {
-            "label": "进入发版流程",
-            "href": f"/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/release?{urlencode({**scope_params, 'platform': platform})}",
+            "label": "版本管理",
+            "href": f"/admin/projects/{project_id}/versions?{urlencode({'env_key': env_key, 'channel_id': channel_id, 'platform': platform, 'version_id': version_id, 'action': 'edit_release'})}",
             "enabled": bool(artifact_ready or order_status in release_continue_statuses or order_id),
         },
         "scope": scope_params,
@@ -738,47 +736,4 @@ def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]
     }
 
 
-def enrich_delivery_line_actions(project_id: str, line: Dict[str, Any]) -> Dict[str, Any]:
-    """Attach delivery action BFF payload to an environment delivery line."""
-    out = dict(line or {})
-    version_id = str(out.get("version_id") or "").strip()
-    if not version_id:
-        status_hint = "未配置 VersionCode · 请先新建 VC"
-        out.update({
-            "release_order_id": "",
-            "release_order_status": "",
-            "pipeline_ready": False,
-            "artifact_ready": False,
-            "status_hint": status_hint,
-            "delivery_actions": {
-                "primary": {"action": "create_vc", "label": "新建 VC", "href": ""},
-                "secondary": [],
-                "status_hint": status_hint,
-            },
-        })
-        return out
-    try:
-        actions = resolve_delivery_actions(project_id, version_id)
-    except ValueError:
-        actions = {
-            "release_order_id": "",
-            "release_order_status": "",
-            "pipeline_ready": False,
-            "artifact_ready": False,
-            "status_hint": "交付动作暂不可用",
-            "primary": {"action": "versions", "label": "去版本代码", "href": ""},
-            "secondary": [],
-        }
-    out["release_order_id"] = actions.get("release_order_id") or ""
-    out["release_order_status"] = actions.get("release_order_status") or ""
-    out["pipeline_ready"] = bool(actions.get("pipeline_ready"))
-    out["artifact_ready"] = bool(actions.get("artifact_ready"))
-    out["status_hint"] = actions.get("status_hint") or ""
-    out["delivery_actions"] = {
-        "primary": actions.get("primary") or {},
-        "secondary": actions.get("secondary") or [],
-        "status_hint": out["status_hint"],
-        "scope": actions.get("scope") or {},
-        "links": actions.get("links") or {},
-    }
-    return out
+from services.release.order_delivery_line_enrich import enrich_delivery_line_actions  # noqa: F401

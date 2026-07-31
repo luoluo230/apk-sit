@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P0-02-S6-02",
+  "status": "DONE",
+  "timestamp": "2026-07-29T11:55:09.098356+08:00",
+  "command": "wave2 gates",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P0-02-S6-02.json"
+  ],
+  "notes": ""
+}

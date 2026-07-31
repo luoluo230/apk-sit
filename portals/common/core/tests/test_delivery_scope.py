@@ -146,19 +146,19 @@ class DeliveryScopeTests(unittest.TestCase):
         self.assertNotIn("development", douyin_cards)
         self.assertEqual(douyin_cards["production"]["delivery_line_count"], 1)
 
-    @patch("services.release.channel_journey_bff.list_project_env_keys", return_value=["development"])
-    @patch("services.release.channel_journey_bff.build_overview_kpis")
-    @patch("services.release.channel_journey_bff.build_overview_activities")
-    @patch("services.release.channel_journey_bff._core")
-    @patch("services.release.channel_journey_bff._delivery_lines_for_env", return_value=[])
+    @patch("services.release.env_registry.list_project_env_keys", return_value=["development"])
+    @patch("services.release.channel_journey_overview.build_overview_kpis")
+    @patch("services.release.channel_journey_overview._overview_activities")
+    @patch("services.release.channel_journey_overview._core")
+    @patch("services.release.channel_journey_overview._delivery_lines_for_env", return_value=[])
     @patch("models.data.projects_db", _mock_projects_db())
     @patch("data.projects.projects_db", _mock_projects_db())
     @patch("repositories.registry.accessors.get_project", side_effect=_mock_get_project)
     @patch("data.platforms.get_project", side_effect=_mock_get_project)
     @patch("data.channels.list_channels", return_value=list(_MOCK_CHANNELS))
-    def test_project_overview_includes_activities(self, _mock_list_channels, _mock_plat_get, _mock_acc_get, mock_lines, mock_core, mock_activities, mock_kpis, *_patches):
+    def test_project_overview_includes_activities(self, _mock_list_channels, _mock_plat_get, _mock_acc_get, mock_lines, mock_core, mock_activities_fn, mock_kpis, *_patches):
         mock_core.return_value.list_release_orders.return_value = []
-        mock_activities.return_value = [
+        mock_activities_fn.return_value = [
             {"kind": "build", "type_label": "构建", "title": "Jenkins 构建 #1 成功", "actor": "admin", "time_short": "12:00", "href": "/x"},
             {"kind": "alert", "type_label": "告警", "title": "服务异常", "actor": "Ops", "time_short": "12:01", "href": "/y"},
             {"kind": "task", "type_label": "任务", "title": "任务更新", "actor": "admin", "time_short": "12:02", "href": "/z"},
@@ -180,7 +180,7 @@ class DeliveryScopeTests(unittest.TestCase):
         self.assertIn("task", kinds)
         self.assertIn("doc", kinds)
         self.assertEqual(overview["kpis"]["today_build_count"], 3)
-        mock_activities.assert_called_once_with(_TEST_PROJECT, {}, limit=40)
+        mock_activities_fn.assert_called_once_with(_TEST_PROJECT, {})
         mock_kpis.assert_called_once()
 
 

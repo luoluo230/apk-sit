@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P2-03-E2E-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:01:20.968920+08:00",
+  "command": "staging_incident_notify_e2e.py",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P2-03-E2E-01.json"
+  ],
+  "notes": "captured=2"
+}

@@ -19,6 +19,7 @@ from services.ops.topology_service import (
     _scope_binding_key,
     _topology_content_counts,
 )
+from services.ops.cluster_importer import _load_cluster_json
 
 def _normalize_node(payload: Dict[str, Any]) -> Dict[str, Any]:
     node_id = str(payload.get("id") or uuid.uuid4().hex[:12]).strip()
@@ -1127,7 +1128,7 @@ def _ensure_topology_for_scope(project_id: str, env_key: str) -> Dict[str, Any]:
             "env_key": env,
             "name": _env_label(env) + "主拓扑",
             "version_label": "v1.0.0",
-            "owner": _session_username("system"),
+            "owner": "system",
             "description": "自动创建的默认拓扑",
             "is_default": True,
             "status": "running" if env == "production" else "draft",

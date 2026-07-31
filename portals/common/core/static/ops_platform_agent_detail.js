@@ -285,6 +285,7 @@
       memPercent: metricPercent("mem_percent"),
       diskPercent: metricPercent("disk_percent"),
       onlineServices: Number(services.online || 0),
+      stoppedServices: Number(services.stopped || 0),
       abnormalServices: Number(services.abnormal || 0),
       totalServices: Number(services.total || 0),
       currentAlerts: Number(overview.current_alerts || 0),
@@ -708,7 +709,7 @@
         "</article>" +
         '<article class="agent-detail-summary-card">' +
           '<div class="agent-detail-summary-title">服务健康</div>' +
-          '<div class="agent-detail-kv"><span>在线服务</span><strong>' + esc(summary.onlineServices) + '</strong><span>异常服务</span><strong>' + esc(summary.abnormalServices) + '</strong><span>服务总数</span><strong>' + esc(summary.totalServices) + "</strong></div>" +
+          '<div class="agent-detail-kv"><span>在线服务</span><strong>' + esc(summary.onlineServices) + '</strong><span>已停止</span><strong>' + esc(summary.stoppedServices) + '</strong><span>异常服务</span><strong>' + esc(summary.abnormalServices) + '</strong><span>服务总数</span><strong>' + esc(summary.totalServices) + "</strong></div>" +
         "</article>" +
         '<article class="agent-detail-summary-card">' +
           '<div class="agent-detail-summary-title">告警事件</div>' +

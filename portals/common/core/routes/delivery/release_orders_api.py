@@ -19,6 +19,8 @@ from services.release.release_order_service import (
     request_build,
     resolve_release_order_next_action,
     rollback_release_order,
+    pause_server_for_release_order,
+    sync_release_order_announcement,
     update_release_order,
     verify_release_order,
 )
@@ -93,13 +95,20 @@ def register_release_order_routes(bp) -> None:
                 _actor(),
                 target_ratio=int(payload.get("target_ratio") or payload.get("rollout_percentage") or 100),
             ),
+            "sync-announcement": lambda: sync_release_order_announcement(project_id, order_id, _actor()),
+            "server-maintenance": lambda: pause_server_for_release_order(
+                project_id,
+                order_id,
+                _actor(),
+                str(payload.get("message") or payload.get("server_maintenance_message") or ""),
+            ),
         }
         try:
             return jsonify({"ok": True, "data": handlers[action]()})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    for _action in ("build", "precheck", "approve", "publish", "verify", "rollback", "cancel", "expand-gray"):
+    for _action in ("build", "precheck", "approve", "publish", "verify", "rollback", "cancel", "expand-gray", "sync-announcement", "server-maintenance"):
         bp.add_url_rule(
             f"/api/projects/<project_id>/release-orders/<order_id>/{_action}",
             endpoint=f"release_order_{_action}",

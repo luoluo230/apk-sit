@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 """Rebuild the version modal with product-grade layout."""
 import sys, os
+from repositories.registry.accessors import get_project, has_project, list_projects, save_project, list_channels, list_project_versions, save_project_versions
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from models.data import channels_db
+
 
 channel_opts = ''.join(
     '<option value="%s">%s</option>' % (c.get('id',''), c.get('name',c.get('id','')))
-    for c in (channels_db if isinstance(channels_db, list) else []) if c.get('id')
+    for c in (list_channels()) if c.get('id')
 )
 if not channel_opts:
     channel_opts = '<option value="dev">开发</option><option value="test">测试</option><option value="production">线上</option>'

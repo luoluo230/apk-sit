@@ -1,0 +1,11 @@
+{
+  "gap_id": "W-P0-5",
+  "status": "DONE",
+  "timestamp": "2026-07-29T11:48:07.783427+08:00",
+  "command": "Start-DevStack .env.devstack token",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/W-P0-5.json"
+  ],
+  "notes": ""
+}

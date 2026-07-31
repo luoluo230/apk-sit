@@ -4,7 +4,6 @@
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""></span>
       <div>
         <h1>构建与产物</h1>
-        <p id="buildPageSubtitle">查看项目全部构建记录、实时状态与关联产物，快速定位失败原因。</p>
       </div>
     </div>
     <div class="build-page-actions pm-page-head-actions">
@@ -46,14 +45,14 @@
 
       <section class="build-panel build-table-panel">
         <div class="build-panel-title">
-          <div><h2>构建记录</h2><p>显示全部历史记录，选择一行可查看真实构建详情。</p></div>
+          <div><h2>构建记录</h2></div>
           {% if can_edit %}
           <button class="build-btn warn" type="button" data-batch-delete disabled>
             <img src="/static/project_ui/svg/action_delete.svg" alt="">批量删除
           </button>
           {% endif %}
         </div>
-        <div class="build-state" data-state="loading"><span class="build-spinner"></span><strong>正在加载构建历史</strong><p>正在同步本地记录与 Jenkins 实时状态。</p></div>
+        <div class="build-state" data-state="loading"><span class="build-spinner"></span><strong>正在加载构建历史</strong></div>
         <div class="build-table-wrap" data-table-wrap hidden>
           <table class="build-table">
             <thead><tr><th class="check-col"><input type="checkbox" data-check-all aria-label="全选当前页"></th><th>构建编号</th><th>版本 / VersionCode</th><th>环境</th><th>渠道</th><th>平台</th><th>结果</th><th>构建人</th><th>触发时间</th><th>耗时</th><th>操作</th></tr></thead>
@@ -65,7 +64,7 @@
 
       <section class="build-panel build-artifacts-panel">
         <div class="build-panel-title">
-          <div><h2>产物列表</h2><p>按构建记录聚合的安装包与 Bundle 产物</p></div>
+          <div><h2>产物列表</h2></div>
         </div>
         <nav class="build-artifact-tabs" data-artifact-tabs>
           <button type="button" class="active" data-artifact-view="latest">最新产物</button>
@@ -83,16 +82,16 @@
 
     <aside class="build-side">
       <section class="build-panel build-current">
-        <div class="build-panel-title"><div><h2>当前构建详情</h2><p>构建状态与基本上下文</p></div></div>
-        <div class="build-current-empty" data-current-empty><img src="/static/project_ui/svg/kpi_build.svg" alt=""><strong>尚未选择构建</strong><p>点击左侧构建记录查看详情。</p></div>
+        <div class="build-panel-title"><div><h2>当前构建详情</h2></div></div>
+        <div class="build-current-empty" data-current-empty><img src="/static/project_ui/svg/kpi_build.svg" alt=""><strong>尚未选择构建</strong></div>
         <div class="build-current-content" data-current hidden></div>
       </section>
       <section class="build-panel build-failure" data-failure-panel hidden>
-        <div class="build-panel-title"><div><h2>失败原因摘要</h2><p>来自真实构建日志</p></div><span class="build-status failure">失败</span></div>
+        <div class="build-panel-title"><div><h2>失败原因摘要</h2></div><span class="build-status failure">失败</span></div>
         <pre data-failure></pre>
       </section>
       <section class="build-panel">
-        <div class="build-panel-title"><div><h2>快捷操作</h2><p>操作当前选中的构建</p></div></div>
+        <div class="build-panel-title"><div><h2>快捷操作</h2></div></div>
         <div class="build-quick-actions">
           <button type="button" data-install-apk disabled><img src="/static/project_ui/svg/action_download.svg" alt=""><span><strong>安装该版本</strong><small>下载链接与扫码安装</small></span></button>
           <button type="button" data-detail disabled><img src="/static/project_ui/svg/nav_doc.svg" alt=""><span><strong>查看完整详情</strong><small>参数、日志与构建上下文</small></span></button>

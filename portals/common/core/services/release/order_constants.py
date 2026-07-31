@@ -36,4 +36,9 @@ EDITABLE_PLAN_FIELDS = (
     "min_server_version",
     "waive_server_release_check",
     "deploy_server_with_client",
+    "announcement_title",
+    "announcement_body",
+    "announcement_effective_at",
+    "sync_announcement",
+    "server_maintenance_message",
 )

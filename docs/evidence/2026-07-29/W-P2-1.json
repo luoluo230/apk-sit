@@ -1,0 +1,11 @@
+{
+  "gap_id": "W-P2-1",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:06:22.453694+08:00",
+  "command": "admin_routes dead code removed",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/W-P2-1.json"
+  ],
+  "notes": ""
+}

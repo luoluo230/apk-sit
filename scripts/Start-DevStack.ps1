@@ -109,6 +109,9 @@ if (-not $MaclientRoot) { throw "maclient root not found; set MACLIENT_ROOT" }
 
 $Core = Join-Path $ApkSiteRoot "portals\common\core"
 $PortalScript = Join-Path $Core "scripts\run_admin_5003.ps1"
+$StartPortalScript = Join-Path $scriptRoot "Start-Portal5003.ps1"
+$StopPortalScript = Join-Path $scriptRoot "Stop-Portal5003.ps1"
+$PortalLib = Join-Path $Core "scripts\portal5003_lib.ps1"
 $SyncScript = Join-Path $scriptRoot "Sync-DevStackClientConfig.ps1"
 $StartGameServerScript = Join-Path $GameServerRoot "scripts\Start-GameServer.ps1"
 $SeedScript = Join-Path $Core "scripts\seed_release_gate_fixture.py"
@@ -135,8 +138,34 @@ if (-not $mongoOk -or -not $redisOk) {
 
 # --- GameServer ---
 if (-not $SkipGameServer) {
+    $devstackEnv = Join-Path $ApkSiteRoot ".env.devstack"
+    $devstackExample = Join-Path $ApkSiteRoot ".env.devstack.example"
+    if (-not (Test-Path $devstackEnv)) {
+        if (Test-Path $devstackExample) {
+            Copy-Item $devstackExample $devstackEnv
+        }
+        else {
+            Set-Content -Path $devstackEnv -Value "CLUSTER_RELAY_TOKEN=`n" -Encoding UTF8
+        }
+    }
+    Get-Content $devstackEnv | ForEach-Object {
+        $line = $_.Trim()
+        if (-not $line -or $line.StartsWith("#")) { return }
+        $eq = $line.IndexOf("=")
+        if ($eq -gt 0) {
+            $k = $line.Substring(0, $eq).Trim()
+            $v = $line.Substring($eq + 1).Trim().Trim('"').Trim("'")
+            if ($k -and -not (Get-Item -Path "env:$k" -ErrorAction SilentlyContinue)) {
+                Set-Item -Path "env:$k" -Value $v
+            }
+        }
+    }
     if (-not $env:CLUSTER_RELAY_TOKEN) {
-        $env:CLUSTER_RELAY_TOKEN = "ma-cluster-relay-dev"
+        $bytes = New-Object byte[] 24
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $env:CLUSTER_RELAY_TOKEN = [Convert]::ToBase64String($bytes).TrimEnd('=')
+        Add-Content -Path $devstackEnv -Value "CLUSTER_RELAY_TOKEN=$($env:CLUSTER_RELAY_TOKEN)" -Encoding UTF8
+        Write-Host "[dev-stack] generated CLUSTER_RELAY_TOKEN in .env.devstack (gitignored)"
     }
     if (Test-Tcp "127.0.0.1" 15050 1500) {
         Write-Host "[dev-stack] gateway :15050 already listening"
@@ -161,14 +190,54 @@ else {
 if (-not $SkipPortal) {
     $healthUrl = "$portal/health"
     $portalOk = $false
-    if (-not $RestartPortal) {
+    if (Test-Path $PortalLib) {
+        . $PortalLib
+        $listenerPids = @(Get-Portal5003ListenerPids -Port 5003)
+        if ($listenerPids.Count -gt 1) {
+            Write-Host "[dev-stack] multiple Portal listeners on :5003 ($($listenerPids -join ', ')) — cleaning" -ForegroundColor Yellow
+            if (Test-Path $StopPortalScript) {
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $StopPortalScript
+            }
+            else {
+                Stop-Portal5003Listeners -Port 5003 | Out-Null
+            }
+            $portalOk = $false
+        }
+        elseif ($listenerPids.Count -eq 1 -and -not $RestartPortal) {
+            $portalOk = Wait-HttpOk $healthUrl 3
+            if ($portalOk) {
+                try {
+                    Assert-SinglePortal5003Listener -Port 5003 -BaseUrl $portal | Out-Null
+                }
+                catch {
+                    Write-Host "[dev-stack] Portal health OK but listener check failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                    $portalOk = $false
+                }
+            }
+        }
+    }
+    elseif (-not $RestartPortal) {
         $portalOk = Wait-HttpOk $healthUrl 3
     }
+    if ($RestartPortal -and (Test-Path $StopPortalScript)) {
+        Write-Host "[dev-stack] RestartPortal — stopping existing Portal :5003"
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $StopPortalScript
+        $portalOk = $false
+    }
     if ($portalOk) {
-        Write-Host "[dev-stack] portal already healthy at $portal"
+        Write-Host "[dev-stack] portal already healthy at $portal (single listener)"
+    }
+    elseif (Test-Path $StartPortalScript) {
+        Write-Host "[dev-stack] starting Portal admin on :5003 (single-instance)"
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $StartPortalScript -ApkSiteRoot $ApkSiteRoot -Background
+        if ($LASTEXITCODE -ne 0) { throw "Start-Portal5003.ps1 failed exit=$LASTEXITCODE" }
+        if (-not (Wait-HttpOk $healthUrl 120)) {
+            throw "Portal health timeout: $healthUrl"
+        }
+        Write-Host "[dev-stack] portal healthy"
     }
     elseif (Test-Path $PortalScript) {
-        Write-Host "[dev-stack] starting Portal admin on :5003 (background)"
+        Write-Host "[dev-stack] starting Portal admin on :5003 (background, legacy runner)"
         $portalProc = Start-Process -FilePath "powershell.exe" -ArgumentList @(
             "-NoProfile",
             "-ExecutionPolicy", "Bypass",
@@ -181,7 +250,7 @@ if (-not $SkipPortal) {
         Write-Host "[dev-stack] portal healthy"
     }
     else {
-        throw "Portal script not found: $PortalScript"
+        throw "Portal start script not found: $StartPortalScript"
     }
 }
 else {

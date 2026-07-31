@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-E2E-DEV-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:06:22.449865+08:00",
+  "command": "seed_release_gate_fixture + bootstrap_gate script",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-E2E-DEV-01.json"
+  ],
+  "notes": ""
+}

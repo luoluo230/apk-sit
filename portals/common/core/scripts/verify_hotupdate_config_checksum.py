@@ -108,6 +108,11 @@ def main() -> int:
     parser.add_argument("--manifest", default="", help="JSON file with expected fields")
     parser.add_argument("--project-id", default=os.environ.get("PROJECT_ID", "GomeKu"))
     parser.add_argument("--maclient-root", default=os.environ.get("MACLIENT_ROOT", "E:/maclient"))
+    parser.add_argument(
+        "--contract-v2",
+        action="store_true",
+        help="Only verify bootstrap contract v2 flags (C-P1-2); skip Portal manifest field parity",
+    )
     args = parser.parse_args()
 
     asset = args.asset.strip() or os.path.join(
@@ -117,6 +122,33 @@ def main() -> int:
         "Resources",
         "HotUpdateConfig.asset",
     )
+    if args.contract_v2:
+        actual_raw = _read_yaml_scalars(asset)
+        contract = {
+            "PreferWebVersionResolve": "0",
+            "AllowOssMetadataFallback": "0",
+            "PreferUnifiedBootstrap": "1",
+        }
+        mismatches = [
+            f"{k}: asset={actual_raw.get(k)!r} expected={v!r}"
+            for k, v in contract.items()
+            if str(actual_raw.get(k) or "").strip() != v
+        ]
+        ok = not mismatches
+        print(
+            json.dumps(
+                {"ok": ok, "mode": "contract-v2", "asset": asset, "fields": actual_raw},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        if mismatches:
+            for line in mismatches:
+                print("MISMATCH:", line)
+            return 1
+        print("PASS: HotUpdateConfig.asset matches bootstrap contract v2")
+        return 0
+
     if args.manifest.strip():
         expected = json.load(open(args.manifest.strip(), encoding="utf-8"))
     else:

@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P1-01-DOC-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:07:35.994020+08:00",
+  "command": "entrypoint_map.md ops section",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P1-01-DOC-01.json"
+  ],
+  "notes": ""
+}

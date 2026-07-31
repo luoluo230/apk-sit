@@ -35,7 +35,7 @@ def _clean_text(value, fallback=""):
     text = str(value or "").strip()
     if not text:
         return fallback
-    if "�" in text:
+    if "" in text:
         return fallback or ""
     if text.count("?") / max(len(text), 1) >= 0.35:
         return fallback or ""

@@ -73,9 +73,9 @@ class ResolveDeliveryActionsTests(unittest.TestCase):
              mock.patch("services.release.release_policy_service.assess_delivery_readiness", return_value={"pipeline_ready": True}), \
              mock.patch("services.release.release_policy_service.build_config_href", return_value="/build-config"):
             actions = ros.resolve_delivery_actions("p1", "vc-1")
-        self.assertEqual(actions["build_entry"]["label"], "进入构建流程")
-        self.assertEqual(actions["release_entry"]["label"], "进入发版流程")
-        self.assertIn("/channels/wechat/build", actions["build_entry"]["href"])
+        self.assertEqual(actions["build_entry"]["label"], "版本管理")
+        self.assertEqual(actions["release_entry"]["label"], "版本管理")
+        self.assertIn("/versions?", actions["build_entry"]["href"])
 
     def test_enrich_unconfigured_line_without_version_id(self):
         line = {
@@ -153,7 +153,7 @@ class ReleaseOrderStartRouteTests(unittest.TestCase):
             "version_code": "1",
         }],
     }, clear=False)
-    def test_build_intent_redirects_to_channel_build_journey(self):
+    def test_build_intent_redirects_to_release_console(self):
         with self.client.session_transaction() as sess:
             sess["user"] = "admin"
         resp = self.client.get(
@@ -161,7 +161,9 @@ class ReleaseOrderStartRouteTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/environments/development/channels/wechat/build", resp.headers.get("Location") or "")
+        loc = resp.headers.get("Location") or ""
+        self.assertIn("/admin/projects/demo/versions?", loc)
+        self.assertIn("action=edit_release", loc)
 
     @patch.dict("routes.project_delivery.projects_db", {"demo": {"name": "Demo"}}, clear=False)
     @patch.dict("models.data.project_versions_db", {
@@ -173,7 +175,7 @@ class ReleaseOrderStartRouteTests(unittest.TestCase):
             "env_key": "development",
         }],
     }, clear=False)
-    def test_release_intent_redirects_to_channel_release_journey(self):
+    def test_release_intent_redirects_to_release_console(self):
         with self.client.session_transaction() as sess:
             sess["user"] = "admin"
         resp = self.client.get(
@@ -181,7 +183,9 @@ class ReleaseOrderStartRouteTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/environments/development/channels/wechat/release", resp.headers.get("Location") or "")
+        loc = resp.headers.get("Location") or ""
+        self.assertIn("/admin/projects/demo/versions?", loc)
+        self.assertIn("action=edit_release", loc)
 
 
 if __name__ == "__main__":

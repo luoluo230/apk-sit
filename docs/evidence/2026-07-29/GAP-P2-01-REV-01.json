@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P2-01-REV-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T14:49:14.886270+08:00",
+  "command": "server_release_devstack_e2e.py --base-url http://127.0.0.1:5003",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P2-01-REV-01.json"
+  ],
+  "notes": ""
+}

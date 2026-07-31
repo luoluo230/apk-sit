@@ -17,6 +17,7 @@ BREADCRUMB_BY_PAGE = {
     "environment-config": "项目设置",
     "project-channels": "项目设置",
     "versions": "交付管理",
+    "release-console": "交付管理",
     "release-orders": "交付管理",
     "builds": "交付管理",
     "download-center": "交付管理",
@@ -118,7 +119,7 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/release_order_form.css?v={DELIVERY_ASSET_VER}">'
         )
-        js = delivery_js_bundle()
+        js = delivery_js_bundle("delivery_order_form.js")
     elif template_name in ("project_channel_build_journey.html", "project_channel_release_journey.html"):
         css = (
             f'<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v={DELIVERY_ASSET_VER}">'
@@ -133,6 +134,17 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
         js = (
             f'<script src="/static/journey_common.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/{js_name}?v={DELIVERY_ASSET_VER}"></script>'
+        )
+    elif template_name == "project_release_console.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_release_console.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = (
+            f'<script src="/static/delivery_common.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
+            f'<script src="/static/project_release_console.js?v={DELIVERY_ASSET_VER}"></script>'
         )
     elif template_name == "project_environment_detail.html":
         css = (

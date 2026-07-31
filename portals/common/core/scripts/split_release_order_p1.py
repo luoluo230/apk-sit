@@ -22,7 +22,7 @@ HEADER = textwrap.dedent(
     from datetime import datetime
     from typing import Any, Dict, List, Optional, Tuple
 
-    from models.data import get_channel_by_id, get_channels_for_project, project_versions_db, projects_db
+    from models.data import get_channel_by_id, get_channels_for_project,
     from data.delivery_scope import get_channels_for_env, get_platform_defs_for_env, is_channel_allowed_for_env
     from data.platforms import get_platform_defs_for_project, is_platform_enabled_for_project, is_valid_platform_id
     from models.db import _db_lock, _get_conn, get_cursor, init_db

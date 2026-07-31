@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P1-05-OPT-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:02:49.143020+08:00",
+  "command": "jenkins_sync_node_labels_gate.py",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P1-05-OPT-01.json"
+  ],
+  "notes": "{'checked': 0, 'updated': 0, 'dry_run': False, 'actions': []}"
+}

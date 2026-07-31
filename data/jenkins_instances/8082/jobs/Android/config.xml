@@ -20,7 +20,7 @@
   <name>APP_NAME</name><description>应用名称</description><defaultValue>GomeKu</defaultValue><trim>true</trim>
 </hudson.model.StringParameterDefinition>
 <hudson.model.StringParameterDefinition>
-  <name>OUTPUT_BASE_DIR</name><description>输出基础目录</description><defaultValue>/Users/wangling/Desktop/MyGame/GameClient/BuildOutput</defaultValue><trim>true</trim>
+  <name>OUTPUT_BASE_DIR</name><description>输出基础目录</description><defaultValue>E:\maclient\BuildOutput</defaultValue><trim>true</trim>
 </hudson.model.StringParameterDefinition>
 <hudson.model.StringParameterDefinition>
   <name>GIT_BRANCH</name><description>Git 分支（由版本配置传入，任意分支名）</description>
@@ -267,19 +267,27 @@
   <triggers/>
   <concurrentBuild>false</concurrentBuild>
     <builders>
-    <hudson.tasks.Shell>
-      <command>#!/bin/bash
-set -e
-[ -n "$JENKINS_HOME" ] &amp;&amp; [ -f "${JENKINS_HOME}/.apk-site-env" ] &amp;&amp; . "${JENKINS_HOME}/.apk-site-env"
-PIPELINE="${JENKINS_HOME}/scripts/commercial_android_pipeline.sh"
-if [ ! -f "$PIPELINE" ]; then
-  echo "ERROR: missing $PIPELINE"
-  exit 1
-fi
-exec bash "$PIPELINE"
+    <hudson.tasks.BatchFile>
+      <command>@echo off
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
+set "BASH=E:\Git\bin\bash.exe"
+if not exist "%BASH%" (
+  echo ERROR: Git bash not found: %BASH%
+  exit /b 1
+)
+if exist "%JENKINS_HOME%\.apk-site-env" (
+  "%BASH%" -lc "set -a; source \"%JENKINS_HOME%/.apk-site-env\"; set +a"
+)
+if not exist "%JENKINS_HOME%\scripts\commercial_android_pipeline.sh" (
+  echo ERROR: missing pipeline script
+  exit /b 1
+)
+"%BASH%" "%JENKINS_HOME%\scripts\commercial_android_pipeline.sh"
+exit /b %ERRORLEVEL%
 </command>
       <configuredLocalRules/>
-    </hudson.tasks.Shell>
+    </hudson.tasks.BatchFile>
   </builders>
   <publishers/>
   <buildWrappers/>

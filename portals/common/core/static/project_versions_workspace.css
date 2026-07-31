@@ -57,6 +57,12 @@
 
 .version-head-actions { gap: 6px; }
 
+.version-scope-actions--inline {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
 .version-scope-banner {
   display: flex;
   align-items: center;
@@ -657,6 +663,18 @@
 }
 
 .toast.error { border-color: var(--vw-warn-border); color: var(--vw-warn-text); }
+
+.version-head-sub{margin:4px 0 0;font-size:13px;color:var(--vw-muted)}
+.pm-modal--960{max-width:960px;width:min(960px,calc(100vw - 32px))}
+.version-release-tabs{display:flex;gap:8px;padding:0 20px 12px;border-bottom:1px solid var(--vw-line)}
+.version-release-tabs button{border:1px solid var(--vw-line);background:#fff;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer}
+.version-release-tabs button.is-active{background:#e6f4ff;border-color:#91caff;color:#0958d9}
+.version-release-pane{display:none}
+.version-release-pane.is-active{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.version-release-foot{align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.version-release-status{margin-right:auto;font-size:12px;color:var(--vw-muted)}
+.version-release-pane .wide{grid-column:1/-1}
+.version-release-pane .checkbox-row{flex-direction:row;align-items:center;gap:8px}
 
 @media (max-width: 1100px) {
   .version-panel { overflow: auto; }

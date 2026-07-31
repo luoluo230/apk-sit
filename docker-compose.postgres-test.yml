@@ -1,0 +1,15 @@
+# Portal + Postgres for P0-02 Step 6 compose pytest gate
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: apk_site
+      POSTGRES_PASSWORD: apk_site_dev
+      POSTGRES_DB: apk_site
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apk_site -d apk_site"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

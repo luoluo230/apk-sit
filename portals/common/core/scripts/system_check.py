@@ -9,7 +9,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 
 from config import Config, DATA_DIR, load_dotenv
-from models.data import products_db, project_versions_db, projects_db, iter_package_files, extract_project_name
+from models.data import products_db, iter_package_files, extract_project_name
+from repositories.registry.accessors import get_project, has_project, list_projects, save_project, list_channels, list_project_versions, save_project_versions, list_all_project_versions
 
 load_dotenv()
 
@@ -30,10 +31,10 @@ def main():
 
     for product in products_db if isinstance(products_db, list) else []:
         pid = product.get('project_id') or ''
-        if pid and pid not in projects_db and pid not in package_projects:
+        if pid and not has_project(pid) and pid not in package_projects:
             issues.append('产品 %s 绑定的项目 %s 不存在，且没有对应安装包' % (product.get('id') or '-', pid))
 
-    for project_id, versions in (project_versions_db or {}).items():
+    for project_id, versions in list_all_project_versions().items():
         if not isinstance(versions, list):
             continue
         for version in versions:
@@ -53,7 +54,7 @@ def main():
         return 1
 
     print('SYSTEM_CHECK_OK')
-    print('projects=%d package_projects=%d' % (len(projects_db), len(package_projects)))
+    print('projects=%d package_projects=%d' % (len(list_projects()), len(package_projects)))
     return 0
 
 

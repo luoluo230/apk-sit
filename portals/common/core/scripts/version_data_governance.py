@@ -9,12 +9,13 @@ import json
 import os
 import sys
 from collections import defaultdict
+from repositories.registry.accessors import get_project, has_project, list_projects, save_project, list_channels, list_project_versions, save_project_versions, list_all_project_versions
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from models.data import project_versions_db
+
 
 
 TARGET_STATUSES = {"draft", "testing", "active", "disabled", "archived"}
@@ -58,7 +59,7 @@ def analyze():
         },
         "projects": {},
     }
-    for project_id, rows in (project_versions_db or {}).items():
+    for project_id, rows in list_all_project_versions().items():
         if not isinstance(rows, list):
             continue
         report["summary"]["project_count"] += 1

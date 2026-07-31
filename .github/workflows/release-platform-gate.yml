@@ -27,6 +27,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: production secret gate
+        run: py -3 scripts/production_secret_gate.py
+
+      - name: registry integration smoke
+        run: py -3 scripts/registry_integration_smoke.py
+
+      - name: release order stress gate
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: py -3 scripts/release_order_stress_gate.py
+
+      - name: staging incident notify e2e
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: py -3 scripts/staging_incident_notify_e2e.py
+
+      - name: grafana smoke gate
+        run: py -3 scripts/grafana_smoke_gate.py
+
       - name: pytest
         run: py -3 -m pytest tests\ -q
 
@@ -39,8 +56,25 @@ jobs:
       - name: admin_routes size gate
         run: py -3 scripts/admin_routes_size_gate.py
 
+      - name: plan closure gate
+        run: py -3 scripts/run_plan_closure_gate.py --allow-blocked
+
+      - name: postgres compose pytest gate
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          SKIP_POSTGRES_COMPOSE: "1"
+        run: py -3 scripts/postgres_compose_pytest_gate.py
+
+      - name: version module size gate
+        run: py -3 scripts/version_module_size_gate.py
+
       - name: release module size gate
         run: py -3 scripts/release_module_size_gate.py
+
+      - name: maclient bootstrap config gate
+        env:
+          MACLIENT_ROOT: ${{ github.workspace }}/../maclient
+        run: py -3 scripts/verify_hotupdate_config_checksum.py --maclient-root E:/maclient --contract-v2
 
       - name: Protocol alignment gates
         env:

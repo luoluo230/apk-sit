@@ -81,6 +81,7 @@ def main() -> int:
         "code_relative_path": "static/gate-fixture/code",
         "catalog_file_name": "catalog_1.0.0.bin",
         "min_client_version": version_row.get("min_client_version") or "1.0.0",
+        "max_client_version": version_row.get("max_client_version") or VERSION_NAME,
         "rollout_percentage": int(
             args.rollout_percentage
             if args.rollout_percentage is not None
@@ -113,6 +114,7 @@ def main() -> int:
             "resource_relative_path": version_row.get("resource_relative_path"),
             "catalog_file_name": version_row.get("catalog_file_name"),
             "min_client_version": version_row.get("min_client_version"),
+            "max_client_version": version_row.get("max_client_version") or VERSION_NAME,
             "rollout_percentage": version_row.get("rollout_percentage"),
             "force_update": version_row.get("force_update"),
             "is_revoked": version_row.get("is_revoked"),

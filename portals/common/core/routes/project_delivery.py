@@ -15,6 +15,7 @@ from routes.delivery.helpers import DELIVERY_ASSET_VER
 from routes.delivery.journey_api import register_journey_routes
 from routes.delivery.pages import register_page_routes
 from routes.delivery.public_api import register_public_routes
+from routes.delivery.release_console_api import register_release_console_routes
 from routes.delivery.release_orders_api import register_release_order_routes
 from routes.delivery.scope_api import register_scope_routes
 
@@ -26,6 +27,7 @@ register_page_routes(bp)
 register_scope_routes(bp)
 register_journey_routes(bp)
 register_release_order_routes(bp)
+register_release_console_routes(bp)
 register_build_events_routes(bp)
 register_public_routes(bp)
 register_approval_webhook_routes(bp)

@@ -7,8 +7,6 @@ from flask import Blueprint, jsonify, make_response, request, Response
 
 from config import Config
 from services.authz import login_required
-from services.admin.version_domain import normalize_version_status
-from services.release.env_registry import normalize_release_env_key
 from data.repositories.user_repository import UserRepository
 from models.data import (
     extract_package_info, download_stats, projects_db,
@@ -129,33 +127,6 @@ def stats():
             'projects': len(projects_db)
         }
     })
-
-
-def _normalize_version_status(raw_status):
-    return normalize_version_status(raw_status)
-
-
-def _parse_version_code_weight(raw_code):
-    code = str(raw_code or "").strip()
-    if not code:
-        return -1, ""
-    if code.isdigit():
-        return int(code), code
-    digits = "".join(ch for ch in code if ch.isdigit())
-    return (int(digits) if digits else -1), code
-
-
-def _channel_matches(query_channel: str, row_channel: str) -> bool:
-    """Match channel id (1001) with runtime key (wechat) via channels.json build_param."""
-    query = (query_channel or "").strip().lower()
-    row = (row_channel or "").strip().lower()
-    if not query or not row:
-        return True
-    if query == row:
-        return True
-    from services.commercial_release_plan import normalize_release_channel
-
-    return normalize_release_channel(query) == normalize_release_channel(row)
 
 
 @bp.route('/runtime/version-resolve')

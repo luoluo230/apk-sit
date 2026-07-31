@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P1-01-DOD-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:06:22.451955+08:00",
+  "command": "W-P1-1 helpers split 192 lines",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P1-01-DOD-01.json"
+  ],
+  "notes": ""
+}

@@ -103,9 +103,10 @@
   }
 
   function normalizeStatus(value, probeStatus) {
+    const status = String(value || "").toUpperCase();
+    if (["STOPPED", "STOP", "OFFLINE"].indexOf(status) >= 0) return "OFFLINE";
     const probe = String(probeStatus || "").toUpperCase();
     if (probe === "FAIL") return "OFFLINE";
-    const status = String(value || "").toUpperCase();
     if (["ONLINE", "READY", "RUNNING", "SUCCESS"].indexOf(status) >= 0) return probe === "PASS" ? "ONLINE" : "UNKNOWN";
     if (["OFFLINE", "STOPPED", "TIMEOUT", "CANCELED"].indexOf(status) >= 0) return "OFFLINE";
     if (["DEGRADED", "ERROR", "FAILED", "WARN", "WARNING"].indexOf(status) >= 0) return "WARN";
@@ -207,9 +208,15 @@
       return { tone: "ok", text: "全部正常" };
     }
     if (summary.offline === summary.total) {
-      return { tone: "offline", text: "全部离线" };
+      return { tone: "offline", text: "未启动" };
     }
-    return { tone: "warn", text: "服务异常 " + (summary.total - summary.online) };
+    if (summary.abnormal > 0) {
+      return { tone: "warn", text: "异常 " + summary.abnormal };
+    }
+    if (summary.offline > 0) {
+      return { tone: "offline", text: "已停止 " + summary.offline };
+    }
+    return { tone: "warn", text: "部分离线 " + (summary.total - summary.online) };
   }
 
   function pickTitle(agent) {

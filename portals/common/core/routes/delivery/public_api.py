@@ -67,6 +67,10 @@ def _bootstrap_response(project_id: str, channel_name: str, bundle: dict, rollou
     client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
     server = bundle.get("server") if isinstance(bundle.get("server"), dict) else {}
     bootstrap = dict(client)
+    if not str(bootstrap.get("max_client_version") or "").strip():
+        bootstrap["max_client_version"] = str(
+            bootstrap.get("min_client_version") or bootstrap.get("version_name") or ""
+        ).strip()
     bootstrap["rollout_percentage"] = int(rollout_meta.get("rollout_percentage") or 100)
     bootstrap["rollout_bucket"] = int(rollout_meta.get("rollout_bucket") or 0)
     payload = {

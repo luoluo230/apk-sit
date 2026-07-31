@@ -3,7 +3,6 @@
     <div class="env-detail-head-copy">
       <a class="env-detail-back" href="/admin/projects/{{ project_id }}/overview"><img src="/static/project_ui/svg/action_back.svg" alt="">返回项目总览</a>
       <h1 id="envDetailTitle">{{ env_key }}</h1>
-      <p>查看本环境下各渠道×平台交付线的版本、拓扑与 Bundle 状态，并进入对应配置入口。</p>
     </div>
     <div class="env-detail-head-actions">
       <a class="ui-secondary" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}/runtime"><img src="/static/project_ui/svg/nav_environment.svg" alt="">进入运行工作台</a>
@@ -26,7 +25,6 @@
     <aside class="env-detail-rail">
       <section class="env-rail-card" id="envDeliveryScopePanel">
         <div class="env-rail-head"><h2>本环境交付范围</h2><button type="button" class="env-rail-link-btn" id="btnEditDeliveryScope">管理范围</button></div>
-        <p class="env-rail-hint scope-layer-hint">项目渠道/平台为全局上限；此处配置本环境实际支持的组合。新建 VersionCode 仅能选择已配置项。</p>
         <p class="env-rail-meta" id="envDeliveryScopeHint">加载中...</p>
         <div id="envDeliveryScopeChips" class="env-scope-chips"></div>
       </section>
@@ -38,7 +36,6 @@
         <div class="env-rail-head"><h2>交付线初始化</h2></div>
         <p class="env-rail-meta" id="manifestStatus">检查 Manifest 状态中...</p>
         <button class="ui-primary env-init-btn" id="btnBootstrapScopes" type="button">初始化交付线 Scope</button>
-        <p class="env-rail-hint">根据项目 Manifest、渠道与平台白名单，为各环境×渠道×平台生成 ReleaseScope。</p>
       </section>
       <section class="env-rail-card">
         <div class="env-rail-head"><h2>配置入口</h2></div>
@@ -53,7 +50,7 @@
   <div id="deliveryScopeDialog" class="delivery-dialog is-hidden" aria-hidden="true">
     <div class="delivery-dialog-card delivery-scope-card">
       <div class="delivery-dialog-head">
-        <div><h3>配置环境交付范围</h3><p>仅在项目渠道/平台白名单内勾选本环境支持的组合。</p></div>
+        <div><h3>配置环境交付范围</h3></div>
         <button type="button" class="icon-button" id="btnCloseDeliveryScope" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
       </div>
       <div class="scope-editor-grid">

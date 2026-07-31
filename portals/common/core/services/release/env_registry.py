@@ -114,6 +114,8 @@ def get_project_env_defs(project_id: str) -> List[Dict[str, Any]]:
             merged[key]["disabled_channels"] = item.get("disabled_channels")
         if isinstance(item.get("disabled_platforms"), list):
             merged[key]["disabled_platforms"] = item.get("disabled_platforms")
+        if isinstance(item.get("release_policy"), dict):
+            merged[key]["release_policy"] = item.get("release_policy")
     return sorted(merged.values(), key=lambda row: (int(row.get("order") or 0), row.get("env_key") or ""))
 
 

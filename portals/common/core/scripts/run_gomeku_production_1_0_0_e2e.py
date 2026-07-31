@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from config import load_dotenv
+from repositories.registry.accessors import get_project, has_project, list_projects, save_project, list_channels, list_project_versions, save_project_versions
 
 load_dotenv()
 
@@ -158,7 +159,6 @@ def setup_version_group() -> None:
 
 
 def ensure_production_vc() -> str:
-    from models.data import project_versions_db
     from repositories.admin import versions_repo
     from services.admin import version_service as vs
     from services.release.env_registry import normalize_release_env_key
@@ -192,7 +192,7 @@ def ensure_production_vc() -> str:
         raise RuntimeError(f"创建 VersionCode 失败 ({code}): {result}")
     vid = str(result.get("version", {}).get("id") or "")
     if not vid:
-        versions = project_versions_db.get(PROJECT_ID, [])
+        versions = list_project_versions(PROJECT_ID, [])
         for row in versions:
             if (
                 str(row.get("version_name")) == VERSION_NAME

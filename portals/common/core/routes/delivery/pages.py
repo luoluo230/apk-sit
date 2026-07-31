@@ -192,39 +192,56 @@ def register_page_routes(bp) -> None:
             page_env_key=env_key,
         )
 
+    @bp.route("/admin/projects/<project_id>/release")
+    @admin_required("projects")
+    def project_release_console_redirect(project_id: str):
+        from urllib.parse import urlencode
+
+        if project_id not in projects_db:
+            return "项目不存在", 404
+        qs = urlencode({
+            k: str(request.args.get(k) or "").strip()
+            for k in ("env", "env_key", "channel", "channel_id", "platform", "version_id", "phase")
+            if str(request.args.get(k) or "").strip()
+        })
+        target = f"/admin/projects/{project_id}/versions"
+        return redirect(f"{target}?{qs}" if qs else target)
+
     @bp.route("/admin/projects/<project_id>/environments/<env_key>/channels/<channel_id>/build")
     @admin_required("projects")
     def channel_build_journey_page(project_id: str, env_key: str, channel_id: str):
+        from urllib.parse import urlencode
+
         if project_id not in projects_db:
             return "项目不存在", 404
         ek = normalize_release_env_key(env_key, project_id=project_id)
         cid = _normalize_channel_route_id(project_id, channel_id)
-        return _page(
-            "project_channel_build_journey.html",
-            "构建流程",
-            project_id,
-            "project-home",
-            breadcrumb_module="交付管理",
-            page_env_key=ek,
-            channel_id=cid,
-        )
+        qs = urlencode({
+            "env_key": ek,
+            "channel_id": cid,
+            "platform": str(request.args.get("platform") or "android").strip().lower(),
+            "version_id": str(request.args.get("version_id") or "").strip(),
+            "action": "create_vc",
+        })
+        return redirect(f"/admin/projects/{project_id}/versions?{qs}")
 
     @bp.route("/admin/projects/<project_id>/environments/<env_key>/channels/<channel_id>/release")
     @admin_required("projects")
     def channel_release_journey_page(project_id: str, env_key: str, channel_id: str):
+        from urllib.parse import urlencode
+
         if project_id not in projects_db:
             return "项目不存在", 404
         ek = normalize_release_env_key(env_key, project_id=project_id)
         cid = _normalize_channel_route_id(project_id, channel_id)
-        return _page(
-            "project_channel_release_journey.html",
-            "发版流程",
-            project_id,
-            "project-home",
-            breadcrumb_module="交付管理",
-            page_env_key=ek,
-            channel_id=cid,
-        )
+        qs = urlencode({
+            "env_key": ek,
+            "channel_id": cid,
+            "platform": str(request.args.get("platform") or "android").strip().lower(),
+            "version_id": str(request.args.get("version_id") or "").strip(),
+            "action": "edit_release",
+        })
+        return redirect(f"/admin/projects/{project_id}/versions?{qs}")
 
     @bp.route("/admin/projects/<project_id>/activities")
     @admin_required("projects")
@@ -297,11 +314,14 @@ def register_page_routes(bp) -> None:
             channel_id = resolve_channel_id(project_id, ch_raw) or ch_raw
             env_key = normalize_release_env_key(vrow.get("env_key") or "development", project_id=project_id)
             platform = str(vrow.get("platform") or "android").strip().lower()
-            qs = urlencode({"platform": platform, "version_id": version_id})
-            journey = "build" if intent == "build" else "release"
-            return redirect(
-                f"/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/{journey}?{qs}"
-            )
+            qs = urlencode({
+                "env_key": env_key,
+                "channel_id": channel_id,
+                "platform": platform,
+                "version_id": version_id,
+                "action": "edit_release",
+            })
+            return redirect(f"/admin/projects/{project_id}/versions?{qs}")
         draft = find_draft_release_order(project_id, version_id)
         if not draft:
             from services.release.release_context import apply_scope_fields_to_version_row
@@ -330,13 +350,11 @@ def register_page_routes(bp) -> None:
                 "env_key": draft.get("env_key") or "",
                 "channel_id": draft.get("channel_id") or "",
                 "platform": draft.get("platform") or "",
-                "version_name": draft.get("version_name") or "",
-                "version_code": draft.get("version_code") or "",
                 "version_id": draft.get("version_id") or version_id,
-                "release_order_id": draft.get("release_order_id") or "",
+                "action": "edit_release",
             }
         )
-        return redirect(f"/admin/projects/{project_id}/release-orders/{draft['release_order_id']}/edit?{qs}")
+        return redirect(f"/admin/projects/{project_id}/versions?{qs}")
 
     @bp.route("/admin/projects/<project_id>/release-orders/new")
     @admin_required("projects")
@@ -425,28 +443,15 @@ def register_page_routes(bp) -> None:
     @bp.route("/admin/projects/<project_id>/docs")
     @admin_required("projects")
     def project_docs_page(project_id: str):
-        import os
+        from routes.delivery.page_context import project_docs_embed_context
 
-        from routes.docs_routes import DOCS_FILE, _docs_db
-
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
-        doc_path = os.path.join(repo_root, "docs", "client_bootstrap_contract.md")
-        docs_markdown = ""
-        if os.path.isfile(doc_path):
-            with open(doc_path, "r", encoding="utf-8") as fh:
-                docs_markdown = fh.read()
-        project_docs = [
-            row for row in (_docs_db() or [])
-            if isinstance(row, dict) and str(row.get("project_id") or "").strip() in ("", project_id)
-        ]
-        project_docs.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+        ctx = project_docs_embed_context(project_id)
         return _page(
             "project_docs_embed.html",
             "项目文档",
             project_id,
             "project-docs",
-            docs_markdown=docs_markdown,
-            project_docs=project_docs[:30],
+            **ctx,
         )
 
     @bp.route("/admin/projects/<project_id>/settings")

@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+!.env.devstack.example
+.env.devstack
 jenkins_credentials.json
 config/settings.json
 data/secret.key

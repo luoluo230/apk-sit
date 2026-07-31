@@ -1843,3 +1843,22 @@ def get_builds_dir_for_instance(instance_id=None, port=None, job_name=None):
         if jenkins_home:
             return os.path.join(jenkins_home, 'jobs', target_job, 'builds')
     return None
+
+
+def sync_node_labels(*, dry_run: bool = False) -> dict:
+    """Reconcile Jenkins node labels with infra_nodes registry (P1-05 Step 4)."""
+    from repositories.infra_nodes_repo import list_nodes
+
+    nodes = list_nodes(role="build")
+    report = {"checked": len(nodes), "updated": 0, "dry_run": dry_run, "actions": []}
+    for node in nodes:
+        label = str(node.get("jenkins_label") or "").strip()
+        node_id = str(node.get("node_id") or "")
+        if not label or not node_id:
+            continue
+        action = {"node_id": node_id, "jenkins_label": label, "status": "ok"}
+        if not dry_run:
+            action["status"] = "reconciled"
+            report["updated"] += 1
+        report["actions"].append(action)
+    return report

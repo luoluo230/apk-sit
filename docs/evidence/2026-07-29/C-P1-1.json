@@ -1,0 +1,11 @@
+{
+  "gap_id": "C-P1-1",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:08:27.465693+08:00",
+  "command": "P2-02 Main.cs production bootstrap-only; DEVELOPMENT legacy isolated",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/C-P1-1.json"
+  ],
+  "notes": ""
+}

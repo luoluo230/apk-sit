@@ -1,0 +1,11 @@
+{
+  "gap_id": "C-P1-4",
+  "status": "BLOCKED",
+  "timestamp": "2026-07-29T12:07:35.993198+08:00",
+  "command": "ios_provisioning_checklist",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/C-P1-4.json"
+  ],
+  "notes": "await macOS"
+}

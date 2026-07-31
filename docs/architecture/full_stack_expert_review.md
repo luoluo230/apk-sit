@@ -582,3 +582,4 @@ ReleaseOrder publish  →  更新 Bundle + network_profile  →  客户端连 ga
 |------|------|
 | 2026-07-24 | 初版：全栈架构专家评审报告落地 |
 | 2026-07-24 | 拆分为 `plans/` 下 10 份 Plan + REF + README 索引 |
+| 2026-07-29 | 增加 [`PLAN_CLOSURE_STATUS.md`](./PLAN_CLOSURE_STATUS.md)：Plan DoD + W/C 缺口真源；**W/C 项尚未 formal closure** |

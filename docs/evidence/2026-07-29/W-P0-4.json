@@ -1,0 +1,11 @@
+{
+  "gap_id": "W-P0-4",
+  "status": "DONE",
+  "timestamp": "2026-07-29T11:55:09.102387+08:00",
+  "command": "wave2 gates",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/W-P0-4.json"
+  ],
+  "notes": ""
+}

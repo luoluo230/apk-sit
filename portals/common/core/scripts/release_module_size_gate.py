@@ -25,7 +25,8 @@ LIMITS = {
     "routes/delivery/build_events_api.py": 130,
     "routes/delivery/public_api.py": 180,
     "services/ops/helpers.py": 450,
-    "static/project_delivery.js": 2100,
+    "static/project_delivery.js": 1350,
+    "static/delivery_order_form.js": 850,
     "static/delivery_order_detail.js": 620,
     "static/delivery_common.js": 120,
 }

@@ -1,0 +1,11 @@
+{
+  "gap_id": "C-P1-2",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:08:27.465904+08:00",
+  "command": "verify_hotupdate_config_checksum.py + test_verify_hotupdate_config_checksum",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/C-P1-2.json"
+  ],
+  "notes": ""
+}

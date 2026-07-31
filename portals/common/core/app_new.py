@@ -265,6 +265,7 @@ def _register_blueprints():
             # Internal routes authenticate via HMAC + IP allowlist (services/security/webhook_auth.py).
             csrf.exempt(internal_jenkins_bp)
             csrf.exempt(internal_build_nodes_bp)
+            csrf.exempt(project_ops_bp)
             try:
                 from routes.approval_webhooks import approval_webhook_view
 

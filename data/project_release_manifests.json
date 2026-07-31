@@ -10,8 +10,21 @@
     "oss_project_root": "MyGame1",
     "oss_base_url": "https://wlhotupdate1.oss-cn-beijing.aliyuncs.com",
     "channels": [
-      { "channel_id": "1001", "channel_key": "wechat", "platforms": ["android", "ios"] },
-      { "channel_id": "1002", "channel_key": "douyin", "platforms": ["android"] }
+      {
+        "channel_id": "1001",
+        "channel_key": "wechat",
+        "platforms": [
+          "android",
+          "ios"
+        ]
+      },
+      {
+        "channel_id": "1002",
+        "channel_key": "douyin",
+        "platforms": [
+          "android"
+        ]
+      }
     ],
     "default_scopes_per_env": true,
     "topology_pattern": "topology-{project_slug}-{env_key}-default",
@@ -19,5 +32,117 @@
     "notice_url": "",
     "status": "active",
     "updated_at": "2026-06-09T12:00:00+08:00"
+  },
+  {
+    "project_id": "Onb-97b4ebb3",
+    "project_slug": "onb97b4ebb3",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T08:52:23.096650"
+  },
+  {
+    "project_id": "Asg-87e001e8",
+    "project_slug": "asg87e001e8",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T08:52:23.264438"
+  },
+  {
+    "project_id": "Onb-ee1e93eb",
+    "project_slug": "onbee1e93eb",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T12:08:42.232601"
+  },
+  {
+    "project_id": "Asg-932b310d",
+    "project_slug": "asg932b310d",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T12:08:42.461106"
+  },
+  {
+    "project_id": "Onb-408a065f",
+    "project_slug": "onb408a065f",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T12:34:02.829281"
+  },
+  {
+    "project_id": "Asg-934ecbff",
+    "project_slug": "asg934ecbff",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T12:34:03.004231"
+  },
+  {
+    "project_id": "Onb-477387c9",
+    "project_slug": "onb477387c9",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T13:44:26.660657"
+  },
+  {
+    "project_id": "Asg-f92b8dde",
+    "project_slug": "asgf92b8dde",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T13:44:26.836979"
+  },
+  {
+    "project_id": "Onb-b68be25d",
+    "project_slug": "onbb68be25d",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T14:05:42.208694"
+  },
+  {
+    "project_id": "Asg-93149dbe",
+    "project_slug": "asg93149dbe",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T14:05:42.333340"
+  },
+  {
+    "project_id": "Onb-92f3f1f3",
+    "project_slug": "onb92f3f1f3",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T14:07:32.403423"
+  },
+  {
+    "project_id": "Asg-68de3684",
+    "project_slug": "asg68de3684",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T14:07:32.531457"
+  },
+  {
+    "project_id": "Onb-9791b7f2",
+    "project_slug": "onb9791b7f2",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T16:39:40.123343"
+  },
+  {
+    "project_id": "Asg-92a70f53",
+    "project_slug": "asg92a70f53",
+    "topology_pattern": "topology-{project_slug}-{env_key}-default",
+    "default_scopes_per_env": true,
+    "status": "active",
+    "updated_at": "2026-07-29T16:39:40.330358"
   }
 ]

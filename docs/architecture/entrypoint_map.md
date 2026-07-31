@@ -42,3 +42,16 @@
 | `routes/internal_jenkins.py` | Jenkins webhook |
 | `routes/approval_webhooks.py` | 审批 webhook |
 | `routes/gm_ops_release.py` | GM deprecated wrappers |
+
+## Ops 模块（P1-01 拆分后）
+
+| 模块 | 职责 |
+|------|------|
+| `services/ops/helpers.py` | 薄 facade（render + re-export） |
+| `services/ops/topology_registry.py` | 拓扑 CRUD、scoped load/save |
+| `services/ops/cluster_importer.py` | cluster.json 同步 |
+| `services/ops/agent_registry.py` | Agent 注册、heartbeat |
+| `services/ops/runtime_orchestrator.py` | runtime 启停编排 |
+| `services/ops/topology_contracts.py` | node contract、端口 |
+| `services/ops/diagnostics.py` | 诊断摘要 |
+| `services/ops/server_deploy_dispatch.py` | 服务端制品部署入队 |

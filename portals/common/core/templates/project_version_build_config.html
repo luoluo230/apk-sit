@@ -12,7 +12,6 @@
     <a href="{{ return_url }}"><img src="/static/project_ui/svg/action_back.svg" alt="">{{ return_label }}</a>
     <div>
       <h1>{{ version_label }}</h1>
-      <p>{{ '版本组管线模板：保存后自动同步到组内所有 VersionCode，并被发布单只读引用。路径字段按 VC 编号自动推导。' if (edit_scope_mode or 'version_group') == 'version_group' else '兼容旧路径：仅保存本 VersionCode 构建参数。新流程请在版本组层级配置。' }}</p>
     </div>
     {% if workflow_url %}
     <a class="ui-secondary" href="{{ workflow_url }}" target="_blank" rel="noopener noreferrer">
@@ -26,7 +25,6 @@
     <img src="/static/project_ui/svg/status_info.svg" alt="" onerror="this.style.display='none'">
     <div>
       <strong>这是发布前的准备步骤</strong>
-      <span>完成后返回版本代码，点击对应 VersionCode 行的「开始发布」进入发布向导。</span>
     </div>
   </div>
   {% endif %}
@@ -46,7 +44,6 @@
         <section class="workflow-section active" data-section="jenkins">
           <div class="section-title">
             <div><span>环境</span><h2>Jenkins 与构建环境</h2></div>
-            <p>实例、Job 与 Unity 构建基础参数。</p>
           </div>
           <div class="form-grid">
             <label class="span-2">
@@ -90,7 +87,6 @@
         <section class="workflow-section" data-section="config_export" hidden>
           <div class="section-title">
             <div><span>STEP 01</span><h2>配置导出</h2></div>
-            <p>Excel 导表 → manifest → 上传 OSS（ConfigRemotePublish）。</p>
           </div>
           <div class="form-grid">
             <label class="span-4 checkbox-row"><input type="checkbox" name="config_export_enabled" id="configExportEnabled"><span>启用配置导出</span></label>
@@ -106,7 +102,6 @@
         <section class="workflow-section" data-section="resource_build" hidden>
           <div class="section-title">
             <div><span>STEP 02</span><h2>资源打包</h2></div>
-            <p>Addressables / 资源流水线构建。</p>
           </div>
           <div class="form-grid">
             <label class="span-4 checkbox-row"><input type="checkbox" name="resource_build_enabled" id="resourceBuildEnabled"><span>启用资源打包</span></label>
@@ -119,7 +114,6 @@
         <section class="workflow-section" data-section="hot_release" hidden>
           <div class="section-title">
             <div><span>STEP 03</span><h2>热更发布</h2></div>
-            <p>代码包与资源包可独立热更；配置包在 Step1 处理。</p>
           </div>
           <div class="build-config-preset-row" id="hotPresetRow">
             <span>快捷组合</span>
@@ -176,7 +170,6 @@
         <section class="workflow-section" data-section="artifact" hidden>
           <div class="section-title">
             <div><span>STEP 04</span><h2>安装包</h2></div>
-            <p>控制是否执行 APK/AAB/IPA 打包与本地产物登记。</p>
           </div>
           <div class="form-grid">
             <label class="span-4 checkbox-row"><input type="checkbox" name="apk_build_enabled" id="apkBuildEnabled"><span>启用安装包打包上传</span></label>
@@ -234,7 +227,6 @@
                 <span>构建成功后自动上传 TestFlight</span>
               </label>
               <div class="ios-jenkins-cred-fields span-4" id="iosJenkinsCredFields">
-                <p class="ios-signing-hint">在 Jenkins → Credentials 创建 Secret file / Username+Password 后，填写 Credential ID（不是密钥内容）。</p>
                 <label>
                   <span>ASC API Key Credential ID</span>
                   <input name="ios_jenkins_asc_credential_id" id="iosAscCredInput" placeholder="如 gomeku-asc-api-key">
@@ -251,7 +243,6 @@
                 <a class="preview-card-link" href="/admin/infra-nodes?role=build-ios" target="_blank" rel="noopener noreferrer">安装 macOS 构建节点 →</a>
               </div>
               <div class="ios-path-cred-fields span-4" id="iosPathCredFields" hidden>
-                <p class="ios-signing-hint">path 模式：证书与 .p8 放在 macOS 构建机本地，仅适合单机调试。</p>
                 <label class="span-2">
                   <span>证书 .p12 路径（构建机）</span>
                   <input name="ios_cert_p12_path" id="iosCertPathInput" placeholder="/secure/certs/dist.p12">
@@ -271,7 +262,6 @@
         <section class="workflow-section" data-section="client_policy" hidden>
           <div class="section-title">
             <div><span>策略</span><h2>客户端更新策略</h2></div>
-            <p>控制 runtime-bootstrap 门禁字段；配置 / 代码 / 资源三域与 Jenkins 步骤对应。</p>
           </div>
           <div class="build-config-domain-row" id="domainStatusChips" aria-label="三域状态">
             <span class="channel-chip" data-domain-chip="config">配置域</span>
@@ -305,7 +295,6 @@
           <h2>Jenkins 参数预览</h2>
           <button type="button" class="version-link-btn" data-refresh-preview>刷新</button>
         </div>
-        <p class="build-config-panel-hint">保存后可在「执行构建」页触发 Jenkins 时写入 Job 参数。</p>
         <ul id="jenkinsPreviewList" class="build-config-preview-list"></ul>
         <div id="jenkinsPreviewWarnings" class="build-config-warnings"></div>
       </section>
@@ -314,7 +303,6 @@
           <h2>客户端 Bootstrap 预览</h2>
           <button type="button" class="version-link-btn" data-refresh-bootstrap>刷新</button>
         </div>
-        <p class="build-config-panel-hint">与 runtime-bootstrap 门禁字段对齐；发布后写入 Bundle 快照。</p>
         <p class="build-config-scope-meta" id="runtimeScopeMeta"></p>
         <ul id="bootstrapPreviewList" class="build-config-preview-list"></ul>
       </section>

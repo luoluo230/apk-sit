@@ -29,9 +29,15 @@
 |----------|------|
 | `CLUSTER_RELAY_TOKEN` | 集群 relay 鉴权；**不要**写入 `cluster.json` 提交仓库 |
 
-Dev 栈：`scripts/Start-DevStack.ps1` 注入开发用 token。
+Dev 栈：`scripts/Start-DevStack.ps1` 从 `.env.devstack`（gitignore）加载或生成 `CLUSTER_RELAY_TOKEN`。
 
-## Internal Webhook 网络
+## 生产首次启动签字
+
+1. 填写 `.env.production`（见上方示例），**不得**提交 git  
+2. 运行：`powershell -File scripts/verify_production_secrets.ps1` → 必须 PASS  
+3. 无 Secret 时：`powershell -File scripts/verify_production_secrets.ps1 -ExpectFail` → 必须 fail-fast  
+4. 记录 evidence：`docs/evidence/YYYY-MM-DD/GAP-P0-SEC-01.json`
+
 
 | 环境变量 | 默认 | 说明 |
 |----------|------|------|

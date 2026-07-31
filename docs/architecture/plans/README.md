@@ -5,6 +5,8 @@
 
 **用法**：在 Cursor Plan 或排期表中引用 `docs/architecture/plans/Px-xx_*.md` 作为任务真源。
 
+> **Closure 真源（必读）**：Plan 里的 `[x]` **不等于线上可用**。未完成项、假绿项、评审 W/C closure 状态见 **[`PLAN_CLOSURE_STATUS.md`](../PLAN_CLOSURE_STATUS.md)** — 排查线上问题从该文档 §6 入手。
+
 ---
 
 ## 1. 计划总览

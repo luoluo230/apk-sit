@@ -39,7 +39,7 @@
     "image": "jenkins/jenkins:lts-jdk17",
     "container_name": "apk-site-jenkins",
     "default_user": "admin",
-    "default_password": "admin123",
+    "default_password": "",
     "_note_user_token": "Set JENKINS_USER and JENKINS_TOKEN in .env or jenkins_credentials.json"
   },
   "security": {

@@ -1,0 +1,113 @@
+<section class="rc-app" data-release-console data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
+  <header class="rc-header">
+    <div class="rc-header-main">
+      <h1>发版控制台</h1>
+      <p class="rc-subtitle">一次会话选择环境并批量勾选交付线，完成配置与构建/预检/发布</p>
+    </div>
+    <div class="rc-header-meta">
+      <span class="rc-batch-id" id="rcBatchIdLabel" hidden></span>
+      <button type="button" class="rc-btn rc-btn--ghost" id="rcRefreshBtn" title="刷新">刷新</button>
+    </div>
+  </header>
+
+  <div class="rc-layout">
+    <aside class="rc-scope" id="rcScopePanel" aria-label="发版范围">
+      <div class="rc-panel-head">
+        <h2>发版目标</h2>
+      </div>
+      <label class="rc-field">
+        <span>环境</span>
+        <select id="rcEnvSelect" aria-label="环境"></select>
+      </label>
+      <div class="rc-matrix-wrap">
+        <div class="rc-matrix-head">
+          <span>交付线</span>
+          <button type="button" class="rc-link-btn" id="rcSelectAllLines">全选</button>
+        </div>
+        <div class="rc-matrix" id="rcLineMatrix"><div class="rc-empty">请先选择环境</div></div>
+      </div>
+      <button type="button" class="rc-btn rc-btn--primary rc-btn--block" id="rcCreateBatchBtn" disabled>创建发版批次</button>
+    </aside>
+
+    <main class="rc-config" id="rcConfigWorkspace" aria-label="配置工作区">
+      <div class="rc-config-placeholder" id="rcConfigPlaceholder">
+        <p>选择环境并勾选交付线，然后创建发版批次以编辑配置。</p>
+      </div>
+      <div class="rc-config-body" id="rcConfigBody" hidden>
+        <details class="rc-section" open>
+          <summary>发版元信息</summary>
+          <div class="rc-form-grid">
+            <label class="rc-field"><span>发版类型</span>
+              <select id="rcReasonType">
+                <option value="regular">常规发版</option>
+                <option value="hotfix">热修复</option>
+                <option value="rollback">回滚</option>
+                <option value="emergency">紧急发版</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>负责人</span><input id="rcOwner" type="text" placeholder="必填"></label>
+            <label class="rc-field rc-field--full"><span>发布窗口</span><input id="rcReleaseWindow" type="text" placeholder="staging+ 必填"></label>
+            <label class="rc-field rc-field--full"><span>对内说明</span><textarea id="rcReleaseDescription" rows="2"></textarea></label>
+          </div>
+        </details>
+
+        <details class="rc-section">
+          <summary>发版公告</summary>
+          <div class="rc-form-grid">
+            <label class="rc-field rc-field--full"><span>公告标题</span><input id="rcAnnTitle" type="text"></label>
+            <label class="rc-field rc-field--full"><span>公告正文</span><textarea id="rcAnnBody" rows="3"></textarea></label>
+            <label class="rc-field"><span>生效时间</span><input id="rcAnnEffective" type="datetime-local"></label>
+            <label class="rc-field"><span>目标受众</span><input id="rcAnnAudience" type="text" placeholder="all"></label>
+            <label class="rc-field rc-field--check"><input id="rcAnnSyncGm" type="checkbox"><span>发布时同步 GM 公告</span></label>
+          </div>
+        </details>
+
+        <details class="rc-section">
+          <summary>客户端配置（按线）</summary>
+          <div id="rcClientTabs" class="rc-tabs"></div>
+        </details>
+
+        <details class="rc-section">
+          <summary>服务端配置</summary>
+          <div class="rc-form-grid">
+            <label class="rc-field"><span>服务端制品 ID</span><input id="rcServerArtifact" type="text"></label>
+            <label class="rc-field"><span>目标拓扑</span><input id="rcTargetTopology" type="text"></label>
+            <label class="rc-field rc-field--check"><input id="rcDeployServer" type="checkbox"><span>与客户端同批发布</span></label>
+            <label class="rc-field"><span>最低服务端版本</span><input id="rcMinServerVersion" type="text"></label>
+          </div>
+        </details>
+
+        <details class="rc-section">
+          <summary>发布策略</summary>
+          <div class="rc-form-grid">
+            <label class="rc-field"><span>策略</span>
+              <select id="rcReleaseStrategy">
+                <option value="full">全量</option>
+                <option value="gray">灰度</option>
+              </select>
+            </label>
+            <label class="rc-field"><span>灰度比例 %</span><input id="rcGrayRatio" type="number" min="1" max="100"></label>
+            <label class="rc-field rc-field--full"><span>验证计划</span><textarea id="rcValidationPlan" rows="3"></textarea></label>
+            <label class="rc-field rc-field--full"><span>回滚计划</span><textarea id="rcRollbackPlan" rows="3"></textarea></label>
+          </div>
+        </details>
+
+        <details class="rc-section">
+          <summary>执行预览</summary>
+          <div id="rcExecPreview" class="rc-preview-list"></div>
+        </details>
+      </div>
+    </main>
+
+    <aside class="rc-rail" id="rcExecutionRail" aria-label="执行轨">
+      <div class="rc-panel-head"><h2>执行</h2></div>
+      <div class="rc-readiness" id="rcReadiness"><div class="rc-empty">暂无批次</div></div>
+      <div class="rc-primary-cta">
+        <button type="button" class="rc-btn rc-btn--primary rc-btn--block" id="rcPrimaryAction" disabled>—</button>
+      </div>
+      <div class="rc-secondary-actions" id="rcSecondaryActions"></div>
+      <div class="rc-failed-lines" id="rcFailedLines"></div>
+      <div class="rc-progress" id="rcProgress" hidden></div>
+    </aside>
+  </div>
+</section>

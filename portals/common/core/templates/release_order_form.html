@@ -3,9 +3,7 @@
     <a class="ro-form-back" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}" aria-label="返回版本代码"><img src="/static/project_ui/svg/action_back.svg" alt=""></a>
     <div class="ro-form-head-copy">
       <h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1>
-      <p id="orderFormSubtitle" class="ro-form-subtitle">填写完整发布计划后保存或进入构建。</p>
     </div>
-    <span class="ro-form-draft-badge">草稿可随时保存</span>
   </header>
 
   <div class="ro-journey-progress" id="orderFormJourneyProgress" aria-label="发布进度">
@@ -36,7 +34,6 @@
         <section class="ro-section workflow-section" data-section="target">
           <div class="ro-section-head section-title">
             <div><span class="ro-step-no">01</span><h2>交付目标</h2></div>
-            <p>一张发布单只对应一个精确环境、渠道、平台和 VersionCode。</p>
           </div>
           <div id="orderTargetLockBanner" class="target-lock-banner is-hidden">交付目标已从 VersionCode 带入，以下字段不可修改。</div>
           <div class="ro-form-grid form-grid">
@@ -65,7 +62,6 @@
         <section class="ro-section workflow-section order-section-build" data-section="build">
           <div class="ro-section-head section-title">
             <div><span class="ro-step-no">02</span><h2>构建计划</h2></div>
-            <p>构建管线来源为版本组模板，发布单只读引用并触发构建。</p>
           </div>
           <div class="ro-form-grid form-grid ro-build-grid">
             <label>Jenkins 实例<select id="orderJenkinsDisplay" disabled aria-readonly="true"></select></label>
@@ -77,7 +73,7 @@
               <strong>管线摘要</strong>
               <div class="pipeline-readonly-status">
                 <span class="pipeline-source-pill" id="orderPipelineSourcePill">版本组管线模板</span>
-                <p class="pipeline-status-hint" id="orderPipelineStatusHint">选择 VersionCode 后评估管线就绪度。</p>
+                <p class="pipeline-status-hint is-hidden" id="orderPipelineStatusHint" hidden></p>
               </div>
             </div>
             <ul class="pipeline-readonly-rows" id="orderPipelineSummaryRows">
@@ -90,13 +86,12 @@
             <input type="hidden" name="jenkins_params">
             <a class="ro-link-btn" id="orderGoConfigurePipelineBtn" href="#">前往版本组管线配置 &gt;</a>
           </div>
-          <div class="workflow-preview-grid" id="buildPlanPreview"><div class="workflow-placeholder">选择 VersionCode 后展示构建与产物摘要。</div></div>
+          <div class="workflow-preview-grid" id="buildPlanPreview"></div>
         </section>
 
         <section class="ro-section workflow-section order-section-advanced" data-section="runtime">
           <div class="ro-section-head section-title">
             <div><span class="ro-step-no">03</span><h2>拓扑与运行目标</h2></div>
-            <p>按项目默认、环境渠道、大版本三级规则解析，最终结果在发布 Bundle 中冻结。</p>
           </div>
           <div class="ro-form-grid form-grid">
             <label>目标拓扑<select name="target_topology_id"><option value="">按绑定规则自动解析</option></select></label>
@@ -111,7 +106,6 @@
         <section class="ro-section workflow-section order-section-advanced" data-section="strategy">
           <div class="ro-section-head section-title">
             <div><span class="ro-step-no">04</span><h2>发布策略</h2></div>
-            <p>选择全量发布或灰度发布，灰度参数会进入审批和审计记录。</p>
           </div>
           <div class="ro-form-grid form-grid">
             <label>发布方式<select name="release_strategy"><option value="gray">灰度发布（推荐）</option><option value="standard">全量发布</option></select></label>
@@ -126,7 +120,6 @@
         <section class="ro-section workflow-section order-section-advanced" data-section="verify">
           <div class="ro-section-head section-title">
             <div><span class="ro-step-no">05</span><h2>验证方案</h2></div>
-            <p>发布后必须验证客户端启动、热更、登录和玩家数据拉取。</p>
           </div>
           <div class="ro-form-grid form-grid">
             <label class="span-2 ro-tag-field">验证项<input name="validation_items" placeholder="订单创建流程, 支付结果页跳转" data-tag-field></label>
@@ -138,7 +131,6 @@
         <section class="ro-section workflow-section order-section-advanced" data-section="rollback">
           <div class="ro-section-head section-title">
             <div><span class="ro-step-no">06</span><h2>回滚方案</h2></div>
-            <p>回滚恢复旧 Bundle 的版本、拓扑、网络与服务端快照。</p>
           </div>
           <div class="ro-form-grid form-grid">
             <label class="span-2">回滚目标 Bundle<input name="rollback_target" placeholder="默认回滚到上一个已发布 Bundle"></label>
@@ -154,23 +146,12 @@
     <aside class="ro-form-rail workflow-rail">
       <section class="ro-rail-card ro-rail-risk">
         <div class="ro-rail-head"><h2>风险提示</h2><span class="ro-risk-tag" id="orderRiskLevel">—</span></div>
-        <ul class="ro-risk-list" id="orderRiskList"><li>选择交付目标后展示风险摘要</li></ul>
+        <ul class="ro-risk-list" id="orderRiskList"></ul>
       </section>
       <section class="ro-rail-card is-hidden" id="orderGrayPlanPanel">
         <div class="ro-rail-head"><h2>灰度计划预览</h2></div>
         <ul class="ro-risk-list" id="orderGrayPlanList"></ul>
         <a class="preview-card-link" id="orderGrayJourneyLink" href="#">查看渠道发版 Journey →</a>
-      </section>
-      <section class="ro-rail-card">
-        <div class="ro-rail-head"><h2>填写指引</h2></div>
-        <ol class="ro-guide-list">
-          <li><b>交付目标</b><span>锁定环境、渠道、平台与 VersionCode</span></li>
-          <li><b>构建计划</b><span>确认 Jenkins 实例、Job 与构建参数</span></li>
-          <li><b>拓扑与运行目标</b><span>确认拓扑绑定与 Runtime 状态</span></li>
-          <li><b>发布策略</b><span>生产环境建议灰度发布</span></li>
-          <li><b>验证方案</b><span>填写验证项与自动化任务</span></li>
-          <li><b>回滚方案</b><span>明确触发条件与回滚 Bundle</span></li>
-        </ol>
       </section>
       <section class="ro-rail-card">
         <div class="ro-rail-head"><h2>快速入口</h2></div>
@@ -191,11 +172,8 @@
       <section class="ro-rail-card ro-rail-readiness is-hidden" id="orderReadinessPanel">
         <div class="ro-rail-head"><h2>交付就绪度</h2><strong id="deliveryReadiness">0%</strong></div>
         <div class="completion-track delivery-track"><span id="deliveryReadinessBar"></span></div>
-        <p id="deliveryReadinessHint">选择 VersionCode 后评估管线、拓扑与产物。</p>
         <div class="ro-rail-head" style="margin-top:12px"><h2>计划完整度</h2><strong id="planCompleteness">0%</strong></div>
         <div class="completion-track"><span id="planCompletenessBar"></span></div>
-        <p id="planCompletenessHint">请先选择精确交付目标。</p>
-        <p id="orderPipelineGateHint" class="panel-hint"></p>
       </section>
     </aside>
   </div>

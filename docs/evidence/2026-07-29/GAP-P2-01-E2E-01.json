@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P2-01-E2E-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T14:49:14.885680+08:00",
+  "command": "server_release_devstack_e2e.py --base-url http://127.0.0.1:5003",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P2-01-E2E-01.json"
+  ],
+  "notes": "{\"server_release_id\": \"sro-935d64dcdde2\", \"status\": \"deployed\", \"deploy_results\": {\"game-cn-1\": {\"ok\": true, \"detail\": {\"message\": \"game-cn-1 already running\", \"artifact_id\": \"sart-4efa65b0c2aa\", \"version_label\": \"e2e-agent\", \"exec\": {\"ok\": true, \"message\": \"game-cn-1 already running\", \"already_running\": true, \"instance_dir\": \"E:\\\\maclient\\\\game-server\\\\tools\\\\SmokeTest\\\\artifacts\\\\instances\\\\game-cn-1\", \"artifact_id\": \"sart-4efa65b0c2aa\", \"version_label\": \"e2e-agent\"}, \"node_id\": \"ops-cn-1\", \"agent_id\": \"agent-local-cn-1\"}, \"at\": \"2026-07-29T06:49:13Z\", \"actor\": \"agent:ops-cn-1\"}}, \"artifact_id\": \"sart-4efa65b0c2aa\"}"
+}

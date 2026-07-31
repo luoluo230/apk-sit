@@ -188,6 +188,10 @@
           "</strong></div></div>" +
           '<footer class="p16-env-footer p02-env-footer"><a href="/admin/projects/' +
           encodeURIComponent(projectId) +
+          "/versions?env_key=" +
+          encodeURIComponent(item.env_key) +
+          '">版本管理<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
+          encodeURIComponent(projectId) +
           "/environments/" +
           encodeURIComponent(item.env_key) +
           '">环境详情<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a class="p02-env-runtime-link" href="/admin/projects/' +

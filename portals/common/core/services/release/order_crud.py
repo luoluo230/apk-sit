@@ -66,6 +66,7 @@ def _order_from_row(row, *, include_details: bool = False) -> Dict[str, Any]:
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "published_at": row["published_at"],
+        "batch_id": str(row["batch_id"] or "") if "batch_id" in row.keys() else "",
         "payload": payload,
     }
     if include_details:
@@ -247,6 +248,7 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
         "topology_binding_snapshot": binding,
         "build_job_id": str(version.get("jenkins_job_id") or ""),
     }
+    batch_id = str(payload.get("batch_id") or "").strip()
     for key in EDITABLE_PLAN_FIELDS:
         if key in payload:
             record_payload[key] = payload.get(key)
@@ -258,15 +260,15 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
                 release_order_id, project_id, env_key, channel_id, platform, version_id,
                 version_name, version_code, scope_id, topology_id, topology_binding_source,
                 runtime_run_id, bundle_id, status, reason, payload, created_by, approved_by,
-                created_at, updated_at, published_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                created_at, updated_at, published_at, batch_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 order_id, project_id, env_key, channel_id, platform, str(version.get("id") or ""),
                 str(version.get("version_name") or ""), str(version.get("version_code") or ""),
                 str(scope.get("scope_id") or ""), str(binding.get("topology_id") or ""),
                 str(binding.get("binding_source") or ""), "", "", status, str(payload.get("reason") or ""),
-                _json(record_payload), actor, "", now, now, "",
+                _json(record_payload), actor, "", now, now, "", batch_id,
             ),
         )
         for artifact_type, url, path in artifacts:

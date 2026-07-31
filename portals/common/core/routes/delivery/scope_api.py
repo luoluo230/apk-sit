@@ -17,8 +17,6 @@ from services.release.release_order_service import (
     context_options,
     environment_detail,
     project_overview,
-    rollback_scope_to_bundle,
-    unpublish_scope,
 )
 from services.release.release_policy_service import release_order_form_context
 
@@ -289,37 +287,6 @@ def register_scope_routes(bp) -> None:
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
-    @bp.route("/api/projects/<project_id>/scopes/<scope_id>/rollback", methods=["POST"])
-    @admin_required("projects")
-    def scope_rollback_api(project_id: str, scope_id: str):
-        if project_id not in projects_db:
-            return jsonify({"ok": False, "error": "项目不存在"}), 404
-        payload = request.get_json(silent=True) or {}
-        try:
-            data = rollback_scope_to_bundle(
-                project_id,
-                scope_id,
-                str(payload.get("bundle_id") or "").strip(),
-                _actor(),
-                reason=str(payload.get("reason") or ""),
-            )
-            return jsonify({"ok": True, "data": data})
-        except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+    from routes.delivery.scope_lifecycle_api import register_scope_lifecycle_routes
 
-    @bp.route("/api/projects/<project_id>/scopes/<scope_id>/unpublish", methods=["POST"])
-    @admin_required("projects")
-    def scope_unpublish_api(project_id: str, scope_id: str):
-        if project_id not in projects_db:
-            return jsonify({"ok": False, "error": "项目不存在"}), 404
-        payload = request.get_json(silent=True) or {}
-        try:
-            data = unpublish_scope(
-                project_id,
-                scope_id,
-                _actor(),
-                reason=str(payload.get("reason") or ""),
-            )
-            return jsonify({"ok": True, "data": data})
-        except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+    register_scope_lifecycle_routes(bp)

@@ -45,8 +45,11 @@
 
   const href = (path, scope = {}, extra = {}) => `${path}${buildQuery(scope, extra)}`;
 
+  const releaseConsoleHref = (projectId, scope = {}, extra = {}) =>
+    href(`/admin/projects/${encodeURIComponent(projectId)}/versions`, scope, extra);
+
   const versionsStartReleaseHref = (projectId, versionId, scope = {}) =>
-    href(`/admin/projects/${encodeURIComponent(projectId)}/release-orders/start`, { ...scope, version_id: versionId });
+    releaseConsoleHref(projectId, { ...scope, version_id: versionId }, { action: "edit_release" });
 
   const versionsPageHref = (projectId, scope = {}, extra = {}) =>
     href(`/admin/projects/${encodeURIComponent(projectId)}/versions`, scope, extra);
@@ -222,11 +225,15 @@
   const renderChannelJourneyActions = (projectId, envKey, channelId) =>
     renderCardVersionEntry(projectId, envKey, channelId);
 
-  const channelJourneyHref = (projectId, envKey, channelId, kind = "build", platform = "") => {
-    const base = `/admin/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}/channels/${encodeURIComponent(channelId)}/${kind === "release" ? "release" : "build"}`;
-    const params = new URLSearchParams({ env_key: envKey, channel_id: channelId });
-    if (platform) params.set("platform", platform);
-    return `${base}?${params.toString()}`;
+  const channelJourneyHref = (projectId, envKey, channelId, kind = "build", platform = "", versionId = "") => {
+    const params = new URLSearchParams({
+      env_key: envKey,
+      channel_id: channelId,
+      platform: platform || "",
+      action: kind === "release" ? "edit_release" : "create_vc",
+    });
+    if (versionId) params.set("version_id", versionId);
+    return `/admin/projects/${encodeURIComponent(projectId)}/versions?${params.toString()}`;
   };
 
   window.DeliveryScope = {
@@ -245,6 +252,7 @@
     renderChannelVersionsEntry,
     renderChannelJourneyActions,
     channelJourneyHref,
+    releaseConsoleHref,
     topologyDrawerHref,
     bindQuickBuild,
     bindMatrixMoreMenus,

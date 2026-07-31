@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P2-03-OPS-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:01:20.969939+08:00",
+  "command": "NOTIFY_WEBHOOK_URL local capture",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P2-03-OPS-01.json"
+  ],
+  "notes": ""
+}

@@ -129,6 +129,7 @@ PROBE_INTERVAL_SEC = 5.0
 PROBE_SYNC_INTERVAL_SEC = 30.0
 
 PM_UI_CSS = (
+    '<link rel="stylesheet" href="/static/project_ui/ui-microcopy-cleanup.css?v=20260729-v2">'
     '<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v=20260625-pm9">'
     '<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v=20260625-pm9">'
     '<link rel="stylesheet" href="/static/project_ui/pm-table.css?v=20260625-pm9">'
@@ -138,7 +139,7 @@ PM_UI_CSS = (
     '<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v=20260625-pm9">'
 )
 
-OPS_SHELL_ASSET_VER = "20260723-favorites-v1"
+OPS_SHELL_ASSET_VER = "20260730-release-console-v1"
 
 OPS_WORKSPACE_CSS = (
     '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260717-workspace-v5">'

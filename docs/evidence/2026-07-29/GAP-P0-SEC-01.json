@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P0-SEC-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T11:48:07.782948+08:00",
+  "command": "verify_production_secrets.ps1 -ExpectFail",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P0-SEC-01.json"
+  ],
+  "notes": ""
+}

@@ -5,7 +5,6 @@
     <select id="projectChannelAddSelect"><option value="">选择要添加的渠道</option>{% for ch in channel_catalog %}{% if ch.channel_id not in assigned_channel_ids %}<option value="{{ ch.channel_id }}">{{ ch.channel_name }} ({{ ch.channel_id }})</option>{% endif %}{% endfor %}</select>
     <button class="ui-primary" id="btnProjectChannelAdd" type="button">添加</button>
   </div>
-  <p class="channel-hint">变更后请在下方「初始化交付线 Scope」同步矩阵。</p>
   <div class="manifest-panel manifest-panel-inline">
     <p id="overviewManifestStatus">检查 Manifest...</p>
     <button class="ui-primary" id="btnOverviewBootstrapScopes" type="button">初始化交付线 Scope</button>

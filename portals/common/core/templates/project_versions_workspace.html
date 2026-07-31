@@ -3,7 +3,7 @@
   <header class="version-head pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""></span>
-      <div><h1>版本与 VersionCode</h1><p id="versionPageSubtitle">从环境交付线进入，按平台页签管理本渠道的 VersionCode。</p></div>
+      <div><h1>版本管理</h1><p class="version-head-sub">从项目卡片进入：创建版本、编辑发版信息，并在列表中执行构建/发布/回滚等操作</p></div>
     </div>
     <div class="version-head-actions pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
@@ -11,24 +11,19 @@
       <a class="version-btn pm-btn" id="versionBuildHistoryLink" href="/admin/projects/{{ project_id }}/build-history?env_key={{ env_key }}&scoped=1&channel_id={{ channel_filter }}{% if platform_filter %}&platform={{ platform_filter }}{% endif %}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
       {% if can_edit %}
       <button id="btnCreateVersionGroup" class="version-btn pm-btn" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建版本组</button>
-      <button id="btnCreateVersionCode" class="version-btn pm-btn pm-btn--primary" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新增 VersionCode</button>
+      <button id="btnCreateVersionCode" class="version-btn pm-btn pm-btn--primary" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">创建版本</button>
       {% endif %}
     </div>
   </header>
-  <div class="version-scope-banner" id="versionScopeBanner">
-    <div>
-      <strong id="versionScopeTitle">版本代码</strong>
-      <p id="versionScopeDesc">在此管理本渠道的版本组与 VersionCode。</p>
-    </div>
-    <div class="version-scope-actions">
-      <a class="version-btn pm-btn neutral" id="versionScopeEnvLink" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}">返回环境详情</a>
-    </div>
+  <div class="version-scope-actions version-scope-actions--inline" id="versionScopeBanner">
+    <a class="version-btn pm-btn neutral" href="/admin/projects">返回项目列表</a>
   </div>
   <div id="versionPlatformTabs" class="version-platform-tabs is-hidden" role="tablist" aria-label="平台"></div>
   <section class="version-panel pm-table-panel">
     <div class="version-toolbar pm-filter-bar">
       <label class="version-search pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="versionSearch" type="search" placeholder="搜索版本号 / VersionCode"></label>
-      <select id="versionChannel" aria-label="渠道" disabled></select>
+      <select id="versionEnv" aria-label="环境"><option value="">全部环境</option><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select>
+      <select id="versionChannel" aria-label="渠道"><option value="">全部渠道</option></select>
       <select id="versionStatus"><option value="">全部状态</option><option value="active">有效</option><option value="testing">测试中</option><option value="draft">草稿</option><option value="disabled">失效</option><option value="archived">归档</option></select>
       <select id="versionArtifactStatus"><option value="">全部产物</option><option value="ready">产物完整</option><option value="pending">产物缺失</option></select>
       <button id="btnResetVersionFilters" class="version-btn pm-btn" type="button">重置</button>
@@ -68,7 +63,7 @@
 </div>
 <div id="versionDialog" class="version-dialog pm-modal-root is-hidden" aria-hidden="true">
   <form id="versionForm" class="version-dialog-card pm-modal pm-modal--720">
-    <div class="version-dialog-head pm-modal-head"><div><h2>新建 VersionCode</h2><p id="versionDialogHint">选择已有版本组后创建精确构建号。</p></div><button id="btnCloseVersionDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
+    <div class="version-dialog-head pm-modal-head"><div><h2>创建版本</h2><p id="versionDialogHint">选择环境、渠道与平台，创建 VersionCode 并进入发版编辑。</p></div><button id="btnCloseVersionDialog" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button></div>
     <div id="versionFormScope" class="version-form-scope is-hidden"><span>创建范围</span><strong id="versionFormScopeText"></strong></div>
     <div class="version-form-grid pm-modal-body">
       <label><span>版本组</span><select name="version_name" id="versionNameSelect" required></select></label>
@@ -79,9 +74,61 @@
       <label><span>状态</span><select name="version_status"><option value="draft">草稿</option><option value="testing">测试中</option><option value="active">有效</option></select></label>
       <label class="wide"><span>说明</span><textarea name="notes" rows="3" placeholder="本次 VersionCode 的变更说明"></textarea></label>
     </div>
-    <div class="version-dialog-actions pm-modal-foot"><button id="btnCancelVersionDialog" class="version-btn pm-btn" type="button">取消</button><button id="btnSubmitVersionCode" class="version-btn pm-btn pm-btn--primary" type="submit">创建 VersionCode</button></div>
+    <div class="version-dialog-actions pm-modal-foot"><button id="btnCancelVersionDialog" class="version-btn pm-btn" type="button">取消</button><button id="btnSubmitVersionCode" class="version-btn pm-btn pm-btn--primary" type="submit">创建并编辑发版</button></div>
   </form>
 </div>
-<input type="hidden" id="versionEnv" value="{{ env_key }}">
-<script src="/static/delivery_scope.js?v=20260708-versions-v21"></script>
-<script src="/static/project_versions_workspace.js?v=20260708-versions-v21"></script>
+<input type="hidden" id="versionEnvHidden" value="{{ env_key }}">
+<div id="versionReleaseModal" class="version-dialog pm-modal-root is-hidden" aria-hidden="true">
+  <form id="versionReleaseForm" class="version-dialog-card pm-modal pm-modal--960">
+    <div class="version-dialog-head pm-modal-head">
+      <div><h2 id="versionReleaseTitle">发版编辑</h2><p id="versionReleaseSubtitle"></p></div>
+      <button type="button" id="btnCloseVersionReleaseModal" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+    </div>
+    <div class="version-release-tabs" role="tablist">
+      <button type="button" class="is-active" data-release-tab="meta">发版信息</button>
+      <button type="button" data-release-tab="announce">公告</button>
+      <button type="button" data-release-tab="strategy">策略</button>
+      <button type="button" data-release-tab="server">服务端</button>
+    </div>
+    <div class="version-form-grid pm-modal-body">
+      <div class="version-release-pane is-active" data-release-pane="meta">
+        <label><span>发版类型</span><select name="release_reason_type"><option value="regular">常规发版</option><option value="hotfix">热修复</option><option value="rollback">回滚</option><option value="emergency">紧急发版</option></select></label>
+        <label><span>负责人</span><input name="owner" required></label>
+        <label><span>发布窗口</span><input name="release_window" placeholder="staging+ 建议填写"></label>
+        <label class="wide"><span>对内说明</span><textarea name="release_description" rows="2"></textarea></label>
+        <label class="wide"><span>发布原因</span><textarea name="reason" rows="2" required></textarea></label>
+      </div>
+      <div class="version-release-pane" data-release-pane="announce">
+        <label class="wide"><span>公告标题</span><input name="announcement_title"></label>
+        <label class="wide"><span>公告正文</span><textarea name="announcement_body" rows="4"></textarea></label>
+        <label><span>生效时间</span><input name="announcement_effective_at" type="datetime-local"></label>
+        <label class="wide checkbox-row"><input type="checkbox" name="sync_announcement" value="1"><span>发布时同步 GM 公告</span></label>
+      </div>
+      <div class="version-release-pane" data-release-pane="strategy">
+        <label><span>发布策略</span><select name="release_strategy"><option value="full">全量</option><option value="gray">灰度</option></select></label>
+        <label><span>灰度比例 %</span><input name="gray_ratio" type="number" min="1" max="100"></label>
+        <label class="wide"><span>验证计划</span><textarea name="validation_plan" rows="3"></textarea></label>
+        <label class="wide"><span>回滚计划</span><textarea name="rollback_plan" rows="3"></textarea></label>
+      </div>
+      <div class="version-release-pane" data-release-pane="server">
+        <label><span>目标拓扑</span><input name="target_topology_id"></label>
+        <label><span>最低服务端版本</span><input name="min_server_version"></label>
+        <label class="wide"><span>维护说明</span><input name="server_maintenance_message" placeholder="服务器暂停时展示给玩家的说明"></label>
+        <label class="wide checkbox-row"><input type="checkbox" name="deploy_server_with_client" value="1"><span>与客户端同批发布</span></label>
+      </div>
+    </div>
+    <div class="version-dialog-actions pm-modal-foot version-release-foot">
+      <span id="versionReleaseStatus" class="version-release-status"></span>
+      <button type="button" class="version-btn pm-btn" id="btnReleaseSave">保存</button>
+      <button type="button" class="version-btn pm-btn" id="btnReleaseBuild">构建</button>
+      <button type="button" class="version-btn pm-btn" id="btnReleasePrecheck">预检</button>
+      <button type="button" class="version-btn pm-btn" id="btnReleaseAnnounce">发布公告</button>
+      <button type="button" class="version-btn pm-btn" id="btnReleaseServerPause">服务器暂停</button>
+      <button type="button" class="version-btn pm-btn pm-btn--primary" id="btnReleasePublish">发布到线上</button>
+      <button type="button" class="version-btn pm-btn warn" id="btnReleaseRollback">回滚</button>
+    </div>
+  </form>
+</div>
+<script src="/static/delivery_scope.js?v=20260731-versions-hub-v1"></script>
+<script src="/static/project_version_release_editor.js?v=20260731-versions-hub-v1"></script>
+<script src="/static/project_versions_workspace.js?v=20260731-versions-hub-v1"></script>

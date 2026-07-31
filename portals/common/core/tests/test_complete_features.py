@@ -55,14 +55,14 @@ class TestGrayRolloutScheduler(unittest.TestCase):
 
 class TestExpandGrayHold(unittest.TestCase):
     def test_manual_expand_rejected_on_hold(self):
-        from services.release.order_publish_flow import expand_gray_rollout
+        from services.release.order_publish_lifecycle import expand_gray_rollout
 
         order = {
             "status": "published",
             "bundle_id": "bundle-1",
             "payload": {"gray_success_action": "hold"},
         }
-        with patch("services.release.order_publish_flow._order_crud") as mock_crud:
+        with patch("services.release.order_publish_lifecycle._order_crud") as mock_crud:
             mock_crud.return_value.get_release_order.return_value = order
             with self.assertRaises(ValueError) as ctx:
                 expand_gray_rollout("Demo", "ro-1", "tester")

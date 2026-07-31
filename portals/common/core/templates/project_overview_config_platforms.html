@@ -1,5 +1,5 @@
 <section class="p02-panel channel-panel">
-  <div class="p02-panel-head"><h2>项目平台白名单</h2><span>Android / iOS / Windows 等</span></div>
+  <div class="p02-panel-head"><h2>项目平台白名单</h2></div>
   <div id="projectPlatformList" class="channel-list"></div>
   <div class="channel-add-row">
     <select id="projectPlatformAddSelect"><option value="">选择要添加的平台</option>{% for row in platform_catalog %}{% if row.platform_id not in assigned_platform_ids %}<option value="{{ row.platform_id }}">{{ row.platform_name }} ({{ row.platform_id }})</option>{% endif %}{% endfor %}</select>

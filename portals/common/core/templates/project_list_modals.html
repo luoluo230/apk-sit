@@ -3,7 +3,6 @@
     <div class="p01-modal-head">
       <div class="p01-modal-head__copy">
         <h3 id="createProjectTitle">创建项目</h3>
-        <p>填写基础信息与成员，创建后进入项目总览管理交付。</p>
       </div>
       <button type="button" class="p01-modal-close" data-close-modal="createProjectModal" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
     </div>
@@ -21,7 +20,6 @@
               <div class="p01-icon-upload__body">
                 <label class="pm-btn pm-btn--compact p01-icon-upload__pick" for="newProjectIconFile">选择图片</label>
                 <input type="file" id="newProjectIconFile" accept="image/*" hidden>
-                <span class="p01-icon-upload__hint">PNG / JPG，建议 256×256</span>
               </div>
             </div>
             <input type="hidden" id="newProjectIcon" value="">
@@ -50,7 +48,6 @@
           <ul id="newParticipantsList" class="p01-participant-list"></ul>
         </div>
       </section>
-      <p class="p01-modal-tip">构建集成可在创建后通过「编辑项目 → 高级 · 构建集成」，或「版本代码 → 配置管线」完成。</p>
       <div id="addProjectFeedback" class="p01-feedback" aria-live="polite"></div>
     </form>
     <footer class="p01-modal-foot">
@@ -63,7 +60,7 @@
 <div id="channelManageModal" class="p01-modal-root delivery-dialog is-hidden" role="dialog" aria-modal="true">
   <div class="p01-modal-card">
     <div class="p01-modal-head">
-      <div class="p01-modal-head__copy"><h3>渠道管理</h3><p>维护版本渠道，用于版本管理与下载中心筛选。</p></div>
+      <div class="p01-modal-head__copy"><h3>渠道管理</h3></div>
       <button type="button" class="p01-modal-close" data-close-modal="channelManageModal" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
     </div>
     <div class="p01-modal-scroll">
@@ -133,7 +130,6 @@
               <div class="p01-icon-upload__body">
                 <label class="pm-btn pm-btn--compact p01-icon-upload__pick" for="editProjectIconFile">更换图片</label>
                 <input type="file" id="editProjectIconFile" accept="image/*" hidden>
-                <span class="p01-icon-upload__hint">PNG / JPG，建议 256×256</span>
               </div>
             </div>
             <input type="hidden" id="editProjectIcon" value="">

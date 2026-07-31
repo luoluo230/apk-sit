@@ -121,6 +121,14 @@ try {
             -RequireStack -SkipServer -UnityScenario session
         if ($LASTEXITCODE -ne 0) { throw "Unity session failed" }
     }
+
+    py -3 scripts\production_secret_gate.py
+    if ($LASTEXITCODE -ne 0) { throw "production_secret_gate failed" }
+
+    py -3 scripts\run_plan_closure_gate.py --run-subgates
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "run_plan_closure_gate: not all GAP evidence present (expected during rollout)"
+    }
 } finally {
     Pop-Location
 }

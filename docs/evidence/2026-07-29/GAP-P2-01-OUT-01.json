@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P2-01-OUT-01",
+  "status": "DONE",
+  "timestamp": "2026-07-29T14:49:14.886760+08:00",
+  "command": "gameserver_agent_exec + complete-server-deploy",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/GAP-P2-01-OUT-01.json"
+  ],
+  "notes": ""
+}

@@ -26,12 +26,7 @@
       </div>
     </section>
 
-    <section class="topology-rule-toolbar">
-      <div class="topology-rule-banner">
-        <span class="rule-dot"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16h.01"/></svg></span>
-        <span class="topology-rule-text">规则提示：节点右侧 + 可添加合法下游；选中节点或连线后可删除；系统会保护关键链路。</span>
-      </div>
-      <div class="topology-canvas-toolbar">
+    <section class="topology-canvas-toolbar topology-canvas-toolbar--solo">
         <a class="btn" href="/admin/projects/{{ project_id }}/ops?env_key={{ env_key }}">返回总览</a>
         <button id="toolUndo" class="btn tw-hidden" type="button">撤销</button>
         <button id="toolRedo" class="btn tw-hidden" type="button">重做</button>
@@ -40,7 +35,6 @@
         <button id="btnValidateTopology" class="btn" type="button">检查连接</button>
         <button id="btnTopologyMore" class="btn" type="button">更多操作</button>
         <button id="toolSave" class="btn primary" type="button">保存拓扑</button>
-      </div>
     </section>
 
     <section class="topology-workspace-shell">
@@ -94,7 +88,7 @@
               <option value="run">运行模式</option>
               <option value="test">测试模式</option>
             </select>
-            <div id="modeHint" class="topology-mode-hint">当前处于编辑模式，可调整拓扑结构、节点属性和绑定信息。</div>
+
             <div class="topology-inline-actions vertical" id="runBar" style="display:none">
               <button id="btnRunStartAll" class="btn btn-outline-primary" type="button">一键启动全流程</button>
               <button id="btnRunStopAll" class="btn btn-outline-danger" type="button">一键停止全流程</button>
@@ -118,7 +112,6 @@
                 <button id="btnTestBusiness" class="btn" type="button"><svg class="btn-ico" viewBox="0 0 24 24"><path d="M4 6h16v2H4V6zm0 5h10v2H4v-2zm0 5h16v2H4v-2z"/></svg>业务测试</button>
               </div>
             </div>
-            <div class="topology-mode-footer-tip"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16h.01"/></svg>提示：测试将遵循节点依赖顺序逐级执行。</div>
           </div>
 
           <!-- 节点 -->

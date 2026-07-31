@@ -2,7 +2,7 @@
   <div class="pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_project_setting.svg" alt=""></span>
-      <div><h1>项目设置</h1><p>基础信息、环境与渠道、构建集成与成员权限。</p></div>
+      <div><h1>项目设置</h1></div>
     </div>
     <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
   </div>
@@ -15,7 +15,6 @@
   <div class="pm-placeholder-page" style="margin-top:16px" {% if request.args.get('tab') == 'members' %}hidden{% endif %}>
     <img src="/static/project_ui/svg/nav_project_setting.svg" alt="">
     <h2>设置项已分散在项目总览</h2>
-    <p>环境、渠道、平台在总览 Tab 中维护；成员邀请请进入「成员与权限」。</p>
     <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/settings?tab=members">成员与权限</a>
   </div>
   <section id="projectSettingsMembers" class="pm-rail-panel" style="margin-top:16px" {% if request.args.get('tab') != 'members' %}hidden{% endif %}>

@@ -179,9 +179,11 @@
 
 ---
 
-## 7. 完成定义（DoD）
+## 7. 完成定义（DoD）— 唯一有效段
 
-- [ ] helpers.py ≤450 行
-- [ ] 6 个子模块存在且职责文档化（模块 docstring）
-- [ ] W-P1-1 关闭
-- [ ] P1-04 / P2-01 可依赖 `runtime_orchestrator` 公开 API
+- [x] helpers.py ≤450 行（当前 156）
+- [x] 6 个子模块存在且职责文档化（模块 docstring）
+- [x] W-P1-1 关闭（evidence + entrypoint_map）
+- [x] P1-04 / P2-01 可依赖 `runtime_orchestrator` 公开 API
+
+> 原 §7 重复 DoD 已删除（2026-07-29 closure pass）。

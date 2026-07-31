@@ -171,10 +171,6 @@
 
   const applyScopeUi = () => {
     if (!isScoped) return;
-    const subtitle = document.getElementById('buildPageSubtitle');
-    if (subtitle) subtitle.textContent = '仅展示当前交付范围内的构建记录，不混入其他环境或平台。';
-    const panelDesc = document.querySelector('.build-table-panel .build-panel-title p');
-    if (panelDesc) panelDesc.textContent = '点击记录查看详情，成功构建可在操作列下载产物。';
     if (scopePlatform && ui.platform) {
       const wanted = scopePlatform === 'android' ? 'Android' : scopePlatform === 'ios' ? 'iOS' : scopePlatform;
       ui.platform.value = wanted;

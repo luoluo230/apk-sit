@@ -99,19 +99,13 @@
       version: base + "/versions",
       pending: "/admin/approval?project_id=" + enc,
       blockers: base + "/overview?tab=channels",
-      releaseOrders: base + "/release-orders",
+      releaseHub: base + "/versions",
     };
   }
 
   function releaseLink(p, archived) {
     if (archived) return "";
-    var links = projectCardLinks(p.id);
-    var rel = p.latest_release || null;
-    if (rel && rel.release_order_id) {
-      return links.releaseOrders + "/" + encodeURIComponent(rel.release_order_id) + "/edit";
-    }
-    if (rel && rel.version_name) return links.releaseOrders;
-    return "";
+    return projectCardLinks(p.id).releaseHub;
   }
 
   function setMetricHref(node, key, href, archived) {
@@ -218,7 +212,7 @@
     }
     var rel = p.latest_release || null;
     if (!rel || !rel.version_name) {
-      return "<span>最新发布</span><span class='p01-hint'>暂无记录</span>";
+      return "<span>版本管理</span><span class='p01-hint'>进入发版</span>";
     }
     var relInfo = DL.releaseStatus
       ? DL.releaseStatus(rel.status, rel.status_label)
@@ -227,7 +221,7 @@
       ? DL.formatReleaseDateTime(rel.updated_at)
       : String(rel.updated_at || "").slice(0, 16);
     return (
-      "<span>最新发布</span><b>" +
+      "<span>版本管理</span><b>" +
       escapeHtml(rel.version_name) +
       "</b><time>" +
       escapeHtml(when) +

@@ -303,23 +303,103 @@ def _sqlite_save_agent_registry_v2(data: Dict[str, Any]) -> None:
             )
 
 
+def _agent_job_action_type(job: Dict[str, Any]) -> str:
+    action = str(job.get("action_type") or job.get("action") or "").strip()
+    if action:
+        return action
+    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    return str(payload.get("command") or "").strip()
+
+
+def _agent_job_payload(job: Dict[str, Any]) -> Dict[str, Any]:
+    payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
+    if payload:
+        return payload
+    legacy = job.get("params") if isinstance(job.get("params"), dict) else {}
+    nested = legacy.get("payload") if isinstance(legacy.get("payload"), dict) else {}
+    return nested if nested else legacy
+
+
+def _normalize_agent_job_for_sqlite(job: Dict[str, Any]) -> Dict[str, Any]:
+    item = dict(job)
+    action_type = _agent_job_action_type(item)
+    payload = _agent_job_payload(item)
+    node_id = str(item.get("node_id") or item.get("target") or "").strip()
+    project_id = str(
+        item.get("project_id")
+        or payload.get("project_id")
+        or ""
+    ).strip()
+    item["action_type"] = action_type
+    item["action"] = action_type
+    item["payload"] = payload
+    if node_id:
+        item["node_id"] = node_id
+    if project_id:
+        item["project_id"] = project_id
+    if not str(item.get("target") or "").strip() and node_id:
+        item["target"] = node_id
+    return item
+
+
+def _normalize_agent_job_from_sqlite(row: Dict[str, Any]) -> Dict[str, Any]:
+    raw_params = row.get("params")
+    if not isinstance(raw_params, dict):
+        try:
+            raw_params = json.loads(raw_params or "{}")
+        except (json.JSONDecodeError, TypeError):
+            raw_params = {}
+    job = dict(raw_params) if isinstance(raw_params, dict) and raw_params.get("job_id") else {}
+    for key in (
+        "job_id",
+        "agent_id",
+        "project_id",
+        "target",
+        "status",
+        "error",
+        "retries",
+        "created_at",
+        "updated_at",
+        "completed_at",
+    ):
+        val = row.get(key)
+        if val not in (None, ""):
+            job[key] = val
+    raw_result = row.get("result")
+    if isinstance(raw_result, dict):
+        job["result"] = raw_result
+    else:
+        try:
+            job["result"] = json.loads(raw_result or "{}")
+        except (json.JSONDecodeError, TypeError):
+            job["result"] = {}
+    action_type = str(
+        job.get("action_type")
+        or job.get("action")
+        or row.get("action")
+        or ""
+    ).strip()
+    payload = _agent_job_payload(job)
+    if not action_type:
+        action_type = str(payload.get("command") or "").strip()
+    job["action_type"] = action_type
+    job["action"] = action_type
+    job["payload"] = payload
+    if not str(job.get("node_id") or "").strip():
+        job["node_id"] = str(job.get("target") or row.get("target") or "").strip()
+    if not str(job.get("project_id") or "").strip():
+        job["project_id"] = str(payload.get("project_id") or row.get("project_id") or "").strip()
+    return job
+
+
 def _sqlite_load_agent_jobs() -> List[Dict[str, Any]]:
     from models.db import init_db, _db_lock, _get_conn
     init_db()
     with _db_lock:
         rows = _get_conn().execute(
-            "SELECT * FROM ops_agent_jobs ORDER BY created_at DESC LIMIT 1200"
+            "SELECT * FROM ops_agent_jobs ORDER BY created_at ASC LIMIT 1200"
         ).fetchall()
-    result = []
-    for r in rows:
-        d = dict(r)
-        for k in ("params", "result"):
-            try:
-                d[k] = json.loads(d.get(k) or "{}")
-            except (json.JSONDecodeError, TypeError):
-                d[k] = {}
-        result.append(d)
-    return result
+    return [_normalize_agent_job_from_sqlite(dict(r)) for r in rows]
 
 
 def _sqlite_save_agent_jobs(rows: List[Dict[str, Any]]) -> None:
@@ -327,29 +407,39 @@ def _sqlite_save_agent_jobs(rows: List[Dict[str, Any]]) -> None:
     init_db()
     now = _now_iso()
     with get_cursor() as cur:
-        for j in (rows if isinstance(rows, list) else []):
-            if not isinstance(j, dict):
+        for raw in (rows if isinstance(rows, list) else []):
+            if not isinstance(raw, dict):
                 continue
+            j = _normalize_agent_job_for_sqlite(raw)
             jid = str(j.get("job_id", "")).strip()
             if not jid:
                 continue
+            payload = j.get("payload") if isinstance(j.get("payload"), dict) else {}
             cur.execute(
                 """INSERT INTO ops_agent_jobs (job_id, agent_id, project_id, action,
                    target, status, params, result, error, retries,
                    created_at, updated_at, completed_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(job_id) DO UPDATE SET
-                     status=excluded.status, result=excluded.result,
-                     error=excluded.error, retries=excluded.retries,
-                     updated_at=excluded.updated_at, completed_at=excluded.completed_at""",
+                     agent_id=excluded.agent_id,
+                     project_id=excluded.project_id,
+                     action=excluded.action,
+                     target=excluded.target,
+                     status=excluded.status,
+                     params=excluded.params,
+                     result=excluded.result,
+                     error=excluded.error,
+                     retries=excluded.retries,
+                     updated_at=excluded.updated_at,
+                     completed_at=excluded.completed_at""",
                 (
                     jid,
-                    str(j.get("agent_id", "")),
-                    str(j.get("project_id", "")),
-                    str(j.get("action", "")),
-                    str(j.get("target", "")),
+                    str(j.get("agent_id") or j.get("lease", {}).get("agent_id") or ""),
+                    str(j.get("project_id") or payload.get("project_id") or ""),
+                    _agent_job_action_type(j),
+                    str(j.get("target") or j.get("node_id") or ""),
                     str(j.get("status", "PENDING")),
-                    json.dumps(j.get("params", {}), ensure_ascii=False),
+                    json.dumps(j, ensure_ascii=False),
                     json.dumps(j.get("result", {}), ensure_ascii=False),
                     str(j.get("error", "")),
                     int(j.get("retries", 0) or 0),

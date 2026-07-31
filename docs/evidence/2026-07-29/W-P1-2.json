@@ -1,0 +1,11 @@
+{
+  "gap_id": "W-P1-2",
+  "status": "DONE",
+  "timestamp": "2026-07-29T12:06:22.453367+08:00",
+  "command": "version_group_repo + pipeline_resolver extracted",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-07-29/W-P1-2.json"
+  ],
+  "notes": ""
+}

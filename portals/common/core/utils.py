@@ -29,7 +29,7 @@ def _sqlite_json_module():
     if _sqlite_json_store is not None:
         return _sqlite_json_store
     import importlib.util
-    db_path = os.path.join(os.path.dirname(__file__), 'models', 'db.py')
+    db_path = os.path.join(os.path.dirname(__file__), 'models', 'db_sqlite.py')
     spec = importlib.util.spec_from_file_location('_apk_site_sqlite_json', db_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
