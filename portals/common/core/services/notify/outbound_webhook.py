@@ -21,6 +21,8 @@ EVENT_PUBLISH_FAILED = "publish_failed"
 EVENT_BOOTSTRAP_SMOKE_FAILED = "bootstrap_smoke_failed"
 EVENT_APPROVAL_SLA_TIMEOUT = "approval_sla_timeout"
 EVENT_AUTO_ROLLBACK_EXECUTED = "auto_rollback_executed"
+EVENT_SERVER_DEPLOY_COMPLETED = "server_deploy_completed"
+EVENT_SERVER_DEPLOY_FAILED = "server_deploy_failed"
 
 INCIDENT_EVENTS = {
     EVENT_VERIFY_FAILED,
@@ -28,6 +30,12 @@ INCIDENT_EVENTS = {
     EVENT_BOOTSTRAP_SMOKE_FAILED,
     EVENT_APPROVAL_SLA_TIMEOUT,
     EVENT_AUTO_ROLLBACK_EXECUTED,
+    EVENT_SERVER_DEPLOY_FAILED,
+}
+
+SERVER_DEPLOY_EVENTS = {
+    EVENT_SERVER_DEPLOY_COMPLETED,
+    EVENT_SERVER_DEPLOY_FAILED,
 }
 
 
@@ -101,7 +109,7 @@ def notify_release_event(
             fire_webhook(event_type, fields or {})
         except Exception:
             pass
-        if event_type in INCIDENT_EVENTS or event_type == "release_awaiting_approval":
+        if event_type in INCIDENT_EVENTS or event_type in SERVER_DEPLOY_EVENTS or event_type == "release_awaiting_approval":
             heading = title or _default_title(event_type)
             body = summary or _default_summary(event_type, fields or {})
             try:
@@ -122,6 +130,8 @@ def _default_title(event_type: str) -> str:
         EVENT_BOOTSTRAP_SMOKE_FAILED: "Bootstrap Smoke 失败",
         EVENT_APPROVAL_SLA_TIMEOUT: "审批 SLA 超时",
         EVENT_AUTO_ROLLBACK_EXECUTED: "自动回滚已执行",
+        EVENT_SERVER_DEPLOY_COMPLETED: "服务端部署完成",
+        EVENT_SERVER_DEPLOY_FAILED: "服务端部署失败",
         "release_awaiting_approval": "发布单待审批",
     }
     return mapping.get(event_type, "发布通知")
@@ -140,4 +150,8 @@ def _default_summary(event_type: str, fields: Dict[str, Any]) -> str:
         lines.append(f"error={fields.get('error')}")
     if fields.get("rollback_target_order"):
         lines.append(f"rollback_target={fields.get('rollback_target_order')}")
+    if fields.get("server_release_id"):
+        lines.append(f"server_release={fields.get('server_release_id')}")
+    if fields.get("linked_release_order_id"):
+        lines.append(f"linked_order={fields.get('linked_release_order_id')}")
     return "\n".join(lines)

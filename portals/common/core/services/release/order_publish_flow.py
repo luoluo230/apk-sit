@@ -709,10 +709,33 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
             published = _order_crud().get_release_order(project_id, order_id)
             if isinstance(published.get("payload"), dict):
                 published["payload"]["server_coordinated_deploy"] = deploy_result
+            try:
+                from services.release.server_deploy_notify import notify_coordinated_server_deploy
+
+                notify_coordinated_server_deploy(
+                    project_id,
+                    order_id,
+                    deploy_result,
+                    actor=actor,
+                )
+            except Exception:
+                pass
         except ValueError as exc:
             now = _now_iso()
             err_payload = dict(plan)
             err_payload["server_coordinated_deploy"] = {"ok": False, "error": str(exc)}
+            try:
+                from services.release.server_deploy_notify import notify_coordinated_server_deploy
+
+                notify_coordinated_server_deploy(
+                    project_id,
+                    order_id,
+                    err_payload["server_coordinated_deploy"],
+                    actor=actor,
+                    error=str(exc),
+                )
+            except Exception:
+                pass
             init_db()
             with get_cursor() as cur:
                 cur.execute(

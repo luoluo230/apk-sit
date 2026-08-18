@@ -100,6 +100,9 @@ jobs:
       - name: unity contract gate
         run: py -3 scripts/unity_contract_gate.py
 
+      - name: bootstrap hotupdate regression gate
+        run: py -3 scripts/bootstrap_hotupdate_regression_gate.py
+
       - name: framework alignment gate
         run: py -3 scripts/framework_alignment_gate.py
 

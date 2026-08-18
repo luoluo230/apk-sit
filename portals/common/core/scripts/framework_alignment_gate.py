@@ -25,6 +25,8 @@ def main() -> int:
             "tests/test_batch_rollback.py",
             "tests/test_jenkins_build_linkage.py",
             "tests/test_coordinated_publish_approval_integration.py",
+            "tests/test_bootstrap_hotupdate_regression.py",
+            "tests/test_server_deploy_notify.py",
             "tests/test_server_framework_gating.py",
             "tests/test_unity_contract_bridge.py",
             "tests/test_baas_public_api.py",

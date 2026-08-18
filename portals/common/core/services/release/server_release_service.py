@@ -142,7 +142,22 @@ def transition_server_release(
         payload=payload,
         updated_at=_now_iso(),
     )
-    return updated or row
+    result = updated or row
+    if target in {"deployed", "failed"}:
+        try:
+            from services.release.server_deploy_notify import notify_server_deploy_transition
+
+            notify_server_deploy_transition(
+                project_id,
+                result,
+                target,
+                actor,
+                detail=detail if isinstance(detail, dict) else {},
+                error=str((detail or {}).get("error") or "") if isinstance(detail, dict) else "",
+            )
+        except Exception:
+            pass
+    return result
 
 
 def deploy_server_release(project_id: str, server_release_id: str, actor: str) -> Dict[str, Any]:

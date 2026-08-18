@@ -124,6 +124,15 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
     if ok:
         smoke_report = run_bootstrap_smoke_for_order(project_id, order_id)
         smoke_ok = bool(smoke_report.get("ok"))
+        try:
+            from services.release.bootstrap_hotupdate_regression import run_hotupdate_regression_for_order
+
+            regression = run_hotupdate_regression_for_order(project_id, order_id)
+            smoke_report["hotupdate_regression"] = regression
+            smoke_ok = smoke_ok and bool(regression.get("ok"))
+        except Exception as exc:
+            smoke_report["hotupdate_regression"] = {"ok": False, "error": str(exc)}
+            smoke_ok = False
     from services.release.validation_plan_runner import run_validation_plan
 
     validation = run_validation_plan({**order, "project_id": project_id, "release_order_id": order_id}, phase="verify")
