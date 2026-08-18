@@ -14,9 +14,13 @@
   var coordinatedList = document.getElementById("rhCoordinatedList");
   var pendingList = document.getElementById("rhPendingList");
   var successRate = document.getElementById("rhSuccessRate");
+  var serverSuccessRate = document.getElementById("rhServerSuccessRate");
+  var mttrEl = document.getElementById("rhMttr");
   var verifiedEl = document.getElementById("rhVerified");
   var verifyFailedEl = document.getElementById("rhVerifyFailed");
   var publishFailedEl = document.getElementById("rhPublishFailed");
+  var healthBreakdown = document.getElementById("rhHealthBreakdown");
+  var healthTrend = document.getElementById("rhHealthTrend");
   var prodStartBtn = document.getElementById("rhProdStartBtn");
 
   function esc(v) {
@@ -117,12 +121,71 @@
 
   function renderHealth(health) {
     health = health || {};
+    var client = health.client || health;
+    var server = health.server || {};
     if (successRate) {
-      successRate.textContent = health.success_rate_pct != null ? health.success_rate_pct + "%" : "—";
+      var clientRate = client.success_rate_pct != null ? client.success_rate_pct : health.success_rate_pct;
+      successRate.textContent = clientRate != null ? clientRate + "%" : "—";
     }
-    if (verifiedEl) verifiedEl.textContent = String(health.verified_count ?? "—");
-    if (verifyFailedEl) verifyFailedEl.textContent = String(health.verify_failed_count ?? "—");
-    if (publishFailedEl) publishFailedEl.textContent = String(health.publish_failed_count ?? "—");
+    if (serverSuccessRate) {
+      serverSuccessRate.textContent =
+        server.success_rate_pct != null ? server.success_rate_pct + "%" : "—";
+    }
+    if (mttrEl) {
+      mttrEl.textContent = health.mttr_minutes != null ? health.mttr_minutes + " 分" : "—";
+    }
+    if (verifiedEl) verifiedEl.textContent = String(client.verified_count ?? health.verified_count ?? "—");
+    if (verifyFailedEl) {
+      verifyFailedEl.textContent = String(client.verify_failed_count ?? health.verify_failed_count ?? "—");
+    }
+    if (publishFailedEl) {
+      publishFailedEl.textContent = String(client.publish_failed_count ?? health.publish_failed_count ?? "—");
+    }
+
+    if (healthBreakdown) {
+      var envRows = health.by_env || [];
+      var platRows = health.by_platform || [];
+      if (!envRows.length && !platRows.length) {
+        healthBreakdown.innerHTML = "";
+      } else {
+        var envHtml = envRows.length
+          ? "<div class=\"rh-health-table-wrap\"><h3>按环境</h3><table class=\"rh-health-table\"><thead><tr><th>环境</th><th>客户端</th><th>服务端</th></tr></thead><tbody>" +
+            envRows.map(function (row) {
+              return "<tr><td>" + esc(row.env_key) + "</td><td>" +
+                esc(row.client_success_rate_pct != null ? row.client_success_rate_pct + "%" : "—") +
+                "</td><td>" + esc(row.server_success_rate_pct != null ? row.server_success_rate_pct + "%" : "—") + "</td></tr>";
+            }).join("") + "</tbody></table></div>"
+          : "";
+        var platHtml = platRows.length
+          ? "<div class=\"rh-health-table-wrap\"><h3>按平台</h3><table class=\"rh-health-table\"><thead><tr><th>平台</th><th>客户端成功率</th><th>失败</th></tr></thead><tbody>" +
+            platRows.map(function (row) {
+              return "<tr><td>" + esc(row.platform) + "</td><td>" +
+                esc(row.client_success_rate_pct != null ? row.client_success_rate_pct + "%" : "—") +
+                "</td><td>" + esc(row.client_failed_count ?? 0) + "</td></tr>";
+            }).join("") + "</tbody></table></div>"
+          : "";
+        healthBreakdown.innerHTML = envHtml + platHtml;
+      }
+    }
+
+    if (healthTrend) {
+      var trend = health.daily_trend || [];
+      if (!trend.length) {
+        healthTrend.innerHTML = "";
+      } else {
+        healthTrend.innerHTML =
+          "<h3>日趋势</h3><div class=\"rh-trend-bars\">" +
+          trend.map(function (row) {
+            var total = (row.client_verified || 0) + (row.client_failed || 0) + (row.server_deployed || 0) + (row.server_failed || 0);
+            var ok = (row.client_verified || 0) + (row.server_deployed || 0);
+            var pct = total ? Math.round((ok / total) * 100) : 0;
+            return "<div class=\"rh-trend-bar\" title=\"" + esc(row.date) + " 成功 " + ok + " / " + total + "\">" +
+              "<span class=\"rh-trend-bar__fill\" style=\"height:" + Math.max(8, pct) + "%\"></span>" +
+              "<small>" + esc((row.date || "").slice(5)) + "</small></div>";
+          }).join("") +
+          "</div>";
+      }
+    }
   }
 
   function bindClientPromotionButtons() {

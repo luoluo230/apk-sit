@@ -17,7 +17,19 @@
 .rh-card img{width:24px;height:24px;flex-shrink:0}
 .rh-card strong{display:block;font-size:14px;color:#1d2939;margin-bottom:4px}
 .rh-card span{display:block;font-size:12px;color:#667085;line-height:1.4}
-.rh-kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.rh-panel--health{grid-column:1/-1}
+.rh-kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.rh-health-breakdown{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.rh-health-breakdown h3{margin:0 0 8px;font-size:13px;font-weight:600;color:#475467}
+.rh-health-table{width:100%;border-collapse:collapse;font-size:12px}
+.rh-health-table th,.rh-health-table td{padding:6px 8px;border-bottom:1px solid #eaecf0;text-align:left;color:#475467}
+.rh-health-table th{color:#667085;font-weight:500}
+.rh-health-trend{margin-top:14px}
+.rh-health-trend h3{margin:0 0 8px;font-size:13px;font-weight:600;color:#475467}
+.rh-trend-bars{display:flex;align-items:flex-end;gap:8px;min-height:72px;padding:8px 0}
+.rh-trend-bar{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:28px}
+.rh-trend-bar__fill{display:block;width:100%;max-width:28px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#84adff 0%,#2970ff 100%)}
+.rh-trend-bar small{font-size:10px;color:#98a2b3}
 .rh-kpi-grid article{padding:12px;border:1px solid #e4e7ec;border-radius:8px;background:#fafcff}
 .rh-kpi-grid span{display:block;font-size:12px;color:#667085;margin-bottom:4px}
 .rh-kpi-grid strong{font-size:20px;color:#1d2939}
@@ -52,4 +64,5 @@
   .rh-grid{grid-template-columns:1fr}
   .rh-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .rh-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rh-health-breakdown{grid-template-columns:1fr}
 }

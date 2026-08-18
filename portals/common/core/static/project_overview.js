@@ -320,13 +320,19 @@
     var listHost = document.getElementById("releaseFailureList");
     if (!summaryHost || !listHost) return;
     var health = (data.kpis && data.kpis.release_health) || {};
-    var verified = health.verified_count != null ? health.verified_count : 0;
-    var verifyFailed = health.verify_failed_count != null ? health.verify_failed_count : 0;
-    var publishFailed = health.publish_failed_count != null ? health.publish_failed_count : 0;
-    var rate = health.success_rate_pct == null ? "—" : String(health.success_rate_pct) + "%";
+    var client = health.client || health;
+    var server = health.server || {};
+    var verified = client.verified_count != null ? client.verified_count : 0;
+    var verifyFailed = client.verify_failed_count != null ? client.verify_failed_count : 0;
+    var publishFailed = client.publish_failed_count != null ? client.publish_failed_count : 0;
+    var clientRate = client.success_rate_pct == null ? "—" : String(client.success_rate_pct) + "%";
+    var serverRate = server.success_rate_pct == null ? "—" : String(server.success_rate_pct) + "%";
+    var mttr = health.mttr_minutes == null ? "—" : String(health.mttr_minutes) + " 分";
     summaryHost.innerHTML =
       '<div class="p02-release-health-grid">' +
-      '<article><span>发布成功率</span><strong>' + esc(rate) + "</strong></article>" +
+      '<article><span>客户端成功率</span><strong>' + esc(clientRate) + "</strong></article>" +
+      '<article><span>服务端成功率</span><strong>' + esc(serverRate) + "</strong></article>" +
+      '<article><span>MTTR</span><strong>' + esc(mttr) + "</strong></article>" +
       '<article><span>验证通过</span><strong>' + esc(String(verified)) + "</strong></article>" +
       '<article><span>验证失败</span><strong>' + esc(String(verifyFailed)) + "</strong></article>" +
       '<article><span>发布失败</span><strong>' + esc(String(publishFailed)) + "</strong></article>" +

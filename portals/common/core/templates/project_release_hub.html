@@ -32,11 +32,15 @@
     <section class="rh-panel rh-panel--health" aria-label="发布健康度">
       <h2>发布健康度 <small>近 7 天</small></h2>
       <div class="rh-kpi-grid" id="rhHealthKpis">
-        <article><span>成功率</span><strong id="rhSuccessRate">—</strong></article>
+        <article><span>客户端成功率</span><strong id="rhSuccessRate">—</strong></article>
+        <article><span>服务端成功率</span><strong id="rhServerSuccessRate">—</strong></article>
+        <article><span>MTTR</span><strong id="rhMttr">—</strong></article>
         <article><span>已验证</span><strong id="rhVerified">—</strong></article>
         <article><span>验证失败</span><strong id="rhVerifyFailed">—</strong></article>
         <article><span>发布失败</span><strong id="rhPublishFailed">—</strong></article>
       </div>
+      <div class="rh-health-breakdown" id="rhHealthBreakdown"></div>
+      <div class="rh-health-trend" id="rhHealthTrend"></div>
     </section>
 
     <section class="rh-panel rh-panel--wizard" aria-label="生产发版向导">
