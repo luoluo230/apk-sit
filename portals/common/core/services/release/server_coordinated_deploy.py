@@ -78,6 +78,10 @@ def maybe_deploy_server_with_client(
 
     if not server_release_id:
         if not server_artifact_id:
+            from services.release.jenkins_build_linkage_service import resolve_server_artifact_for_order
+
+            server_artifact_id = str(resolve_server_artifact_for_order(project_id, order) or "").strip()
+        if not server_artifact_id:
             raise ValueError("与客户端同批发布需要指定 server_release_id 或 server_artifact_id")
         targets = plan_targets or _resolve_topology_target_services(project_id, topo_id, env_key)
         if not targets:

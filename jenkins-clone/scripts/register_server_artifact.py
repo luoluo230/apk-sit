@@ -50,6 +50,14 @@ def _register_http(project_id: str, body: dict, source_path: str) -> dict:
         raise SystemExit("JENKINS_BUILD_WEBHOOK_SECRET required for HTTP registration")
     payload = dict(body)
     payload["project_id"] = project_id
+    extra = dict(body.get("payload") or {})
+    if extra.get("client_build_number"):
+        payload["client_build_number"] = extra.get("client_build_number")
+    if extra.get("client_jenkins_instance_id"):
+        payload["client_jenkins_instance_id"] = extra.get("client_jenkins_instance_id")
+    linked_oid = str(extra.get("linked_release_order_id") or os.environ.get("RELEASE_ORDER_ID", "")).strip()
+    if linked_oid:
+        payload["release_order_id"] = linked_oid
     if source_path and Path(source_path).is_file():
         with open(source_path, "rb") as fh:
             payload["artifact_b64"] = base64.b64encode(fh.read()).decode("ascii")
@@ -98,8 +106,15 @@ def main() -> int:
         "version_label": version_label,
         "protocol_version": protocol_version,
         "checksum": checksum,
-        "build_number": os.environ.get("BUILD_NUMBER", ""),
-        "jenkins_instance_id": os.environ.get("JENKINS_INSTANCE_ID", ""),
+        "payload": {
+            "build_number": os.environ.get("BUILD_NUMBER", ""),
+            "jenkins_instance_id": os.environ.get("JENKINS_INSTANCE_ID", ""),
+            "client_build_number": os.environ.get("CLIENT_BUILD_NUMBER", os.environ.get("BUILD_NUMBER", "")),
+            "client_jenkins_instance_id": os.environ.get(
+                "CLIENT_JENKINS_INSTANCE_ID", os.environ.get("JENKINS_INSTANCE_ID", "")
+            ),
+            "linked_release_order_id": os.environ.get("RELEASE_ORDER_ID", ""),
+        },
     }
     mode = os.environ.get("SERVER_ARTIFACT_REGISTER_MODE", "local").strip().lower()
     if mode == "http":
@@ -113,6 +128,23 @@ def main() -> int:
                 row = _register_http(project_id, body, artifact_file)
             else:
                 raise
+        extra = dict(body.get("payload") or {})
+        cid = str(extra.get("client_jenkins_instance_id") or "").strip()
+        cbn = str(extra.get("client_build_number") or "").strip()
+        if cid and cbn:
+            core = _repo_core()
+            if str(core) not in sys.path:
+                sys.path.insert(0, str(core))
+            from services.release.jenkins_build_linkage_service import link_server_artifact_to_client_build  # noqa: WPS433
+
+            row = link_server_artifact_to_client_build(
+                project_id,
+                str(row.get("artifact_id") or ""),
+                client_instance_id=cid,
+                client_build_number=cbn,
+                release_order_id=str(extra.get("linked_release_order_id") or "").strip(),
+                server_build_number=str(extra.get("build_number") or cbn),
+            )
 
     manifest = {"ok": True, "project_id": project_id, "artifact": row, "local_path": artifact_file}
     print(json.dumps(manifest, ensure_ascii=False))

@@ -157,6 +157,23 @@ def jenkins_server_artifact():
             except OSError:
                 pass
 
+    client_instance_id = str(
+        payload.get("client_jenkins_instance_id") or payload.get("client_instance_id") or ""
+    ).strip()
+    client_build_number = payload.get("client_build_number")
+    release_order_id = str(payload.get("release_order_id") or "").strip()
+    if client_instance_id and client_build_number is not None:
+        from services.release.jenkins_build_linkage_service import link_server_artifact_to_client_build
+
+        row = link_server_artifact_to_client_build(
+            project_id,
+            str(row.get("artifact_id") or ""),
+            client_instance_id=client_instance_id,
+            client_build_number=client_build_number,
+            release_order_id=release_order_id,
+            server_build_number=payload.get("build_number") or client_build_number,
+        )
+
     result: Dict[str, Any] = {"artifact": row}
     topology_id = str(payload.get("topology_id") or "").strip()
     target_services = payload.get("target_services")

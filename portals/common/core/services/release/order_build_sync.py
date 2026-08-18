@@ -385,7 +385,14 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
             (now, project_id, order_id),
         )
         _event(cur, order_id, "build_completed", actor, "building", "artifacts_ready", {"build_number": build_number})
-    return _order_crud().get_release_order(project_id, order_id, include_details=False)
+    updated = _order_crud().get_release_order(project_id, order_id, include_details=False)
+    try:
+        from services.release.jenkins_build_linkage_service import maybe_attach_linked_server_artifact
+
+        maybe_attach_linked_server_artifact(project_id, order_id)
+    except Exception:
+        pass
+    return updated
 
 
 def sync_building_release_orders(project_id: str = "", *, actor: str = "system") -> List[Dict[str, Any]]:

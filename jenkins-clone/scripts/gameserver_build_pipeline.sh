@@ -29,6 +29,9 @@ export PROJECT_ID="${PROJECT_ID:-GomeKu}"
 export SERVER_VERSION_LABEL="${SERVER_VERSION_LABEL:-${VERSION_NAME:-}}"
 export SERVER_PROTOCOL_VERSION="${SERVER_PROTOCOL_VERSION:-v1}"
 export SERVER_ARTIFACT_REGISTER_MODE="${SERVER_ARTIFACT_REGISTER_MODE:-local}"
+export CLIENT_BUILD_NUMBER="${CLIENT_BUILD_NUMBER:-${BUILD_NUMBER:-}}"
+export CLIENT_JENKINS_INSTANCE_ID="${CLIENT_JENKINS_INSTANCE_ID:-${JENKINS_INSTANCE_ID:-}}"
+export RELEASE_ORDER_ID="${RELEASE_ORDER_ID:-}"
 if [ -n "$PY" ]; then
   $PY "$SCRIPT_DIR/register_server_artifact.py" || echo "[register] server artifact registration failed (non-fatal in dev)"
 fi
