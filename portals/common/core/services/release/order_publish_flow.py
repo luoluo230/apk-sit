@@ -457,11 +457,14 @@ def approve_release_order(project_id: str, order_id: str, actor: str, note: str 
         ).fetchone()
         pending_count = int(remaining["cnt"] or 0) if remaining else 0
         if pending_count == 0:
+            from services.release.promotion_approval_service import is_promoted_release_order
+
+            final_status = "artifacts_ready" if is_promoted_release_order(order) else "approved"
             cur.execute(
-                "UPDATE release_orders SET status='approved', approved_by=?, updated_at=? WHERE project_id=? AND release_order_id=?",
-                (actor, now, project_id, order_id),
+                "UPDATE release_orders SET status=?, approved_by=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+                (final_status, actor, now, project_id, order_id),
             )
-            _event(cur, order_id, "approved", actor, order["status"], "approved", {"note": note, "all_tiers": True})
+            _event(cur, order_id, "approved", actor, order["status"], final_status, {"note": note, "all_tiers": True})
         else:
             _event(
                 cur,

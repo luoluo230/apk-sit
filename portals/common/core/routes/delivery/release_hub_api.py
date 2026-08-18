@@ -9,6 +9,7 @@ from models.data import projects_db
 from services.authz import admin_required
 from services.release.bundle_promotion_service import list_promotion_candidates, promote_bundle_to_env
 from services.release.server_artifact_promotion_service import (
+    approve_server_promotion,
     list_server_promotion_candidates,
     promote_server_artifact_to_env,
 )
@@ -83,5 +84,25 @@ def register_release_hub_routes(bp) -> None:
                 platform=str(payload.get("platform") or "android"),
             )
             return jsonify({"ok": True, "data": result}), 201
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(
+        "/api/projects/<project_id>/server-artifact-promotions/<server_release_id>/approve",
+        methods=["POST"],
+    )
+    @admin_required("projects")
+    def approve_server_promotion_api(project_id: str, server_release_id: str):
+        try:
+            if project_id not in projects_db:
+                return jsonify({"ok": False, "error": "项目不存在"}), 404
+            payload = request.get_json(silent=True) or {}
+            result = approve_server_promotion(
+                project_id,
+                server_release_id,
+                _actor(),
+                note=str(payload.get("note") or ""),
+            )
+            return jsonify({"ok": True, "data": result})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400

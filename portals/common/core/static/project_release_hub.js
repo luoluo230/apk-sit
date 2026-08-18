@@ -201,6 +201,11 @@
           body: { source_bundle_id: bundleId, target_env_key: targetEnv },
         })
           .then(function (data) {
+            if (data && data.requires_promotion_approval) {
+              toast("已提交 QA 审批，请至审批中心处理");
+              loadHub();
+              return;
+            }
             if (data && data.edit_href) {
               window.location.href = data.edit_href;
             } else {
@@ -228,6 +233,9 @@
           .map(function (t) {
             var disabled = t.version_ready ? "" : " disabled";
             var title = t.version_ready ? "晋级到 " + t.env_label : "目标环境缺少 VersionCode";
+            if (t.version_ready && t.requires_promotion_approval) {
+              title += "（需 QA 审批）";
+            }
             return (
               '<button type="button" class="rh-btn rh-btn--sm rh-btn--primary rh-promote-btn"' +
               disabled +
@@ -297,6 +305,11 @@
           body: { source_server_release_id: sroId, target_env_key: targetEnv },
         })
           .then(function (data) {
+            if (data && data.requires_promotion_approval) {
+              toast("已提交 QA 审批，审批通过后可部署");
+              loadHub();
+              return;
+            }
             var newSro = (data && data.server_release_id) || "";
             toast("服务端制品已晋级至 " + ((data && data.target_env_label) || targetEnv));
             if (newSro && window.confirm("是否立即部署到目标环境？")) {

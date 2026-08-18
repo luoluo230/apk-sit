@@ -28,6 +28,7 @@ def main() -> int:
             "tests/test_bootstrap_hotupdate_regression.py",
             "tests/test_server_deploy_notify.py",
             "tests/test_release_health_dashboard.py",
+            "tests/test_promotion_approval.py",
             "tests/test_server_framework_gating.py",
             "tests/test_unity_contract_bridge.py",
             "tests/test_baas_public_api.py",

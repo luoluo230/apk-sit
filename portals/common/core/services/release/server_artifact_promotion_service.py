@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from models.data import projects_db
 from services.release.env_registry import get_project_env_defs, normalize_release_env_key, project_env_label
 from services.release.order_helpers import _now_iso
+from services.release.release_policy_service import requires_promotion_approval
 from services.release.scope_resolver import resolve_scope, resolve_topology_binding_for_scope
 from services.release.server_artifact_service import get_artifact
 
@@ -78,6 +79,7 @@ def list_server_promotion_candidates(project_id: str) -> List[Dict[str, Any]]:
                     "env_label": project_env_label(project_id, target_env),
                     "already_promoted": bool(existing),
                     "existing_server_release_id": str(existing[0].get("server_release_id") or "") if existing else "",
+                    "requires_promotion_approval": requires_promotion_approval(project_id, target_env),
                 }
             )
         out.append(
@@ -140,6 +142,7 @@ def promote_server_artifact_to_env(
         raise ValueError("源发布单缺少 target_services")
 
     now = _now_iso()
+    needs_approval = requires_promotion_approval(project_id, target_env)
     promotion_meta = {
         "promoted_from_server_release_id": str(source.get("server_release_id") or ""),
         "promoted_from_env_key": source_env,
@@ -156,6 +159,7 @@ def promote_server_artifact_to_env(
             "topology_id": topology_id,
             "env_key": target_env,
             "target_services": targets,
+            "status": "awaiting_approval" if needs_approval else "ready",
             "payload": {"promotion": promotion_meta},
         },
         actor,
@@ -164,7 +168,49 @@ def promote_server_artifact_to_env(
         "server_release_id": row.get("server_release_id"),
         "server_release": row,
         "promotion": promotion_meta,
-        "next_action": "deploy",
+        "next_action": "approval" if needs_approval else "deploy",
+        "requires_promotion_approval": needs_approval,
         "target_env_key": target_env,
         "target_env_label": project_env_label(project_id, target_env),
     }
+
+
+def approve_server_promotion(
+    project_id: str,
+    server_release_id: str,
+    actor: str,
+    *,
+    note: str = "",
+) -> Dict[str, Any]:
+    """QA sign-off for a promoted server release — transitions awaiting_approval → ready."""
+    from services.release import server_release_service as srs
+
+    row = srs.get_server_release(project_id, str(server_release_id or "").strip())
+    if not row:
+        raise ValueError("服务端发布单不存在")
+    if str(row.get("status") or "") != "awaiting_approval":
+        raise ValueError("当前服务端发布单不在待审批状态")
+    promotion = (row.get("payload") or {}).get("promotion") or {}
+    if not promotion.get("promoted_from_server_release_id"):
+        raise ValueError("非晋级服务端发布单")
+    approved = srs.update_server_release(
+        project_id,
+        str(row.get("server_release_id") or ""),
+        {
+            "payload": {
+                "promotion_approval": {
+                    "approved_by": actor,
+                    "note": str(note or "").strip(),
+                    "approved_at": _now_iso(),
+                }
+            }
+        },
+        actor,
+    )
+    return srs.transition_server_release(
+        project_id,
+        str(row.get("server_release_id") or ""),
+        "ready",
+        actor,
+        detail={"promotion_approved": True, "note": note},
+    ) or approved

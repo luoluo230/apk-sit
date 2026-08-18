@@ -173,6 +173,30 @@ def should_auto_rollback_on_verify_fail(project_id: str, env_key: str, policy: O
     return bool(row.get("auto_rollback_on_verify_fail"))
 
 
+PROMOTION_APPROVAL_ENVS = frozenset({"staging", "production"})
+
+
+def requires_promotion_approval(project_id: str, target_env: str) -> bool:
+    """High-environment artifact promotion requires QA sign-off before precheck/publish."""
+    ek = normalize_release_env_key(target_env, project_id=project_id)
+    return ek in PROMOTION_APPROVAL_ENVS
+
+
+def get_promotion_approval_tiers(project_id: str, target_env: str) -> List[str]:
+    ek = normalize_release_env_key(target_env, project_id=project_id)
+    policy = get_env_release_policy(project_id, ek)
+    tiers: List[str] = []
+    for tier in list(policy.get("approval_tiers") or []):
+        val = str(tier or "").strip()
+        if val and val not in tiers:
+            tiers.append(val)
+    if "qa" not in tiers:
+        tiers.insert(0, "qa")
+    if ek in ("production", "prod") and "release_manager" not in tiers:
+        tiers.append("release_manager")
+    return tiers
+
+
 def resolve_jenkins_job(
     version: Optional[dict],
     group_meta: Optional[dict],

@@ -10,6 +10,11 @@ from models.data import get_channel_by_id, project_versions_db, projects_db
 from models.db import get_cursor, init_db
 from services.release.env_registry import get_project_env_defs, normalize_release_env_key, project_env_label
 from services.release.order_helpers import _artifact_rows, _decode, _event, _find_version, _json, _now_iso, _order_id
+from services.release.promotion_approval_service import (
+    notify_promotion_approval_pending,
+    seed_release_order_promotion_approvals,
+)
+from services.release.release_policy_service import requires_promotion_approval
 from services.release.scope_resolver import resolve_scope, resolve_topology_binding_for_scope
 
 _ENV_RANK = {
@@ -152,6 +157,7 @@ def list_promotion_candidates(project_id: str) -> List[Dict[str, Any]]:
                     "env_label": project_env_label(project_id, target_env),
                     "version_ready": bool(version),
                     "version_id": str(version.get("id") or "") if version else "",
+                    "requires_promotion_approval": requires_promotion_approval(project_id, target_env),
                 }
             )
         out.append(
@@ -241,7 +247,8 @@ def promote_bundle_to_env(
         has_artifacts = all(url for _, url, _ in artifacts)
     if not has_artifacts:
         raise ValueError("源 Bundle 缺少可晋级的产物 URL")
-    status = "artifacts_ready"
+    needs_approval = requires_promotion_approval(project_id, target_env)
+    status = "awaiting_approval" if needs_approval else "artifacts_ready"
     init_db()
     with get_cursor() as cur:
         cur.execute(
@@ -294,15 +301,20 @@ def promote_bundle_to_env(
             actor,
             "",
             status,
-            {"source_bundle_id": source["bundle_id"], "target_env_key": target_env},
+            {"source_bundle_id": source["bundle_id"], "target_env_key": target_env, "requires_approval": needs_approval},
         )
+        if needs_approval:
+            seed_release_order_promotion_approvals(cur, order_id, project_id, target_env, actor, now)
     from services.release.order_crud import get_release_order
 
     order = get_release_order(project_id, order_id)
+    if needs_approval:
+        notify_promotion_approval_pending(project_id, order_id, order, actor)
     return {
         "release_order_id": order_id,
         "order": order,
         "promotion": promotion_meta,
-        "next_action": "precheck",
+        "next_action": "approval" if needs_approval else "precheck",
+        "requires_promotion_approval": needs_approval,
         "edit_href": f"/admin/projects/{project_id}/release-orders/{order_id}/edit?env_key={target_env}",
     }

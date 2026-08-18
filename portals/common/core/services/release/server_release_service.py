@@ -15,9 +15,10 @@ TERMINAL_STATUSES = {"deployed", "failed", "rolled_back", "cancelled"}
 DEPLOYABLE_STATUSES = {"ready", "deployed"}
 
 _ALLOWED_TRANSITIONS: Dict[str, set] = {
-    "draft": {"ready", "cancelled"},
+    "draft": {"ready", "cancelled", "awaiting_approval"},
     "building": {"ready", "failed", "cancelled"},
     "ready": {"deploying", "cancelled"},
+    "awaiting_approval": {"ready", "cancelled"},
     "deploying": {"deployed", "failed"},
     "deployed": {"deploying", "rolled_back"},
     "failed": {"ready", "deploying", "cancelled"},
@@ -54,7 +55,13 @@ def create_server_release(project_id: str, payload: Dict[str, Any], actor: str) 
     if not topology_id:
         raise ValueError("topology_id 必填")
     now = _now_iso()
-    status = "ready" if artifact_id else "draft"
+    explicit_status = str(body.get("status") or "").strip().lower()
+    if explicit_status == "awaiting_approval" and artifact_id:
+        status = "awaiting_approval"
+    elif artifact_id:
+        status = "ready"
+    else:
+        status = "draft"
     if artifact_id and not get_artifact(artifact_id):
         raise ValueError("服务端制品不存在")
     row = server_release_repo.upsert_release(
