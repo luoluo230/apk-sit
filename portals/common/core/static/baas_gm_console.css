@@ -1,0 +1,20 @@
+.baas-gm-sub{margin:4px 0 0;font-size:12px;color:#667085}
+.baas-gm-kpis{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0;padding:10px 12px;background:#f6f8fb;border-radius:8px;font-size:12px;color:#344054}
+.baas-gm-kpis span{padding:4px 10px;background:#fff;border:1px solid #e8ecf2;border-radius:6px}
+.baas-gm-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.baas-gm-tabs button{border:1px solid #d0d5dd;background:#fff;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
+.baas-gm-tabs button.is-active{background:#eef4ff;border-color:#84adff;color:#175cd3;font-weight:600}
+.baas-gm-panel{display:none;border:1px solid #e8ecf2;border-radius:8px;padding:16px;background:#fff;min-height:200px}
+.baas-gm-panel.is-active{display:block}
+.baas-gm-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:640px}
+.baas-gm-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#475467}
+.baas-gm-form label.wide{grid-column:1/-1}
+.baas-gm-form input,.baas-gm-form textarea{border:1px solid #d0d5dd;border-radius:6px;padding:8px;font-size:13px}
+.baas-gm-list{margin-top:12px;font-size:12px}
+.baas-gm-row{padding:8px 0;border-bottom:1px solid #f2f4f7;display:flex;justify-content:space-between;gap:8px}
+.baas-gm-row button{font-size:11px;padding:2px 8px}
+.baas-gm-detail{margin-top:12px;padding:12px;background:#f9fafb;border-radius:6px;font-size:12px}
+.baas-gm-search{display:flex;gap:8px;margin-bottom:12px}
+.baas-gm-search input{flex:1;padding:8px;border:1px solid #d0d5dd;border-radius:6px}
+.baas-gm-pre{margin-top:12px;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:6px;font-size:11px;overflow:auto;max-height:320px}
+.is-hidden{display:none!important}

@@ -11,8 +11,22 @@
     <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=channels"><img src="/static/project_ui/svg/nav_binding.svg" alt="">渠道白名单</a>
     <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=platforms"><img src="/static/project_ui/svg/file_android.svg" alt="">平台白名单</a>
     <a class="pm-btn" href="/admin/projects/{{ project_id }}/settings?tab=members"><img src="/static/project_ui/svg/nav_roles_member.svg" alt="">成员与权限</a>
+    <a class="pm-btn" href="/admin/projects/{{ project_id }}/settings?tab=architecture"><img src="/static/project_ui/svg/nav_project_setting.svg" alt="">服务器架构</a>
   </div>
-  <div class="pm-placeholder-page" style="margin-top:16px" {% if request.args.get('tab') == 'members' %}hidden{% endif %}>
+  <section id="projectSettingsArchitecture" class="pm-rail-panel" style="margin-top:16px" {% if request.args.get('tab') != 'architecture' %}hidden{% endif %}>
+    <div class="p02-rail-head"><h2>服务器架构</h2><p>选择拓扑集群模式或轻度休闲 BaaS（Passport）模式</p></div>
+    <div class="pm-form-grid" style="max-width:520px">
+      <label><span>架构模式</span>
+        <select id="settingsServerMode">
+          <option value="topology">拓扑集群（中重度）</option>
+          <option value="casual_baas">轻度 BaaS（Passport）</option>
+        </select>
+      </label>
+      <div id="settingsCasualHint" class="wide" style="font-size:12px;color:#667085" hidden>启用后项目卡片将出现「休闲服务」入口，客户端通过 REST API 直连 Portal，无需拓扑/Agent。</div>
+      <div><button id="settingsSaveServerMode" class="pm-btn pm-btn--primary" type="button">保存架构设置</button></div>
+    </div>
+  </section>
+  <div class="pm-placeholder-page" style="margin-top:16px" {% if request.args.get('tab') in ('members', 'architecture') %}hidden{% endif %}>
     <img src="/static/project_ui/svg/nav_project_setting.svg" alt="">
     <h2>设置项已分散在项目总览</h2>
     <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/settings?tab=members">成员与权限</a>
@@ -27,4 +41,4 @@
     </div>
   </section>
 </section>
-<script src="/static/project_settings.js?v=20260723-p1"></script>
+<script src="/static/project_settings.js?v=20260724-baas1"></script>

@@ -10,6 +10,28 @@ from models.data import get_channel_by_id, projects_db
 from services.release.release_context import resolve_release_context
 from services.release.scope_ids import build_scope_id, project_slug, resolve_channel_id
 from services.release.storage import find_scope
+def baas_bootstrap():
+    """Public bootstrap for casual BaaS clients."""
+    from server_frameworks.registry import is_module_enabled
+
+    if not is_module_enabled("casual_baas_server"):
+        return jsonify({"ok": False, "error": "BaaS 服务器框架未部署"}), 503
+    from services.baas.bootstrap_service import build_baas_bootstrap
+
+    game_id = str(request.args.get("game_id") or "").strip()
+    game_key = str(request.args.get("game_key") or "").strip()
+    env_key = str(request.args.get("env_key") or request.args.get("env") or "development").strip()
+    service_id = str(request.args.get("service_id") or "").strip()
+    try:
+        payload = build_baas_bootstrap(
+            game_id=game_id,
+            game_key=game_key,
+            env_key=env_key,
+            service_id=service_id,
+        )
+        return jsonify(payload)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
 
 def release_config():
@@ -97,6 +119,10 @@ def _bootstrap_response(project_id: str, channel_name: str, bundle: dict, rollou
 
 
 def runtime_bootstrap():
+    from server_frameworks.registry import is_module_enabled
+
+    if not is_module_enabled("topology_server"):
+        return jsonify({"ok": False, "error": "拓扑服务器框架未部署"}), 503
     game_id = str(request.args.get("game_id") or "").strip()
     game_key = str(request.args.get("game_key") or "").strip()
     env_key = str(request.args.get("env_key") or "").strip()
@@ -159,6 +185,15 @@ def runtime_bootstrap():
 
 def register_public_routes(target_bp):
     """Attach public routes to project_delivery blueprint."""
+    from server_frameworks.bootstrap import register_client_bootstrap_routes
+
+    register_client_bootstrap_routes(target_bp)
+    target_bp.add_url_rule(
+        "/api/public/baas-bootstrap",
+        endpoint="delivery_baas_bootstrap",
+        view_func=baas_bootstrap,
+        methods=["GET"],
+    )
     target_bp.add_url_rule(
         "/api/public/release-config",
         endpoint="delivery_release_config",

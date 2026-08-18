@@ -266,6 +266,8 @@ def list_projects_for_user(username: str, status_filter: str = "active") -> Dict
                 "player_public_url": normalize_public_url(item.get("player_public_url")),
                 "forum_public_url": normalize_public_url(item.get("forum_public_url")),
                 "admin_public_url": normalize_public_url(item.get("admin_public_url")),
+                "server_mode": str(item.get("server_mode") or "topology"),
+                "baas_service_id": str(item.get("baas_service_id") or ""),
                 **_project_card_summary(project_id, item),
             }
         )

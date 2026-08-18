@@ -19,9 +19,48 @@
 
   function showMembersPanel() {
     var placeholder = document.querySelector(".pm-placeholder-page");
-    var panel = document.getElementById("projectSettingsMembers");
-    if (placeholder) placeholder.hidden = tab === "members";
-    if (panel) panel.hidden = tab !== "members";
+    var membersPanel = document.getElementById("projectSettingsMembers");
+    var archPanel = document.getElementById("projectSettingsArchitecture");
+    if (placeholder) placeholder.hidden = tab === "members" || tab === "architecture";
+    if (membersPanel) membersPanel.hidden = tab !== "members";
+    if (archPanel) archPanel.hidden = tab !== "architecture";
+  }
+
+  async function loadServerMode() {
+    var response = await fetch("/api/projects/" + encodeURIComponent(projectId) + "/server-mode", { credentials: "same-origin" });
+    var data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "加载失败");
+    var row = data.data || {};
+    var sel = document.getElementById("settingsServerMode");
+    var hint = document.getElementById("settingsCasualHint");
+    if (sel) sel.value = row.server_mode === "casual_baas" ? "casual_baas" : "topology";
+    if (hint) hint.hidden = sel && sel.value !== "casual_baas";
+    if (sel) {
+      sel.onchange = function () {
+        if (hint) hint.hidden = sel.value !== "casual_baas";
+      };
+    }
+  }
+
+  async function saveServerMode() {
+    var sel = document.getElementById("settingsServerMode");
+    if (!sel) return;
+    var response = await fetch("/api/projects/" + encodeURIComponent(projectId) + "/server-mode", {
+      method: "PATCH",
+      headers: Object.assign({ "Content-Type": "application/json" }, (function () {
+        var token = document.querySelector('meta[name="csrf-token"]');
+        return token && token.content ? { "X-CSRFToken": token.content } : {};
+      })()),
+      credentials: "same-origin",
+      body: JSON.stringify({ server_mode: sel.value, env_key: "development" }),
+    });
+    var data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "保存失败");
+    if (data.data && data.data.api_secret) {
+      toast("已切换为轻度 BaaS。API Secret: " + data.data.api_secret, "success");
+    } else {
+      toast("架构设置已保存", "success");
+    }
   }
 
   function memberRole(username, project) {
@@ -163,6 +202,13 @@
   }
 
   showMembersPanel();
+  if (tab === "architecture") {
+    loadServerMode().catch(function (error) {
+      toast(error.message || "加载失败", "error");
+    });
+    var archBtn = document.getElementById("settingsSaveServerMode");
+    if (archBtn) archBtn.onclick = function () { saveServerMode().catch(function (e) { toast(e.message, "error"); }); };
+  }
   if (tab === "members") {
     loadProject().catch(function (error) {
       toast(error.message || "加载失败", "error");

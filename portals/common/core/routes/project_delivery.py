@@ -16,10 +16,15 @@ from routes.delivery.journey_api import register_journey_routes
 from routes.delivery.pages import register_page_routes
 from routes.delivery.public_api import register_public_routes
 from routes.delivery.release_console_api import register_release_console_routes
+from routes.delivery.release_hub_api import register_release_hub_routes
 from routes.delivery.release_orders_api import register_release_order_routes
 from routes.delivery.scope_api import register_scope_routes
 
 from routes.approval_webhooks import register_approval_webhook_routes
+from server_frameworks.registry import is_baas_enabled
+
+from routes.baas.pages import register_baas_pages
+from routes.baas.public_api import baas_public_bp  # re-export for tests
 
 bp = Blueprint("project_delivery", __name__)
 
@@ -28,12 +33,16 @@ register_scope_routes(bp)
 register_journey_routes(bp)
 register_release_order_routes(bp)
 register_release_console_routes(bp)
+register_release_hub_routes(bp)
 register_build_events_routes(bp)
 register_public_routes(bp)
 register_approval_webhook_routes(bp)
+if is_baas_enabled():
+    register_baas_pages(bp)
 
 __all__ = [
     "bp",
+    "baas_public_bp",
     "DELIVERY_ASSET_VER",
     "projects_db",
     "get_project_env_defs",

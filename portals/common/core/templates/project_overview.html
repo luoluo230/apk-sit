@@ -119,10 +119,10 @@
       <section class="p02-rail-panel pm-rail-panel">
         <div class="p02-rail-head"><h2>快捷入口</h2></div>
         <div class="p02-quick-grid">
-          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""><span>版本代码</span></a>
-          <a href="/admin/projects/{{ project_id }}/build-history"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""><span>构建产物</span></a>
-          <a href="/admin/projects/{{ project_id }}/topologies"><img src="/static/project_ui/svg/nav_topology.svg" alt=""><span>拓扑资产</span></a>
-          <a href="/admin/projects/{{ project_id }}/tasks"><img src="/static/project_ui/svg/nav_task.svg" alt=""><span>项目任务</span></a>
+          <a href="/admin/projects/{{ project_id }}/release-hub?env_key={{ env_key or 'development' }}"><img src="/static/project_ui/svg/nav_release.svg" alt=""><span>发版中心</span></a>
+          <a href="/admin/projects/{{ project_id }}/release?env_key={{ env_key or 'development' }}"><img src="/static/project_ui/svg/nav_release.svg" alt=""><span>发版控制台</span></a>
+          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'development' }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""><span>版本管理</span></a>
+          <a href="/admin/projects/{{ project_id }}/build-history?scoped=1&env_key={{ env_key or 'development' }}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt=""><span>构建产物</span></a>
         </div>
       </section>
     </aside>

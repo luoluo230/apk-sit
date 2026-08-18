@@ -1,0 +1,44 @@
+{
+  "manifest_version": "1",
+  "portal_core": "portals/common/core",
+  "contracts": [
+    {
+      "id": "topology_bootstrap_v2",
+      "framework": "topology",
+      "contract_version": "v2",
+      "fixture_file": "runtime_bootstrap_contract_v2.sample.json",
+      "fixture_path": "E:\\web\\apk-site\\portals\\common\\core\\tests\\fixtures\\runtime_bootstrap_contract_v2.sample.json",
+      "validator_module": "services.release.bootstrap_contract",
+      "validate_fn": "validate_bootstrap_contract",
+      "unity_assets": [
+        "Assets/Src/HotUpdate/Framework/Bootstrap/RuntimeBootstrapService.cs",
+        "Assets/Resources/Protocol/ProtocolNetworkSettings.asset"
+      ],
+      "unity_editmode_filter": "BootstrapContractFixtureTests",
+      "bootstrap_paths": [
+        "/api/public/runtime-bootstrap",
+        "/api/public/client-bootstrap"
+      ],
+      "doc": "docs/client_bootstrap_contract.md"
+    },
+    {
+      "id": "baas_bootstrap_v1",
+      "framework": "casual_baas",
+      "contract_version": "v1",
+      "fixture_file": "baas_bootstrap_contract_v1.sample.json",
+      "fixture_path": "E:\\web\\apk-site\\portals\\common\\core\\tests\\fixtures\\baas_bootstrap_contract_v1.sample.json",
+      "validator_module": "services.release.baas_bootstrap_contract",
+      "validate_fn": "validate_baas_bootstrap_contract",
+      "unity_assets": [
+        "Assets/Src/HotUpdate/Framework/Bootstrap/BaasBootstrapService.cs",
+        "Assets/Resources/Protocol/BaasNetworkSettings.asset"
+      ],
+      "unity_editmode_filter": "BaasBootstrapContractFixtureTests",
+      "bootstrap_paths": [
+        "/api/public/baas-bootstrap",
+        "/api/public/client-bootstrap"
+      ],
+      "doc": "docs/client_bootstrap_contract_baas.md"
+    }
+  ]
+}

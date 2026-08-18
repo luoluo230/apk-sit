@@ -801,6 +801,33 @@ def init_db():
                     "CREATE INDEX IF NOT EXISTS idx_release_order_batch ON release_orders(batch_id)"
                 )
             _mark_migration(conn, "release_batches_v1")
+        if not _migration_applied(conn, "baas_services_v1"):
+            from models.baas_migrations import BAAS_SERVICES_V1_SQL
+
+            conn.executescript(BAAS_SERVICES_V1_SQL)
+            _mark_migration(conn, "baas_services_v1")
+        if not _migration_applied(conn, "baas_gm_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_gift_codes (
+                    service_id TEXT NOT NULL,
+                    code TEXT NOT NULL,
+                    rewards_json TEXT DEFAULT '[]',
+                    max_uses INTEGER DEFAULT 0,
+                    use_count INTEGER DEFAULT 0,
+                    expires_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, code)
+                );
+                """
+            )
+            _mark_migration(conn, "baas_gm_v1")
+        if not _migration_applied(conn, "baas_services_v2"):
+            conn.execute("ALTER TABLE baas_services ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE baas_services ADD COLUMN IF NOT EXISTS icon_url TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE baas_services ADD COLUMN IF NOT EXISTS disabled INTEGER DEFAULT 0")
+            _mark_migration(conn, "baas_services_v2")
         conn.commit()
         _schema_initialized = True
 

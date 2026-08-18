@@ -217,6 +217,12 @@ def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
     item = row if isinstance(row, dict) else {}
     env_key = _normalize_env_key(item.get("env_key"))
     topology_id = str(item.get("topology_id") or "").strip() or ("topology-" + uuid.uuid4().hex[:10])
+    disabled = bool(item.get("disabled", False))
+    raw_status = str(item.get("status") or "draft").strip().lower()
+    if disabled and raw_status not in ("archived",):
+        effective_status = "disabled"
+    else:
+        effective_status = raw_status
     out = {
         "topology_id": topology_id,
         "project_id": str(item.get("project_id") or "").strip(),
@@ -226,10 +232,13 @@ def _normalize_topology_registry_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "version_label": str(item.get("version_label") or "").strip(),
         "owner": str(item.get("owner") or "").strip(),
         "description": str(item.get("description") or "").strip(),
+        "icon_url": str(item.get("icon_url") or "").strip() or "/static/project_ui/svg/nav_topology.svg",
+        "disabled": disabled,
         "blueprint_id": str(item.get("blueprint_id") or "").strip(),
         "copied_from_topology_id": str(item.get("copied_from_topology_id") or "").strip(),
         "is_default": bool(item.get("is_default", False)),
-        "status": str(item.get("status") or "draft").strip().lower(),
+        "status": effective_status,
+        "registry_status": raw_status,
         "created_at": str(item.get("created_at") or _now_iso()),
         "updated_at": str(item.get("updated_at") or item.get("created_at") or _now_iso()),
     }
@@ -1109,6 +1118,130 @@ def _list_topologies(project_id: str = "", env_key: Optional[str] = None) -> Lis
         out.append(row)
     out.sort(key=lambda x: (x.get("project_id") or "", x.get("env_key") or "", 0 if x.get("is_default") else 1, x.get("updated_at") or ""), reverse=False)
     return out
+
+
+def _validate_topology_id(topology_id: str) -> str:
+    import re
+    tid = str(topology_id or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,63}", tid):
+        raise ValueError("拓扑 ID 须为 3–64 位小写字母、数字、下划线或连字符，且以字母或数字开头")
+    return tid
+
+
+def _topology_id_exists(topology_id: str) -> bool:
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return False
+    for item in _load_topology_registry():
+        if isinstance(item, dict) and str(item.get("topology_id") or "").strip() == tid:
+            return True
+    return False
+
+
+def _get_topology_registry_row(topology_id: str) -> Optional[Dict[str, Any]]:
+    tid = str(topology_id or "").strip()
+    for item in _load_topology_registry():
+        if isinstance(item, dict) and str(item.get("topology_id") or "").strip() == tid:
+            return _normalize_topology_registry_row(item)
+    return None
+
+
+def create_topology_registry_entry(payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    _migrate_topology_storage_if_needed()
+    project_id = str(payload.get("project_id") or "").strip()
+    if not project_id:
+        raise ValueError("project_id required")
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("拓扑名称不能为空")
+    env_key = _normalize_env_key(payload.get("env_key") or "development")
+    topology_id = _validate_topology_id(payload.get("topology_id") or "")
+    if _topology_id_exists(topology_id):
+        raise ValueError("拓扑 ID 已存在")
+    rows = _load_topology_registry()
+    row = _normalize_topology_registry_row(
+        {
+            "topology_id": topology_id,
+            "project_id": project_id,
+            "env_key": env_key,
+            "name": name,
+            "version_label": str(payload.get("version_label") or "v1.0.0").strip(),
+            "owner": str(actor or payload.get("owner") or "admin").strip(),
+            "description": str(payload.get("description") or "").strip(),
+            "icon_url": str(payload.get("icon_url") or "").strip(),
+            "is_default": not any(
+                isinstance(item, dict)
+                and str(item.get("project_id") or "") == project_id
+                and _normalize_env_key(item.get("env_key") or "") == env_key
+                for item in rows
+            ),
+            "status": "draft",
+            "disabled": False,
+            "created_at": _now_iso(),
+            "updated_at": _now_iso(),
+        }
+    )
+    rows.append(row)
+    _save_topology_registry(rows)
+    contents = _load_topology_contents()
+    contents[topology_id] = {
+        "nodes": [],
+        "edges": [],
+        "meta": {"viewport": {"x": 0, "y": 0, "zoom": 1}, "version": 1, "updated_at": _now_iso(), "layout_mode": "structured"},
+    }
+    _save_topology_contents(contents)
+    return row
+
+
+def update_topology_registry_entry(topology_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    _migrate_topology_storage_if_needed()
+    tid = str(topology_id or "").strip()
+    if not tid:
+        raise ValueError("topology_id required")
+    if payload.get("name") is not None or payload.get("topology_id") is not None:
+        raise ValueError("名称与 ID 创建后不可修改")
+    rows = _load_topology_registry()
+    found = False
+    updated: Optional[Dict[str, Any]] = None
+    for idx, item in enumerate(rows):
+        if not isinstance(item, dict) or str(item.get("topology_id") or "").strip() != tid:
+            continue
+        merged = dict(item)
+        if "description" in payload:
+            merged["description"] = str(payload.get("description") or "").strip()
+        if "icon_url" in payload:
+            merged["icon_url"] = str(payload.get("icon_url") or "").strip()
+        if "disabled" in payload:
+            merged["disabled"] = bool(payload.get("disabled"))
+        if "status" in payload and not payload.get("disabled"):
+            merged["status"] = str(payload.get("status") or merged.get("status") or "draft").strip().lower()
+        merged["updated_at"] = _now_iso()
+        if actor:
+            merged["owner"] = str(actor).strip()
+        rows[idx] = merged
+        updated = _normalize_topology_registry_row(merged)
+        found = True
+        break
+    if not found:
+        raise ValueError("拓扑不存在")
+    _save_topology_registry(rows)
+    return updated or {}
+
+
+def delete_topology_registry_entry(topology_id: str) -> bool:
+    _migrate_topology_storage_if_needed()
+    tid = str(topology_id or "").strip()
+    if not tid:
+        return False
+    rows = _load_topology_registry()
+    kept = [item for item in rows if not (isinstance(item, dict) and str(item.get("topology_id") or "").strip() == tid)]
+    if len(kept) == len(rows):
+        return False
+    _save_topology_registry(kept)
+    contents = _load_topology_contents()
+    contents.pop(tid, None)
+    _save_topology_contents(contents)
+    return True
 
 def _ensure_topology_for_scope(project_id: str, env_key: str) -> Dict[str, Any]:
     _migrate_topology_storage_if_needed()

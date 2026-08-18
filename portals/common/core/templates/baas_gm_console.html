@@ -1,0 +1,69 @@
+<link rel="stylesheet" href="/static/baas_gm_console.css?v=20260724-gm1">
+<section class="delivery-app baas-gm" data-page="baas-gm" data-project-id="{{ project_id }}" data-service-id="{{ service_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+  <header class="pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_roles_member.svg" alt=""></span>
+      <div>
+        <h1>BaaS GM 运维</h1>
+        <p class="baas-gm-sub">玩家查询、邮件补偿、钱包调整、礼包码、排行榜、云存档</p>
+      </div>
+    </div>
+    <div class="pm-page-head-actions">
+      <a class="pm-btn" href="/admin/projects/{{ project_id }}/casual-services/{{ service_id }}">功能配置</a>
+      <a class="pm-btn" href="/admin/baas">返回 BaaS 首页</a>
+    </div>
+  </header>
+  <div id="baasGmKpis" class="baas-gm-kpis">加载中…</div>
+  <div class="baas-gm-tabs" role="tablist">
+    <button type="button" class="is-active" data-gm-tab="players">玩家</button>
+    <button type="button" data-gm-tab="mail">邮件</button>
+    <button type="button" data-gm-tab="wallet">钱包</button>
+    <button type="button" data-gm-tab="gifts">礼包码</button>
+    <button type="button" data-gm-tab="leaderboard">排行榜</button>
+    <button type="button" data-gm-tab="cloudsave">云存档</button>
+  </div>
+  <div class="baas-gm-panel is-active" data-gm-pane="players">
+    <label class="baas-gm-search"><input id="gmPlayerSearch" type="search" placeholder="搜索 player_id / 昵称"><button type="button" id="gmPlayerSearchBtn" class="pm-btn">搜索</button></label>
+    <div id="gmPlayerList" class="baas-gm-list"></div>
+    <div id="gmPlayerDetail" class="baas-gm-detail is-hidden"></div>
+  </div>
+  <div class="baas-gm-panel" data-gm-pane="mail">
+    <div class="baas-gm-form">
+      <label><span>标题</span><input id="gmMailTitle" type="text"></label>
+      <label class="wide"><span>正文</span><textarea id="gmMailBody" rows="3"></textarea></label>
+      <label class="wide"><span>玩家 ID（留空=全服）</span><input id="gmMailPlayers" type="text" placeholder="p_xxx,p_yyy 或留空"></label>
+      <button type="button" id="gmMailSendBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发送邮件</button>
+    </div>
+  </div>
+  <div class="baas-gm-panel" data-gm-pane="wallet">
+    <div class="baas-gm-form">
+      <label><span>玩家 ID</span><input id="gmWalletPlayer" type="text"></label>
+      <label><span>货币</span><input id="gmWalletCurrency" type="text" value="gold"></label>
+      <label><span>调整量（±）</span><input id="gmWalletDelta" type="number" value="100"></label>
+      <label class="wide"><span>原因</span><input id="gmWalletReason" type="text" placeholder="补偿说明"></label>
+      <button type="button" id="gmWalletBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>调整余额</button>
+    </div>
+  </div>
+  <div class="baas-gm-panel" data-gm-pane="gifts">
+    <div class="baas-gm-form">
+      <label><span>兑换码</span><input id="gmGiftCode" type="text"></label>
+      <label><span>最大次数（0=无限）</span><input id="gmGiftMax" type="number" value="100"></label>
+      <label class="wide"><span>奖励 JSON</span><textarea id="gmGiftRewards" rows="3">[{"type":"gold","amount":100}]</textarea></label>
+      <button type="button" id="gmGiftSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>保存礼包码</button>
+    </div>
+    <div id="gmGiftList" class="baas-gm-list"></div>
+  </div>
+  <div class="baas-gm-panel" data-gm-pane="leaderboard">
+    <label><span>榜 ID</span><input id="gmBoardId" type="text" value="default"></label>
+    <button type="button" id="gmLbLoadBtn" class="pm-btn">刷新</button>
+    <button type="button" id="gmLbResetBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>清空榜单</button>
+    <div id="gmLbList" class="baas-gm-list"></div>
+  </div>
+  <div class="baas-gm-panel" data-gm-pane="cloudsave">
+    <label><span>玩家 ID</span><input id="gmCsPlayer" type="text"></label>
+    <label><span>Key（留空=列表）</span><input id="gmCsKey" type="text"></label>
+    <button type="button" id="gmCsLoadBtn" class="pm-btn">读取</button>
+    <pre id="gmCsOut" class="baas-gm-pre"></pre>
+  </div>
+</section>
+<script src="/static/baas_gm_console.js?v=20260724-gm1"></script>

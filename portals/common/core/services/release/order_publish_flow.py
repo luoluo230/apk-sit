@@ -229,6 +229,62 @@ def precheck_release_order(
             {"error": "发布作用域不存在"},
         )
         raise ValueError("发布作用域不存在")
+
+    from services.server_mode import is_casual_baas_project
+
+    if is_casual_baas_project(project_id):
+        result = run_scope_precheck(scope, version, validate_artifacts=True)
+        result["topology_id"] = ""
+        result["runtime_run_id"] = ""
+        result["runtime_active"] = False
+        result["runtime_skipped"] = True
+        result["server_mode"] = "casual_baas"
+        result["client_bootstrap"] = "/api/public/client-bootstrap"
+        plan = dict(order.get("payload") or {})
+        from services.release.validation_plan_runner import run_validation_plan
+
+        validation = run_validation_plan(
+            {**order, "project_id": project_id, "release_order_id": order_id, "payload": plan},
+            client_snapshot=version,
+            phase="precheck",
+        )
+        result["validation_plan"] = validation
+        if validation.get("items") and not validation.get("ok"):
+            result["ok"] = False
+            result["validation_error"] = "验证计划未通过"
+        target = (
+            "awaiting_approval"
+            if result.get("ok") and order["env_key"] == "production"
+            else ("ready" if result.get("ok") else "precheck_failed")
+        )
+        from services.release.order_state_machine import assert_transition
+
+        assert_transition("prechecking", target)
+        now = _now_iso()
+        with get_cursor() as cur:
+            cur.execute(
+                "INSERT INTO release_order_prechecks (release_order_id, ok, payload, created_at) VALUES (?,?,?,?)",
+                (order_id, 1 if result.get("ok") else 0, json.dumps(result, ensure_ascii=False), now),
+            )
+            cur.execute(
+                """
+            UPDATE release_orders SET status=?, scope_id=?, topology_id=?, topology_binding_source=?, runtime_run_id=?,
+                updated_at=? WHERE project_id=? AND release_order_id=?
+            """,
+                (
+                    target,
+                    str(result.get("scope_id") or ""),
+                    "",
+                    "casual_baas",
+                    "",
+                    now,
+                    project_id,
+                    order_id,
+                ),
+            )
+            _event(cur, order_id, "prechecked", actor, order["status"], target, result)
+        return result
+
     plan = dict(order.get("payload") or {})
     target_topology_id = str(plan.get("target_topology_id") or "").strip()
     if target_topology_id:
@@ -311,6 +367,9 @@ def precheck_release_order(
             else:
                 result["server_release_warning"] = str(server_gate.get("hint") or server_gate.get("reason") or "服务端未部署")
     target = "awaiting_approval" if result.get("ok") and order["env_key"] == "production" else ("ready" if result.get("ok") else "precheck_failed")
+    from services.release.order_state_machine import assert_transition
+
+    assert_transition("prechecking", target)
     now = _now_iso()
     with get_cursor() as cur:
         cur.execute(
@@ -329,14 +388,32 @@ def precheck_release_order(
         )
         _event(cur, order_id, "prechecked", actor, order["status"], target, result)
         if target == "awaiting_approval":
-            cur.execute(
-                """
-                INSERT INTO release_approvals (
-                    approval_id, release_order_id, status, requested_by, approved_by, note, created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?)
-                """,
-                (f"ra-{uuid.uuid4().hex[:12]}", order_id, "pending", actor, "", "", now, now),
-            )
+            from services.release.release_policy_service import get_env_release_policy
+
+            policy = get_env_release_policy(project_id, str(order.get("env_key") or ""))
+            tiers = list(policy.get("approval_tiers") or [])
+            if not tiers and policy.get("require_approval"):
+                tiers = ["release_manager"]
+            if not tiers:
+                tiers = ["release_manager"]
+            for tier in tiers:
+                cur.execute(
+                    """
+                    INSERT INTO release_approvals (
+                        approval_id, release_order_id, status, requested_by, approved_by, note, created_at, updated_at
+                    ) VALUES (?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        f"ra-{uuid.uuid4().hex[:12]}",
+                        order_id,
+                        "pending",
+                        actor,
+                        "",
+                        f"tier:{tier}",
+                        now,
+                        now,
+                    ),
+                )
     updated = _order_crud().get_release_order(project_id, order_id)
     if target == "awaiting_approval":
         _notify_awaiting_approval(project_id, order_id, updated, actor)
@@ -349,16 +426,52 @@ def approve_release_order(project_id: str, order_id: str, actor: str, note: str 
     if order.get("status") != "awaiting_approval":
         raise ValueError("当前发布单不在待审批状态")
     now = _now_iso()
+    tier = str(note or "").strip()
     with get_cursor() as cur:
+        pending_rows = cur.execute(
+            "SELECT approval_id, note FROM release_approvals WHERE release_order_id=? AND status='pending' ORDER BY created_at ASC",
+            (order_id,),
+        ).fetchall()
+        if not pending_rows:
+            raise ValueError("没有待审批记录")
+        target_row = None
+        if tier.startswith("tier:"):
+            for row in pending_rows:
+                if str(row["note"] or "") == tier:
+                    target_row = row
+                    break
+        elif tier:
+            for row in pending_rows:
+                if tier in str(row["note"] or ""):
+                    target_row = row
+                    break
+        if not target_row:
+            target_row = pending_rows[0]
         cur.execute(
-            "UPDATE release_approvals SET status='approved', approved_by=?, note=?, updated_at=? WHERE release_order_id=? AND status='pending'",
-            (actor, note, now, order_id),
+            "UPDATE release_approvals SET status='approved', approved_by=?, note=?, updated_at=? WHERE approval_id=?",
+            (actor, str(target_row["note"] or note), now, target_row["approval_id"]),
         )
-        cur.execute(
-            "UPDATE release_orders SET status='approved', approved_by=?, updated_at=? WHERE project_id=? AND release_order_id=?",
-            (actor, now, project_id, order_id),
-        )
-        _event(cur, order_id, "approved", actor, order["status"], "approved", {"note": note})
+        remaining = cur.execute(
+            "SELECT COUNT(*) AS cnt FROM release_approvals WHERE release_order_id=? AND status='pending'",
+            (order_id,),
+        ).fetchone()
+        pending_count = int(remaining["cnt"] or 0) if remaining else 0
+        if pending_count == 0:
+            cur.execute(
+                "UPDATE release_orders SET status='approved', approved_by=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+                (actor, now, project_id, order_id),
+            )
+            _event(cur, order_id, "approved", actor, order["status"], "approved", {"note": note, "all_tiers": True})
+        else:
+            _event(
+                cur,
+                order_id,
+                "approval_tier_passed",
+                actor,
+                order["status"],
+                "awaiting_approval",
+                {"note": note, "remaining_tiers": pending_count},
+            )
     return _order_crud().get_release_order(project_id, order_id)
 
 
@@ -507,6 +620,9 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
                 order["platform"], _json(bundle), now, actor, now, now,
             ),
         )
+        from services.release.order_state_machine import assert_transition
+
+        assert_transition("publishing", "published")
         cur.execute(
             """
             UPDATE release_orders SET status='published', bundle_id=?, topology_id=?, runtime_run_id=?,
@@ -578,6 +694,44 @@ def _publish_release_order_body(project_id: str, order_id: str, actor: str, orde
         maybe_sync_order_announcement(project_id, order_id, actor)
     except Exception:
         pass
+    if plan.get("deploy_server_with_client"):
+        try:
+            from services.release.server_coordinated_deploy import maybe_deploy_server_with_client
+
+            deploy_result = maybe_deploy_server_with_client(
+                project_id,
+                order_id,
+                order,
+                plan,
+                topology_id=topology_id,
+                actor=actor,
+            )
+            published = _order_crud().get_release_order(project_id, order_id)
+            if isinstance(published.get("payload"), dict):
+                published["payload"]["server_coordinated_deploy"] = deploy_result
+        except ValueError as exc:
+            now = _now_iso()
+            err_payload = dict(plan)
+            err_payload["server_coordinated_deploy"] = {"ok": False, "error": str(exc)}
+            init_db()
+            with get_cursor() as cur:
+                cur.execute(
+                    "UPDATE release_orders SET payload=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+                    (_json(err_payload), now, project_id, order_id),
+                )
+                _event(
+                    cur,
+                    order_id,
+                    "server_coordinated_deploy_failed",
+                    actor,
+                    "published",
+                    "published",
+                    {"error": str(exc)},
+                )
+            published = _order_crud().get_release_order(project_id, order_id)
+            order_env = str(order.get("env_key") or "").strip().lower()
+            if order_env in ("production", "staging"):
+                raise exc
     return published
 
 

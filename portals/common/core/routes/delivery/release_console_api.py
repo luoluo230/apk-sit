@@ -13,6 +13,7 @@ from services.release.release_batch_service import (
     batch_precheck,
     batch_publish,
     batch_readiness,
+    batch_rollback,
     batch_verify,
     create_release_batch,
     get_release_batch,
@@ -116,6 +117,12 @@ def register_release_console_routes(bp) -> None:
                 ok=bool(payload.get("ok", True)),
             ),
             "cancel": lambda: batch_cancel(project_id, batch_id, _actor()),
+            "rollback": lambda: batch_rollback(
+                project_id,
+                batch_id,
+                _actor(),
+                skip_failed_lines=bool(payload.get("skip_failed_lines")),
+            ),
         }
         handler = handlers.get(action)
         if not handler:
@@ -159,6 +166,14 @@ def register_release_console_routes(bp) -> None:
     def release_batch_cancel_api(project_id: str, batch_id: str):
         try:
             return _batch_action(project_id, batch_id, "cancel")
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route("/api/projects/<project_id>/release-batches/<batch_id>/rollback", methods=["POST"])
+    @admin_required("projects")
+    def release_batch_rollback_api(project_id: str, batch_id: str):
+        try:
+            return _batch_action(project_id, batch_id, "rollback")
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

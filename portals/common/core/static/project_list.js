@@ -103,6 +103,13 @@
     };
   }
 
+  function casualServicesLink(p, archived) {
+    if (archived || p.server_mode !== "casual_baas") return "";
+    var sid = p.baas_service_id || "";
+    var base = "/admin/projects/" + encodeURIComponent(p.id) + "/casual-services";
+    return sid ? base + "/" + encodeURIComponent(sid) : base;
+  }
+
   function releaseLink(p, archived) {
     if (archived) return "";
     return projectCardLinks(p.id).releaseHub;
@@ -187,6 +194,18 @@
       } else {
         releaseHost.removeAttribute("href");
         releaseHost.classList.add("is-disabled");
+      }
+    }
+
+    var casualHost = node.querySelector(".pm-project-card__casual");
+    if (casualHost) {
+      var casualHref = casualServicesLink(p, archived);
+      if (casualHref) {
+        casualHost.setAttribute("href", casualHref);
+        casualHost.classList.remove("is-hidden");
+      } else {
+        casualHost.removeAttribute("href");
+        casualHost.classList.add("is-hidden");
       }
     }
 

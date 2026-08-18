@@ -285,9 +285,12 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
 
 
 def _transition(project_id: str, order_id: str, actor: str, to_status: str, event_type: str, payload=None, **fields) -> Dict[str, Any]:
+    from services.release.order_state_machine import assert_transition
+
     current = get_release_order(project_id, order_id, include_details=False)
     if not current:
         raise ValueError("发布单不存在")
+    assert_transition(str(current.get("status") or "draft"), to_status)
     sets = ["status=?", "updated_at=?"]
     params: List[Any] = [to_status, _now_iso()]
     for key, value in fields.items():

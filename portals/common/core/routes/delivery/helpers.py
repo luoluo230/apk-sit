@@ -16,10 +16,11 @@ BREADCRUMB_BY_PAGE = {
     "environment-runtime": "总览",
     "environment-config": "项目设置",
     "project-channels": "项目设置",
-    "versions": "交付管理",
-    "release-console": "交付管理",
-    "release-orders": "交付管理",
-    "builds": "交付管理",
+    "release-hub": "交付发版",
+    "versions": "交付发版",
+    "release-console": "交付发版",
+    "release-orders": "交付发版",
+    "builds": "交付发版",
     "download-center": "交付管理",
     "test-devices": "交付管理",
     "topology": "运行管理",
@@ -146,6 +147,13 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
             f'<script src="/static/delivery_scope.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/project_release_console.js?v={DELIVERY_ASSET_VER}"></script>'
         )
+    elif template_name == "project_release_hub.html":
+        css = (
+            f'<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_release_hub.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = f'<script src="/static/project_release_hub.js?v={DELIVERY_ASSET_VER}"></script>'
     elif template_name == "project_environment_detail.html":
         css = (
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'

@@ -265,6 +265,17 @@
   z-index: 9999;
   max-width: 360px;
 }
+.rc-coord {
+  font-size: 12px;
+  color: var(--rc-muted);
+  font-weight: 400;
+}
+.rc-coord--ok {
+  color: var(--rc-success);
+}
+.rc-coord--fail {
+  color: var(--rc-danger);
+}
 @media (max-width: 1279px) {
   .rc-layout {
     grid-template-columns: 1fr;

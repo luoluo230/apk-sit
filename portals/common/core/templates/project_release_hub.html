@@ -1,0 +1,71 @@
+{% macro hub_card(card) -%}
+<a class="rh-card{% if card.primary %} rh-card--primary{% endif %}" href="{{ card.href }}">
+  <img src="/static/project_ui/svg/{{ card.icon }}.svg" alt="">
+  <div>
+    <strong>{{ card.title }}</strong>
+    <span>{{ card.desc }}</span>
+  </div>
+</a>
+{%- endmacro %}
+
+<section class="rh-app" data-release-hub data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
+  <header class="rh-header">
+    <div>
+      <h1>发版中心</h1>
+      <p>交付发版统一入口 — 快捷操作、跨环境晋级、协同发布反馈</p>
+    </div>
+    <div class="rh-header-actions">
+      <label class="rh-env-select">
+        <span>当前环境</span>
+        <select id="rhEnvSelect" aria-label="环境"></select>
+      </label>
+      <button type="button" class="rh-btn rh-btn--ghost" id="rhRefreshBtn">刷新</button>
+    </div>
+  </header>
+
+  <div class="rh-grid">
+    <section class="rh-panel rh-panel--modules" aria-label="交付模块">
+      <h2>交付模块</h2>
+      <div class="rh-card-grid" id="rhModuleCards"></div>
+    </section>
+
+    <section class="rh-panel rh-panel--health" aria-label="发布健康度">
+      <h2>发布健康度 <small>近 7 天</small></h2>
+      <div class="rh-kpi-grid" id="rhHealthKpis">
+        <article><span>成功率</span><strong id="rhSuccessRate">—</strong></article>
+        <article><span>已验证</span><strong id="rhVerified">—</strong></article>
+        <article><span>验证失败</span><strong id="rhVerifyFailed">—</strong></article>
+        <article><span>发布失败</span><strong id="rhPublishFailed">—</strong></article>
+      </div>
+    </section>
+
+    <section class="rh-panel rh-panel--wizard" aria-label="生产发版向导">
+      <h2>生产发版向导</h2>
+      <ol class="rh-stepper" id="rhProdWizard"></ol>
+      <a class="rh-btn rh-btn--primary" id="rhProdStartBtn" href="/admin/projects/{{ project_id }}/release?env_key=production">进入生产发版</a>
+    </section>
+
+    <section class="rh-panel rh-panel--promotion" aria-label="客户端跨环境晋级">
+      <h2>客户端制品晋级</h2>
+      <p class="rh-hint">将低环境已发布 Bundle 晋级到更高环境，跳过重复构建</p>
+      <div class="rh-promotion-list" id="rhPromotionList"><div class="rh-empty">加载中…</div></div>
+    </section>
+
+    <section class="rh-panel rh-panel--server-promotion" aria-label="服务端跨环境晋级">
+      <h2>服务端制品晋级</h2>
+      <p class="rh-hint">将低环境已部署的服务端制品晋级到更高环境，创建就绪 SRO</p>
+      <div class="rh-promotion-list" id="rhServerPromotionList"><div class="rh-empty">加载中…</div></div>
+    </section>
+
+    <section class="rh-panel rh-panel--coordinated" aria-label="协同发布反馈">
+      <h2>协同发布 / 联合回滚</h2>
+      <p class="rh-hint">与客户端同批发布、联合回滚的服务端部署状态与审计留痕</p>
+      <div class="rh-coordinated-list" id="rhCoordinatedList"><div class="rh-empty">加载中…</div></div>
+    </section>
+
+    <section class="rh-panel rh-panel--pending" aria-label="待处理发布单">
+      <h2>待处理发布单</h2>
+      <div class="rh-pending-list" id="rhPendingList"><div class="rh-empty">加载中…</div></div>
+    </section>
+  </div>
+</section>

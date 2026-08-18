@@ -54,6 +54,11 @@ from routes.admin.api_reports import register_routes as register_report_api_rout
 from routes.admin.api_media import register_routes as register_media_api_routes
 from routes.admin.api_site_config import register_routes as register_site_config_api_routes
 from routes.admin.api_audit import register_routes as register_audit_api_routes
+from routes.baas.admin_api import register_baas_admin_routes
+from routes.baas.gm_api import register_baas_gm_routes
+from routes.server_management.api import register_server_management_api_routes
+from routes.server_management.pages import register_server_management_page_routes
+from routes.baas.public_api import baas_public_bp
 from routes.admin.views.dashboard import admin_panel_descriptions, render_admin_panel_dashboard
 from services.release.topology_binding_service import list_topology_bindings, resolve_topology_binding
 
@@ -442,6 +447,27 @@ def _register_split_api_routes():
     register_task_api_routes(bp, _current_username)
     register_approval_api_routes(bp, _current_username)
     register_report_api_routes(bp, _current_username)
+    from server_frameworks.registry import is_baas_enabled, is_topology_enabled
+
+    if is_baas_enabled():
+        register_baas_admin_routes(bp)
+        register_baas_gm_routes(bp)
+    if is_topology_enabled() or is_baas_enabled():
+        register_server_management_api_routes(bp)
+        register_server_management_page_routes(bp)
+
+    @bp.route("/api/server-frameworks/modules", methods=["GET"])
+    @admin_required("projects")
+    def server_framework_modules_api():
+        from server_frameworks.registry import enabled_modules, list_modules
+
+        return jsonify({
+            "ok": True,
+            "data": {
+                "enabled_flags": sorted(enabled_modules()),
+                "modules": list_modules(),
+            },
+        })
 
 
 _register_split_api_routes()

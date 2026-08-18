@@ -65,6 +65,8 @@ DEFAULT_RELEASE_DEFAULTS: Dict[str, str] = {
 DEFAULT_RELEASE_POLICY: Dict[str, Any] = {
     "form_depth": FORM_DEPTH_MINIMAL,
     "require_approval": False,
+    "two_tier_approval": False,
+    "approval_tiers": [],
     "allow_gray_release": True,
     "runtime_required": RUNTIME_REQUIRED_BLOCK,
     "auto_ensure_runtime": False,
@@ -102,6 +104,11 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
     policy["auto_rollback_on_verify_fail"] = bool(ENV_DEFAULT_AUTO_ROLLBACK_ON_VERIFY_FAIL.get(ek, False))
     if ek in ("production", "prod"):
         policy["require_approval"] = True
+        policy["two_tier_approval"] = True
+        policy["approval_tiers"] = ["qa", "release_manager"]
+    if ek == "staging":
+        policy["two_tier_approval"] = False
+        policy["approval_tiers"] = ["release_manager"]
     if isinstance(raw, dict):
         depth = str(raw.get("form_depth") or "").strip().lower()
         if depth in (FORM_DEPTH_MINIMAL, FORM_DEPTH_STANDARD, FORM_DEPTH_FULL):
@@ -115,6 +122,13 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
             policy["auto_ensure_runtime"] = bool(ENV_DEFAULT_AUTO_ENSURE_RUNTIME.get(ek))
         if "require_approval" in raw:
             policy["require_approval"] = bool(raw.get("require_approval"))
+        if "two_tier_approval" in raw:
+            policy["two_tier_approval"] = bool(raw.get("two_tier_approval"))
+        tiers = raw.get("approval_tiers")
+        if isinstance(tiers, list) and tiers:
+            policy["approval_tiers"] = [str(t).strip() for t in tiers if str(t).strip()]
+        if policy.get("two_tier_approval") and not policy.get("approval_tiers"):
+            policy["approval_tiers"] = ["qa", "release_manager"]
         if "allow_gray_release" in raw:
             policy["allow_gray_release"] = bool(raw.get("allow_gray_release"))
         if "auto_rollback_on_verify_fail" in raw:

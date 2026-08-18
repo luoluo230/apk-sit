@@ -7,6 +7,7 @@
 
   const root = document.querySelector(".version-workspace");
   const projectId = root?.dataset.projectId || "";
+  const isCasualBaas = (root?.dataset.serverMode || "") === "casual_baas";
   let currentRow = null;
   let currentOrderId = "";
 
@@ -283,6 +284,13 @@
       toast(error.message || "回滚失败", "error");
     }
   });
+
+  if (isCasualBaas) {
+    document.getElementById("versionReleaseServerTab")?.setAttribute("hidden", "hidden");
+    document.querySelector('[data-release-pane="server"]')?.setAttribute("hidden", "hidden");
+    document.getElementById("btnReleaseServerPause")?.setAttribute("hidden", "hidden");
+    document.getElementById("btnReleasePrecheck")?.setAttribute("hidden", "hidden");
+  }
 
   window.VersionReleaseEditor = { open: openReleaseEditor, close: closeModal, runRowAction };
 })();

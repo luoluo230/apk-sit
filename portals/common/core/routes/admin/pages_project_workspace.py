@@ -82,6 +82,8 @@ def register_routes(bp, *, current_username):
         can_edit = can_edit_project(project_id, current_username())
         from services.ops.helpers import _render_ops_page
 
+        from services.baas.helpers import project_server_mode
+
         content = render_template(
             "project_versions_workspace.html",
             project_id=project_id,
@@ -89,14 +91,15 @@ def register_routes(bp, *, current_username):
             platform_filter=platform_filter,
             channel_filter=channel_filter,
             can_edit=can_edit,
+            server_mode=project_server_mode(project_id),
         )
         return _render_ops_page(
             content,
             "版本管理",
-            active_page="",
+            active_page="versions",
             project_id=project_id,
             env_key=env_key or "development",
-            breadcrumb_module="版本管理",
+            breadcrumb_module="交付发版",
         )
 
     @bp.route("/admin/projects/<project_id>/version-groups/build-config")
@@ -362,9 +365,9 @@ def register_routes(bp, *, current_username):
         return _render_ops_page(
             content,
             "构建与产物",
-            active_page="versions",
+            active_page="builds",
             project_id=project_id,
             env_key=request.args.get("env_key") or "production",
-            breadcrumb_module="交付管理",
+            breadcrumb_module="交付发版",
             extra_css='<link rel="stylesheet" href="/static/project_build_history.css?v=20260708-bh9">',
         )

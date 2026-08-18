@@ -1,0 +1,452 @@
+# -*- coding: utf-8 -*-
+"""Casual BaaS public REST API."""
+
+from __future__ import annotations
+
+from flask import Blueprint, g, jsonify, request
+
+from services.baas import announce_service, auth_service, cloudsave_service, compliance_service, mail_service
+from services.baas import pvp_service, retention_services, social_services
+from services.baas.helpers import parse_bearer_token, verify_api_secret
+from services.baas.service_crud import get_service_auth_row
+
+baas_public_bp = Blueprint("baas_public", __name__)
+
+
+def _service_auth(expected_service_id: str):
+    service_id = str(expected_service_id or "").strip()
+    api_key = str(request.headers.get("X-Baas-Api-Key") or request.args.get("api_key") or "").strip()
+    header_sid = str(request.headers.get("X-Baas-Service-Id") or "").strip()
+    if header_sid and header_sid != service_id:
+        return None, (jsonify({"ok": False, "error": "service_id 不匹配"}), 400)
+    if not service_id or not api_key:
+        return None, (jsonify({"ok": False, "error": "缺少 X-Baas-Api-Key"}), 401)
+    row = get_service_auth_row(service_id)
+    if not row or not verify_api_secret(api_key, str(row["api_secret_hash"] or "")):
+        return None, (jsonify({"ok": False, "error": "服务凭证无效"}), 401)
+    return service_id, None
+
+
+def _player_auth(service_id: str):
+    auth = str(request.headers.get("Authorization") or "")
+    token = parse_bearer_token(auth)
+    player_id = str(request.headers.get("X-Baas-Player-Id") or request.args.get("player_id") or "").strip()
+    if not player_id or not token:
+        return None, (jsonify({"ok": False, "error": "需要玩家 Authorization"}), 401)
+    try:
+        return auth_service.resolve_player(service_id, player_id, token), None
+    except ValueError as exc:
+        return None, (jsonify({"ok": False, "error": str(exc)}), 401)
+
+
+def register_baas_public_routes(bp=None) -> None:
+    target = bp or baas_public_bp
+    prefix = "/api/baas/v1/<service_id>"
+
+    @target.route(f"{prefix}/auth/guest", methods=["POST"])
+    def baas_auth_guest(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        try:
+            data = auth_service.guest_login(service_id, display_name=str((request.get_json(silent=True) or {}).get("display_name") or ""))
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/auth/register", methods=["POST"])
+    def baas_auth_register(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        try:
+            data = auth_service.register_password(service_id, username=body.get("username"), password=body.get("password"), display_name=body.get("display_name"))
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/auth/login", methods=["POST"])
+    def baas_auth_login(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        try:
+            data = auth_service.password_login(service_id, username=body.get("username"), password=body.get("password"))
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/announcements/active", methods=["GET"])
+    def baas_announcements(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        return jsonify({"ok": True, "data": announce_service.list_active(service_id)})
+
+    @target.route(f"{prefix}/mail/inbox", methods=["GET"])
+    def baas_mail_inbox(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        return jsonify({"ok": True, "data": mail_service.inbox(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/mail/<mail_id>/claim", methods=["POST"])
+    def baas_mail_claim(service_id: str, mail_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": mail_service.claim_mail(service_id, player["player_id"], mail_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/cloudsave/<key>", methods=["GET", "PUT"])
+    def baas_cloudsave(service_id: str, key: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            if request.method == "GET":
+                return jsonify({"ok": True, "data": cloudsave_service.get_key(service_id, player["player_id"], key)})
+            body = request.get_json(silent=True) or {}
+            return jsonify({
+                "ok": True,
+                "data": cloudsave_service.put_key(
+                    service_id,
+                    player["player_id"],
+                    key,
+                    body.get("value"),
+                    expected_version=int(body.get("expected_version", -1)),
+                ),
+            })
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/cloudsave", methods=["GET"])
+    def baas_cloudsave_list(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        return jsonify({"ok": True, "data": cloudsave_service.list_keys(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/leaderboards/<board_id>/submit", methods=["POST"])
+    def baas_lb_submit(service_id: str, board_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": retention_services.submit_score(service_id, player["player_id"], board_id, body.get("score", 0), display_name=player.get("display_name") or "")})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/leaderboards/<board_id>/top", methods=["GET"])
+    def baas_lb_top(service_id: str, board_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        limit = int(request.args.get("limit") or 50)
+        return jsonify({"ok": True, "data": retention_services.top_scores(service_id, board_id, limit)})
+
+    @target.route(f"{prefix}/shop/catalog", methods=["GET"])
+    def baas_shop_catalog(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        return jsonify({"ok": True, "data": retention_services.shop_catalog(service_id)})
+
+    @target.route(f"{prefix}/shop/purchase", methods=["POST"])
+    def baas_shop_purchase(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": retention_services.purchase(service_id, player["player_id"], body.get("product_id"))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/shop/wallet", methods=["GET"])
+    def baas_wallet(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        return jsonify({"ok": True, "data": retention_services.get_wallet(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/achievements", methods=["GET"])
+    def baas_achievements(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        return jsonify({"ok": True, "data": retention_services.list_achievements(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/achievements/<achievement_id>/progress", methods=["POST"])
+    def baas_achievement_progress(service_id: str, achievement_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": retention_services.report_achievement_progress(service_id, player["player_id"], achievement_id, int(body.get("progress") or 0))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/achievements/<achievement_id>/claim", methods=["POST"])
+    def baas_achievement_claim(service_id: str, achievement_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": retention_services.claim_achievement(service_id, player["player_id"], achievement_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/gifts/redeem", methods=["POST"])
+    def baas_gift_redeem(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": retention_services.redeem_gift(service_id, player["player_id"], body.get("code"))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/guilds", methods=["POST"])
+    def baas_guild_create(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": social_services.create_guild(service_id, player["player_id"], body.get("name"))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/guilds/<guild_id>", methods=["GET"])
+    def baas_guild_get(service_id: str, guild_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        try:
+            return jsonify({"ok": True, "data": social_services.get_guild(service_id, guild_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+
+    @target.route(f"{prefix}/guilds/<guild_id>/join", methods=["POST"])
+    def baas_guild_join(service_id: str, guild_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": social_services.join_guild(service_id, player["player_id"], guild_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/battlepass/state", methods=["GET"])
+    def baas_bp_state(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": social_services.battlepass_state(service_id, player["player_id"])})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/battlepass/xp", methods=["POST"])
+    def baas_bp_xp(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": social_services.battlepass_add_xp(service_id, player["player_id"], int(body.get("xp") or 0))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/battlepass/claim", methods=["POST"])
+    def baas_bp_claim(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": social_services.battlepass_claim(service_id, player["player_id"], int(body.get("level") or 0))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/tasks/periodic", methods=["GET"])
+    def baas_tasks_list(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        return jsonify({"ok": True, "data": social_services.list_periodic_tasks(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/tasks/<task_id>/progress", methods=["POST"])
+    def baas_task_progress(service_id: str, task_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": social_services.update_periodic_task(service_id, player["player_id"], task_id, int(body.get("progress") or 0))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/tasks/<task_id>/claim", methods=["POST"])
+    def baas_task_claim(service_id: str, task_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": social_services.claim_periodic_task(service_id, player["player_id"], task_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/compliance/session-start", methods=["POST"])
+    def baas_compliance_start(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, "data": compliance_service.session_start(service_id, player["player_id"], real_name_verified=bool(body.get("real_name_verified")))})
+
+    @target.route(f"{prefix}/compliance/heartbeat", methods=["POST"])
+    def baas_compliance_heartbeat(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, "data": compliance_service.heartbeat(service_id, player["player_id"], minutes_played=int(body.get("minutes") or 1))})
+
+    @target.route(f"{prefix}/compliance/verify-real-name", methods=["POST"])
+    def baas_compliance_verify(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": compliance_service.verify_real_name(service_id, player["player_id"], name=body.get("name"), id_number=body.get("id_number"))})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/pvp/matchmake", methods=["POST"])
+    def baas_pvp_match(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": pvp_service.matchmake(service_id, player["player_id"])})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/pvp/rooms/<room_id>", methods=["GET"])
+    def baas_pvp_room(service_id: str, room_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        try:
+            return jsonify({"ok": True, "data": pvp_service.get_room(service_id, room_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+
+    @target.route(f"{prefix}/pvp/rooms/<room_id>/state", methods=["POST"])
+    def baas_pvp_sync(service_id: str, room_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": pvp_service.sync_state(service_id, room_id, player["player_id"], body.get("state") or {})})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @target.route(f"{prefix}/pvp/rooms/<room_id>/leave", methods=["POST"])
+    def baas_pvp_leave(service_id: str, room_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": pvp_service.leave_room(service_id, room_id, player["player_id"])})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+register_baas_public_routes()

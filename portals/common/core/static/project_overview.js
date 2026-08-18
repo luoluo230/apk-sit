@@ -103,11 +103,11 @@
     var releaseHealth = k.release_health || {};
     var releaseRate = releaseHealth.success_rate_pct == null ? "—" : String(releaseHealth.success_rate_pct) + "%";
     var kpis = [
-      { icon: "kpi_version.svg", label: "当前版本", value: versionText, tone: "violet", href: links.version },
+      { icon: "kpi_version.svg", label: "当前版本", value: versionText, tone: "violet", href: links.release_hub || links.version },
       { icon: "kpi_health.svg", label: "服务健康度", value: healthVal, tone: "green", href: links.health },
-      { icon: "kpi_build.svg", label: "近7天发布成功率", value: releaseRate, tone: "violet", href: links.changes },
-      { icon: "kpi_build.svg", label: "今日构建次数", value: String(k.today_build_count != null ? k.today_build_count : 0), tone: "violet", href: links.builds },
-      { icon: "kpi_change.svg", label: "待处理变更", value: String(k.pending_changes != null ? k.pending_changes : 0), tone: "orange", href: links.changes },
+      { icon: "kpi_build.svg", label: "近7天发布成功率", value: releaseRate, tone: "violet", href: links.release_hub || links.changes },
+      { icon: "kpi_build.svg", label: "今日构建次数", value: String(k.today_build_count != null ? k.today_build_count : 0), tone: "violet", href: links.release_hub || links.builds },
+      { icon: "kpi_change.svg", label: "待处理变更", value: String(k.pending_changes != null ? k.pending_changes : 0), tone: "orange", href: links.release_hub || links.changes },
       { icon: "kpi_member.svg", label: "项目成员", value: String(k.member_count != null ? k.member_count : memberCount), tone: "cyan", href: links.members },
     ];
     host.innerHTML = kpis.map(function (card) {
@@ -187,6 +187,10 @@
           esc(instances) +
           "</strong></div></div>" +
           '<footer class="p16-env-footer p02-env-footer"><a href="/admin/projects/' +
+          encodeURIComponent(projectId) +
+          "/release-hub?env_key=" +
+          encodeURIComponent(item.env_key) +
+          '">发版中心<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
           encodeURIComponent(projectId) +
           "/versions?env_key=" +
           encodeURIComponent(item.env_key) +

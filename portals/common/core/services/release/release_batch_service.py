@@ -53,9 +53,12 @@ SHARED_PLAN_KEYS = (
     "rollback_plan",
     "server_release_id",
     "linked_server_release_id",
+    "server_artifact_id",
+    "target_services",
     "min_server_version",
     "waive_server_release_check",
     "deploy_server_with_client",
+    "rollback_with_server",
     "skip_failed_lines_on_publish",
 )
 
@@ -462,6 +465,67 @@ def batch_verify(project_id: str, batch_id: str, actor: str, *, ok: bool = True)
     return _run_batch_action(project_id, batch_id, actor, "verify", order_filter=_filter, extra_kwargs={"ok": ok})
 
 
+def batch_rollback(
+    project_id: str,
+    batch_id: str,
+    actor: str,
+    *,
+    skip_failed_lines: bool = False,
+) -> Dict[str, Any]:
+    from services.release.incident_loop_service import find_rollback_target_order
+    from services.release.order_publish_lifecycle import rollback_release_order
+
+    batch = get_release_batch(project_id, batch_id)
+    if not batch:
+        raise ValueError("发版批次不存在")
+
+    def _eligible(order: Dict[str, Any]) -> bool:
+        return str(order.get("status") or "") in {"published", "verify_failed", "verified"}
+
+    results: List[Dict[str, Any]] = []
+    orders = _orders_for_batch(project_id, batch_id)
+    for order in orders:
+        oid = str(order.get("release_order_id") or "")
+        if not _eligible(order):
+            continue
+        entry: Dict[str, Any] = {
+            "release_order_id": oid,
+            "channel_id": order.get("channel_id"),
+            "platform": order.get("platform"),
+            "ok": False,
+        }
+        target = find_rollback_target_order(project_id, str(order.get("scope_id") or ""), oid)
+        if not target:
+            entry["error"] = "无可回滚的上一个 Bundle"
+            results.append(entry)
+            continue
+        try:
+            row = rollback_release_order(project_id, target["release_order_id"], actor)
+            entry["ok"] = True
+            entry["target_order_id"] = target["release_order_id"]
+            entry["status"] = row.get("status")
+        except ValueError as exc:
+            entry["error"] = str(exc)
+            if not skip_failed_lines:
+                pass
+        except Exception as exc:
+            entry["error"] = str(exc)
+        results.append(entry)
+
+    with get_cursor() as cur:
+        _batch_event(
+            cur,
+            batch_id,
+            "batch_rollback",
+            actor,
+            batch["status"],
+            batch["status"],
+            {"results": results, "skip_failed_lines": skip_failed_lines},
+        )
+    new_status = _sync_batch_status(project_id, batch_id, actor)
+    return {"batch_id": batch_id, "status": new_status, "results": results}
+
+
 def batch_cancel(project_id: str, batch_id: str, actor: str) -> Dict[str, Any]:
     def _filter(order: Dict[str, Any]) -> bool:
         return str(order.get("status") or "") not in TERMINAL_STATUSES
@@ -523,8 +587,13 @@ def resolve_batch_next_action(project_id: str, batch_id: str) -> Dict[str, Any]:
         primary = _primary("wait_publish", "发布进行中…", disabled=True)
     elif status == "published":
         primary = _primary("verify", "验证全部", api_action="verify")
+        more.append({"action": "rollback", "label": "批次联合回滚", "api_action": "rollback"})
     elif status in ("verified", "completed"):
         primary = _primary("done", "批次已完成", disabled=True)
+        more.append({"action": "rollback", "label": "批次联合回滚", "api_action": "rollback"})
+    elif status == "verify_failed":
+        primary = _primary("rollback", "批次联合回滚", api_action="rollback")
+        more.append({"action": "verify", "label": "重新验证", "api_action": "verify"})
     else:
         primary = _primary("review", "查看批次详情", disabled=False)
 

@@ -12,6 +12,8 @@
   powershell -ExecutionPolicy Bypass -File scripts\Sync-DevStackClientConfig.ps1 -UseUnity
 #>
 param(
+    [ValidateSet("topology", "baas")]
+    [string]$Mode = "topology",
     [string]$MaclientRoot = "",
     [string]$PortalBaseUrl = "http://127.0.0.1:5003",
     [string]$GatewayWs = "ws://127.0.0.1:15050/ws",
@@ -194,16 +196,26 @@ $portal = ($(if ($PortalBaseUrl) { $PortalBaseUrl } else { "" })).Trim().TrimEnd
 $gateway = ($(if ($GatewayWs) { $GatewayWs } else { "" })).Trim()
 
 Write-Host "=== Sync-DevStackClientConfig ===" -ForegroundColor Cyan
-Write-Host "[sync] maclient=$maclient"
+Write-Host "[sync] mode=$Mode maclient=$maclient"
 Write-Host "[sync] portal=$portal gateway=$gateway profile=$Profile channel=$Channel"
+
+if ($Mode -eq "baas") {
+    Write-Host "[sync] BaaS client module: packages/client_network/baas" -ForegroundColor Yellow
+    Write-Host "[sync] Bootstrap: $portal/api/public/client-bootstrap" -ForegroundColor Yellow
+    Write-Host "[sync] Skip ProtocolNetworkSettings (topology-only)" -ForegroundColor Yellow
+}
 
 if ($UseUnity) {
     Invoke-UnitySyncCli -Root $maclient -BaseUrl $portal -Endpoint $gateway -DevProfile $Profile -DevChannel $Channel
 }
 
 $hot = Sync-HotUpdateConfigAsset -Root $maclient -BaseUrl $portal -DevProfile $Profile -DevChannel $Channel
-$net = Sync-ProtocolNetworkSettingsAsset -Root $maclient -Endpoint $gateway
-
 Write-Host "[sync] HotUpdateConfig changed: $($hot.Changed -join ', ')"
-Write-Host "[sync] ProtocolNetworkSettings changed: $($net.Changed -join ', ')"
+
+if ($Mode -eq "topology") {
+    $net = Sync-ProtocolNetworkSettingsAsset -Root $maclient -Endpoint $gateway
+    Write-Host "[sync] ProtocolNetworkSettings changed: $($net.Changed -join ', ')"
+} else {
+    Write-Host "[sync] ProtocolNetworkSettings skipped (baas mode)"
+}
 Write-Host "=== Sync-DevStackClientConfig DONE ===" -ForegroundColor Green

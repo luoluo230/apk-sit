@@ -146,9 +146,19 @@ def create_project(data: Dict[str, Any], created_by: str, tenant_id: str = "defa
         "default_server_profile": str((data.get("default_server_profile") or "default")).strip() or "default",
         "default_env": str((data.get("default_env") or "dev")).strip() or "dev",
         "default_channel": str((data.get("default_channel") or "")).strip(),
+        "server_mode": str(data.get("server_mode") or "topology").strip().lower(),
     }
+    mode = payload["server_mode"]
+    if mode not in ("topology", "casual_baas"):
+        payload["server_mode"] = "topology"
     apply_build_config_to_project_payload(payload, data)
     projects_repo.upsert_project(project_id, payload)
+    if payload["server_mode"] == "casual_baas":
+        from services.baas.service_crud import ensure_service
+
+        svc, _secret = ensure_service(project_id, str(data.get("default_env") or "development"), actor=created_by)
+        payload["baas_service_id"] = svc.get("service_id") or ""
+        projects_repo.upsert_project(project_id, payload)
     projects_repo.audit("create_project", project_id)
     return ok({"project_id": project_id}, legacy={"success": True}), 200
 
@@ -178,6 +188,8 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
         "disabled_channels": v.get("disabled_channels") or [],
         "platforms": v.get("platforms") if isinstance(v.get("platforms"), list) else [],
         "disabled_platforms": v.get("disabled_platforms") if isinstance(v.get("disabled_platforms"), list) else [],
+        "server_mode": str(v.get("server_mode") or "topology"),
+        "baas_service_id": str(v.get("baas_service_id") or ""),
     }
     bc = build_config_for_api({**v, "id": project_id})
     project.update(bc)

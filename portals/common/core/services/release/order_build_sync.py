@@ -230,6 +230,9 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
         "pipeline_source": "version_group",
     })
     now = _now_iso()
+    from services.release.order_state_machine import assert_transition
+
+    assert_transition(str(order.get("status") or "draft"), "building")
     with get_cursor() as cur:
         cur.execute(
             "UPDATE release_orders SET status='building', payload=?, updated_at=? WHERE project_id=? AND release_order_id=?",
@@ -317,6 +320,9 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
             "failure_summary": str(st.get("error") or result or "BUILD_FAILED"),
             "retry_hint": "检查 Jenkins 控制台与 commercial_android_pipeline 日志；OSS 上传失败可重试构建",
         }
+        from services.release.order_state_machine import assert_transition
+
+        assert_transition("building", fail_status)
         now = _now_iso()
         with get_cursor() as cur:
             cur.execute(
@@ -338,6 +344,9 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
             "finalize_error": str(exc)[:500],
             "retry_hint": "请检查 Jenkins 归档脚本与 APK 路径，修复后重新触发构建",
         }
+        from services.release.order_state_machine import assert_transition
+
+        assert_transition("building", fail_status)
         now = _now_iso()
         with get_cursor() as cur:
             cur.execute(
@@ -350,6 +359,9 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
     if not version:
         return order
     artifacts = _artifact_rows(version)
+    from services.release.order_state_machine import assert_transition
+
+    assert_transition("building", "artifacts_ready")
     now = _now_iso()
     with get_cursor() as cur:
         for artifact_type, url, path in artifacts:

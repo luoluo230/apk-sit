@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-TERMINAL_STATUSES = {"verified", "rolled_back", "cancelled"}
-PUBLISHABLE_STATUSES = {"ready", "approved"}
+from services.release.order_state_machine import PUBLISHABLE_STATUSES, TERMINAL_STATUSES
+
 EDITABLE_PLAN_FIELDS = (
     "owner",
     "release_window",
@@ -33,9 +33,12 @@ EDITABLE_PLAN_FIELDS = (
     "rollback_timeout_minutes",
     "server_release_id",
     "linked_server_release_id",
+    "server_artifact_id",
+    "target_services",
     "min_server_version",
     "waive_server_release_check",
     "deploy_server_with_client",
+    "rollback_with_server",
     "announcement_title",
     "announcement_body",
     "announcement_effective_at",

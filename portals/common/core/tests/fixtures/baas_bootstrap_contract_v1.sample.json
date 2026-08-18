@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "framework": "casual_baas",
+  "client_module": "baas_client",
+  "bootstrap_kind": "baas",
+  "project_id": "demo_casual",
+  "service_id": "00000000-0000-0000-0000-000000000001",
+  "env_key": "development",
+  "config_version": 1,
+  "public_api_base": "/api/baas/v1/00000000-0000-0000-0000-000000000001",
+  "feature_flags": {
+    "login": true,
+    "announce": true,
+    "mail": true,
+    "cloudsave": true
+  },
+  "endpoints": {
+    "login": "/api/baas/v1/00000000-0000-0000-0000-000000000001/auth",
+    "announce": "/api/baas/v1/00000000-0000-0000-0000-000000000001/announcements",
+    "mail": "/api/baas/v1/00000000-0000-0000-0000-000000000001/mail",
+    "cloudsave": "/api/baas/v1/00000000-0000-0000-0000-000000000001/cloudsave"
+  },
+  "auth_header_service": "X-Baas-Service-Id",
+  "auth_header_key": "X-Baas-Api-Key"
+}

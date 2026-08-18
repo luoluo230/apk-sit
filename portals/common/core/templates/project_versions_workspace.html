@@ -1,5 +1,5 @@
 <link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260708-versions-v21">
-<section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-env-scoped="true"{% if platform_filter %} data-platform-filter="{{ platform_filter }}"{% endif %}{% if channel_filter %} data-channel-filter="{{ channel_filter }}"{% endif %}>
+<section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-server-mode="{{ server_mode }}" data-env-scoped="true"{% if platform_filter %} data-platform-filter="{{ platform_filter }}"{% endif %}{% if channel_filter %} data-channel-filter="{{ channel_filter }}"{% endif %}>
   <header class="version-head pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""></span>
@@ -88,7 +88,7 @@
       <button type="button" class="is-active" data-release-tab="meta">发版信息</button>
       <button type="button" data-release-tab="announce">公告</button>
       <button type="button" data-release-tab="strategy">策略</button>
-      <button type="button" data-release-tab="server">服务端</button>
+      <button type="button" data-release-tab="server" id="versionReleaseServerTab">服务端</button>
     </div>
     <div class="version-form-grid pm-modal-body">
       <div class="version-release-pane is-active" data-release-pane="meta">

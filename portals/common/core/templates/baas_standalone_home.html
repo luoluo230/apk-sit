@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
+  <title>轻度 BaaS 控制台</title>
+  <link rel="stylesheet" href="/static/tailwind.css">
+  <link rel="stylesheet" href="/static/casual_services_console.css?v=20260724-baas1">
+  <style>
+    .baas-home { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    .baas-home h1 { font-size: 22px; font-weight: 700; color: #1d2939; }
+    .baas-home-sub { color: #667085; font-size: 13px; margin-top: 4px; }
+    .baas-card-grid { display: grid; gap: 12px; margin-top: 20px; }
+    .baas-proj-card { border: 1px solid #e8ecf2; border-radius: 10px; padding: 14px 16px; background: #fff; }
+    .baas-proj-card h2 { margin: 0 0 8px; font-size: 16px; }
+    .baas-proj-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .baas-proj-actions a, .baas-proj-actions button { font-size: 13px; padding: 6px 12px; border-radius: 6px; text-decoration: none; border: 1px solid #d0d5dd; background: #fff; color: #344054; cursor: pointer; }
+    .baas-proj-actions a.primary { background: #175cd3; color: #fff; border-color: #175cd3; }
+    .baas-create { margin-top: 24px; padding: 16px; border: 1px dashed #d0d5dd; border-radius: 8px; background: #f9fafb; }
+    .baas-create label { display: block; font-size: 12px; color: #475467; margin-bottom: 8px; }
+    .baas-create input { width: 100%; max-width: 320px; padding: 8px; border: 1px solid #d0d5dd; border-radius: 6px; margin-top: 4px; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+    <div><strong>轻度 BaaS</strong> <span class="text-slate-500 text-sm">独立服务器</span></div>
+    <div class="text-sm text-slate-600">{{ username }} · <a href="/logout" class="text-blue-600">退出</a></div>
+  </header>
+  <main class="baas-home">
+    <h1>休闲游戏 BaaS 项目</h1>
+    <p class="baas-home-sub">配置游戏功能、REST API、GM 运维 — 无需拓扑 / GameServer</p>
+    <div class="baas-card-grid">
+      {% for p in projects %}
+      <article class="baas-proj-card">
+        <h2>{{ p.name }}</h2>
+        <div class="text-xs text-slate-500">ID: {{ p.id }} · game_id: {{ p.game_id }}</div>
+        <div class="baas-proj-actions">
+          <a class="primary" href="/admin/projects/{{ p.id }}/casual-services/{{ p.baas_service_id or '' }}">功能配置</a>
+          <a href="/admin/projects/{{ p.id }}/baas-gm/{{ p.baas_service_id or '' }}">GM 运维</a>
+        </div>
+      </article>
+      {% else %}
+      <p class="text-slate-500">暂无 BaaS 项目，请在下方创建。</p>
+      {% endfor %}
+    </div>
+    <section class="baas-create">
+      <h3 class="font-semibold text-sm mb-3">新建 BaaS 项目</h3>
+      <label>项目 ID<input id="newProjectId" type="text" placeholder="my_casual_game"></label>
+      <label class="mt-2">项目名称<input id="newProjectName" type="text" placeholder="我的休闲游戏"></label>
+      <button type="button" id="btnCreateBaasProject" class="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">创建并生成 API Key</button>
+      <pre id="createResult" class="mt-3 text-xs bg-slate-900 text-green-300 p-3 rounded hidden"></pre>
+    </section>
+  </main>
+  <script>
+  (function () {
+    var btn = document.getElementById("btnCreateBaasProject");
+    if (!btn) return;
+    btn.onclick = function () {
+      var id = document.getElementById("newProjectId").value.trim();
+      var name = document.getElementById("newProjectName").value.trim();
+      var token = document.querySelector('meta[name="csrf-token"]');
+      var headers = { "Content-Type": "application/json" };
+      if (token && token.content) headers["X-CSRFToken"] = token.content;
+      fetch("/api/baas/projects", {
+        method: "POST",
+        headers: headers,
+        credentials: "same-origin",
+        body: JSON.stringify({ id: id, name: name }),
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        var pre = document.getElementById("createResult");
+        pre.classList.remove("hidden");
+        if (d.error || d.ok === false) { pre.textContent = d.error || "创建失败"; return; }
+        pre.textContent = JSON.stringify(d.data, null, 2);
+        setTimeout(function () { location.reload(); }, 2000);
+      });
+    };
+  })();
+  </script>
+</body>
+</html>

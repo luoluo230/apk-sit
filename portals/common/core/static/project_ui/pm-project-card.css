@@ -46,6 +46,10 @@
 .pm-project-card__metric strong.bad{color:#cf1322}
 .pm-project-card__metric strong.muted{color:#667085}
 .pm-project-card__release{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px;color:#667085;min-height:0;padding:5px 8px;background:#f6f8fb;border-radius:6px;border:1px solid #eef1f6;text-decoration:none;transition:background .15s ease,border-color .15s ease}
+.pm-project-card__casual{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11px;color:#667085;min-height:0;padding:5px 8px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0;text-decoration:none;margin-top:4px;transition:background .15s ease,border-color .15s ease}
+.pm-project-card__casual:hover{background:#dcfce7;border-color:#86efac}
+.pm-project-card__casual.is-hidden{display:none}
+.pm-project-card__casual>span:first-child{color:#166534;font-weight:600;font-size:12px}
 .pm-project-card__release:hover{background:#eef4ff;border-color:#dbeafe}
 .pm-project-card__release:focus-visible{outline:2px solid var(--color-primary);outline-offset:1px}
 .pm-project-card__release.is-disabled{pointer-events:none;cursor:default}

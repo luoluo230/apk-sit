@@ -63,6 +63,26 @@ class InternalJenkinsWebhookTests(unittest.TestCase):
         self.assertTrue(data.get("synced"))
         sync_mock.assert_called_once_with("GomeKu", "ro-1", actor="jenkins-webhook")
 
+    def test_server_artifact_webhook_registers_artifact(self):
+        import base64
+
+        payload = {
+            "project_id": "GomeKu",
+            "version_label": "1.0.0",
+            "protocol_version": "v1",
+            "artifact_b64": base64.b64encode(b"fake-zip-bytes").decode("ascii"),
+        }
+        body = json.dumps(payload).encode("utf-8")
+        resp = self.client.post(
+            "/api/internal/jenkins/server-artifact",
+            data=body,
+            headers={"Content-Type": "application/json", "X-Jenkins-Signature": _sign(body)},
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("ok"))
+        self.assertTrue((data.get("artifact") or {}).get("artifact_id"))
+
 
 if __name__ == "__main__":
     unittest.main()

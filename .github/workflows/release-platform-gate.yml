@@ -91,6 +91,18 @@ jobs:
       - name: ops platform e2e gate
         run: py -3 scripts/ops_platform_e2e_gate.py
 
+      - name: release hub e2e gate
+        run: py -3 scripts/release_hub_e2e_gate.py
+
+      - name: server management hub e2e gate
+        run: py -3 scripts/server_management_hub_e2e_gate.py
+
+      - name: unity contract gate
+        run: py -3 scripts/unity_contract_gate.py
+
+      - name: framework alignment gate
+        run: py -3 scripts/framework_alignment_gate.py
+
       - name: Run commercial_startup_sequence_gate
         env:
           RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}

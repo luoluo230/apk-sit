@@ -230,7 +230,7 @@ def _register_blueprints():
         from routes.internal_metrics import bp as internal_metrics_bp
         from routes.project_delivery import bp as project_delivery_bp
         from routes.release import bp as release_scopes_bp
-        from routes.ops import bp as project_ops_bp
+        from server_frameworks.registry import register_server_frameworks
         if mode == "all":
             from routes.player_community import bp as player_community_bp
             from routes.products_public import bp as products_public_bp
@@ -259,13 +259,12 @@ def _register_blueprints():
         app.register_blueprint(internal_build_nodes_bp)
         app.register_blueprint(internal_metrics_bp)
         app.register_blueprint(project_delivery_bp)
+        register_server_frameworks(app, csrf=csrf if _csrf_enabled else None)
         app.register_blueprint(release_scopes_bp)
-        app.register_blueprint(project_ops_bp)
         if _csrf_enabled and csrf is not None:
             # Internal routes authenticate via HMAC + IP allowlist (services/security/webhook_auth.py).
             csrf.exempt(internal_jenkins_bp)
             csrf.exempt(internal_build_nodes_bp)
-            csrf.exempt(project_ops_bp)
             try:
                 from routes.approval_webhooks import approval_webhook_view
 

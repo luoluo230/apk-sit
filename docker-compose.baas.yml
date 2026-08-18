@@ -1,0 +1,33 @@
+# Standalone Casual BaaS — Portal + PostgreSQL (optional production DB)
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: apk_baas
+      POSTGRES_PASSWORD: apk_baas_dev
+      POSTGRES_DB: apk_baas
+    ports:
+      - "5433:5432"
+    volumes:
+      - apk_baas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apk_baas -d apk_baas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Host-run Portal recommended for dev; uncomment for container deploy:
+  # baas-portal:
+  #   build:
+  #     context: ./portals/common/core
+  #   environment:
+  #     BAAS_STANDALONE: "1"
+  #     DATABASE_URL: postgresql://apk_baas:apk_baas_dev@postgres:5432/apk_baas
+  #   ports:
+  #     - "5004:5004"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  apk_baas_pgdata:

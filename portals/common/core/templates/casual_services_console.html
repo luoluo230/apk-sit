@@ -1,0 +1,47 @@
+<link rel="stylesheet" href="/static/casual_services_console.css?v=20260724-baas1">
+<section class="delivery-app baas-console" data-delivery-page="casual-services" data-project-id="{{ project_id }}" data-service-id="{{ service_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+  <header class="pm-page-head">
+    <div class="pm-page-head-copy">
+      <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_project_setting.svg" alt=""></span>
+      <div>
+        <h1>休闲服务</h1>
+        <p class="baas-head-sub">Passport 模式：勾选功能模块，客户端通过 REST API 直连 Portal</p>
+      </div>
+    </div>
+    <div class="pm-page-head-actions">
+      <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
+      <a class="pm-btn" href="/admin/projects/{{ project_id }}/baas-gm/{{ service_id }}">GM 运维</a>
+      <button id="baasRotateSecretBtn" class="pm-btn" type="button" {% if not can_edit %}disabled{% endif %}>轮换 API Key</button>
+      <button id="baasSaveBtn" class="pm-btn pm-btn--primary" type="button" {% if not can_edit %}disabled{% endif %}>保存配置</button>
+    </div>
+  </header>
+  <div class="baas-meta-bar">
+    <label><span>环境</span><select id="baasEnvSelect"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
+    <div class="baas-meta-copy">
+      <span>配置 ID</span>
+      <code id="baasConfigId">{{ service_id }}</code>
+      <button type="button" class="pm-btn pm-btn--ghost" id="baasCopyConfigId">复制</button>
+    </div>
+    <div class="baas-meta-copy">
+      <span>Bootstrap</span>
+      <code id="baasBootstrapUrl">/api/public/baas-bootstrap</code>
+      <button type="button" class="pm-btn pm-btn--ghost" id="baasCopyBootstrap">复制</button>
+    </div>
+  </div>
+  <div class="baas-layout">
+    <aside class="baas-sidebar" id="baasFeatureNav" aria-label="功能模块"></aside>
+    <main class="baas-main">
+      <div id="baasFeaturePanel" class="baas-panel">
+        <div class="baas-panel-empty">正在加载...</div>
+      </div>
+    </main>
+  </div>
+  <div id="baasSecretBanner" class="baas-secret-banner is-hidden" role="alert">
+    <strong>新 API Secret（仅显示一次）</strong>
+    <code id="baasSecretValue"></code>
+    <button type="button" class="pm-btn pm-btn--ghost" id="baasCopySecret">复制</button>
+    <button type="button" class="pm-btn" id="baasDismissSecret">知道了</button>
+  </div>
+</section>
+<script type="application/json" id="baasCatalogJson">{{ catalog | tojson }}</script>
+<script src="/static/casual_services_console.js?v=20260724-baas1"></script>

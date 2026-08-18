@@ -1,0 +1,104 @@
+<section class="ops-workspace-app sm-hub-page"
+  data-locked-project="{{ locked_project_id }}"
+  data-default-tab="{{ default_tab }}"
+  data-show-topology="{{ 'true' if show_topology_tab else 'false' }}"
+  data-show-baas="{{ 'true' if show_baas_tab else 'false' }}"
+  data-filter-project="{{ filter_project_id }}"
+  data-filter-env="{{ filter_env_key }}"
+  data-filter-status="{{ filter_status }}"
+  data-filter-query="{{ filter_query }}">
+  <header class="ops-page-head">
+    <div class="ops-page-head-main">
+      <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span>
+      <div class="ops-page-head-text">
+        <h1>服务器管理</h1>
+        <p class="sm-hub-sub">中重度拓扑与轻度 BaaS 统一运行视图</p>
+      </div>
+    </div>
+    <div class="ops-page-head-actions">
+      <button class="pm-btn pm-btn--primary pm-btn--compact" id="smCreateBtn" type="button">
+        <img src="/static/project_ui/svg/action_add.svg" alt="">新建
+      </button>
+    </div>
+  </header>
+
+  <div class="sm-hub-tabs" role="tablist">
+    {% if show_topology_tab %}
+    <button class="sm-hub-tab{% if default_tab == 'topology' %} is-active{% endif %}" type="button" data-tab="topology" role="tab">中重度服务器</button>
+    {% endif %}
+    {% if show_baas_tab %}
+    <button class="sm-hub-tab{% if default_tab == 'baas' %} is-active{% endif %}" type="button" data-tab="baas" role="tab">轻度服务器</button>
+    {% endif %}
+    <div class="sm-hub-tab-actions">
+      <a class="pm-btn pm-btn--compact sm-deploy-pack-btn" id="smDeployPackBtn" href="/api/server-management/deploy-pack/topology" download hidden>
+        <img src="/static/project_ui/svg/action_download.svg" alt="">下载架构部署包
+      </a>
+    </div>
+  </div>
+
+  <section class="env-panel ops-panel">
+    <div class="ops-filter-bar pm-filter-bar sm-hub-filters">
+      <label class="pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="smSearch" type="search" placeholder="搜索名称 / ID" value="{{ filter_query }}"></label>
+      <select id="smProject" aria-label="项目"{% if locked_project_id %} disabled{% endif %}>
+        <option value="">全部项目</option>
+      </select>
+      <select id="smEnv" aria-label="环境">
+        <option value="">全部环境</option>
+        <option value="development">开发环境</option>
+        <option value="testing">测试环境</option>
+        <option value="staging">预发环境</option>
+        <option value="production">生产环境</option>
+      </select>
+      <select id="smStatus" aria-label="状态">
+        <option value="">全部状态</option>
+        <option value="running">运行中</option>
+        <option value="active">活跃</option>
+        <option value="draft">草稿</option>
+        <option value="stopped">已停止</option>
+        <option value="error">异常</option>
+        <option value="disabled">已禁用</option>
+      </select>
+      <button class="pm-btn pm-btn--compact" id="smRefresh" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
+    </div>
+    <div class="sm-hub-meta" id="smMeta"></div>
+    <div class="env-line-cards-wrap">
+      <div class="env-line-cards sm-hub-grid" id="smGrid"><div class="ops-workspace-empty">正在加载…</div></div>
+    </div>
+  </section>
+
+  <div class="ops-dialog" id="smDialog" hidden>
+    <form class="ops-dialog-card sm-hub-dialog" id="smForm">
+      <div class="ops-dialog-head">
+        <h2 id="smDialogTitle">新建</h2>
+        <button class="pm-btn pm-btn--compact" id="smDialogClose" type="button" aria-label="关闭"><img src="/static/project_ui/svg/action_close.svg" alt=""></button>
+      </div>
+      <div class="ops-dialog-body">
+        <input type="hidden" name="mode" value="create">
+        <input type="hidden" name="kind" value="">
+        <label class="ops-dialog-field"><span>名称</span><input name="name" required maxlength="80" placeholder="生产主拓扑"></label>
+        <label class="ops-dialog-field"><span>唯一 ID</span><input name="resource_id" required maxlength="64" pattern="[a-z0-9][a-z0-9_-]{2,63}" placeholder="prod-main-topo"></label>
+        <label class="ops-dialog-field sm-project-field"><span>项目</span><select name="project_id" required></select></label>
+        <label class="ops-dialog-field"><span>环境</span><select name="env_key"><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select></label>
+        <label class="ops-dialog-field wide"><span>描述</span><textarea name="description" rows="2" placeholder="可选"></textarea></label>
+        <div class="ops-dialog-field wide sm-icon-field">
+          <span>图标</span>
+          <div class="p01-icon-upload sm-icon-upload">
+            <div class="p01-icon-upload__preview" id="smIconPreview"><span class="p01-icon-upload__placeholder">图标</span></div>
+            <div class="p01-icon-upload__body">
+              <label class="pm-btn pm-btn--compact p01-icon-upload__pick" for="smIconFile">选择图片</label>
+              <input id="smIconFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+              <span class="p01-icon-upload__hint">支持 png / jpg / gif / webp</span>
+            </div>
+          </div>
+          <input type="hidden" name="icon_url" id="smIconUrl" value="">
+        </div>
+      </div>
+      <div class="ops-dialog-feedback" id="smDialogFeedback"></div>
+      <div class="ops-dialog-actions">
+        <button class="pm-btn pm-btn--compact" id="smDialogCancel" type="button">取消</button>
+        <button class="pm-btn pm-btn--primary pm-btn--compact" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
+</section>
+<script type="application/json" id="smProjectsJson">{{ projects_json | tojson }}</script>

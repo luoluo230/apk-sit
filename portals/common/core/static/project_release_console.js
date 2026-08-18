@@ -61,6 +61,7 @@
       server_release_id: val("rcServerArtifact"),
       target_topology_id: val("rcTargetTopology"),
       deploy_server_with_client: chk("rcDeployServer"),
+      rollback_with_server: chk("rcRollbackWithServer"),
       min_server_version: val("rcMinServerVersion"),
       release_strategy: val("rcReleaseStrategy"),
       gray_ratio: val("rcGrayRatio"),
@@ -169,6 +170,7 @@
     setVal("rcServerArtifact", plan.server_release_id || plan.linked_server_release_id || "");
     setVal("rcTargetTopology", plan.target_topology_id || "");
     setChk("rcDeployServer", plan.deploy_server_with_client);
+    setChk("rcRollbackWithServer", plan.rollback_with_server !== false);
     setVal("rcMinServerVersion", plan.min_server_version || "");
     setVal("rcReleaseStrategy", plan.release_strategy || "full");
     setVal("rcGrayRatio", plan.gray_ratio || "");
@@ -234,8 +236,26 @@
     var host = document.getElementById("rcExecPreview");
     if (!host) return;
     host.innerHTML = (batch.orders || []).map(function (o) {
+      var plan = o.payload || {};
+      var deploy = plan.server_coordinated_deploy || {};
+      var coord = "";
+      if (plan.deploy_server_with_client) {
+        if (deploy.error) {
+          coord = ' <span class="rc-coord rc-coord--fail">服务端: ' + esc(deploy.error) + "</span>";
+        } else if (deploy.deploy_status) {
+          coord = ' <span class="rc-coord rc-coord--ok">服务端: ' + esc(deploy.deploy_status) + "</span>";
+        } else if (!deploy.skipped) {
+          coord = ' <span class="rc-coord">服务端: 待部署</span>';
+        }
+      }
+      var rollback = plan.server_coordinated_rollback || {};
+      if (rollback && !rollback.skipped) {
+        coord += rollback.ok
+          ? ' <span class="rc-coord rc-coord--ok">联合回滚: ok</span>'
+          : ' <span class="rc-coord rc-coord--fail">联合回滚: ' + esc(rollback.error || "failed") + "</span>";
+      }
       return '<div class="rc-preview-row"><strong>' + esc(o.channel_id) + "/" + esc(o.platform) +
-        "</strong> → " + esc(o.release_order_id) + " · " + esc(o.status) + "</div>";
+        "</strong> → " + esc(o.release_order_id) + " · " + esc(o.status) + coord + "</div>";
     }).join("") || '<div class="rc-empty">—</div>';
   }
 
@@ -387,6 +407,10 @@
       if (!ok) return;
       body.confirm_production = true;
     }
+    if (action === "rollback") {
+      var rbOk = window.confirm("确认批次联合回滚？各交付线将回滚至上一个可用 Bundle（含协同服务端）。");
+      if (!rbOk) return;
+    }
     document.getElementById("rcProgress").hidden = false;
     document.getElementById("rcProgress").textContent = "执行中…";
     saveBatchPlan().then(function () {
@@ -394,8 +418,19 @@
         method: "POST",
         body: body,
       });
-    }).then(function () {
-      toast("操作已提交");
+    }).then(function (result) {
+      if (action === "publish" && result && result.results) {
+        var serverNotes = (result.results || [])
+          .filter(function (r) { return r.ok; })
+          .map(function (r) { return r.release_order_id; });
+        if (serverNotes.length) {
+          toast("发布已提交 — 可在发版中心查看协同发布反馈");
+        } else {
+          toast("操作已提交");
+        }
+      } else {
+        toast("操作已提交");
+      }
       return refreshBatchUi();
     }).catch(function (err) {
       toast(err.message);
@@ -424,7 +459,7 @@
     });
     ["rcReasonType", "rcOwner", "rcReleaseWindow", "rcReleaseDescription",
       "rcAnnTitle", "rcAnnBody", "rcAnnEffective", "rcAnnAudience", "rcAnnSyncGm",
-      "rcServerArtifact", "rcTargetTopology", "rcDeployServer", "rcMinServerVersion",
+      "rcServerArtifact", "rcTargetTopology", "rcDeployServer", "rcRollbackWithServer", "rcMinServerVersion",
       "rcReleaseStrategy", "rcGrayRatio", "rcValidationPlan", "rcRollbackPlan"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener("change", scheduleAutosave);

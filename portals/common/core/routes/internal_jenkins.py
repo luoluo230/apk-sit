@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import os
+import tempfile
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
@@ -91,3 +94,90 @@ def jenkins_build_complete():
             "build_number": build_number,
         }
     ), 200
+
+
+@bp.route("/api/internal/jenkins/server-artifact", methods=["POST"])
+def jenkins_server_artifact():
+    """Jenkins gameserver build hook: register server artifact zip with Portal."""
+    raw_body = request.get_data(cache=True) or b""
+    auth_error = assert_internal_webhook_request(
+        request,
+        raw_body,
+        _signature_header(),
+        "JENKINS_BUILD_WEBHOOK_SECRET",
+    )
+    if auth_error:
+        return jsonify({"ok": False, "error": auth_error}), 401
+
+    try:
+        payload = _parse_payload(raw_body)
+    except json.JSONDecodeError:
+        return jsonify({"ok": False, "error": "invalid json"}), 400
+
+    project_id = str(payload.get("project_id") or "").strip()
+    if not project_id:
+        return jsonify({"ok": False, "error": "project_id required"}), 400
+
+    from services.release import server_artifact_service as sas
+
+    extra: Dict[str, Any] = {}
+    if payload.get("build_number") is not None:
+        extra["build_number"] = payload.get("build_number")
+    if payload.get("jenkins_instance_id"):
+        extra["jenkins_instance_id"] = payload.get("jenkins_instance_id")
+    body: Dict[str, Any] = {
+        "artifact_id": str(payload.get("artifact_id") or "").strip(),
+        "version_label": str(payload.get("version_label") or payload.get("version") or "").strip(),
+        "protocol_version": str(payload.get("protocol_version") or "v1").strip(),
+        "checksum": str(payload.get("checksum") or "").strip(),
+        "bundle_path": str(payload.get("bundle_path") or payload.get("artifact_path") or "").strip(),
+    }
+    if payload.get("oss_url"):
+        body["oss_url"] = str(payload.get("oss_url"))
+    if extra:
+        body["payload"] = extra
+
+    source_path = str(payload.get("source_path") or "").strip()
+    artifact_b64 = str(payload.get("artifact_b64") or "").strip()
+    temp_path = ""
+    if artifact_b64:
+        fd, temp_path = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        with open(temp_path, "wb") as fh:
+            fh.write(base64.b64decode(artifact_b64))
+        source_path = temp_path
+    try:
+        row = sas.register_artifact(project_id, body, source_path=source_path)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        if temp_path and os.path.isfile(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    result: Dict[str, Any] = {"artifact": row}
+    topology_id = str(payload.get("topology_id") or "").strip()
+    target_services = payload.get("target_services")
+    env_key = str(payload.get("env_key") or "development").strip()
+    if topology_id and isinstance(target_services, list) and target_services:
+        from services.release import server_release_service as srs
+
+        sro = srs.create_server_release(
+            project_id,
+            {
+                "artifact_id": row.get("artifact_id"),
+                "topology_id": topology_id,
+                "env_key": env_key,
+                "target_services": target_services,
+                "payload": {
+                    "jenkins_build_number": payload.get("build_number"),
+                    "jenkins_instance_id": payload.get("jenkins_instance_id"),
+                },
+            },
+            actor="jenkins-webhook",
+        )
+        result["server_release"] = sro
+
+    return jsonify({"ok": True, **result}), 201

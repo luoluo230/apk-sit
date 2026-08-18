@@ -154,10 +154,13 @@ def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = 
 
 
 def rollback_release_order(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
+    from services.release.order_state_machine import assert_transition
+
     target = _order_crud().get_release_order(project_id, order_id, include_details=False)
     if not target or not target.get("bundle_id"):
         raise ValueError("目标发布单没有可回滚 Bundle")
     now = _now_iso()
+    superseded_order = None
     with get_cursor() as cur:
         target_bundle_row = cur.execute("SELECT payload FROM release_bundles WHERE bundle_id=?", (target["bundle_id"],)).fetchone()
         if not target_bundle_row:
@@ -186,14 +189,18 @@ def rollback_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
             "UPDATE release_bundles SET publish_status='published', payload=?, published_at=?, published_by=?, updated_at=? WHERE bundle_id=?",
             (_json(target_bundle), now, actor, now, target["bundle_id"]),
         )
+        assert_transition(str(target.get("status") or "published"), "published")
         cur.execute(
             "UPDATE release_orders SET status='published', published_at=?, updated_at=? WHERE project_id=? AND release_order_id=?",
             (now, now, project_id, order_id),
         )
         if current and str(current["release_order_id"] or ""):
+            superseded_oid = str(current["release_order_id"])
+            superseded_order = _order_crud().get_release_order(project_id, superseded_oid, include_details=False)
+            assert_transition(str(superseded_order.get("status") or "published"), "rolled_back")
             cur.execute(
                 "UPDATE release_orders SET status='rolled_back', updated_at=? WHERE project_id=? AND release_order_id=?",
-                (now, project_id, str(current["release_order_id"])),
+                (now, project_id, superseded_oid),
             )
         cur.execute(
             "UPDATE release_scopes SET active_bundle_id=?, updated_at=? WHERE scope_id=?",
@@ -201,6 +208,17 @@ def rollback_release_order(project_id: str, order_id: str, actor: str) -> Dict[s
         )
         _event(cur, order_id, "rollback_restored", actor, target["status"], "published", {"bundle_id": target["bundle_id"]})
     result = _order_crud().get_release_order(project_id, order_id)
+    try:
+        from services.release.server_coordinated_rollback import maybe_coordinated_server_rollback
+
+        server_rb = maybe_coordinated_server_rollback(project_id, result, superseded_order, actor)
+        result = _order_crud().get_release_order(project_id, order_id)
+        if isinstance(result.get("payload"), dict):
+            result["payload"]["server_coordinated_rollback"] = server_rb
+    except ValueError as exc:
+        result = _order_crud().get_release_order(project_id, order_id)
+        if isinstance(result.get("payload"), dict):
+            result["payload"]["server_coordinated_rollback"] = {"ok": False, "error": str(exc)}
     if os.environ.get("RELEASE_FEISHU_NOTIFY", "1").strip().lower() not in ("0", "false", "no"):
         try:
             from services.webhook import fire_feishu

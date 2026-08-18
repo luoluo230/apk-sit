@@ -192,20 +192,35 @@ def register_page_routes(bp) -> None:
             page_env_key=env_key,
         )
 
-    @bp.route("/admin/projects/<project_id>/release")
+    @bp.route("/admin/projects/<project_id>/release-hub")
     @admin_required("projects")
-    def project_release_console_redirect(project_id: str):
-        from urllib.parse import urlencode
-
+    def project_release_hub_page(project_id: str):
         if project_id not in projects_db:
             return "项目不存在", 404
-        qs = urlencode({
-            k: str(request.args.get(k) or "").strip()
-            for k in ("env", "env_key", "channel", "channel_id", "platform", "version_id", "phase")
-            if str(request.args.get(k) or "").strip()
-        })
-        target = f"/admin/projects/{project_id}/versions"
-        return redirect(f"{target}?{qs}" if qs else target)
+        env_key = str(request.args.get("env_key") or "development").strip()
+        return _page(
+            "project_release_hub.html",
+            "发版中心",
+            project_id,
+            "release-hub",
+            breadcrumb_module="交付发版",
+            page_env_key=env_key,
+        )
+
+    @bp.route("/admin/projects/<project_id>/release")
+    @admin_required("projects")
+    def project_release_console_page(project_id: str):
+        if project_id not in projects_db:
+            return "项目不存在", 404
+        env_key = str(request.args.get("env_key") or request.args.get("env") or "development").strip()
+        return _page(
+            "project_release_console.html",
+            "发版控制台",
+            project_id,
+            "release-console",
+            breadcrumb_module="交付发版",
+            page_env_key=env_key,
+        )
 
     @bp.route("/admin/projects/<project_id>/environments/<env_key>/channels/<channel_id>/build")
     @admin_required("projects")
@@ -286,7 +301,7 @@ def register_page_routes(bp) -> None:
     @bp.route("/admin/projects/<project_id>/release-orders")
     @admin_required("projects")
     def release_orders_page(project_id: str):
-        return _page("release_orders.html", "发布单", project_id, "release-orders")
+        return _page("release_orders.html", "发布单", project_id, "release-orders", breadcrumb_module="交付发版")
 
     @bp.route("/admin/projects/<project_id>/release-orders/start")
     @admin_required("projects")

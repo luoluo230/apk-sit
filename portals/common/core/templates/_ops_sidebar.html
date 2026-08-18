@@ -9,28 +9,34 @@
     <div><strong>Dev Portal</strong><span>项目交付管理平台</span></div>
   </a>
   <nav class="ops-shell-nav-tree">
-    <div class="ops-shell-nav-group"><b>全局区域</b>
+    <div class="ops-shell-nav-group"><b>全局</b>
       {{ nav_item('home', '/admin', 'nav_workbench', '工作中心') }}
       {{ nav_item('message-center', '/admin/notifications', 'nav_message_center', '消息中心') }}
       {{ nav_item('projects', '/admin/projects', 'nav_project_list', '项目列表') }}
     </div>
-    <div class="ops-shell-nav-group"><b>总览模块</b>
+    {% if project_id %}
+    <div class="ops-shell-nav-group"><b>交付发版</b>
+      {{ nav_item('release-hub', '/admin/projects/' ~ project_id ~ '/release-hub', 'nav_release', '发版中心') }}
+      {{ nav_item('release-console', '/admin/projects/' ~ project_id ~ '/release', 'nav_release', '发版控制台') }}
+      {{ nav_item('versions', '/admin/projects/' ~ project_id ~ '/versions', 'nav_version', '版本管理') }}
+      {{ nav_item('release-orders', '/admin/projects/' ~ project_id ~ '/release-orders', 'nav_release_order', '发布单') }}
+      {{ nav_item('builds', '/admin/projects/' ~ project_id ~ '/build-history?scoped=1&env_key=' ~ (env_key or 'development'), 'nav_build_artifact', '构建与产物') }}
+    </div>
+    <div class="ops-shell-nav-group"><b>项目总览</b>
       {{ nav_item('project-home', '/admin/projects/' ~ project_id ~ '/overview', 'nav_project_overview', '项目总览') }}
       {{ nav_item('environment-runtime', '/admin/projects/' ~ project_id ~ '/overview/runtime?env_key=' ~ (env_key or 'production'), 'nav_environment', '运行概览') }}
       {{ nav_item('environment-config', '/admin/projects/' ~ project_id ~ '/overview?tab=environments', 'nav_project_setting', '环境配置') }}
     </div>
-    <div class="ops-shell-nav-group"><b>运行管理</b>
-      {{ nav_item('topology', '/admin/projects/' ~ project_id ~ '/topologies', 'nav_topology', '拓扑资产') }}
+    <div class="ops-shell-nav-group"><b>服务器运行</b>
+      {{ nav_item('server-management', '/admin/projects/' ~ project_id ~ '/server-management', 'nav_agent_server', '服务器管理') }}
       {{ nav_item('agent-control', '/admin/projects/' ~ project_id ~ '/agents', 'nav_agent_server', '代理服务') }}
       {{ nav_item('actions', '/admin/projects/' ~ project_id ~ '/actions', 'nav_execute', '动作执行') }}
       {{ nav_item('diagnostics', '/admin/projects/' ~ project_id ~ '/diagnostics', 'nav_performance', '节点诊断') }}
     </div>
-    <div class="ops-shell-nav-group"><b>治理审计</b>
+    <div class="ops-shell-nav-group"><b>治理与协作</b>
       {{ nav_item('approval-center', '/admin/approval?project_id=' ~ project_id, 'nav_approval_center', '审批中心') }}
       {{ nav_item('change-governance', '/admin/projects/' ~ project_id ~ '/change-governance', 'nav_change_governance', '变更治理') }}
       {{ nav_item('audit-log', '/admin/projects/' ~ project_id ~ '/audit-log', 'nav_audit_log', '审计日志') }}
-    </div>
-    <div class="ops-shell-nav-group"><b>协作中心</b>
       {{ nav_item('project-tasks', '/admin/projects/' ~ project_id ~ '/tasks', 'nav_task', '项目任务') }}
       {{ nav_item('project-docs', '/admin/projects/' ~ project_id ~ '/docs', 'nav_doc', '项目文档') }}
     </div>
@@ -38,6 +44,11 @@
       {{ nav_item('project-settings', '/admin/projects/' ~ project_id ~ '/settings', 'nav_project_setting', '项目设置') }}
       {{ nav_item('project-channels', '/admin/projects/' ~ project_id ~ '/overview?tab=channels', 'nav_binding', '环境渠道') }}
     </div>
+    {% else %}
+    <div class="ops-shell-nav-group"><b>运行管理</b>
+      {{ nav_item('server-management', '/admin/server-management', 'nav_agent_server', '服务器管理') }}
+    </div>
+    {% endif %}
   </nav>
   <button class="ops-shell-collapse-btn" type="button"><img src="/static/project_ui/svg/nav_collapse.svg" alt=""><b>收起菜单</b></button>
 </aside>
