@@ -14,7 +14,7 @@
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-violet-600">Player Community</p>
                 <h1 class="mt-2 text-3xl font-bold text-slate-950">玩家生态管理</h1>
                 <p class="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                    新闻、福利与官方帖子统一先走审批，再进入玩家官网。内容按项目隔离，交互操作通过二级弹窗执行，避免误发布和误删除。
+                    管理玩家官网的新闻、福利、官方帖子与玩家发言。内容按项目隔离，发布前需审批。
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-3">
@@ -53,7 +53,6 @@
                     </div>
                     <span class="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">{{ news_rows|length }} 条</span>
                 </div>
-                <p class="mt-3 text-sm leading-7 text-slate-500">版本公告、活动预告、视频图文统一从这里发起。</p>
                 <button type="button" data-open-editor="news" class="mt-4 inline-flex items-center justify-center rounded-full bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700">
                     新建新闻
                 </button>
@@ -66,7 +65,6 @@
                     </div>
                     <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{{ welfare_rows|length }} 条</span>
                 </div>
-                <p class="mt-3 text-sm leading-7 text-slate-500">礼包码、活动权益和有效期统一管理，不再占满整屏空间。</p>
                 <button type="button" data-open-editor="welfare" class="mt-4 inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
                     新建福利
                 </button>
@@ -79,7 +77,6 @@
                     </div>
                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{{ forum_rows|length }} 条</span>
                 </div>
-                <p class="mt-3 text-sm leading-7 text-slate-500">公告贴、置顶帖和隐藏治理统一放进一个帖子工作流里。</p>
                 <button type="button" data-open-editor="forum" class="mt-4 inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">
                     新建官方帖
                 </button>
@@ -92,7 +89,6 @@
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Content Board</p>
                         <h2 class="mt-2 text-2xl font-bold text-slate-950">内容列表工作台</h2>
-                        <p class="mt-2 text-sm leading-7 text-slate-500">切换查看新闻、福利和官方帖子，不再把三块长列表同时摊开。</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <button type="button" data-list-tab-trigger="news" class="rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">新闻公告 <span class="ml-1 text-xs text-violet-500">{{ news_rows|length }}</span></button>
@@ -132,7 +128,6 @@
                     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                             <h3 class="text-lg font-semibold text-slate-950">新闻公告列表</h3>
-                            <p class="mt-1 text-sm text-slate-500">按项目和时间快速查看，适合高频编辑和归档。</p>
                         </div>
                         <button type="button" data-open-editor="news" class="inline-flex items-center justify-center rounded-full bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700">新建新闻</button>
                     </div>
@@ -173,7 +168,6 @@
                     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                             <h3 class="text-lg font-semibold text-slate-950">福利内容列表</h3>
-                            <p class="mt-1 text-sm text-slate-500">礼包码、有效期与活动说明采用更紧凑的运营视图展示。</p>
                         </div>
                         <button type="button" data-open-editor="welfare" class="inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">新建福利</button>
                     </div>
@@ -214,7 +208,6 @@
                     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                             <h3 class="text-lg font-semibold text-slate-950">官方帖子列表</h3>
-                            <p class="mt-1 text-sm text-slate-500">高频操作集中在右侧，避免一条帖子占掉过多垂直空间。</p>
                         </div>
                         <button type="button" data-open-editor="forum" class="inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">新建官方帖</button>
                     </div>
@@ -260,7 +253,6 @@
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                         <h2 class="text-2xl font-bold text-slate-950">玩家发言治理</h2>
-                        <p class="mt-1 text-sm text-slate-500">这里改成单玩家治理台。先查到人，再进入弹窗操作，不再把命中结果铺成长列表。</p>
                     </div>
                     <form method="get" action="{{ url_for('player_community.community_admin') }}#player-governance-section" class="grid gap-3 md:grid-cols-[1.2fr_0.8fr_auto_auto]">
                         {% if current_project_id %}
@@ -311,11 +303,9 @@
             {% if not player_has_filter %}
             <div class="px-6 py-8">
                 <div class="rounded-[28px] border border-dashed border-slate-200 bg-slate-50/70 px-6 py-10 text-center">
-                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Query First</p>
-                    <h3 class="mt-3 text-2xl font-bold text-slate-950">先定位玩家，再治理</h3>
+                    <h3 class="mt-3 text-2xl font-bold text-slate-950">请输入查询条件</h3>
                     <p class="mx-auto mt-3 max-w-2xl text-sm leading-7 text-slate-500">
-                        输入玩家昵称、访客标识或备注关键词后再查。状态筛选只作为缩小范围的辅助手段，
-                        不再单独拉出大批量玩家，避免玩家增多后页面过长、治理操作失焦。
+                        输入玩家昵称、访客标识或备注关键词后查询。可使用状态筛选缩小范围。
                     </p>
                     <div class="mt-5 flex flex-wrap justify-center gap-3 text-sm">
                         <span class="rounded-full bg-white px-4 py-2 text-slate-500 shadow-sm">示例：`SmokeUser`</span>
@@ -339,13 +329,11 @@
             <div class="border-t border-slate-200 px-6 py-6">
                 <div class="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
                     <aside class="rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
-                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Target Finder</p>
+                        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">玩家查询</p>
                         <h3 class="mt-3 text-xl font-bold text-slate-950">已命中 {{ player_overview.filtered }} 名玩家</h3>
-                        <p class="mt-2 text-sm leading-7 text-slate-500">
-                            默认只聚焦一个玩家进行治理。若关键词命中多人，请先在这里切换目标，再进入二级弹窗执行操作。
-                        </p>
 
                         {% if player_candidates|length > 1 %}
+                        <p class="mt-2 text-sm leading-7 text-slate-500">命中多名玩家时，请先选择目标再执行操作。</p>
                         <div class="mt-5 space-y-3">
                             <label for="playerCandidateSelect" class="block text-sm font-semibold text-slate-700">选择治理对象</label>
                             <select id="playerCandidateSelect" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
@@ -369,7 +357,7 @@
                         </div>
                         {% else %}
                         <div class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700">
-                            当前查询已经锁定到单一玩家，可直接在右侧查看状态并进入治理弹窗。
+                            已锁定单一玩家，可在右侧查看状态并执行操作。
                         </div>
                         {% endif %}
 
@@ -436,7 +424,7 @@
 
                             <div class="rounded-[28px] border border-slate-200 bg-slate-50/70 p-5">
                                 <div class="text-sm font-semibold text-slate-700">当前治理备注</div>
-                                <p id="playerFocusNotes" class="mt-3 text-sm leading-7 text-slate-500">{{ selected_player.notes or '暂无备注。进入治理弹窗后可以补充本次处理原因。' }}</p>
+                                <p id="playerFocusNotes" class="mt-3 text-sm leading-7 text-slate-500">{{ selected_player.notes or '暂无备注。' }}</p>
                             </div>
                         </div>
                         {% endif %}
@@ -487,7 +475,7 @@
                     <div class="grid gap-4 md:grid-cols-[1fr_180px]">
                         <div>
                             <label class="text-sm font-semibold text-slate-700">管理员备注</label>
-                            <textarea id="playerActionNote" class="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" placeholder="记录本次治理原因，便于追溯。"></textarea>
+                            <textarea id="playerActionNote" class="mt-2 min-h-[120px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" placeholder="记录本次处理原因。"></textarea>
                         </div>
                         <div>
                             <label class="text-sm font-semibold text-slate-700">时长设置</label>
@@ -572,7 +560,7 @@
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <div class="text-sm font-semibold text-slate-900">图片素材</div>
-                                <div class="mt-1 text-xs text-slate-500">支持多图上传，上传后前台直接显示图片，不再显示链接。</div>
+                                <div class="mt-1 text-xs text-slate-500">支持上传多张图片。</div>
                             </div>
                             <button type="button" data-clear-images class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空图片</button>
                         </div>
@@ -686,7 +674,7 @@
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <div class="text-sm font-semibold text-slate-900">图片素材</div>
-                                <div class="mt-1 text-xs text-slate-500">帖子截图和官方宣传图统一上传，避免链接失效。</div>
+                                <div class="mt-1 text-xs text-slate-500">支持上传帖子截图与宣传图。</div>
                             </div>
                             <button type="button" data-clear-images class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">清空图片</button>
                         </div>

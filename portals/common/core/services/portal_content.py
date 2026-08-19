@@ -62,7 +62,7 @@ DEFAULT_DEV_PORTAL = {
     "secondary_button": "进入下载中心",
     "workspace_badge": "Studio Workspace",
     "workspace_title": "为项目、运营与发布准备的统一工作台。",
-    "workspace_intro": "这里是星云游戏站的内部入口。登录后按角色进入运营、开发、运维与配置分区，不再把后台能力暴露在玩家官网页面里。",
+    "workspace_intro": "登录后进入运营、开发、运维与配置工作台。",
     "featured_product_ids": "",
     "visible_product_ids": "",
     "home_modules": [

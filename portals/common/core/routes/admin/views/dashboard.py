@@ -69,10 +69,12 @@ def render_grouped_admin_sections(sections):
     for title, description, cards in sections:
         if not cards:
             continue
+        desc_html = ""
+        if str(description or "").strip():
+            desc_html = f'<p class="mt-1 text-sm text-slate-500">{description}</p>'
         parts.append(
             '<section class="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">'
-            f'<div class="mb-4"><h3 class="text-base font-semibold text-slate-900">{title}</h3>'
-            f'<p class="mt-1 text-sm text-slate-500">{description}</p></div>'
+            f'<div class="mb-4"><h3 class="text-base font-semibold text-slate-900">{title}</h3>{desc_html}</div>'
             '<div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">'
             + ''.join(cards) +
             '</div></section>'
@@ -88,8 +90,7 @@ def render_admin_dashboard_v2(summary_cards, quick_actions, todo_html, risk_html
             <div class="grid gap-6 xl:grid-cols-[1.45fr_0.95fr] xl:items-start"> 
                 <div>
                     <p class="text-[11px] font-semibold tracking-[0.22em] uppercase text-slate-300/80">工作台总览</p>
-                    <h2 class="mt-2 text-2xl md:text-3xl font-semibold text-white">运维、运营、开发与配置一屏总览</h2>
-                    <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-300">先看风险和待办，再按运维、运营、开发、配置四类中心进入模块，减少在审批、项目、版本、构建之间来回切页。</p>
+                    <h2 class="mt-2 text-2xl md:text-3xl font-semibold text-white">管理中心</h2>
                     <div class="mt-5 flex flex-wrap gap-2">''' + (''.join(quick_actions) if quick_actions else '<span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-300">当前没有快捷操作</span>') + '''</div>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-2">''' + ''.join(
@@ -104,7 +105,6 @@ def render_admin_dashboard_v2(summary_cards, quick_actions, todo_html, risk_html
                     <div class="mb-4 flex flex-wrap items-center justify-between gap-2"> 
                         <div>
                             <h3 class="text-base font-semibold text-slate-900">工作优先级</h3>
-                            <p class="mt-1 text-sm text-slate-500">把最影响交付和发布的事项放在第一屏。</p>
                         </div>
                         <a href="/admin/my-tasks" class="text-xs font-medium text-indigo-600 hover:underline">查看我的任务</a>
                     </div>
@@ -113,8 +113,7 @@ def render_admin_dashboard_v2(summary_cards, quick_actions, todo_html, risk_html
                 <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
                     <div class="mb-4 flex flex-wrap items-center justify-between gap-2"> 
                         <div>
-                            <h3 class="text-base font-semibold text-slate-900">项目优先导航</h3>
-                            <p class="mt-1 text-sm text-slate-500">按运维、运营、开发、配置四个中心展示入口，每类只保留与本职责最相关的功能。</p>
+                            <h3 class="text-base font-semibold text-slate-900">功能导航</h3>
                         </div>
                     </div>
                     <div class="space-y-4">''' + cards_html + '''</div>
@@ -142,7 +141,6 @@ def render_admin_dashboard_v2(summary_cards, quick_actions, todo_html, risk_html
             <div class="mb-4 flex flex-wrap items-center justify-between gap-2"> 
                 <div>
                     <h3 class="text-base font-semibold text-slate-900">最近安装包</h3>
-                    <p class="mt-1 text-sm text-slate-500">帮助你快速确认最近上传的 Android 和 iOS 包。</p>
                 </div>
                 <a href="/admin/versions" class="text-xs font-medium text-indigo-600 hover:underline">查看版本中心</a>
             </div>
@@ -244,9 +242,9 @@ def render_admin_panel_dashboard(visible, desc, username, admin_layout):
     grouped_cards['system'].append(render_module_card('/workspace', 'fa-briefcase', 'text-amber-500', '个人工作区', '处理个人文件、截图、书签和协作资料'))
 
     cards = render_grouped_admin_sections([
-        ('项目工作台', '先选择项目，再进入该项目的构建、发布、GM工作台与运维中心。', grouped_cards.get('project')),
-        ('全局审计', '审批、通知、报表、审计回放等跨项目治理能力。', grouped_cards.get('governance')),
-        ('系统配置', '系统级配置与账号安全能力，不承载项目执行动作。', grouped_cards.get('system')),
+        ('项目工作台', '', grouped_cards.get('project')),
+        ('全局审计', '', grouped_cards.get('governance')),
+        ('系统配置', '', grouped_cards.get('system')),
     ])
     summary_cards = [
         ('可见项目', len(visible_project_ids), 'fa-folder-tree', 'bg-emerald-100', 'text-emerald-700'),

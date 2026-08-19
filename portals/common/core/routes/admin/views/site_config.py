@@ -217,7 +217,7 @@ def render_site_config_page():
             <div>
                 <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">\u914d\u7f6e\u4e2d\u5fc3</p>
                 <h2 class="mt-1 text-2xl font-semibold text-slate-900">\u5b98\u7f51\u4e0e\u5916\u90e8\u6a21\u5757\u914d\u7f6e</h2>
-                <p class="mt-1 text-sm text-slate-500">\u5c06\u516c\u53f8\u7b80\u4ecb\u3001\u73a9\u5bb6\u5b98\u7f51\u3001\u5f00\u53d1\u8005\u5b98\u7f51\u548c\u5916\u90e8\u5165\u53e3\u7edf\u4e00\u6536\u53e3\uff0c\u907f\u514d\u7ad9\u70b9\u914d\u7f6e\u548c\u5185\u5bb9\u8fd0\u8425\u6df7\u5728\u4e00\u8d77\u3002</p>
+                <p class="mt-1 text-sm text-slate-500">将公司简介、玩家官网、开发者官网和外部入口集中配置。</p>
             </div>
             <div class="flex items-center gap-2">
                 <a href="/admin/site-config/editor/player" class="rounded-xl border border-violet-200 bg-violet-50 px-4 py-1.5 text-sm font-semibold text-violet-700">\u73a9\u5bb6\u5b98\u7f51\u53ef\u89c6\u5316\u7f16\u8f91\u5668</a>

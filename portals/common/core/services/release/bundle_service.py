@@ -440,15 +440,29 @@ def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, va
     channel_aligned = not row_channel_id or row_channel_id == str(scope.get("channel_id") or "")
     runtime_aligned = True
     runtime_topology_id = ""
+    project_id = str(scope.get("project_id") or "")
+    env_key = str(scope.get("env_key") or "")
     try:
         from services.ops.topology_registry import _resolve_topology_context
 
-        ctx = _resolve_topology_context(str(scope.get("project_id") or ""), str(scope.get("env_key") or ""), topology_id)
+        ctx = _resolve_topology_context(project_id, env_key, topology_id)
         runtime_topology_id = str((ctx.get("row") or {}).get("topology_id") or ctx.get("topology_id") or "")
         if runtime_topology_id and runtime_topology_id != topology_id:
             runtime_aligned = False
     except Exception:
         runtime_aligned = True
+
+    if not runtime_aligned and str(topology_id or "").startswith("topology-design-"):
+        try:
+            from services.ops.runtime_service import _runtime_active_for_scope
+
+            active = _runtime_active_for_scope(project_id, env_key, "")
+            active_tid = str(active.get("topology_id") or runtime_topology_id or "").strip()
+            if active.get("active") and active_tid:
+                runtime_topology_id = active_tid
+                runtime_aligned = True
+        except Exception:
+            pass
 
     alignment_errors = []
     if not scope_aligned:

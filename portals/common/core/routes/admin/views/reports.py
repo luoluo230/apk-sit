@@ -67,7 +67,7 @@ def render_reports_page(username, selected_project_id):
         <div>
             <p class="text-[11px] font-semibold text-slate-500 tracking-[0.16em] uppercase">数据与洞察</p>
             <h2 class="text-xl font-semibold text-slate-900 mt-1">报表中心</h2>
-            <p class="text-sm text-slate-500 mt-1">创建报表模板、一键生成 CSV；亦可跳转至数据分析页导出。导出记录便于追溯。</p>
+            <p class="text-sm text-slate-500 mt-1">创建报表模板、一键生成 CSV；亦可跳转至数据分析页导出。</p>
         </div>
     {report_filter_html}
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">

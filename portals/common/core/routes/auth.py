@@ -222,10 +222,7 @@ def _expand_brand_text(text, company_name):
 
 
 def _default_workspace_intro(company_name):
-    return (
-        f"这里是{company_name}的内部入口。登录后按角色进入运营、开发、运维与配置分区，"
-        "不再把后台能力暴露在玩家官网页面里。"
-    )
+    return f"登录{company_name}内部工作台，按权限使用运营、开发、运维与配置功能。"
 
 
 def _login_page(error_msg="", locked_msg=""):
