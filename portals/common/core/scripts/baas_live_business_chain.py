@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
@@ -63,6 +64,8 @@ class BaasLiveBusinessChain:
         ok &= self.scenario_phase2_retention()
         ok &= self.scenario_phase3_social()
         ok &= self.scenario_phase4_compliance()
+        ok &= self.scenario_pve_afk()
+        ok &= self.scenario_arena_async()
         ok &= self.scenario_pvp_fanout()
         return {"ok": ok, "scenarios": self.scenarios}
 
@@ -228,6 +231,120 @@ class BaasLiveBusinessChain:
             })
         except Exception as exc:
             return self._record("phase4_compliance", False, {"error": str(exc)})
+
+    def scenario_pve_afk(self) -> bool:
+        """AFK-style PVE: stamina → start → client-side sim → settle → progress."""
+        try:
+            p1, h1 = self._guest("PveHero")
+            stamina = http_json(f"{self.base}/pve/stamina", headers=h1)
+            progress0 = http_json(f"{self.base}/pve/progress", headers=h1)
+            stage_id = "1-1"
+            stars = 3
+            start = http_json(
+                f"{self.base}/pve/battle/start",
+                method="POST",
+                body={"stage_id": stage_id, "team": {"heroes": [1, 2, 3]}},
+                headers=h1,
+            )
+            if not start.get("ok"):
+                return self._record("pve_afk_chain", False, {"step": "start", "response": start})
+            battle_id = (start.get("data") or {}).get("battle_id")
+            seed = (start.get("data") or {}).get("seed")
+            checksum = hashlib.sha256(f"{seed}:{stage_id}:1:{stars}".encode()).hexdigest()[:16]
+            settle = http_json(
+                f"{self.base}/pve/battle/settle",
+                method="POST",
+                body={
+                    "battle_id": battle_id,
+                    "win": True,
+                    "stars": stars,
+                    "duration_ms": 12000,
+                    "checksum": checksum,
+                },
+                headers=h1,
+            )
+            progress1 = http_json(f"{self.base}/pve/progress", headers=h1)
+            cleared = ((settle.get("data") or {}).get("progress") or {}).get("total_cleared", 0)
+            ok = all([
+                stamina.get("ok"),
+                progress0.get("ok"),
+                start.get("ok"),
+                settle.get("ok"),
+                (settle.get("data") or {}).get("win") is True,
+                progress1.get("ok"),
+                cleared >= 1,
+            ])
+            return self._record("pve_afk_chain", ok, {
+                "stamina": stamina.get("ok"),
+                "battle_id": battle_id,
+                "win": (settle.get("data") or {}).get("win"),
+                "total_cleared": cleared,
+            })
+        except Exception as exc:
+            return self._record("pve_afk_chain", False, {"error": str(exc)})
+
+    def scenario_arena_async(self) -> bool:
+        """AFK-style async arena: defense snapshot → opponents → start → settle → rating."""
+        try:
+            p1, h1 = self._guest("ArenaAtk")
+            p2, h2 = self._guest("ArenaDef")
+            def_up = http_json(
+                f"{self.base}/arena/defense",
+                method="POST",
+                body={"defense": {"heroes": [21, 22]}, "power": 500},
+                headers=h2,
+            )
+            def_atk = http_json(
+                f"{self.base}/arena/defense",
+                method="POST",
+                body={"defense": {"heroes": [11, 12]}, "power": 480},
+                headers=h1,
+            )
+            state0 = http_json(f"{self.base}/arena/state", headers=h1)
+            opponents = http_json(f"{self.base}/arena/opponents?count=3", headers=h1)
+            opp_list = opponents.get("data") or []
+            defender_id = p2["player_id"]
+            if opp_list:
+                defender_id = opp_list[0].get("player_id") or defender_id
+            start = http_json(
+                f"{self.base}/arena/battle/start",
+                method="POST",
+                body={"defender_id": defender_id, "team": {"heroes": [1, 2]}},
+                headers=h1,
+            )
+            if not start.get("ok"):
+                return self._record("arena_async_chain", False, {"step": "start", "response": start})
+            battle_id = (start.get("data") or {}).get("battle_id")
+            seed = (start.get("data") or {}).get("seed")
+            win = True
+            checksum = hashlib.sha256(f"{seed}:{defender_id}:{int(win)}".encode()).hexdigest()[:16]
+            settle = http_json(
+                f"{self.base}/arena/battle/settle",
+                method="POST",
+                body={"battle_id": battle_id, "win": win, "duration_ms": 8000, "checksum": checksum},
+                headers=h1,
+            )
+            state1 = http_json(f"{self.base}/arena/state", headers=h1)
+            rating = (settle.get("data") or {}).get("rating")
+            ok = all([
+                def_up.get("ok"),
+                def_atk.get("ok"),
+                state0.get("ok"),
+                opponents.get("ok"),
+                start.get("ok"),
+                settle.get("ok"),
+                (settle.get("data") or {}).get("win") is True,
+                rating is not None,
+                state1.get("ok"),
+            ])
+            return self._record("arena_async_chain", ok, {
+                "defender_id": defender_id,
+                "battle_id": battle_id,
+                "rating": rating,
+                "opponent_count": len(opp_list),
+            })
+        except Exception as exc:
+            return self._record("arena_async_chain", False, {"error": str(exc)})
 
     def scenario_pvp_fanout(self) -> bool:
         try:

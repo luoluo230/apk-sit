@@ -5,6 +5,10 @@ namespace MAClient.Network.Baas
     {
         public const string BAAS_ACHIEVEMENT_DISABLED = "BAAS_ACHIEVEMENT_DISABLED";
         public const string BAAS_ACHIEVEMENT_NOT_COMPLETE = "BAAS_ACHIEVEMENT_NOT_COMPLETE";
+        public const string BAAS_ARENA_DAILY_LIMIT = "BAAS_ARENA_DAILY_LIMIT";
+        public const string BAAS_ARENA_DEFENSE_NOT_FOUND = "BAAS_ARENA_DEFENSE_NOT_FOUND";
+        public const string BAAS_ARENA_DISABLED = "BAAS_ARENA_DISABLED";
+        public const string BAAS_ARENA_SELF_CHALLENGE = "BAAS_ARENA_SELF_CHALLENGE";
         public const string BAAS_AUTH_ACCOUNT_BANNED = "BAAS_AUTH_ACCOUNT_BANNED";
         public const string BAAS_AUTH_ACCOUNT_EXISTS = "BAAS_AUTH_ACCOUNT_EXISTS";
         public const string BAAS_AUTH_ACCOUNT_NOT_FOUND = "BAAS_AUTH_ACCOUNT_NOT_FOUND";
@@ -25,10 +29,15 @@ namespace MAClient.Network.Baas
         public const string BAAS_BATTLEPASS_ALREADY_CLAIMED = "BAAS_BATTLEPASS_ALREADY_CLAIMED";
         public const string BAAS_BATTLEPASS_DISABLED = "BAAS_BATTLEPASS_DISABLED";
         public const string BAAS_BATTLEPASS_LEVEL_LOW = "BAAS_BATTLEPASS_LEVEL_LOW";
+        public const string BAAS_BATTLE_ALREADY_CLOSED = "BAAS_BATTLE_ALREADY_CLOSED";
+        public const string BAAS_BATTLE_CHECKSUM_FAILED = "BAAS_BATTLE_CHECKSUM_FAILED";
         public const string BAAS_BATTLE_HOST_FINISH_ONLY = "BAAS_BATTLE_HOST_FINISH_ONLY";
+        public const string BAAS_BATTLE_ID_REQUIRED = "BAAS_BATTLE_ID_REQUIRED";
+        public const string BAAS_BATTLE_NOT_FOUND = "BAAS_BATTLE_NOT_FOUND";
         public const string BAAS_BATTLE_NOT_IN = "BAAS_BATTLE_NOT_IN";
         public const string BAAS_BATTLE_NOT_RUNNING = "BAAS_BATTLE_NOT_RUNNING";
         public const string BAAS_BATTLE_NOT_STARTED = "BAAS_BATTLE_NOT_STARTED";
+        public const string BAAS_BATTLE_TYPE_MISMATCH = "BAAS_BATTLE_TYPE_MISMATCH";
         public const string BAAS_BOOTSTRAP_INVALID_PROJECT = "BAAS_BOOTSTRAP_INVALID_PROJECT";
         public const string BAAS_BOOTSTRAP_NOT_BAAS_MODE = "BAAS_BOOTSTRAP_NOT_BAAS_MODE";
         public const string BAAS_BOOTSTRAP_PARAMS_REQUIRED = "BAAS_BOOTSTRAP_PARAMS_REQUIRED";
@@ -73,6 +82,7 @@ namespace MAClient.Network.Baas
         public const string BAAS_PROJECT_FIELDS_REQUIRED = "BAAS_PROJECT_FIELDS_REQUIRED";
         public const string BAAS_PROJECT_ID_EXISTS = "BAAS_PROJECT_ID_EXISTS";
         public const string BAAS_PROJECT_NOT_FOUND = "BAAS_PROJECT_NOT_FOUND";
+        public const string BAAS_PVE_DISABLED = "BAAS_PVE_DISABLED";
         public const string BAAS_REPLAY_NOT_FOUND = "BAAS_REPLAY_NOT_FOUND";
         public const string BAAS_REWARD_REQUIRED = "BAAS_REWARD_REQUIRED";
         public const string BAAS_ROOM_BATTLE_STARTED = "BAAS_ROOM_BATTLE_STARTED";
@@ -98,6 +108,8 @@ namespace MAClient.Network.Baas
         public const string BAAS_SERVICE_PROJECT_REQUIRED = "BAAS_SERVICE_PROJECT_REQUIRED";
         public const string BAAS_SESSION_TOKEN_REQUIRED = "BAAS_SESSION_TOKEN_REQUIRED";
         public const string BAAS_SHOP_ITEM_NOT_FOUND = "BAAS_SHOP_ITEM_NOT_FOUND";
+        public const string BAAS_STAGE_NOT_FOUND = "BAAS_STAGE_NOT_FOUND";
+        public const string BAAS_STAMINA_INSUFFICIENT = "BAAS_STAMINA_INSUFFICIENT";
         public const string BAAS_TARGET_ID_REQUIRED = "BAAS_TARGET_ID_REQUIRED";
         public const string BAAS_TASK_DISABLED = "BAAS_TASK_DISABLED";
         public const string BAAS_TASK_NOT_COMPLETE = "BAAS_TASK_NOT_COMPLETE";

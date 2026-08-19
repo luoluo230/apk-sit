@@ -18,7 +18,9 @@ FEATURE_CATALOG: List[Dict[str, Any]] = [
     {"key": "battlepass", "label": "战令", "phase": 3, "group": "social", "default_enabled": False},
     {"key": "periodic_task", "label": "周期任务", "phase": 3, "group": "social", "default_enabled": False},
     {"key": "compliance", "label": "防沉迷", "phase": 4, "group": "compliance", "default_enabled": False},
-    {"key": "pvp", "label": "PVP 战斗同步", "phase": 4, "group": "pvp", "default_enabled": False},
+    {"key": "pve", "label": "PVE 推图战斗", "phase": 1, "group": "battle", "default_enabled": True},
+    {"key": "arena", "label": "异步竞技场", "phase": 2, "group": "battle", "default_enabled": True},
+    {"key": "pvp", "label": "PVP 实时房间(可选)", "phase": 4, "group": "pvp", "default_enabled": False},
 ]
 
 FEATURE_KEYS = {row["key"] for row in FEATURE_CATALOG}
@@ -55,6 +57,24 @@ def default_feature_configs() -> Dict[str, Dict[str, Any]]:
             "curfew_end": "08:00",
             "require_real_name": False,
         },
+        "pve": {
+            "stamina_max": 120,
+            "stamina_recover_seconds": 360,
+            "stages": [
+                {"id": "1-1", "chapter": 1, "stage": 1, "name": "第一章-1", "power_required": 100, "stamina_cost": 6, "rewards": {"gold": 100}},
+                {"id": "1-2", "chapter": 1, "stage": 2, "name": "第一章-2", "power_required": 150, "stamina_cost": 6, "rewards": {"gold": 120}},
+                {"id": "2-1", "chapter": 2, "stage": 1, "name": "第二章-1", "power_required": 300, "stamina_cost": 8, "rewards": {"gold": 200}},
+            ],
+        },
+        "arena": {
+            "daily_attempts": 5,
+            "rating_board_id": "arena",
+            "win_rating_delta": 15,
+            "lose_rating_delta": -10,
+            "opponent_count": 3,
+            "win_rewards": {"gold": 80},
+            "lose_rewards": {"gold": 20},
+        },
         "pvp": {"mode": "state_sync", "room_ttl_seconds": 600, "max_players": 2},
     }
 
@@ -74,6 +94,8 @@ def public_endpoints_for_features(flags: Dict[str, bool]) -> Dict[str, str]:
         "battlepass": f"{base}/battlepass",
         "periodic_task": f"{base}/tasks",
         "compliance": f"{base}/compliance",
+        "pve": f"{base}/pve",
+        "arena": f"{base}/arena",
         "pvp": f"{base}/pvp",
     }
     return {k: v for k, v in mapping.items() if flags.get(k)}

@@ -39,6 +39,8 @@ _ALL_FLAGS = {
     "battlepass": True,
     "periodic_task": True,
     "compliance": True,
+    "pve": True,
+    "arena": True,
     "pvp": True,
 }
 

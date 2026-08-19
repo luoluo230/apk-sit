@@ -1016,6 +1016,59 @@ def init_db():
                 """
             )
             _mark_migration(conn, "baas_rooms_v1")
+        if not _migration_applied(conn, "baas_pve_arena_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_battles (
+                    battle_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    battle_type TEXT NOT NULL DEFAULT 'pve',
+                    stage_id TEXT NOT NULL DEFAULT '',
+                    defender_id TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    seed INTEGER NOT NULL DEFAULT 0,
+                    team_json TEXT NOT NULL DEFAULT '{}',
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    started_at TEXT NOT NULL,
+                    settled_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_battles_player
+                    ON baas_battles(service_id, player_id, status);
+                CREATE TABLE IF NOT EXISTS baas_chapter_progress (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    stars INTEGER NOT NULL DEFAULT 0,
+                    best_time_ms INTEGER NOT NULL DEFAULT 0,
+                    cleared INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id, stage_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_player_snapshots (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    snapshot_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    power INTEGER NOT NULL DEFAULT 0,
+                    display_name TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id, snapshot_type)
+                );
+                CREATE TABLE IF NOT EXISTS baas_arena_ratings (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    rating INTEGER NOT NULL DEFAULT 1000,
+                    wins INTEGER NOT NULL DEFAULT 0,
+                    losses INTEGER NOT NULL DEFAULT 0,
+                    daily_attempts_used INTEGER NOT NULL DEFAULT 0,
+                    daily_reset_date TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id)
+                );
+                """
+            )
+            _mark_migration(conn, "baas_pve_arena_v1")
         conn.commit()
         _schema_initialized = True
 

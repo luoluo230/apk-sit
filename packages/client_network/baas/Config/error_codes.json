@@ -871,6 +871,102 @@
       "client_action": "retry",
       "retry": true
     },
+    "BAAS_PVE_DISABLED": {
+      "http_status": 403,
+      "message_zh": "PVE 功能未启用",
+      "message_en": "PVE disabled",
+      "category": "pve",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_STAGE_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "关卡不存在",
+      "message_en": "Stage not found",
+      "category": "pve",
+      "client_action": "refresh",
+      "retry": false
+    },
+    "BAAS_STAMINA_INSUFFICIENT": {
+      "http_status": 400,
+      "message_zh": "体力不足",
+      "message_en": "Insufficient stamina",
+      "category": "pve",
+      "client_action": "top_up",
+      "retry": false
+    },
+    "BAAS_BATTLE_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "战斗不存在",
+      "message_en": "Battle not found",
+      "category": "battle",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLE_TYPE_MISMATCH": {
+      "http_status": 400,
+      "message_zh": "战斗类型不匹配",
+      "message_en": "Battle type mismatch",
+      "category": "battle",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLE_ALREADY_CLOSED": {
+      "http_status": 409,
+      "message_zh": "战斗已结束或已过期",
+      "message_en": "Battle already closed",
+      "category": "battle",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLE_CHECKSUM_FAILED": {
+      "http_status": 400,
+      "message_zh": "战斗校验失败",
+      "message_en": "Battle checksum failed",
+      "category": "battle",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLE_ID_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "battle_id 必填",
+      "message_en": "battle_id required",
+      "category": "battle",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_ARENA_DISABLED": {
+      "http_status": 403,
+      "message_zh": "竞技场功能未启用",
+      "message_en": "Arena disabled",
+      "category": "arena",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ARENA_SELF_CHALLENGE": {
+      "http_status": 400,
+      "message_zh": "不能挑战自己",
+      "message_en": "Cannot challenge self",
+      "category": "arena",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ARENA_DAILY_LIMIT": {
+      "http_status": 429,
+      "message_zh": "今日竞技场次数已用完",
+      "message_en": "Arena daily limit reached",
+      "category": "arena",
+      "client_action": "wait",
+      "retry": false
+    },
+    "BAAS_ARENA_DEFENSE_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "对手防守阵容不存在",
+      "message_en": "Defense snapshot not found",
+      "category": "arena",
+      "client_action": "refresh",
+      "retry": false
+    },
     "BAAS_JSON_PARSE_FAILED": {
       "http_status": 200,
       "message_zh": "响应解析失败",
@@ -978,6 +1074,18 @@
     "服务名称不能为空": "BAAS_SERVICE_NAME_REQUIRED",
     "服务 ID 已存在": "BAAS_SERVICE_ID_EXISTS",
     "服务仍有玩家数据，请先禁用或迁移": "BAAS_SERVICE_HAS_PLAYERS",
-    "名称与 ID 创建后不可修改": "BAAS_SERVICE_IMMUTABLE"
+    "名称与 ID 创建后不可修改": "BAAS_SERVICE_IMMUTABLE",
+    "PVE 功能未启用": "BAAS_PVE_DISABLED",
+    "关卡不存在": "BAAS_STAGE_NOT_FOUND",
+    "体力不足": "BAAS_STAMINA_INSUFFICIENT",
+    "战斗不存在": "BAAS_BATTLE_NOT_FOUND",
+    "战斗类型不匹配": "BAAS_BATTLE_TYPE_MISMATCH",
+    "战斗已结束或已过期": "BAAS_BATTLE_ALREADY_CLOSED",
+    "战斗校验失败": "BAAS_BATTLE_CHECKSUM_FAILED",
+    "battle_id 必填": "BAAS_BATTLE_ID_REQUIRED",
+    "竞技场功能未启用": "BAAS_ARENA_DISABLED",
+    "不能挑战自己": "BAAS_ARENA_SELF_CHALLENGE",
+    "今日竞技场次数已用完": "BAAS_ARENA_DAILY_LIMIT",
+    "对手防守阵容不存在": "BAAS_ARENA_DEFENSE_NOT_FOUND"
   }
 }

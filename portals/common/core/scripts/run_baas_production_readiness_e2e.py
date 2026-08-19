@@ -155,6 +155,7 @@ def run_pytest_suite() -> dict:
         "tests/test_baas_public_api.py",
         "tests/test_baas_auth.py",
         "tests/test_baas_standalone.py",
+        "tests/test_baas_pve_arena.py",
         "tests/test_server_framework_modules.py",
         "-q",
         "--tb=line",

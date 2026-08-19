@@ -33,6 +33,10 @@ py -3 scripts/generate_baas_error_artifacts.py
 |------------|------|------|----------|---------------|-------|
 | `BAAS_ACHIEVEMENT_DISABLED` | 403 | 成就功能未启用 | feature | toast | False |
 | `BAAS_ACHIEVEMENT_NOT_COMPLETE` | 400 | 成就未完成 | achievement | toast | False |
+| `BAAS_ARENA_DAILY_LIMIT` | 429 | 今日竞技场次数已用完 | arena | wait | False |
+| `BAAS_ARENA_DEFENSE_NOT_FOUND` | 404 | 对手防守阵容不存在 | arena | refresh | False |
+| `BAAS_ARENA_DISABLED` | 403 | 竞技场功能未启用 | arena | toast | False |
+| `BAAS_ARENA_SELF_CHALLENGE` | 400 | 不能挑战自己 | arena | toast | False |
 | `BAAS_AUTH_ACCOUNT_BANNED` | 403 | 账号已被封禁 | auth | logout | False |
 | `BAAS_AUTH_ACCOUNT_EXISTS` | 409 | 账号已存在 | auth | toast | False |
 | `BAAS_AUTH_ACCOUNT_NOT_FOUND` | 400 | 账号不存在 | auth | toast | False |
@@ -53,10 +57,15 @@ py -3 scripts/generate_baas_error_artifacts.py
 | `BAAS_BATTLEPASS_ALREADY_CLAIMED` | 409 | 已领取 | battlepass | toast | False |
 | `BAAS_BATTLEPASS_DISABLED` | 403 | 战令功能未启用 | feature | toast | False |
 | `BAAS_BATTLEPASS_LEVEL_LOW` | 400 | 等级不足 | battlepass | toast | False |
+| `BAAS_BATTLE_ALREADY_CLOSED` | 409 | 战斗已结束或已过期 | battle | toast | False |
+| `BAAS_BATTLE_CHECKSUM_FAILED` | 400 | 战斗校验失败 | battle | toast | False |
 | `BAAS_BATTLE_HOST_FINISH_ONLY` | 403 | 仅房主可结束对局 | room | toast | False |
+| `BAAS_BATTLE_ID_REQUIRED` | 400 | battle_id 必填 | battle | fix_input | False |
+| `BAAS_BATTLE_NOT_FOUND` | 404 | 战斗不存在 | battle | toast | False |
 | `BAAS_BATTLE_NOT_IN` | 403 | 不在对局中 | room | back_lobby | False |
 | `BAAS_BATTLE_NOT_RUNNING` | 400 | 对局未进行中 | room | toast | False |
 | `BAAS_BATTLE_NOT_STARTED` | 400 | 对局未开始 | room | wait | True |
+| `BAAS_BATTLE_TYPE_MISMATCH` | 400 | 战斗类型不匹配 | battle | toast | False |
 | `BAAS_BOOTSTRAP_INVALID_PROJECT` | 401 | 项目凭证无效 | bootstrap | check_config | False |
 | `BAAS_BOOTSTRAP_NOT_BAAS_MODE` | 400 | 项目未启用轻度 BaaS 模式 | bootstrap | check_config | False |
 | `BAAS_BOOTSTRAP_PARAMS_REQUIRED` | 400 | game_id、game_key、env_key、channel 必填 | bootstrap | check_config | False |
@@ -101,6 +110,7 @@ py -3 scripts/generate_baas_error_artifacts.py
 | `BAAS_PROJECT_FIELDS_REQUIRED` | 400 | 项目 ID 与名称必填 | admin | fix_input | False |
 | `BAAS_PROJECT_ID_EXISTS` | 409 | 项目 ID 已存在 | admin | fix_input | False |
 | `BAAS_PROJECT_NOT_FOUND` | 404 | 项目不存在 | admin | toast | False |
+| `BAAS_PVE_DISABLED` | 403 | PVE 功能未启用 | pve | toast | False |
 | `BAAS_REPLAY_NOT_FOUND` | 404 | 回放不存在 | room | toast | False |
 | `BAAS_REWARD_REQUIRED` | 400 | 至少发放一项道具 | validation | fix_input | False |
 | `BAAS_ROOM_BATTLE_STARTED` | 409 | 对局已开始，请使用重连接口 | room | reconnect | False |
@@ -126,6 +136,8 @@ py -3 scripts/generate_baas_error_artifacts.py
 | `BAAS_SERVICE_PROJECT_REQUIRED` | 400 | project_id required | admin | fix_input | False |
 | `BAAS_SESSION_TOKEN_REQUIRED` | 400 | session_or_token 必填 | validation | fix_input | False |
 | `BAAS_SHOP_ITEM_NOT_FOUND` | 404 | 商品不存在 | shop | refresh | False |
+| `BAAS_STAGE_NOT_FOUND` | 404 | 关卡不存在 | pve | refresh | False |
+| `BAAS_STAMINA_INSUFFICIENT` | 400 | 体力不足 | pve | top_up | False |
 | `BAAS_TARGET_ID_REQUIRED` | 400 | target_id 必填 | validation | fix_input | False |
 | `BAAS_TASK_DISABLED` | 403 | 周期任务未启用 | feature | toast | False |
 | `BAAS_TASK_NOT_COMPLETE` | 400 | 任务未完成 | task | toast | False |
