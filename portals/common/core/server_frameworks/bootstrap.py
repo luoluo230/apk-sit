@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from flask import jsonify, request
 
+from services.baas.errors import baas_fail, baas_fail_exc
+
 from data.platforms import is_valid_platform_id
 from models.data import projects_db
 from server_frameworks.credentials import resolve_project_id
@@ -28,14 +30,14 @@ def client_bootstrap():
     if not project_id:
         project_id = _resolve_project_id(game_id, game_key)
     if not project_id or project_id not in projects_db:
-        return jsonify({"ok": False, "error": "项目凭证无效"}), 401
+        return baas_fail("BAAS_BOOTSTRAP_INVALID_PROJECT")
 
     server_mod = server_module_for_project(project_id)
     client_mod = client_module_for_project(project_id)
 
     if server_mod == "casual_baas_server":
         if not is_module_enabled("casual_baas_server"):
-            return jsonify({"ok": False, "error": "BaaS 服务器框架未部署"}), 503
+            return baas_fail("BAAS_FRAMEWORK_NOT_DEPLOYED")
         from services.baas.bootstrap_service import build_baas_bootstrap
 
         try:
@@ -46,23 +48,23 @@ def client_bootstrap():
                 env_key=str(request.args.get("env_key") or request.args.get("env") or "development"),
                 service_id=str(request.args.get("service_id") or ""),
             )
-        except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            return baas_fail_exc(exc)
         payload["framework"] = "casual_baas"
         payload["client_module"] = client_mod
         payload["bootstrap_kind"] = "baas"
         return jsonify(payload)
 
     if not is_module_enabled("topology_server"):
-        return jsonify({"ok": False, "error": "拓扑服务器框架未部署"}), 503
+        return baas_fail("BAAS_TOPOLOGY_NOT_DEPLOYED")
 
     env_key = str(request.args.get("env_key") or request.args.get("environment") or "").strip()
     channel = str(request.args.get("channel") or request.args.get("channel_id") or "").strip()
     platform = str(request.args.get("platform") or "android").strip().lower()
     if not game_id or not game_key or not env_key or not channel:
-        return jsonify({"ok": False, "error": "game_id、game_key、env_key、channel 必填"}), 400
+        return baas_fail("BAAS_BOOTSTRAP_PARAMS_REQUIRED")
     if not is_valid_platform_id(platform):
-        return jsonify({"ok": False, "error": "platform 无效"}), 400
+        return baas_fail("BAAS_BOOTSTRAP_PLATFORM_INVALID")
 
     from routes.delivery.public_api import runtime_bootstrap
 

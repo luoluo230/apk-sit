@@ -222,12 +222,6 @@ def register_public_routes(target_bp):
 
     register_client_bootstrap_routes(target_bp)
     target_bp.add_url_rule(
-        "/api/public/baas-bootstrap",
-        endpoint="delivery_baas_bootstrap",
-        view_func=baas_bootstrap,
-        methods=["GET"],
-    )
-    target_bp.add_url_rule(
         "/api/public/release-config",
         endpoint="delivery_release_config",
         view_func=release_config,

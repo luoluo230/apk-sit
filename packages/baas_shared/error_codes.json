@@ -1,0 +1,983 @@
+{
+  "schema_version": 1,
+  "transport_codes": {
+    "1001": {
+      "message_zh": "连接失败",
+      "message_en": "Connection failed",
+      "client_action": "retry",
+      "retry": true
+    },
+    "1002": {
+      "message_zh": "连接已断开",
+      "message_en": "Disconnected",
+      "client_action": "reconnect",
+      "retry": true
+    },
+    "1003": {
+      "message_zh": "重连失败",
+      "message_en": "Reconnect failed",
+      "client_action": "retry",
+      "retry": true
+    },
+    "1004": {
+      "message_zh": "心跳超时",
+      "message_en": "Heartbeat timeout",
+      "client_action": "reconnect",
+      "retry": true
+    },
+    "1005": {
+      "message_zh": "发送队列溢出",
+      "message_en": "Send queue overflow",
+      "client_action": "backoff",
+      "retry": true
+    },
+    "1006": {
+      "message_zh": "请求超时",
+      "message_en": "Request timeout",
+      "client_action": "retry",
+      "retry": true
+    },
+    "1007": {
+      "message_zh": "请求失败",
+      "message_en": "Request failed",
+      "client_action": "retry",
+      "retry": true
+    },
+    "1008": {
+      "message_zh": "登录已过期",
+      "message_en": "Token expired",
+      "client_action": "relogin",
+      "retry": false
+    },
+    "1009": {
+      "message_zh": "服务器维护中",
+      "message_en": "Server maintenance",
+      "client_action": "wait",
+      "retry": true
+    },
+    "1010": {
+      "message_zh": "服务器繁忙",
+      "message_en": "Server busy",
+      "client_action": "retry",
+      "retry": true
+    }
+  },
+  "codes": {
+    "BAAS_UNKNOWN": {
+      "http_status": 400,
+      "message_zh": "未知错误",
+      "message_en": "Unknown error",
+      "category": "internal",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_VALIDATION_FAILED": {
+      "http_status": 400,
+      "message_zh": "参数校验失败",
+      "message_en": "Validation failed",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_FORBIDDEN": {
+      "http_status": 403,
+      "message_zh": "无权限",
+      "message_en": "Forbidden",
+      "category": "auth",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_NOT_LOGGED_IN": {
+      "http_status": 401,
+      "message_zh": "未登录",
+      "message_en": "Not logged in",
+      "category": "auth",
+      "client_action": "login",
+      "retry": false
+    },
+    "BAAS_AUTH_MISSING_KEY": {
+      "http_status": 401,
+      "message_zh": "缺少 X-Baas-Api-Key",
+      "message_en": "Missing X-Baas-Api-Key",
+      "category": "auth",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_AUTH_SERVICE_MISMATCH": {
+      "http_status": 400,
+      "message_zh": "service_id 不匹配",
+      "message_en": "service_id mismatch",
+      "category": "auth",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_AUTH_INVALID_CREDENTIALS": {
+      "http_status": 401,
+      "message_zh": "服务凭证无效",
+      "message_en": "Invalid service credentials",
+      "category": "auth",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_AUTH_PLAYER_REQUIRED": {
+      "http_status": 401,
+      "message_zh": "需要玩家 Authorization",
+      "message_en": "Player authorization required",
+      "category": "auth",
+      "client_action": "login",
+      "retry": false
+    },
+    "BAAS_AUTH_ACCOUNT_BANNED": {
+      "http_status": 403,
+      "message_zh": "账号已被封禁",
+      "message_en": "Account banned",
+      "category": "auth",
+      "client_action": "logout",
+      "retry": false
+    },
+    "BAAS_AUTH_LOGIN_DISABLED": {
+      "http_status": 403,
+      "message_zh": "登录功能未启用",
+      "message_en": "Login disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_AUTH_GUEST_DISABLED": {
+      "http_status": 403,
+      "message_zh": "游客登录未启用",
+      "message_en": "Guest login disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_AUTH_PASSWORD_DISABLED": {
+      "http_status": 403,
+      "message_zh": "账号密码登录未启用",
+      "message_en": "Password login disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_AUTH_CREDENTIALS_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "用户名和密码必填",
+      "message_en": "Username and password required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_AUTH_ACCOUNT_NOT_FOUND": {
+      "http_status": 400,
+      "message_zh": "账号不存在",
+      "message_en": "Account not found",
+      "category": "auth",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_AUTH_PASSWORD_WRONG": {
+      "http_status": 400,
+      "message_zh": "密码错误",
+      "message_en": "Wrong password",
+      "category": "auth",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_AUTH_USERNAME_TOO_SHORT": {
+      "http_status": 400,
+      "message_zh": "用户名至少 3 个字符",
+      "message_en": "Username too short",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_AUTH_PASSWORD_TOO_SHORT": {
+      "http_status": 400,
+      "message_zh": "密码至少 6 个字符",
+      "message_en": "Password too short",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_AUTH_ACCOUNT_EXISTS": {
+      "http_status": 409,
+      "message_zh": "账号已存在",
+      "message_en": "Account already exists",
+      "category": "auth",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_AUTH_SESSION_INVALID": {
+      "http_status": 401,
+      "message_zh": "会话无效",
+      "message_en": "Invalid session",
+      "category": "auth",
+      "client_action": "relogin",
+      "retry": false
+    },
+    "BAAS_AUTH_UNAUTHORIZED": {
+      "http_status": 401,
+      "message_zh": "未授权",
+      "message_en": "Unauthorized",
+      "category": "auth",
+      "client_action": "relogin",
+      "retry": false
+    },
+    "BAAS_AUTH_TOKEN_EXPIRED": {
+      "http_status": 401,
+      "message_zh": "登录已过期",
+      "message_en": "Token expired",
+      "category": "auth",
+      "client_action": "relogin",
+      "retry": false
+    },
+    "BAAS_BOOTSTRAP_INVALID_PROJECT": {
+      "http_status": 401,
+      "message_zh": "项目凭证无效",
+      "message_en": "Invalid project credentials",
+      "category": "bootstrap",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_BOOTSTRAP_NOT_BAAS_MODE": {
+      "http_status": 400,
+      "message_zh": "项目未启用轻度 BaaS 模式",
+      "message_en": "Project not in casual BaaS mode",
+      "category": "bootstrap",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_SERVICE_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "休闲服务不存在",
+      "message_en": "BaaS service not found",
+      "category": "bootstrap",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_FRAMEWORK_NOT_DEPLOYED": {
+      "http_status": 503,
+      "message_zh": "BaaS 服务器框架未部署",
+      "message_en": "BaaS framework not deployed",
+      "category": "bootstrap",
+      "client_action": "wait",
+      "retry": true
+    },
+    "BAAS_TOPOLOGY_NOT_DEPLOYED": {
+      "http_status": 503,
+      "message_zh": "拓扑服务器框架未部署",
+      "message_en": "Topology framework not deployed",
+      "category": "bootstrap",
+      "client_action": "wait",
+      "retry": true
+    },
+    "BAAS_BOOTSTRAP_PARAMS_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "game_id、game_key、env_key、channel 必填",
+      "message_en": "Bootstrap params required",
+      "category": "bootstrap",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_BOOTSTRAP_PLATFORM_INVALID": {
+      "http_status": 400,
+      "message_zh": "platform 无效",
+      "message_en": "Invalid platform",
+      "category": "bootstrap",
+      "client_action": "check_config",
+      "retry": false
+    },
+    "BAAS_PROJECT_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "项目不存在",
+      "message_en": "Project not found",
+      "category": "admin",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_PROJECT_ID_EXISTS": {
+      "http_status": 409,
+      "message_zh": "项目 ID 已存在",
+      "message_en": "Project ID already exists",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_PROJECT_FIELDS_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "项目 ID 与名称必填",
+      "message_en": "Project ID and name required",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SERVER_MODE_INVALID": {
+      "http_status": 400,
+      "message_zh": "server_mode 无效",
+      "message_en": "Invalid server_mode",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_PLAYER_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "玩家不存在",
+      "message_en": "Player not found",
+      "category": "player",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_PLAYER_ID_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "player_id 必填",
+      "message_en": "player_id required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_PLAYER_NO_SESSION": {
+      "http_status": 400,
+      "message_zh": "玩家无有效 session token，可能未在线登录过",
+      "message_en": "Player has no active session",
+      "category": "player",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_FIELD_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "key 必填",
+      "message_en": "Required field missing",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_IP_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "IP 必填",
+      "message_en": "IP required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_TARGET_ID_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "target_id 必填",
+      "message_en": "target_id required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SESSION_TOKEN_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "session_or_token 必填",
+      "message_en": "session_or_token required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_REWARD_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "至少发放一项道具",
+      "message_en": "At least one reward item required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_FEATURE_ROOM_DISABLED": {
+      "http_status": 403,
+      "message_zh": "房间/对战功能未启用",
+      "message_en": "Room feature disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ROOM_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "房间不存在",
+      "message_en": "Room not found",
+      "category": "room",
+      "client_action": "back_lobby",
+      "retry": false
+    },
+    "BAAS_ROOM_CLOSED": {
+      "http_status": 400,
+      "message_zh": "房间已关闭",
+      "message_en": "Room closed",
+      "category": "room",
+      "client_action": "back_lobby",
+      "retry": false
+    },
+    "BAAS_ROOM_PASSWORD_WRONG": {
+      "http_status": 403,
+      "message_zh": "房间密码错误",
+      "message_en": "Wrong room password",
+      "category": "room",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_ROOM_SPECTATOR_FULL": {
+      "http_status": 400,
+      "message_zh": "观战人数已满",
+      "message_en": "Spectator slots full",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ROOM_FULL": {
+      "http_status": 400,
+      "message_zh": "房间已满",
+      "message_en": "Room full",
+      "category": "room",
+      "client_action": "rematch",
+      "retry": false
+    },
+    "BAAS_ROOM_BATTLE_STARTED": {
+      "http_status": 409,
+      "message_zh": "对局已开始，请使用重连接口",
+      "message_en": "Battle started, use reconnect",
+      "category": "room",
+      "client_action": "reconnect",
+      "retry": false
+    },
+    "BAAS_ROOM_PLAYER_NOT_IN": {
+      "http_status": 400,
+      "message_zh": "玩家不在该房间",
+      "message_en": "Player not in room",
+      "category": "room",
+      "client_action": "back_lobby",
+      "retry": false
+    },
+    "BAAS_ROOM_PLAYER_NOT_INSIDE": {
+      "http_status": 400,
+      "message_zh": "玩家不在房间内",
+      "message_en": "Player not inside room",
+      "category": "room",
+      "client_action": "back_lobby",
+      "retry": false
+    },
+    "BAAS_ROOM_HOST_ONLY": {
+      "http_status": 403,
+      "message_zh": "仅房主可踢人",
+      "message_en": "Host only action",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ROOM_CANNOT_KICK_HOST": {
+      "http_status": 400,
+      "message_zh": "不能踢出房主",
+      "message_en": "Cannot kick host",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ROOM_HOST_START_ONLY": {
+      "http_status": 403,
+      "message_zh": "仅房主可开始对局",
+      "message_en": "Only host can start battle",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ROOM_NOT_ENOUGH_PLAYERS": {
+      "http_status": 400,
+      "message_zh": "玩家人数不足，无法开始对局",
+      "message_en": "Not enough players",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ROOM_NOT_JOINED": {
+      "http_status": 403,
+      "message_zh": "不在房间内",
+      "message_en": "Not in room",
+      "category": "room",
+      "client_action": "back_lobby",
+      "retry": false
+    },
+    "BAAS_BATTLE_NOT_STARTED": {
+      "http_status": 400,
+      "message_zh": "对局未开始",
+      "message_en": "Battle not started",
+      "category": "room",
+      "client_action": "wait",
+      "retry": true
+    },
+    "BAAS_BATTLE_NOT_IN": {
+      "http_status": 403,
+      "message_zh": "不在对局中",
+      "message_en": "Not in battle",
+      "category": "room",
+      "client_action": "back_lobby",
+      "retry": false
+    },
+    "BAAS_BATTLE_NOT_RUNNING": {
+      "http_status": 400,
+      "message_zh": "对局未进行中",
+      "message_en": "Battle not running",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLE_HOST_FINISH_ONLY": {
+      "http_status": 403,
+      "message_zh": "仅房主可结束对局",
+      "message_en": "Only host can finish battle",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_REPLAY_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "回放不存在",
+      "message_en": "Replay not found",
+      "category": "room",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_CLOUDSAVE_DISABLED": {
+      "http_status": 403,
+      "message_zh": "云存档功能未启用",
+      "message_en": "Cloud save disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_CLOUDSAVE_KEY_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "key 必填",
+      "message_en": "Cloud save key required",
+      "category": "validation",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_CLOUDSAVE_TOO_LARGE": {
+      "http_status": 413,
+      "message_zh": "存档数据过大",
+      "message_en": "Cloud save payload too large",
+      "category": "cloudsave",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_CLOUDSAVE_KEY_LIMIT": {
+      "http_status": 400,
+      "message_zh": "存档 key 数量已达上限",
+      "message_en": "Cloud save key limit reached",
+      "category": "cloudsave",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_CLOUDSAVE_VERSION_CONFLICT": {
+      "http_status": 409,
+      "message_zh": "版本冲突",
+      "message_en": "Version conflict",
+      "category": "cloudsave",
+      "client_action": "merge_prompt",
+      "retry": false
+    },
+    "BAAS_MAIL_DISABLED": {
+      "http_status": 403,
+      "message_zh": "邮件功能未启用",
+      "message_en": "Mail disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_MAIL_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "邮件不存在",
+      "message_en": "Mail not found",
+      "category": "mail",
+      "client_action": "refresh",
+      "retry": false
+    },
+    "BAAS_LEADERBOARD_DISABLED": {
+      "http_status": 403,
+      "message_zh": "排行榜功能未启用",
+      "message_en": "Leaderboard disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ECONOMY_DISABLED": {
+      "http_status": 403,
+      "message_zh": "经济系统未启用",
+      "message_en": "Economy disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_SHOP_ITEM_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "商品不存在",
+      "message_en": "Shop item not found",
+      "category": "shop",
+      "client_action": "refresh",
+      "retry": false
+    },
+    "BAAS_WALLET_INSUFFICIENT": {
+      "http_status": 400,
+      "message_zh": "余额不足",
+      "message_en": "Insufficient balance",
+      "category": "wallet",
+      "client_action": "top_up",
+      "retry": false
+    },
+    "BAAS_ACHIEVEMENT_DISABLED": {
+      "http_status": 403,
+      "message_zh": "成就功能未启用",
+      "message_en": "Achievement disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_ACHIEVEMENT_NOT_COMPLETE": {
+      "http_status": 400,
+      "message_zh": "成就未完成",
+      "message_en": "Achievement not complete",
+      "category": "achievement",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_DISABLED": {
+      "http_status": 403,
+      "message_zh": "礼包功能未启用",
+      "message_en": "Gift code disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_CODE_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "兑换码必填",
+      "message_en": "Gift code required",
+      "category": "gift",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_GIFT_CODE_TOO_SHORT": {
+      "http_status": 400,
+      "message_zh": "兑换码至少 4 位",
+      "message_en": "Gift code too short",
+      "category": "gift",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_GIFT_PLAYER_ONLY": {
+      "http_status": 403,
+      "message_zh": "兑换码仅限指定玩家使用",
+      "message_en": "Gift code player restricted",
+      "category": "gift",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_PERSONAL_FORBIDDEN": {
+      "http_status": 403,
+      "message_zh": "个人兑换码不可使用",
+      "message_en": "Personal gift code not allowed",
+      "category": "gift",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_EXHAUSTED": {
+      "http_status": 400,
+      "message_zh": "兑换码已用完",
+      "message_en": "Gift code exhausted",
+      "category": "gift",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_EXPIRED": {
+      "http_status": 400,
+      "message_zh": "兑换码已过期",
+      "message_en": "Gift code expired",
+      "category": "gift",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_PERSONAL_LIMIT": {
+      "http_status": 400,
+      "message_zh": "已达个人兑换上限",
+      "message_en": "Personal redeem limit reached",
+      "category": "gift",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GIFT_INVALID": {
+      "http_status": 400,
+      "message_zh": "兑换码无效",
+      "message_en": "Invalid gift code",
+      "category": "gift",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_GIFT_ALREADY_REDEEMED": {
+      "http_status": 409,
+      "message_zh": "已兑换过该礼包",
+      "message_en": "Gift already redeemed",
+      "category": "gift",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GUILD_DISABLED": {
+      "http_status": 403,
+      "message_zh": "公会功能未启用",
+      "message_en": "Guild disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GUILD_NAME_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "公会名必填",
+      "message_en": "Guild name required",
+      "category": "guild",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_GUILD_NOT_FOUND": {
+      "http_status": 404,
+      "message_zh": "公会不存在",
+      "message_en": "Guild not found",
+      "category": "guild",
+      "client_action": "refresh",
+      "retry": false
+    },
+    "BAAS_GUILD_FULL": {
+      "http_status": 400,
+      "message_zh": "公会已满",
+      "message_en": "Guild full",
+      "category": "guild",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GUILD_ALREADY_MEMBER": {
+      "http_status": 409,
+      "message_zh": "已在公会中",
+      "message_en": "Already in guild",
+      "category": "guild",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLEPASS_DISABLED": {
+      "http_status": 403,
+      "message_zh": "战令功能未启用",
+      "message_en": "Battle pass disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLEPASS_LEVEL_LOW": {
+      "http_status": 400,
+      "message_zh": "等级不足",
+      "message_en": "Level too low",
+      "category": "battlepass",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_BATTLEPASS_ALREADY_CLAIMED": {
+      "http_status": 409,
+      "message_zh": "已领取",
+      "message_en": "Already claimed",
+      "category": "battlepass",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_TASK_DISABLED": {
+      "http_status": 403,
+      "message_zh": "周期任务未启用",
+      "message_en": "Periodic tasks disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_TASK_NOT_COMPLETE": {
+      "http_status": 400,
+      "message_zh": "任务未完成",
+      "message_en": "Task not complete",
+      "category": "task",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_COMPLIANCE_DISABLED": {
+      "http_status": 403,
+      "message_zh": "防沉迷未启用",
+      "message_en": "Compliance disabled",
+      "category": "feature",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_COMPLIANCE_ID_INVALID": {
+      "http_status": 400,
+      "message_zh": "证件号无效",
+      "message_en": "Invalid ID number",
+      "category": "compliance",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SERVICE_ID_INVALID": {
+      "http_status": 400,
+      "message_zh": "服务 ID 须为 3–64 位小写字母、数字、下划线或连字符，且以字母或数字开头",
+      "message_en": "Invalid service ID format",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SERVICE_PROJECT_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "project_id required",
+      "message_en": "project_id required",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SERVICE_NAME_REQUIRED": {
+      "http_status": 400,
+      "message_zh": "服务名称不能为空",
+      "message_en": "Service name required",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SERVICE_ID_EXISTS": {
+      "http_status": 409,
+      "message_zh": "服务 ID 已存在",
+      "message_en": "Service ID exists",
+      "category": "admin",
+      "client_action": "fix_input",
+      "retry": false
+    },
+    "BAAS_SERVICE_HAS_PLAYERS": {
+      "http_status": 409,
+      "message_zh": "服务仍有玩家数据，请先禁用或迁移",
+      "message_en": "Service has player data",
+      "category": "admin",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_SERVICE_IMMUTABLE": {
+      "http_status": 400,
+      "message_zh": "名称与 ID 创建后不可修改",
+      "message_en": "Service name/id immutable",
+      "category": "admin",
+      "client_action": "toast",
+      "retry": false
+    },
+    "BAAS_GAMESERVER_BRIDGE_FAILED": {
+      "http_status": 502,
+      "message_zh": "GameServer 桥接失败",
+      "message_en": "GameServer bridge failed",
+      "category": "bridge",
+      "client_action": "retry",
+      "retry": true
+    },
+    "BAAS_JSON_PARSE_FAILED": {
+      "http_status": 200,
+      "message_zh": "响应解析失败",
+      "message_en": "Response parse failed",
+      "category": "client",
+      "client_action": "retry",
+      "retry": true
+    }
+  },
+  "message_aliases": {
+    "未知错误": "BAAS_UNKNOWN",
+    "service_id 不匹配": "BAAS_AUTH_SERVICE_MISMATCH",
+    "缺少 X-Baas-Api-Key": "BAAS_AUTH_MISSING_KEY",
+    "服务凭证无效": "BAAS_AUTH_INVALID_CREDENTIALS",
+    "需要玩家 Authorization": "BAAS_AUTH_PLAYER_REQUIRED",
+    "账号已被封禁": "BAAS_AUTH_ACCOUNT_BANNED",
+    "登录功能未启用": "BAAS_AUTH_LOGIN_DISABLED",
+    "游客登录未启用": "BAAS_AUTH_GUEST_DISABLED",
+    "账号密码登录未启用": "BAAS_AUTH_PASSWORD_DISABLED",
+    "用户名和密码必填": "BAAS_AUTH_CREDENTIALS_REQUIRED",
+    "账号不存在": "BAAS_AUTH_ACCOUNT_NOT_FOUND",
+    "密码错误": "BAAS_AUTH_PASSWORD_WRONG",
+    "用户名至少 3 个字符": "BAAS_AUTH_USERNAME_TOO_SHORT",
+    "密码至少 6 个字符": "BAAS_AUTH_PASSWORD_TOO_SHORT",
+    "账号已存在": "BAAS_AUTH_ACCOUNT_EXISTS",
+    "会话无效": "BAAS_AUTH_SESSION_INVALID",
+    "未授权": "BAAS_AUTH_UNAUTHORIZED",
+    "登录已过期": "BAAS_AUTH_TOKEN_EXPIRED",
+    "未登录": "BAAS_NOT_LOGGED_IN",
+    "无权限": "BAAS_FORBIDDEN",
+    "项目凭证无效": "BAAS_BOOTSTRAP_INVALID_PROJECT",
+    "项目未启用轻度 BaaS 模式": "BAAS_BOOTSTRAP_NOT_BAAS_MODE",
+    "休闲服务不存在": "BAAS_SERVICE_NOT_FOUND",
+    "BaaS 服务器框架未部署": "BAAS_FRAMEWORK_NOT_DEPLOYED",
+    "拓扑服务器框架未部署": "BAAS_TOPOLOGY_NOT_DEPLOYED",
+    "game_id、game_key、env_key、channel 必填": "BAAS_BOOTSTRAP_PARAMS_REQUIRED",
+    "platform 无效": "BAAS_BOOTSTRAP_PLATFORM_INVALID",
+    "项目不存在": "BAAS_PROJECT_NOT_FOUND",
+    "项目 ID 已存在": "BAAS_PROJECT_ID_EXISTS",
+    "项目 ID 与名称必填": "BAAS_PROJECT_FIELDS_REQUIRED",
+    "server_mode 无效": "BAAS_SERVER_MODE_INVALID",
+    "玩家不存在": "BAAS_PLAYER_NOT_FOUND",
+    "player_id 必填": "BAAS_PLAYER_ID_REQUIRED",
+    "玩家无有效 session token，可能未在线登录过": "BAAS_PLAYER_NO_SESSION",
+    "key 必填": "BAAS_FIELD_REQUIRED",
+    "IP 必填": "BAAS_IP_REQUIRED",
+    "target_id 必填": "BAAS_TARGET_ID_REQUIRED",
+    "session_or_token 必填": "BAAS_SESSION_TOKEN_REQUIRED",
+    "至少发放一项道具": "BAAS_REWARD_REQUIRED",
+    "房间/对战功能未启用": "BAAS_FEATURE_ROOM_DISABLED",
+    "房间不存在": "BAAS_ROOM_NOT_FOUND",
+    "房间已关闭": "BAAS_ROOM_CLOSED",
+    "房间密码错误": "BAAS_ROOM_PASSWORD_WRONG",
+    "观战人数已满": "BAAS_ROOM_SPECTATOR_FULL",
+    "房间已满": "BAAS_ROOM_FULL",
+    "对局已开始，请使用重连接口": "BAAS_ROOM_BATTLE_STARTED",
+    "玩家不在该房间": "BAAS_ROOM_PLAYER_NOT_IN",
+    "玩家不在房间内": "BAAS_ROOM_PLAYER_NOT_INSIDE",
+    "仅房主可踢人": "BAAS_ROOM_HOST_ONLY",
+    "不能踢出房主": "BAAS_ROOM_CANNOT_KICK_HOST",
+    "仅房主可开始对局": "BAAS_ROOM_HOST_START_ONLY",
+    "玩家人数不足，无法开始对局": "BAAS_ROOM_NOT_ENOUGH_PLAYERS",
+    "不在房间内": "BAAS_ROOM_NOT_JOINED",
+    "对局未开始": "BAAS_BATTLE_NOT_STARTED",
+    "不在对局中": "BAAS_BATTLE_NOT_IN",
+    "对局未进行中": "BAAS_BATTLE_NOT_RUNNING",
+    "仅房主可结束对局": "BAAS_BATTLE_HOST_FINISH_ONLY",
+    "回放不存在": "BAAS_REPLAY_NOT_FOUND",
+    "云存档功能未启用": "BAAS_CLOUDSAVE_DISABLED",
+    "存档数据过大": "BAAS_CLOUDSAVE_TOO_LARGE",
+    "存档 key 数量已达上限": "BAAS_CLOUDSAVE_KEY_LIMIT",
+    "版本冲突": "BAAS_CLOUDSAVE_VERSION_CONFLICT",
+    "邮件功能未启用": "BAAS_MAIL_DISABLED",
+    "邮件不存在": "BAAS_MAIL_NOT_FOUND",
+    "排行榜功能未启用": "BAAS_LEADERBOARD_DISABLED",
+    "经济系统未启用": "BAAS_ECONOMY_DISABLED",
+    "商品不存在": "BAAS_SHOP_ITEM_NOT_FOUND",
+    "余额不足": "BAAS_WALLET_INSUFFICIENT",
+    "成就功能未启用": "BAAS_ACHIEVEMENT_DISABLED",
+    "成就未完成": "BAAS_ACHIEVEMENT_NOT_COMPLETE",
+    "礼包功能未启用": "BAAS_GIFT_DISABLED",
+    "兑换码必填": "BAAS_GIFT_CODE_REQUIRED",
+    "兑换码至少 4 位": "BAAS_GIFT_CODE_TOO_SHORT",
+    "兑换码仅限指定玩家使用": "BAAS_GIFT_PLAYER_ONLY",
+    "个人兑换码不可使用": "BAAS_GIFT_PERSONAL_FORBIDDEN",
+    "兑换码已用完": "BAAS_GIFT_EXHAUSTED",
+    "兑换码已过期": "BAAS_GIFT_EXPIRED",
+    "已达个人兑换上限": "BAAS_GIFT_PERSONAL_LIMIT",
+    "兑换码无效": "BAAS_GIFT_INVALID",
+    "已兑换过该礼包": "BAAS_GIFT_ALREADY_REDEEMED",
+    "公会功能未启用": "BAAS_GUILD_DISABLED",
+    "公会名必填": "BAAS_GUILD_NAME_REQUIRED",
+    "公会不存在": "BAAS_GUILD_NOT_FOUND",
+    "公会已满": "BAAS_GUILD_FULL",
+    "已在公会中": "BAAS_GUILD_ALREADY_MEMBER",
+    "战令功能未启用": "BAAS_BATTLEPASS_DISABLED",
+    "等级不足": "BAAS_BATTLEPASS_LEVEL_LOW",
+    "已领取": "BAAS_BATTLEPASS_ALREADY_CLAIMED",
+    "周期任务未启用": "BAAS_TASK_DISABLED",
+    "任务未完成": "BAAS_TASK_NOT_COMPLETE",
+    "防沉迷未启用": "BAAS_COMPLIANCE_DISABLED",
+    "证件号无效": "BAAS_COMPLIANCE_ID_INVALID",
+    "服务 ID 须为 3–64 位小写字母、数字、下划线或连字符，且以字母或数字开头": "BAAS_SERVICE_ID_INVALID",
+    "project_id required": "BAAS_SERVICE_PROJECT_REQUIRED",
+    "服务名称不能为空": "BAAS_SERVICE_NAME_REQUIRED",
+    "服务 ID 已存在": "BAAS_SERVICE_ID_EXISTS",
+    "服务仍有玩家数据，请先禁用或迁移": "BAAS_SERVICE_HAS_PLAYERS",
+    "名称与 ID 创建后不可修改": "BAAS_SERVICE_IMMUTABLE"
+  }
+}

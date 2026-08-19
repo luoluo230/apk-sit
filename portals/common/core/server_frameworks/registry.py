@@ -59,8 +59,8 @@ FRAMEWORK_MODULES: Dict[str, Dict[str, Any]] = {
         "bootstrap_path": "/api/public/baas-bootstrap",
         "network_contract": "docs/client_bootstrap_contract_baas.md",
         "unity_assets": [
-            "Assets/Src/HotUpdate/Framework/Bootstrap/BaasBootstrapService.cs",
-            "Assets/Resources/Protocol/BaasNetworkSettings.asset",
+            "Assets/Modules/BaasNetwork/Runtime/BaasBootstrapService.cs",
+            "Assets/Modules/BaasNetwork/Runtime/BaasNetworkSettings.cs",
         ],
         "portal_editors": [
             "casual_services_console",

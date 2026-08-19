@@ -82,9 +82,15 @@ if (-not [string]::IsNullOrWhiteSpace($MaclientRoot) -and (Test-Path $MaclientRo
         }
     }
     if ($Module -eq "baas") {
-        $playMode = Join-Path $MaclientRoot "Assets/Modules/BaasNetwork/Tests/PlayMode"
+        $playMode = Join-Path $pkgRoot "Tests/PlayMode"
         if (Test-Path $playMode) {
             Copy-Item $playMode (Join-Path $bundle "Tests/PlayMode") -Recurse -Force
+        }
+        foreach ($extra in @("Config", "Runtime/Generated")) {
+            $srcExtra = Join-Path $pkgRoot $extra
+            if (Test-Path $srcExtra) {
+                Copy-Item $srcExtra (Join-Path $bundle $extra) -Recurse -Force
+            }
         }
     }
 }

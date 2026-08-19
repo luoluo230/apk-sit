@@ -7,8 +7,20 @@
   "import_target": "Assets/Modules/BaasNetwork",
   "runtime_files": [
     "Runtime/BaasHttp.cs",
+    "Runtime/BaasApiResponse.cs",
+    "Runtime/BaasClientContext.cs",
+    "Runtime/BaasRequestPipeline.cs",
+    "Runtime/BaasEndpointRegistry.cs",
+    "Runtime/BaasNetworkSettings.cs",
     "Runtime/BaasNetworkModule.cs",
-    "Runtime/BaasRoomClient.cs"
+    "Runtime/BaasBootstrapService.cs",
+    "Runtime/BaasAuthClient.cs",
+    "Runtime/BaasMailClient.cs",
+    "Runtime/BaasCloudSaveClient.cs",
+    "Runtime/BaasRoomClient.cs",
+    "Runtime/Generated/BaasErrorCodes.cs",
+    "Runtime/Generated/BaasErrorCatalog.cs",
+    "Runtime/Generated/BaasOpenApiEndpoints.cs"
   ],
   "bootstrap": "/api/public/client-bootstrap",
   "bootstrap_legacy": "/api/public/baas-bootstrap"

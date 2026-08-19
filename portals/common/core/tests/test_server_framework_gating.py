@@ -89,7 +89,7 @@ class ServerFrameworkGatingTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 503)
 
     def test_baas_disabled_returns_503_on_baas_bootstrap(self):
-        with mock.patch("server_frameworks.registry.is_module_enabled") as enabled:
+        with mock.patch("server_frameworks.bootstrap.is_module_enabled") as enabled:
             enabled.side_effect = lambda key: key != "casual_baas_server"
             resp = self.client.get(
                 "/api/public/baas-bootstrap",

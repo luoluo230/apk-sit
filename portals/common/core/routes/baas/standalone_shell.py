@@ -7,6 +7,7 @@ import secrets
 import uuid
 from datetime import datetime
 
+from services.baas.errors import baas_fail, baas_fail_exc, baas_success
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 
 from models.data import can_edit_project, can_view_project, projects_db
@@ -67,14 +68,14 @@ def baas_projects_api():
         data = [p for p in _baas_projects() if can_view_project(p["id"], username)]
         return jsonify({"ok": True, "data": data})
     if not session.get("user"):
-        return jsonify({"ok": False, "error": "未登录"}), 401
+        return baas_fail_exc(Exception("未登录"))
     body = request.get_json(silent=True) or {}
     project_id = str(body.get("id") or body.get("project_id") or "").strip()
     name = str(body.get("name") or "").strip()
     if not project_id or not name:
-        return jsonify({"ok": False, "error": "项目 ID 与名称必填"}), 400
+        return baas_fail_exc(Exception("项目 ID 与名称必填"))
     if projects_repo.has_project(project_id):
-        return jsonify({"ok": False, "error": "项目 ID 已存在"}), 409
+        return baas_fail_exc(Exception("项目 ID 已存在"))
     game_id = str(body.get("game_id") or f"{project_id}-{secrets.token_hex(4)}")
     game_key = str(body.get("game_key") or secrets.token_hex(32))
     payload = {

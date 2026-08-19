@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from services.baas.errors import baas_fail, baas_fail_exc, baas_success
 from flask import jsonify, request, session
 
 from models.data import can_edit_project, projects_db
@@ -28,7 +29,7 @@ def register_baas_admin_routes(bp) -> None:
     @admin_required("projects")
     def baas_services_api(project_id: str):
         if project_id not in projects_db:
-            return jsonify({"ok": False, "error": "项目不存在"}), 404
+            return baas_fail_exc(Exception("项目不存在"))
         env_key = str(
             request.args.get("env_key")
             or (request.get_json(silent=True) or {}).get("env_key")
@@ -37,7 +38,7 @@ def register_baas_admin_routes(bp) -> None:
         if request.method == "GET":
             return jsonify({"ok": True, "data": list_services(project_id, env_key), "catalog": list_catalog()})
         if not can_edit_project(project_id, _actor()):
-            return jsonify({"ok": False, "error": "无权限"}), 403
+            return baas_fail_exc(Exception("无权限"))
         svc, secret = ensure_service(project_id, env_key, actor=_actor())
         payload = {"service": svc}
         if secret:
@@ -48,41 +49,41 @@ def register_baas_admin_routes(bp) -> None:
     @admin_required("projects")
     def baas_service_detail_api(project_id: str, service_id: str):
         if project_id not in projects_db:
-            return jsonify({"ok": False, "error": "项目不存在"}), 404
+            return baas_fail_exc(Exception("项目不存在"))
         if request.method == "GET":
             svc = get_service(service_id)
             if not svc or svc.get("project_id") != project_id:
-                return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+                return baas_fail_exc(Exception("休闲服务不存在"))
             return jsonify({"ok": True, "data": svc, "catalog": list_catalog()})
         if not can_edit_project(project_id, _actor()):
-            return jsonify({"ok": False, "error": "无权限"}), 403
+            return baas_fail_exc(Exception("无权限"))
         try:
             svc = update_service(project_id, service_id, request.get_json(silent=True) or {}, actor=_actor())
             return jsonify({"ok": True, "data": svc})
         except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return baas_fail_exc(exc)
 
     @bp.route("/api/projects/<project_id>/baas/services/<service_id>/rotate-secret", methods=["POST"])
     @admin_required("projects")
     def baas_rotate_secret_api(project_id: str, service_id: str):
         if not can_edit_project(project_id, _actor()):
-            return jsonify({"ok": False, "error": "无权限"}), 403
+            return baas_fail_exc(Exception("无权限"))
         try:
             secret, svc = rotate_api_secret(project_id, service_id)
             return jsonify({"ok": True, "data": {"service": svc, "api_secret": secret}})
         except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return baas_fail_exc(exc)
 
     @bp.route("/api/projects/<project_id>/baas/services/<service_id>/announcements", methods=["GET", "POST"])
     @admin_required("projects")
     def baas_admin_announcements(project_id: str, service_id: str):
         svc = get_service(service_id)
         if not svc or svc.get("project_id") != project_id:
-            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+            return baas_fail_exc(Exception("休闲服务不存在"))
         if request.method == "GET":
             return jsonify({"ok": True, "data": announce_service.admin_list(service_id)})
         if not can_edit_project(project_id, _actor()):
-            return jsonify({"ok": False, "error": "无权限"}), 403
+            return baas_fail_exc(Exception("无权限"))
         row = announce_service.save_announcement(service_id, request.get_json(silent=True) or {}, actor=_actor())
         return jsonify({"ok": True, "data": row})
 
@@ -91,16 +92,16 @@ def register_baas_admin_routes(bp) -> None:
     def baas_admin_mail(project_id: str, service_id: str):
         svc = get_service(service_id)
         if not svc or svc.get("project_id") != project_id:
-            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+            return baas_fail_exc(Exception("休闲服务不存在"))
         if request.method == "GET":
             return jsonify({"ok": True, "data": mail_service.admin_list(service_id)})
         if not can_edit_project(project_id, _actor()):
-            return jsonify({"ok": False, "error": "无权限"}), 403
+            return baas_fail_exc(Exception("无权限"))
         try:
             row = mail_service.send_mail(service_id, request.get_json(silent=True) or {}, actor=_actor())
             return jsonify({"ok": True, "data": row})
         except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
+            return baas_fail_exc(exc)
 
     @bp.route("/api/projects/<project_id>/server-mode", methods=["GET", "PATCH"])
     @admin_required("projects")
@@ -109,7 +110,7 @@ def register_baas_admin_routes(bp) -> None:
         from repositories.admin import projects_repo as projects_repo
 
         if project_id not in pdb:
-            return jsonify({"ok": False, "error": "项目不存在"}), 404
+            return baas_fail_exc(Exception("项目不存在"))
         proj = projects_repo.get_project(project_id) or {}
         if request.method == "GET":
             return jsonify({
@@ -120,11 +121,11 @@ def register_baas_admin_routes(bp) -> None:
                 },
             })
         if not can_edit_project(project_id, _actor()):
-            return jsonify({"ok": False, "error": "无权限"}), 403
+            return baas_fail_exc(Exception("无权限"))
         payload = request.get_json(silent=True) or {}
         mode = str(payload.get("server_mode") or proj.get("server_mode") or "topology").strip().lower()
         if mode not in ("topology", "casual_baas"):
-            return jsonify({"ok": False, "error": "server_mode 无效"}), 400
+            return baas_fail_exc(Exception("server_mode 无效"))
         proj["server_mode"] = mode
         if mode == "casual_baas":
             env_key = str(payload.get("env_key") or "development")

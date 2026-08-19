@@ -117,9 +117,10 @@ class FrameworkAlignmentGateTests(unittest.TestCase):
                 "env": "development",
             },
         )
-        self.assertIn(resp.status_code, (400, 422))
+        self.assertNotEqual(resp.status_code, 200)
         body = resp.get_json() or {}
         self.assertFalse(body.get("ok", True))
+        self.assertTrue(body.get("error_code") or body.get("error"))
 
     def test_deploy_pack_topology_manifest(self):
         from services.server_management.deploy_pack_service import build_deploy_pack

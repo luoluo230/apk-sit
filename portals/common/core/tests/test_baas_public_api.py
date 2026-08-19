@@ -60,6 +60,18 @@ class BaasPublicApiTests(unittest.TestCase):
             "Content-Type": "application/json",
         }
 
+    def test_auth_missing_key_returns_error_code(self):
+        resp = self.client.post(
+            f"/api/baas/v1/{self.service_id}/auth/guest",
+            headers={"Content-Type": "application/json"},
+            data="{}",
+        )
+        self.assertEqual(resp.status_code, 401)
+        body = resp.get_json()
+        self.assertFalse(body.get("ok"))
+        self.assertEqual(body.get("error_code"), "BAAS_AUTH_MISSING_KEY")
+        self.assertIn("error", body)
+
     def test_baas_bootstrap(self):
         resp = self.client.get(
             "/api/public/baas-bootstrap",

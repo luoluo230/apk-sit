@@ -45,6 +45,12 @@ if ($Remove) {
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     New-Item -ItemType Directory -Path $target -Force | Out-Null
     Copy-Item (Join-Path $pkgRoot "Runtime") (Join-Path $target "Runtime") -Recurse -Force
+    foreach ($extra in @("Config")) {
+        $extraSrc = Join-Path $pkgRoot $extra
+        if (Test-Path $extraSrc) {
+            Copy-Item $extraSrc (Join-Path $target $extra) -Recurse -Force
+        }
+    }
     if (Test-Path (Join-Path $pkgRoot "$($manifest.asmdef)")) {
         Copy-Item (Join-Path $pkgRoot "$($manifest.asmdef)") (Join-Path $target "$($manifest.asmdef)") -Force
     } else {
@@ -81,6 +87,10 @@ $stubsDest = Join-Path $maclient "Assets/Src/HotUpdate/Framework/Network/Abstrac
 if ((-not $Remove) -and (Test-Path $stubsSrc)) {
     if (-not (Test-Path $stubsDest)) { New-Item -ItemType Directory -Path $stubsDest -Force | Out-Null }
     Copy-Item (Join-Path $stubsSrc "ClientNetworkModuleGate.cs") (Join-Path $stubsDest "ClientNetworkModuleGate.cs") -Force
+    $bridge = Join-Path $stubsSrc "BaasBootstrapBridge.cs"
+    if (Test-Path $bridge) {
+        Copy-Item $bridge (Join-Path $stubsDest "BaasBootstrapBridge.cs") -Force
+    }
     @"
 {
   "name": "MAClient.Network.Abstractions",

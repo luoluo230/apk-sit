@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Networking;
 
 namespace MAClient.Network.Baas
 {
@@ -17,11 +16,11 @@ namespace MAClient.Network.Baas
         public string public_api_base;
         public string auth_header_service;
         public string auth_header_key;
+        public string error_code;
+        public string error;
     }
 
-    /// <summary>
-    /// Bootstrap helper for casual BaaS REST client module.
-    /// </summary>
+    /// <summary>Bootstrap helper for casual BaaS REST client module.</summary>
     public sealed class BaasNetworkModule
     {
         public const string DefaultBootstrapPath = "/api/public/client-bootstrap";
@@ -37,7 +36,8 @@ namespace MAClient.Network.Baas
             string gameKey,
             string envKey,
             string apiKey,
-            Action<BaasBootstrapResponse, string> onComplete)
+            Action<BaasBootstrapResponse, string> onComplete,
+            Action<string> onRawJson = null)
         {
             PortalBaseUrl = portalBaseUrl.TrimEnd('/');
             ApiKey = apiKey;
@@ -45,19 +45,25 @@ namespace MAClient.Network.Baas
                 + "&game_key=" + Uri.EscapeDataString(gameKey)
                 + "&env_key=" + Uri.EscapeDataString(envKey ?? "development");
             var url = PortalBaseUrl + DefaultBootstrapPath + "?" + qs;
-            yield return BaasHttp.Get(url, null, (json, err) =>
+            yield return BaasHttp.Get(url, null, resp =>
             {
-                if (!string.IsNullOrEmpty(err)) { onComplete?.Invoke(null, err); return; }
-                var resp = JsonUtility.FromJson<BaasBootstrapResponse>(json);
-                if (resp == null || !resp.ok)
+                var raw = string.IsNullOrEmpty(resp.raw_body) ? (resp.data ?? string.Empty) : resp.raw_body;
+                onRawJson?.Invoke(raw);
+                if (!resp.ok)
                 {
-                    onComplete?.Invoke(null, "baas bootstrap failed");
+                    onComplete?.Invoke(null, resp.UserMessage ?? resp.error ?? "baas bootstrap failed");
                     return;
                 }
-                ServiceId = resp.service_id;
-                PublicApiBase = resp.public_api_base;
-                Debug.Log("[BaasNetwork] base=" + PublicApiBase);
-                onComplete?.Invoke(resp, null);
+                var bootstrap = JsonUtility.FromJson<BaasBootstrapResponse>(raw);
+                if (bootstrap == null || !bootstrap.ok)
+                {
+                    onComplete?.Invoke(bootstrap, bootstrap?.error ?? "baas bootstrap failed");
+                    return;
+                }
+                ServiceId = bootstrap.service_id;
+                PublicApiBase = bootstrap.public_api_base;
+                Debug.Log("[BaasNetwork] base=" + PublicApiBase + " service=" + ServiceId);
+                onComplete?.Invoke(bootstrap, null);
             });
         }
 
