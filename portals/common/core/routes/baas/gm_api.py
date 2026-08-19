@@ -25,6 +25,8 @@ from services.baas.gm_service import (
     list_gm_audit,
     list_mail_templates,
     list_players,
+    list_room_replays_admin,
+    list_rooms_admin,
     mute_player,
     reset_leaderboard,
     resolve_player_session_token,
@@ -36,6 +38,10 @@ from services.baas.gm_service import (
     unban_player,
     unmute_player,
     upsert_gift_code,
+    close_room_admin,
+    get_room_admin,
+    kick_room_player_admin,
+    finish_room_battle_admin,
 )
 from services.baas import gameserver_bridge_service
 from services.baas.service_crud import get_service
@@ -340,6 +346,75 @@ def register_baas_gm_routes(bp) -> None:
         log_audit_db("default", _actor(), "baas_gm_maintenance", f"{service_id} {message[:80]}", "")
         ok = data.get("success") is True
         return jsonify({"ok": ok, "data": data}), (200 if ok else 502)
+
+    @bp.route(f"{prefix}/rooms/replays", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_room_replays(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        limit = int(request.args.get("limit") or 20)
+        return jsonify({"ok": True, "data": list_room_replays_admin(service_id, limit=limit)})
+
+    @bp.route(f"{prefix}/rooms", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_rooms(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        status = str(request.args.get("status") or "")
+        limit = int(request.args.get("limit") or 50)
+        return jsonify({"ok": True, "data": list_rooms_admin(service_id, status=status, limit=limit)})
+
+    @bp.route(f"{prefix}/rooms/<room_id>", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_room_detail(project_id: str, service_id: str, room_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        try:
+            return jsonify({"ok": True, "data": get_room_admin(service_id, room_id)})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+
+    @bp.route(f"{prefix}/rooms/<room_id>/close", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_room_close(project_id: str, service_id: str, room_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            data = close_room_admin(service_id, room_id, reason=str(body.get("reason") or "gm"), actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/rooms/<room_id>/kick", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_room_kick(project_id: str, service_id: str, room_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        target = str(body.get("player_id") or body.get("target_id") or "").strip()
+        if not target:
+            return jsonify({"ok": False, "error": "player_id 必填"}), 400
+        try:
+            data = kick_room_player_admin(service_id, room_id, target, actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/rooms/<room_id>/finish", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_room_finish(project_id: str, service_id: str, room_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            data = finish_room_battle_admin(service_id, room_id, result=body.get("result") if isinstance(body.get("result"), dict) else None, actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
     @bp.route(f"{prefix}/gameserver/stop", methods=["POST"])
     @admin_required("projects")

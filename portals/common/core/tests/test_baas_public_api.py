@@ -110,6 +110,77 @@ class BaasPublicApiTests(unittest.TestCase):
         body = load.get_json()["data"]
         self.assertEqual((body.get("value") or {}).get("level"), 1)
 
+    def test_pvp_matchmake_and_frame_fanout(self):
+        from models.db import get_cursor, init_db
+        from services.baas import room_service
+
+        init_db()
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE baas_services SET feature_flags=? WHERE service_id=?",
+                ('{"login":true,"cloudsave":true,"mail":true,"announce":true,"pvp":true}', self.service_id),
+            )
+
+        room_service._rooms.clear()
+        room_service._replays.clear()
+        base = f"/api/baas/v1/{self.service_id}"
+
+        def guest(name: str):
+            resp = self.client.post(
+                f"{base}/auth/guest",
+                headers=self._headers(),
+                data=json.dumps({"display_name": name}),
+            )
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()["data"]
+            headers = dict(self._headers())
+            headers["Authorization"] = f"Bearer {data['token']}"
+            headers["X-Baas-Player-Id"] = data["player_id"]
+            return data, headers
+
+        p1, h1 = guest("FanA")
+        p2, h2 = guest("FanB")
+
+        m1 = self.client.post(f"{base}/pvp/matchmake", headers=h1, data=json.dumps({"battle_mode": "pvp_1v1"}))
+        self.assertEqual(m1.status_code, 200)
+        room1 = m1.get_json()["data"]
+        room_id = room1["room_id"]
+
+        m2 = self.client.post(f"{base}/pvp/matchmake", headers=h2, data=json.dumps({"battle_mode": "pvp_1v1"}))
+        self.assertEqual(m2.status_code, 200)
+        room2 = m2.get_json()["data"]
+        self.assertEqual(room2["room_id"], room_id)
+        self.assertEqual(room2["status"], "ready")
+
+        start = self.client.post(f"{base}/rooms/{room_id}/start-battle", headers=h1, data=json.dumps({}))
+        self.assertEqual(start.status_code, 200)
+        self.assertEqual(start.get_json()["data"]["status"], "active")
+
+        push = self.client.post(
+            f"{base}/rooms/{room_id}/frames",
+            headers=h1,
+            data=json.dumps({"frame": {"action": "move", "x": 3}}),
+        )
+        self.assertEqual(push.status_code, 200)
+
+        poll = self.client.get(
+            f"{base}/rooms/{room_id}/frames?since_seq=0&wait_ms=2000",
+            headers={**self._headers(), "X-Baas-Player-Id": p2["player_id"]},
+        )
+        self.assertEqual(poll.status_code, 200)
+        polled = poll.get_json()["data"]
+        frames = polled.get("frames") or []
+        self.assertTrue(frames)
+        self.assertEqual(frames[0].get("player_id"), p1["player_id"])
+
+        finish = self.client.post(
+            f"{base}/rooms/{room_id}/finish-battle",
+            headers=h1,
+            data=json.dumps({"result": {"winner": p1["player_id"]}}),
+        )
+        self.assertEqual(finish.status_code, 200)
+        self.assertEqual(finish.get_json()["data"]["status"], "finished")
+
 
 if __name__ == "__main__":
     unittest.main()

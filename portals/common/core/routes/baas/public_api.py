@@ -529,8 +529,20 @@ def register_baas_public_routes(bp=None) -> None:
             return err
         if request.method == "GET":
             since_seq = int(request.args.get("since_seq") or 0)
+            wait_ms = int(request.args.get("wait_ms") or 0)
+            exclude_player = str(request.headers.get("X-Baas-Player-Id") or request.args.get("exclude_player_id") or "").strip()
             try:
-                return jsonify({"ok": True, "data": room_service.get_frames(service_id, room_id, since_seq=since_seq)})
+                if wait_ms > 0:
+                    data = room_service.poll_frames(
+                        service_id,
+                        room_id,
+                        since_seq=since_seq,
+                        wait_ms=wait_ms,
+                        exclude_player_id=exclude_player,
+                    )
+                else:
+                    data = room_service.get_frames(service_id, room_id, since_seq=since_seq)
+                return jsonify({"ok": True, "data": data})
             except ValueError as exc:
                 return jsonify({"ok": False, "error": str(exc)}), 404
         player, perr = _player_auth(service_id)

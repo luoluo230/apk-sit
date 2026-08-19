@@ -103,6 +103,58 @@ class BaasGmOpsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             retention_services.redeem_gift(self.SERVICE, "p2", code)
 
+    def test_room_gm_admin_ops(self):
+        import os
+        import sys
+        from unittest import mock
+
+        _CORE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _CORE not in sys.path:
+            sys.path.insert(0, _CORE)
+
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                UPDATE baas_services SET feature_flags=?
+                WHERE service_id=?
+                """,
+                ('{"gift":true,"announce":true,"activity":true,"pvp":true}', self.SERVICE),
+            )
+
+        from services.baas import room_service
+
+        room_service._rooms.clear()
+        room_service._replays.clear()
+
+        with mock.patch("services.baas.room_service.feature_enabled", return_value=True), mock.patch(
+            "services.baas.room_service.get_feature_config",
+            return_value={"max_players": 2, "max_spectators": 4},
+        ):
+            host = room_service.create_room(self.SERVICE, "host", visibility="public")
+            room_service.join_room(self.SERVICE, "guest", room_id=host["room_id"])
+            room_service.start_battle(self.SERVICE, host["room_id"], "host")
+
+        rows = gm_service.list_rooms_admin(self.SERVICE, status="active")
+        self.assertTrue(any(r["room_id"] == host["room_id"] for r in rows))
+        detail = gm_service.get_room_admin(self.SERVICE, host["room_id"])
+        self.assertEqual(detail["status"], "active")
+        gm_service.kick_room_player_admin(self.SERVICE, host["room_id"], "guest", actor="admin")
+        finished = gm_service.finish_room_battle_admin(
+            self.SERVICE,
+            host["room_id"],
+            result={"winner": "host"},
+            actor="admin",
+        )
+        self.assertEqual(finished["status"], "finished")
+        replays = gm_service.list_room_replays_admin(self.SERVICE, limit=5)
+        self.assertTrue(any(r.get("replay_id") == finished.get("replay_id") for r in replays))
+        gm_service.close_room_admin(self.SERVICE, host["room_id"], reason="gm_test", actor="admin")
+        audit = gm_service.list_gm_audit(self.SERVICE, limit=30)
+        actions = {row["action"] for row in audit}
+        self.assertIn("baas_gm_room_kick", actions)
+        self.assertIn("baas_gm_room_finish", actions)
+        self.assertIn("baas_gm_room_close", actions)
+
     def test_mail_template_and_grant_items(self):
         with get_cursor() as cur:
             cur.execute(

@@ -208,6 +208,27 @@
         </div>
         <div class="baas-list"><h3>模板列表</h3><div id="gmTplList"></div></div>
       </div>
+      <div class="baas-gm-pane" data-pane="rooms">
+        <div class="baas-panel-head">
+          <div><h2>房间与对战</h2><p>休闲服 BaaS 房间列表：查看对局状态、强制解散、踢人、结束对局；需在休闲服务配置中启用 PVP 功能。</p></div>
+        </div>
+        <div class="baas-inline-toolbar">
+          <label><span>状态筛选</span>
+            <select id="gmRoomStatus">
+              <option value="">全部</option>
+              <option value="waiting">waiting</option>
+              <option value="ready">ready</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="finished">finished</option>
+            </select>
+          </label>
+          <button type="button" id="gmRoomRefreshBtn" class="pm-btn">刷新</button>
+        </div>
+        <div id="gmRoomList" class="baas-list"></div>
+        <div id="gmRoomDetail" class="baas-detail-card is-hidden"></div>
+        <div class="baas-list" style="margin-top:16px"><h3>最近回放</h3><div id="gmReplayList"></div></div>
+      </div>
       <div class="baas-gm-pane" data-pane="gameserver">
         <div class="baas-panel-head">
           <div><h2>GameServer 运维</h2><p>桥接本地 GameServer Ops：在线踢人、维护广播、Gateway 停服（NotifyKickOff）。</p></div>
@@ -242,4 +263,4 @@
     </main>
   </div>
 </section>
-<script src="/static/baas_gm_console.js?v=20260819-gm4"></script>
+<script src="/static/baas_gm_console.js?v=20260819-gm5"></script>

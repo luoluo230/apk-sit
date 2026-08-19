@@ -21,6 +21,7 @@
     { group: "活动留存", items: [{ id: "gifts", label: "兑换码" }, { id: "activities", label: "活动配置" }] },
     { group: "经济数据", items: [{ id: "wallet", label: "钱包调整" }, { id: "items", label: "道具发放" }, { id: "leaderboard", label: "排行榜" }, { id: "cloudsave", label: "云存档" }] },
     { group: "GameServer", items: [{ id: "gameserver", label: "在线运维" }] },
+    { group: "休闲对战", items: [{ id: "rooms", label: "房间与对战" }] },
     { group: "治理", items: [{ id: "audit", label: "审计日志" }, { id: "coverage", label: "能力清单" }] }
   ];
 
@@ -37,6 +38,7 @@
     { title: "钱包 / 排行榜 / 云存档", status: "done", note: "经济类运维已覆盖。" },
     { title: "在线踢人 / 顶号", status: "done", note: "gameserver 页签 → Ops kick-session + NotifyKickOff。" },
     { title: "GameServer 运维停服广播", status: "done", note: "维护广播 + Gateway stop（StopAsync NotifyKickOff）。" },
+    { title: "休闲服房间 / 对战运维", status: "done", note: "rooms 页签：在线房间、强制解散、踢人、结束对局、回放列表。" },
     { title: "审计日志 UI", status: "done", note: "audit 页签展示 baas_gm* 操作记录。" }
   ];
 
@@ -104,6 +106,11 @@
       '<span class="baas-kpi-chip">未读邮件 <b>' + esc(d.unread_mail_count) + "</b></span>" +
       '<span class="baas-kpi-chip">兑换码 <b>' + esc(d.gift_code_count) + "</b></span>" +
       '<span class="baas-kpi-chip">活动 <b>' + esc(d.activity_count || 0) + "</b></span>";
+    var rs = d.room_stats || {};
+    if (rs.total != null) {
+      chips += '<span class="baas-kpi-chip">房间 <b>' + esc(rs.total) + "</b></span>" +
+        '<span class="baas-kpi-chip">对战中 <b>' + esc(rs.active || 0) + "</b></span>";
+    }
     if (kpi) kpi.innerHTML = chips;
     if (ov) ov.innerHTML = chips;
     var annHost = document.getElementById("gmOverviewAnnounce");
@@ -266,6 +273,79 @@
     host.innerHTML = rows.map(function (r) {
       return '<div class="baas-list-row"><div><div>' + esc(r.action) + " · " + esc(r.user || "") + '</div><div class="meta">' + esc(r.timestamp) + " · " + esc(r.details || "") + "</div></div></div>";
     }).join("") || '<div class="baas-list-row"><span>暂无审计记录</span></div>';
+  }
+
+  async function loadRooms() {
+    var statusEl = document.getElementById("gmRoomStatus");
+    var status = statusEl ? statusEl.value : "";
+    var rows = await api("/rooms?limit=50" + (status ? "&status=" + encodeURIComponent(status) : ""));
+    var host = document.getElementById("gmRoomList");
+    if (!host) return;
+    host.innerHTML = rows.length
+      ? rows.map(function (r) {
+        return '<div class="baas-list-row"><div><div><b>' + esc(r.room_id) + "</b> · " + esc(r.status) + "</div>" +
+          '<div class="meta">' + esc((r.players || []).join(", ")) + " · battle=" + esc(r.battle_id || "-") + " · frames=" + esc(r.frame_count || 0) + "</div></div>" +
+          '<div class="actions">' +
+          '<button type="button" class="pm-btn pm-btn--ghost" data-room-detail="' + esc(r.room_id) + '">详情</button>' +
+          (canEdit ? '<button type="button" class="pm-btn pm-btn--ghost" data-room-close="' + esc(r.room_id) + '">解散</button>' : "") +
+          "</div></div>";
+      }).join("")
+      : '<div class="baas-list-row"><span>暂无在线房间（请先在休闲服务配置中启用 PVP）</span></div>';
+    host.querySelectorAll("[data-room-detail]").forEach(function (btn) {
+      btn.onclick = function () { showRoomDetail(btn.getAttribute("data-room-detail")); };
+    });
+    host.querySelectorAll("[data-room-close]").forEach(function (btn) {
+      btn.onclick = function () {
+        if (!confirm("确认强制解散该房间？")) return;
+        api("/rooms/" + encodeURIComponent(btn.getAttribute("data-room-close")) + "/close", {
+          method: "POST",
+          body: JSON.stringify({ reason: "gm_force_close" }),
+        }).then(function () { loadRooms(); toast("房间已解散", "success"); loadAudit(); })
+          .catch(function (e) { toast(e.message, "error"); });
+      };
+    });
+    var replays = await api("/rooms/replays?limit=10");
+    var rpHost = document.getElementById("gmReplayList");
+    if (rpHost) {
+      rpHost.innerHTML = (replays || []).length
+        ? replays.map(function (r) {
+          return '<div class="baas-list-row"><div><div>' + esc(r.replay_id) + '</div><div class="meta">' + esc(r.battle_id || "") + " · " + esc(r.created_at || "") + "</div></div></div>";
+        }).join("")
+        : '<div class="baas-list-row"><span>暂无回放</span></div>';
+    }
+  }
+
+  async function showRoomDetail(roomId) {
+    var d = await api("/rooms/" + encodeURIComponent(roomId));
+    var box = document.getElementById("gmRoomDetail");
+    if (!box) return;
+    box.classList.remove("is-hidden");
+    var actions = canEdit
+      ? '<div class="baas-form-actions">' +
+        '<button type="button" class="pm-btn" id="gmRoomFinishBtn">强制结束对局</button>' +
+        '<input id="gmRoomKickTarget" type="text" placeholder="踢出 player_id" style="max-width:200px">' +
+        '<button type="button" class="pm-btn" id="gmRoomKickBtn">踢人</button>' +
+        "</div>"
+      : "";
+    box.innerHTML = actions + "<pre>" + esc(JSON.stringify(d, null, 2)) + "</pre>";
+    var finishBtn = document.getElementById("gmRoomFinishBtn");
+    if (finishBtn) {
+      finishBtn.onclick = function () {
+        api("/rooms/" + encodeURIComponent(roomId) + "/finish", { method: "POST", body: JSON.stringify({ result: { reason: "gm" } }) })
+          .then(function () { loadRooms(); showRoomDetail(roomId); toast("对局已结束", "success"); })
+          .catch(function (e) { toast(e.message, "error"); });
+      };
+    }
+    var kickBtn = document.getElementById("gmRoomKickBtn");
+    if (kickBtn) {
+      kickBtn.onclick = function () {
+        var target = (document.getElementById("gmRoomKickTarget") || {}).value || "";
+        if (!target.trim()) { toast("请填写 player_id", "error"); return; }
+        api("/rooms/" + encodeURIComponent(roomId) + "/kick", { method: "POST", body: JSON.stringify({ player_id: target.trim() }) })
+          .then(function () { loadRooms(); showRoomDetail(roomId); toast("已踢出", "success"); })
+          .catch(function (e) { toast(e.message, "error"); });
+      };
+    }
   }
 
   async function loadGsHealth() {
@@ -464,6 +544,10 @@
     };
     var auditBtn = document.getElementById("gmAuditRefreshBtn");
     if (auditBtn) auditBtn.onclick = function () { loadAudit().catch(function (e) { toast(e.message, "error"); }); };
+    var roomRefreshBtn = document.getElementById("gmRoomRefreshBtn");
+    if (roomRefreshBtn) roomRefreshBtn.onclick = function () { loadRooms().catch(function (e) { toast(e.message, "error"); }); };
+    var roomStatusEl = document.getElementById("gmRoomStatus");
+    if (roomStatusEl) roomStatusEl.onchange = function () { loadRooms().catch(function (e) { toast(e.message, "error"); }); };
   }
 
   renderNav();
@@ -478,4 +562,5 @@
   loadTemplates().catch(function () {});
   loadAudit().catch(function () {});
   loadGsHealth().catch(function () {});
+  loadRooms().catch(function () {});
 })();

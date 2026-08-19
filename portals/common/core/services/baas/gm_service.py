@@ -272,7 +272,65 @@ def gm_dashboard(service_id: str) -> Dict[str, Any]:
         "gift_code_count": int(codes["cnt"] or 0) if codes else 0,
         "announcements": announce_service.admin_list(service_id)[:5],
         "activity_count": len(activity_service.admin_list(service_id)),
+        "room_stats": _room_stats_safe(service_id),
     }
+
+
+def _room_stats_safe(service_id: str) -> Dict[str, Any]:
+    try:
+        from services.baas import room_service
+
+        return room_service.room_stats(service_id)
+    except Exception:
+        return {"total": 0}
+
+
+def list_rooms_admin(service_id: str, *, status: str = "", limit: int = 50) -> List[Dict[str, Any]]:
+    from services.baas import room_service
+
+    return room_service.list_all_rooms(service_id, status=status, limit=limit)
+
+
+def get_room_admin(service_id: str, room_id: str) -> Dict[str, Any]:
+    from services.baas import room_service
+
+    return room_service.get_room_detail(service_id, room_id)
+
+
+def close_room_admin(service_id: str, room_id: str, *, reason: str = "", actor: str = "") -> Dict[str, Any]:
+    from services.baas import room_service
+
+    data = room_service.admin_force_close(service_id, room_id, reason=reason)
+    log_audit_db("default", actor, "baas_gm_room_close", f"{service_id}/{room_id} {reason[:80]}", "")
+    return data
+
+
+def kick_room_player_admin(service_id: str, room_id: str, target_id: str, *, actor: str = "") -> Dict[str, Any]:
+    from services.baas import room_service
+
+    data = room_service.admin_kick_player(service_id, room_id, target_id)
+    log_audit_db("default", actor, "baas_gm_room_kick", f"{service_id}/{room_id}/{target_id}", "")
+    return data
+
+
+def finish_room_battle_admin(
+    service_id: str,
+    room_id: str,
+    *,
+    result: Optional[Dict[str, Any]] = None,
+    actor: str = "",
+) -> Dict[str, Any]:
+    from services.baas import room_service
+
+    data = room_service.admin_finish_battle(service_id, room_id, result=result)
+    log_audit_db("default", actor, "baas_gm_room_finish", f"{service_id}/{room_id}", "")
+    return data
+
+
+def list_room_replays_admin(service_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
+    from services.baas import room_service
+
+    return room_service.list_replays(service_id, limit=limit)
 
 
 def ban_player(service_id: str, player_id: str, *, reason: str = "", expires_at: str = "", actor: str = "") -> Dict[str, Any]:

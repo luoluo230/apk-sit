@@ -15,6 +15,20 @@ _lock = threading.RLock()
 _rooms: Dict[str, Dict[str, Any]] = {}
 _replays: Dict[str, Dict[str, Any]] = {}
 _match_queues: Dict[str, List[str]] = {}
+_frame_waiters: Dict[str, threading.Condition] = {}
+
+
+def _frame_cv(room_id: str) -> threading.Condition:
+    rid = str(room_id or "")
+    if rid not in _frame_waiters:
+        _frame_waiters[rid] = threading.Condition(_lock)
+    return _frame_waiters[rid]
+
+
+def _notify_frame_waiters(room_id: str) -> None:
+    cv = _frame_waiters.get(str(room_id or ""))
+    if cv is not None:
+        cv.notify_all()
 
 
 def _cfg(service_id: str) -> Dict[str, Any]:
@@ -353,6 +367,7 @@ def push_frame(service_id: str, room_id: str, player_id: str, frame: Dict[str, A
         room["frames"] = frames
         room["frame_seq"] = seq
         _touch(room)
+        _notify_frame_waiters(room_id)
         view = _public_view(room, viewer_id=player_id)
         view["last_frame"] = entry
         return view
@@ -370,6 +385,171 @@ def get_frames(service_id: str, room_id: str, *, since_seq: int = 0, limit: int 
             "frames": frames[: max(1, min(500, int(limit or 120)))],
             "frame_seq": int(room.get("frame_seq") or 0),
         }
+
+
+def poll_frames(
+    service_id: str,
+    room_id: str,
+    *,
+    since_seq: int = 0,
+    wait_ms: int = 5000,
+    exclude_player_id: str = "",
+    limit: int = 120,
+) -> Dict[str, Any]:
+    """Long-poll frame fan-out: opponent receives pushes without tight spin loops."""
+    _require_feature(service_id)
+    deadline = time.time() + max(0, min(int(wait_ms or 0), 30000)) / 1000.0
+    exclude = str(exclude_player_id or "").strip()
+    lim = max(1, min(500, int(limit or 120)))
+    while True:
+        with _lock:
+            room = _rooms.get(room_id)
+            if not room or room.get("service_id") != service_id:
+                raise ValueError("房间不存在")
+            frames = [f for f in (room.get("frames") or []) if int(f.get("seq") or 0) > int(since_seq or 0)]
+            if exclude:
+                frames = [row for row in frames if str(row.get("player_id") or "") != exclude]
+            payload: Dict[str, Any] = {
+                "room_id": room_id,
+                "battle_id": room.get("battle_id"),
+                "frame_seq": int(room.get("frame_seq") or 0),
+            }
+            if frames:
+                payload["frames"] = frames[:lim]
+                payload["polled"] = True
+                return payload
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                payload["frames"] = []
+                payload["polled"] = False
+                return payload
+            cv = _frame_cv(room_id)
+            cv.wait(timeout=min(remaining, 0.25))
+
+
+def _admin_view(room: Dict[str, Any]) -> Dict[str, Any]:
+    view = _public_view(room)
+    frames = list(room.get("frames") or [])
+    view["frame_count"] = len(frames)
+    view["recent_frames"] = frames[-5:]
+    view["result"] = dict(room.get("result") or {})
+    view["replay_id"] = room.get("replay_id") or ""
+    view["created_at"] = room.get("created_at")
+    view["password_set"] = bool(str(room.get("password") or ""))
+    return view
+
+
+def room_stats(service_id: str) -> Dict[str, Any]:
+    _cleanup_expired()
+    counts = {"waiting": 0, "ready": 0, "active": 0, "paused": 0, "finished": 0, "closed": 0, "total": 0}
+    with _lock:
+        for room in _rooms.values():
+            if room.get("service_id") != service_id:
+                continue
+            counts["total"] += 1
+            status = str(room.get("status") or "waiting")
+            if status in counts:
+                counts[status] += 1
+    counts["replay_count"] = sum(1 for row in _replays.values() if row.get("service_id") == service_id)
+    return counts
+
+
+def list_all_rooms(service_id: str, *, status: str = "", limit: int = 50) -> List[Dict[str, Any]]:
+    _cleanup_expired()
+    st = str(status or "").strip().lower()
+    lim = max(1, min(int(limit or 50), 200))
+    rows: List[Dict[str, Any]] = []
+    with _lock:
+        for room in _rooms.values():
+            if room.get("service_id") != service_id:
+                continue
+            if st and str(room.get("status") or "").lower() != st:
+                continue
+            rows.append(_admin_view(room))
+    rows.sort(key=lambda row: str(row.get("updated_at") or ""), reverse=True)
+    return rows[:lim]
+
+
+def get_room_detail(service_id: str, room_id: str) -> Dict[str, Any]:
+    with _lock:
+        room = _rooms.get(room_id)
+        if not room or room.get("service_id") != service_id:
+            raise ValueError("房间不存在")
+        return _admin_view(room)
+
+
+def admin_force_close(service_id: str, room_id: str, *, reason: str = "") -> Dict[str, Any]:
+    with _lock:
+        room = _rooms.get(room_id)
+        if not room or room.get("service_id") != service_id:
+            raise ValueError("房间不存在")
+        room["status"] = "closed"
+        room["close_reason"] = str(reason or "gm_force_close")
+        _touch(room)
+        _notify_frame_waiters(room_id)
+        return _admin_view(room)
+
+
+def admin_kick_player(service_id: str, room_id: str, target_id: str) -> Dict[str, Any]:
+    target = str(target_id or "").strip()
+    if not target:
+        raise ValueError("target_id 必填")
+    with _lock:
+        room = _rooms.get(room_id)
+        if not room or room.get("service_id") != service_id:
+            raise ValueError("房间不存在")
+        room["players"] = [p for p in (room.get("players") or []) if p != target]
+        room["spectators"] = [s for s in (room.get("spectators") or []) if s != target]
+        state = dict(room.get("state") or {})
+        state.pop(target, None)
+        room["state"] = state
+        disconnected = dict(room.get("disconnected") or {})
+        disconnected.pop(target, None)
+        room["disconnected"] = disconnected
+        if str(room.get("host_id") or "") == target:
+            players = list(room.get("players") or [])
+            room["host_id"] = players[0] if players else ""
+        if not room.get("players") and not room.get("spectators"):
+            room["status"] = "closed"
+        _touch(room)
+        _notify_frame_waiters(room_id)
+        return _admin_view(room)
+
+
+def admin_finish_battle(service_id: str, room_id: str, *, result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    with _lock:
+        room = _rooms.get(room_id)
+        if not room or room.get("service_id") != service_id:
+            raise ValueError("房间不存在")
+        if room.get("status") not in {"active", "paused", "ready"}:
+            raise ValueError("对局未进行中")
+        room["status"] = "finished"
+        payload = dict(result or {"winner": "", "reason": "gm_force_finish"})
+        room["result"] = payload
+        replay_id = new_id("replay_")
+        _replays[replay_id] = {
+            "replay_id": replay_id,
+            "service_id": service_id,
+            "room_id": room_id,
+            "battle_id": room.get("battle_id"),
+            "players": list(room.get("players") or []),
+            "frames": list(room.get("frames") or []),
+            "result": payload,
+            "created_at": _now_iso(),
+        }
+        room["replay_id"] = replay_id
+        _touch(room)
+        _notify_frame_waiters(room_id)
+        view = _admin_view(room)
+        view["replay_id"] = replay_id
+        return view
+
+
+def list_replays(service_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
+    lim = max(1, min(int(limit or 20), 100))
+    rows = [dict(row) for row in _replays.values() if row.get("service_id") == service_id]
+    rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+    return rows[:lim]
 
 
 def finish_battle(service_id: str, room_id: str, player_id: str, result: Dict[str, Any]) -> Dict[str, Any]:

@@ -53,5 +53,66 @@ class RoomServiceTests(unittest.TestCase):
         self.assertNotIn("p2", after["players"])
 
 
+    @mock.patch("services.baas.room_service.feature_enabled", return_value=True)
+    @mock.patch("services.baas.room_service.get_feature_config", return_value={"max_players": 2, "max_spectators": 4})
+    def test_poll_frames_fanout_excludes_self(self, _cfg, _enabled):
+        import threading
+        from services.baas import room_service
+
+        host = room_service.create_room("svc1", "host", visibility="public", battle_mode="pvp_1v1")
+        guest = room_service.join_room("svc1", "guest", room_id=host["room_id"])
+        self.assertEqual(guest["status"], "ready")
+        room_service.start_battle("svc1", host["room_id"], "host")
+        result: dict = {}
+
+        def poll_guest():
+            result["payload"] = room_service.poll_frames(
+                "svc1",
+                host["room_id"],
+                since_seq=0,
+                wait_ms=3000,
+                exclude_player_id="guest",
+            )
+
+        worker = threading.Thread(target=poll_guest)
+        worker.start()
+        threading.Event().wait(0.05)
+        room_service.push_frame("svc1", host["room_id"], "host", {"action": "attack"})
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        payload = result.get("payload") or {}
+        self.assertTrue(payload.get("polled"))
+        frames = payload.get("frames") or []
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(frames[0].get("player_id"), "host")
+
+    @mock.patch("services.baas.room_service.feature_enabled", return_value=True)
+    @mock.patch("services.baas.room_service.get_feature_config", return_value={"max_players": 2, "max_spectators": 4})
+    def test_admin_room_ops(self, _cfg, _enabled):
+        from services.baas import room_service
+
+        host = room_service.create_room("svc1", "host", visibility="public")
+        room_service.join_room("svc1", "guest", room_id=host["room_id"])
+        room_service.start_battle("svc1", host["room_id"], "host")
+        room_service.push_frame("svc1", host["room_id"], "host", {"move": 1})
+        stats = room_service.room_stats("svc1")
+        self.assertGreaterEqual(stats["total"], 1)
+        rows = room_service.list_all_rooms("svc1", status="active")
+        self.assertTrue(any(r["room_id"] == host["room_id"] for r in rows))
+        detail = room_service.get_room_detail("svc1", host["room_id"])
+        self.assertEqual(detail["frame_count"], 1)
+        room_service.admin_kick_player("svc1", host["room_id"], "guest")
+        after_kick = room_service.get_room_detail("svc1", host["room_id"])
+        self.assertNotIn("guest", after_kick.get("players") or [])
+        finished = room_service.admin_finish_battle("svc1", host["room_id"], result={"winner": "host"})
+        self.assertEqual(finished["status"], "finished")
+        self.assertTrue(finished.get("replay_id"))
+        replays = room_service.list_replays("svc1")
+        self.assertTrue(any(r["replay_id"] == finished["replay_id"] for r in replays))
+        room_service.admin_force_close("svc1", host["room_id"], reason="cleanup")
+        closed = room_service.get_room_detail("svc1", host["room_id"])
+        self.assertEqual(closed["status"], "closed")
+
+
 if __name__ == "__main__":
     unittest.main()
