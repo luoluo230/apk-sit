@@ -87,7 +87,7 @@ if ((-not $Remove) -and (Test-Path $stubsSrc)) {
   "versionDefines": [],
   "noEngineReferences": false
 }
-"@ | Set-Content -Path (Join-Path $stubsDest "../MAClient.Network.Abstractions.asmdef") -Encoding UTF8
+"@ | Set-Content -Path (Join-Path $stubsDest "MAClient.Network.Abstractions.asmdef") -Encoding UTF8
 }
 
 $manifestPath = Join-Path $maclient "Assets/StreamingAssets/client_network_modules.json"

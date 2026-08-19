@@ -62,16 +62,17 @@ namespace MAClient.Network.Baas
             yield return BaasHttp.PostJson(url, body, ServiceHeaders(), (json, err) =>
             {
                 if (!string.IsNullOrEmpty(err)) { onComplete?.Invoke(null, err); return; }
-                var token = ExtractString(json, "token");
-                var pid = ExtractString(json, "player_id");
+                var payload = UnwrapDataJson(json);
+                var token = ExtractString(payload, "token");
+                var pid = ExtractString(payload, "player_id");
                 if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(pid))
                 {
-                    onComplete?.Invoke(null, "guest login parse failed");
+                    onComplete?.Invoke(null, "guest login parse failed: " + json);
                     return;
                 }
                 _playerToken = token;
                 _playerId = pid;
-                onComplete?.Invoke(json, null);
+                onComplete?.Invoke(payload, null);
             });
         }
 
@@ -121,6 +122,28 @@ namespace MAClient.Network.Baas
         static string EscapeJson(string value)
         {
             return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        static string UnwrapDataJson(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return string.Empty;
+            var marker = "\"data\":";
+            int idx = json.IndexOf(marker, StringComparison.Ordinal);
+            if (idx < 0) return json;
+            idx += marker.Length;
+            while (idx < json.Length && char.IsWhiteSpace(json[idx])) idx++;
+            if (idx >= json.Length || json[idx] != '{') return json;
+            int depth = 0;
+            for (int i = idx; i < json.Length; i++)
+            {
+                if (json[i] == '{') depth++;
+                else if (json[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0) return json.Substring(idx, i - idx + 1);
+                }
+            }
+            return json;
         }
 
         static string ExtractString(string json, string key)

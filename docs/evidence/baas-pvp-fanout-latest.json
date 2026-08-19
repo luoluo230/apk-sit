@@ -5,14 +5,13 @@
   "detail": {
     "ok": true,
     "passed": true,
-    "mode": "in_process",
-    "service_id": "c33701aa-d1c1-4a66-a8d7-b4b1c2f9fc07",
-    "room_id": "room_2016fdc4bf8a4895",
-    "battle_id": "battle_2cc7d41939b64723",
-    "notifyLatencyMs": 51,
-    "frame_count": 1,
-    "push_ok": true,
-    "polled": true
+    "mode": "portal",
+    "portal": "http://127.0.0.1:5004",
+    "service_id": "27362a8b-19bf-4f5e-9dd0-c054f337cf78",
+    "room_id": "room_d0a4dcaeb66943d6",
+    "battle_id": "battle_ed4f35741b054cf7",
+    "notifyLatencyMs": 70,
+    "frame_count": 1
   },
-  "generatedUtc": "2026-08-19T06:34:38.650643+00:00"
+  "generatedUtc": "2026-08-19T08:36:54.210650+00:00"
 }

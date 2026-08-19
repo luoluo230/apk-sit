@@ -1,0 +1,36 @@
+{
+  "checks": [
+    {
+      "name": "seed_credentials",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "credentials": {
+          "project_id": "baas_playmode_e2e",
+          "game_id": "baas-playmode-e2e",
+          "game_key": "baas-playmode-e2e-key",
+          "service_id": "27362a8b-19bf-4f5e-9dd0-c054f337cf78",
+          "api_key": "k8oHRTSU6ykvb1HNcnZjOgVD5_LLAY63UBADYS0cL6c",
+          "portal": "http://127.0.0.1:5004",
+          "env_key": "development"
+        }
+      }
+    },
+    {
+      "name": "portal_fanout_http",
+      "ok": true,
+      "exit_code": 0
+    },
+    {
+      "name": "unity_playmode",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "exit_code": 0,
+        "log_tail": "e.Debug:ExtractStackTraceNoAlloc (byte*,int,string)\nUnityEngine.StackTraceUtility:ExtractStackTrace ()\nUnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)\nUnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])\nUnityEngine.Logger:Log (UnityEngine.LogType,object)\nUnityEngine.Debug:Log (object)\nMCPForUnity.Editor.Helpers.McpLog:Info (string,bool) (at Assets/ThirdParty/MCPForUnity/Editor/Helpers/McpLog.cs:40)\nMCPForUnity.Editor.Services.ServerManagementService:StopLocalHttpServerInternal (bool,System.Nullable`1<int>,bool) (at Assets/ThirdParty/MCPForUnity/Editor/Services/ServerManagementService.cs:650)\nMCPForUnity.Editor.Services.ServerManagementService:StopLocalHttpServer () (at Assets/ThirdParty/MCPForUnity/Editor/Services/ServerManagementService.cs:340)\nMCPForUnity.Editor.Services.McpEditorShutdownCleanup:OnEditorQuitting () (at Assets/ThirdParty/MCPForUnity/Editor/Services/McpEditorShutdownCleanup.cs:60)\nUnityEditor.EditorApplication:Internal_EditorApplicationQuit ()\nUnityEditor.TestTools.TestRunner.CommandLineTest.Executer:ExitApplication (UnityEditor.TestTools.TestRunner.CommandLineTest.Executer/ReturnCodes,string) (at ./Library/PackageCache/com.unity.test-framework@aebcb98460c6/UnityEditor.TestRunner/CommandLineTest/Executer.cs:83)\nUnityEditor.TestTools.TestRunner.CommandLineTest.Executer:ExitIfRunIsCompleted () (at ./Library/PackageCache/com.unity.test-framework@aebcb98460c6/UnityEditor.TestRunner/CommandLineTest/Executer.cs:74)\nUnityEditor.EditorApplication:Internal_CallUpdateFunctions ()\n\n(Filename: Assets/ThirdParty/MCPForUnity/Editor/Helpers/McpLog.cs Line: 40)\n\nKilling ADB server in 2.0915027 seconds.\n[Physics::Module] Cleanup current backend.\n[Physics::Module] Id: 0xf2b8ea05\nInput System module state changed to: ShutdownInProgress.\nInput System polling thread exited.\nInput System module state changed to: Shutdown.\n[Licensing::IpcConnector] LicenseClient-Administrator-6000.3.15-notifications channel disconnected successfully.\n[Licensing::IpcConnector] LicenseClient-Administrator-6000.3.15 channel disconnected successfully.\nAcceleratorClientConnectionCallback - disconnected - :0\nCleanup mono\nChecking for leaked weakptr:\n  Found no leaked weakptrs.\n[Package Manager] Server process was shutdown\n##utp:{\"type\":\"MemoryLeaks\",\"version\":2,\"phase\":\"Immediate\",\"time\":1787128631601,\"processId\":18268,\"allocatedMemory\":18566368,\"memoryLabels\":[{\"Default\":14409},{\"Permanent\":15236},{\"NewDelete\":68443},{\"Thread\":4230384},{\"Manager\":35069},{\"VertexData\":60896},{\"Geometry\":816},{\"Texture\":296},{\"Shader\":79381},{\"Material\":24},{\"GfxDevice\":55873},{\"Animation\":392},{\"Audio\":2664},{\"FreeType\":8},{\"FontEngine\":736},{\"Physics\":2090},{\"Physics2D\":16},{\"Serialization\":20052},{\"Input\":14984},{\"JobScheduler\":33024},{\"TextLib\":216},{\"Mono\":32},{\"ScriptingNativeRuntime\":155060},{\"BaseObject\":1620400},{\"Resource\":1336},{\"Renderer\":3000},{\"Transform\":4685},{\"File\":21591},{\"WebCam\":616},{\"Culling\":32},{\"Terrain\":11394},{\"Wind\":24},{\"STL\":40},{\"String\":13602},{\"DynamicArray\":120900},{\"HashMap\":3859414},{\"Utility\":2661366},{\"Curl\":2559},{\"PoolAlloc\":2056},{\"AI\":80},{\"TypeTree\":5341},{\"ScriptManager\":512},{\"RuntimeInitializeOnLoadManager\":64},{\"SpriteAtlas\":112},{\"GI\":7792},{\"Director\":8240},{\"CloudService\":432},{\"WebRequest\":145014},{\"VR\":47994},{\"SceneManager\":504},{\"Video\":64},{\"LazyScriptCache\":32},{\"Camera\":17},{\"Secure\":2113},{\"SerializationCache\":1576},{\"APIUpdating\":10320},{\"Subsystems\":336},{\"VirtualTexturing\":57888},{\"StaticSafetyDebugInfo\":278528},{\"Analytics\":256},{\"Hierarchy\":608},{\"CoreStats\":13032},{\"Identifiers\":12960},{\"Gui\":96},{\"EditorUtility\":116713},{\"VersionControl\":4},{\"Undo\":947},{\"AssetDatabase\":4696864},{\"EditorGi\":328},{\"UnityConnect\":29232},{\"Upm\":1896},{\"AssetCompliance\":64},{\"DrivenProperties\":72},{\"LocalIPC\":219},{\"ProfilerEditor\":9746},{\"CoreBusinessMetrics\":2632},{\"Licensing\":664},{\"AssetReference\":32},{\"IPCStream\":32}]}\n",
+        "results_xml": " />\n    </properties>\n    <test-suite type=\"Assembly\" id=\"1013\" name=\"MAClient.Network.Baas.PlayModeTests.dll\" fullname=\"E:/maclient/Library/ScriptAssemblies/MAClient.Network.Baas.PlayModeTests.dll\" runstate=\"Runnable\" testcasecount=\"1\" result=\"Passed\" start-time=\"2026-08-19 08:37:06Z\" end-time=\"2026-08-19 08:37:06Z\" duration=\"0.266931\" total=\"1\" passed=\"1\" failed=\"0\" inconclusive=\"0\" skipped=\"0\" asserts=\"0\">\n      <properties>\n        <property name=\"_PID\" value=\"18268\" />\n        <property name=\"_APPDOMAIN\" value=\"Unity Child Domain\" />\n        <property name=\"platform\" value=\"PlayMode\" />\n        <property name=\"EditorOnly\" value=\"False\" />\n      </properties>\n      <test-suite type=\"TestFixture\" id=\"1011\" name=\"BaasRoomFanoutPlayModeTests\" fullname=\"BaasRoomFanoutPlayModeTests\" classname=\"BaasRoomFanoutPlayModeTests\" runstate=\"Runnable\" testcasecount=\"1\" result=\"Passed\" start-time=\"2026-08-19 08:37:06Z\" end-time=\"2026-08-19 08:37:06Z\" duration=\"0.265429\" total=\"1\" passed=\"1\" failed=\"0\" inconclusive=\"0\" skipped=\"0\" asserts=\"0\">\n        <properties />\n        <test-case id=\"1012\" name=\"LivePortal_DualGuest_FrameFanout_Passes\" fullname=\"BaasRoomFanoutPlayModeTests.LivePortal_DualGuest_FrameFanout_Passes\" methodname=\"LivePortal_DualGuest_FrameFanout_Passes\" classname=\"BaasRoomFanoutPlayModeTests\" runstate=\"Runnable\" seed=\"1021699393\" result=\"Passed\" start-time=\"2026-08-19 08:37:06Z\" end-time=\"2026-08-19 08:37:06Z\" duration=\"0.253897\" asserts=\"0\">\n          <properties>\n            <property name=\"_JOINTYPE\" value=\"UnityCombinatorial\" />\n            <property name=\"retryIteration\" value=\"0\" />\n            <property name=\"repeatIteration\" value=\"0\" />\n          </properties>\n          <output><![CDATA[<b><color=#2EA3FF>MCP-FOR-UNITY</color></b>: [TestRunnerNoThrottle] Restored Interaction Mode after test run.\nSaving results to: E:\\maclient\\Temp\\baas-playmode-results.xml\n]]></output>\n        </test-case>\n      </test-suite>\n    </test-suite>\n  </test-suite>\n</test-run>"
+      }
+    }
+  ],
+  "verdict": "pass"
+}
