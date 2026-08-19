@@ -128,6 +128,8 @@ def runtime_bootstrap():
     env_key = str(request.args.get("env_key") or "").strip()
     channel = str(request.args.get("channel") or "").strip()
     platform = str(request.args.get("platform") or "").strip().lower()
+    version_name = str(request.args.get("version_name") or "").strip()
+    version_code = str(request.args.get("version_code") or "").strip()
     device_id = str(request.args.get("device_id") or "").strip()
     user_id = str(request.args.get("user_id") or "").strip()
     region = str(request.args.get("region") or request.args.get("client_region") or "").strip()
@@ -150,10 +152,18 @@ def runtime_bootstrap():
             scope = find_scope(legacy_scope_id)
     if not scope:
         return jsonify({"ok": False, "error": "发布作用域不存在"}), 404
-    from services.release.bundle_service import find_active_bundle
+    from services.release.bundle_service import find_bootstrap_bundle
 
-    bundle = find_active_bundle(scope_id, platform=platform) or find_active_bundle(
-        str(scope.get("scope_id") or ""), platform=platform
+    bundle = find_bootstrap_bundle(
+        scope_id,
+        platform=platform,
+        version_name=version_name,
+        version_code=version_code,
+    ) or find_bootstrap_bundle(
+        str(scope.get("scope_id") or ""),
+        platform=platform,
+        version_name=version_name,
+        version_code=version_code,
     )
     if not bundle:
         return jsonify({"ok": False, "error": "当前作用域没有已发布 Bundle"}), 404

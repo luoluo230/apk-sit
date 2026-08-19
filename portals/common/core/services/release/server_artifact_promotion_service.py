@@ -6,7 +6,6 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, List
 
-from models.data import projects_db
 from services.release.env_registry import get_project_env_defs, normalize_release_env_key, project_env_label
 from services.release.order_helpers import _now_iso
 from services.release.release_policy_service import requires_promotion_approval
@@ -41,7 +40,9 @@ def _new_sro_id() -> str:
 
 def list_server_promotion_candidates(project_id: str) -> List[Dict[str, Any]]:
     """Deployed server releases that can advance to a higher environment."""
-    if project_id not in projects_db:
+    from repositories.admin import projects_repo
+
+    if not projects_repo.has_project(project_id):
         raise ValueError("项目不存在")
     from services.release import server_release_service as srs
 
@@ -111,7 +112,9 @@ def promote_server_artifact_to_env(
     platform: str = "android",
 ) -> Dict[str, Any]:
     """Create a ready server release order in target env from a deployed source SRO."""
-    if project_id not in projects_db:
+    from repositories.admin import projects_repo
+
+    if not projects_repo.has_project(project_id):
         raise ValueError("项目不存在")
     from services.release import server_release_service as srs
 

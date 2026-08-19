@@ -103,8 +103,17 @@ def _run_full(args: argparse.Namespace) -> int:
         print(json.dumps({"step": "precheck", "result": pre}, ensure_ascii=False, indent=2))
         return 3
 
-    approve_release_order(project_id, order_id, actor=args.actor, note="simulate_e2e_publish auto-approve")
-    published = publish_release_order(project_id, order_id, actor=args.actor)
+    status = str(pre.get("status") or "")
+    if status == "awaiting_approval":
+        approve_release_order(project_id, order_id, actor=args.actor, note="simulate_e2e_publish auto-approve")
+    elif status not in {"ready", "published"}:
+        print(json.dumps({"step": "approve", "error": f"unexpected status after precheck: {status}"}, ensure_ascii=False))
+        return 5
+
+    if status == "published":
+        published = pre
+    else:
+        published = publish_release_order(project_id, order_id, actor=args.actor)
     print(json.dumps({
         "mode": "full",
         "order_id": order_id,

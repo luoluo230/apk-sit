@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 
 class TestUserFavoritesService(unittest.TestCase):
@@ -102,6 +103,35 @@ class TestGrayJourneyBff(unittest.TestCase):
         self.assertTrue(view["gray_auto_expand_scheduled"])
         self.assertEqual(view["gray_success_action_label"], "自动放量")
         self.assertTrue(view["gray_auto_expand_due_at"].startswith("2026-07-24T10:30:00"))
+
+
+class TestBootstrapBundleSelection(unittest.TestCase):
+    def test_find_bootstrap_bundle_prefers_real_release_over_gate_fixture(self):
+        from services.release.bundle_service import find_bootstrap_bundle
+
+        scope_id = "gomeku:development:1001:android"
+        gate = {
+            "bundle_id": "rb-gate-gomeku-development-1001-android-12",
+            "scope_id": scope_id,
+            "publish_status": "published",
+            "published_at": "2026-08-19T10:00:00",
+            "client": {"version_name": "1.0.0", "version_code": "12", "platform": "android"},
+            "is_gate_fixture": True,
+        }
+        real = {
+            "bundle_id": "rb-real-1",
+            "scope_id": scope_id,
+            "publish_status": "published",
+            "published_at": "2026-08-18T10:00:00",
+            "client": {"version_name": "1.0.1", "version_code": "2", "platform": "android"},
+        }
+        with mock.patch("services.release.bundle_service.load_bundles", return_value=[gate, real]):
+            picked = find_bootstrap_bundle(scope_id, platform="android", version_name="1.0.1", version_code="2")
+        self.assertEqual(picked.get("bundle_id"), "rb-real-1")
+
+        with mock.patch("services.release.bundle_service.load_bundles", return_value=[gate, real]):
+            default_pick = find_bootstrap_bundle(scope_id, platform="android")
+        self.assertEqual(default_pick.get("bundle_id"), "rb-real-1")
 
 
 class TestOpenApiSchemaCoverage(unittest.TestCase):

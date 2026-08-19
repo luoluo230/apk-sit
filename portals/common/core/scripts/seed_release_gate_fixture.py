@@ -100,6 +100,7 @@ def main() -> int:
         "release_order_id": order_id,
         "project_id": PROJECT_ID,
         "scope_id": SCOPE_ID,
+        "is_gate_fixture": True,
         "env_key": scope.get("env_key"),
         "channel_id": scope.get("channel_id"),
         "client": {

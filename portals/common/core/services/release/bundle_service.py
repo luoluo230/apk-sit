@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
@@ -358,11 +359,54 @@ def _artifact_probe_targets(scope: Dict[str, Any], version_row: Dict[str, Any]) 
 
 
 def find_active_bundle(scope_id: str, *, platform: str = "") -> Dict[str, Any]:
+    return find_bootstrap_bundle(scope_id, platform=platform)
+
+
+def _is_gate_fixture_bundle(row: Dict[str, Any]) -> bool:
+    bid = str(row.get("bundle_id") or "")
+    oid = str(row.get("release_order_id") or "")
+    return bid.startswith("rb-gate-") or oid.startswith("ro-gate-") or bool(row.get("is_gate_fixture"))
+
+
+def find_bootstrap_bundle(
+    scope_id: str,
+    *,
+    platform: str = "",
+    version_name: str = "",
+    version_code: str = "",
+) -> Dict[str, Any]:
+    """Resolve published bundle for runtime-bootstrap; deprioritize CI gate fixtures."""
     sid = str(scope_id or "").strip()
     plat = str(platform or "").strip().lower()
-    for row in list_bundles(scope_id=sid, status="published", platform=plat if plat in {"android", "ios"} else ""):
+    vn = str(version_name or "").strip()
+    vc = str(version_code or "").strip()
+    rows = list_bundles(scope_id=sid, status="published", platform=plat if plat in {"android", "ios"} else "")
+
+    def _matches_version(row: Dict[str, Any]) -> bool:
+        client = row.get("client") if isinstance(row.get("client"), dict) else {}
+        if vn and str(client.get("version_name") or "") != vn:
+            return False
+        if vc and str(client.get("version_code") or "") != vc:
+            return False
+        return True
+
+    prefer_gate = str(os.environ.get("RELEASE_GATE_PREFER_FIXTURE") or "").strip().lower() in {"1", "true", "yes"}
+
+    if vn or vc:
+        for row in rows:
+            if not prefer_gate and _is_gate_fixture_bundle(row):
+                continue
+            if _matches_version(row):
+                return row
+        for row in rows:
+            if _matches_version(row):
+                return row
+
+    for row in rows:
+        if not prefer_gate and _is_gate_fixture_bundle(row):
+            continue
         return row
-    return {}
+    return rows[0] if rows else {}
 
 
 def run_scope_precheck(scope: Dict[str, Any], version_row: Dict[str, Any], *, validate_artifacts: bool = False) -> Dict[str, Any]:

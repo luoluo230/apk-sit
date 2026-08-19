@@ -233,39 +233,43 @@ def run_release_flow(results: dict) -> None:
     if not ensure_runtime(results, order):
         return
 
-    try:
-        ros.precheck_release_order(PROJECT_ID, ORDER_ID, ACTOR)
-        pre = ros.get_release_order(PROJECT_ID, ORDER_ID, include_details=True)
-        pre_ok = bool((pre.get("latest_precheck") or {}).get("ok")) or str(pre.get("status") or "") in {
-            "ready",
-            "awaiting_approval",
-            "published",
-        }
-        if pre_ok:
-            ok(results, "precheck", {"status": pre.get("status")})
-        else:
-            issues = pre.get("diagnostic_issues") or []
-            fail(
-                results,
-                "precheck",
-                json.dumps([{"label": i.get("label"), "hint": i.get("hint")} for i in issues], ensure_ascii=False),
-            )
-            return
-    except Exception as exc:
-        fail(results, "precheck", str(exc))
-        return
-
-    if str(pre.get("status") or "") != "published":
-        try:
-            if pre.get("status") == "awaiting_approval":
-                ros.approve_release_order(PROJECT_ID, ORDER_ID, ACTOR, note="gacha e2e auto")
-            published = ros.publish_release_order(PROJECT_ID, ORDER_ID, ACTOR)
-            ok(results, "publish", {"bundle_id": published.get("bundle_id"), "status": published.get("status")})
-        except Exception as exc:
-            fail(results, "publish", str(exc))
-            return
+    if status == "published":
+        ok(results, "precheck", {"status": "already_published", "skipped": True})
+        ok(results, "publish", {"status": "already_published", "bundle_id": order.get("bundle_id")})
     else:
-        ok(results, "publish", {"status": "already_published", "bundle_id": pre.get("bundle_id")})
+        try:
+            ros.precheck_release_order(PROJECT_ID, ORDER_ID, ACTOR)
+            pre = ros.get_release_order(PROJECT_ID, ORDER_ID, include_details=True)
+            pre_ok = bool((pre.get("latest_precheck") or {}).get("ok")) or str(pre.get("status") or "") in {
+                "ready",
+                "awaiting_approval",
+                "published",
+            }
+            if pre_ok:
+                ok(results, "precheck", {"status": pre.get("status")})
+            else:
+                issues = pre.get("diagnostic_issues") or []
+                fail(
+                    results,
+                    "precheck",
+                    json.dumps([{"label": i.get("label"), "hint": i.get("hint")} for i in issues], ensure_ascii=False),
+                )
+                return
+        except Exception as exc:
+            fail(results, "precheck", str(exc))
+            return
+
+        if str(pre.get("status") or "") != "published":
+            try:
+                if pre.get("status") == "awaiting_approval":
+                    ros.approve_release_order(PROJECT_ID, ORDER_ID, ACTOR, note="gacha e2e auto")
+                published = ros.publish_release_order(PROJECT_ID, ORDER_ID, ACTOR)
+                ok(results, "publish", {"bundle_id": published.get("bundle_id"), "status": published.get("status")})
+            except Exception as exc:
+                fail(results, "publish", str(exc))
+                return
+        else:
+            ok(results, "publish", {"status": "already_published", "bundle_id": pre.get("bundle_id")})
 
     query = urllib.parse.urlencode(
         {
