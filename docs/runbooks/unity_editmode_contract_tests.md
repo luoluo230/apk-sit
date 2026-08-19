@@ -10,6 +10,20 @@ curl -s http://127.0.0.1:5003/api/public/unity-contract-manifest -o unity_contra
 
 CI 也可直接读取 apk-site 仓库内 `portals/common/core/tests/fixtures/unity_contract_manifest.json`（由 `unity_contract_gate.py` 生成）。
 
+同步到 maclient（Windows）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\Sync-UnityContractManifest.ps1
+powershell -ExecutionPolicy Bypass -File scripts\Sync-UnityContractManifest.ps1 -LocalOnly
+```
+
+仅导出到仓库 fixture（跨平台）：
+
+```bash
+cd portals/common/core
+py -3 scripts/sync_unity_contract_manifest.py --local-only
+```
+
 ## maclient 侧建议结构
 
 | 测试类 | manifest `unity_editmode_filter` | 断言 |

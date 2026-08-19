@@ -92,7 +92,11 @@ class TestOpenApiSchemaCoverage(unittest.TestCase):
 
         root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         script = os.path.join(root, "scripts", "generate_openapi.py")
-        proc = subprocess.run([sys.executable, script, "--check"], cwd=root, capture_output=True, text=True)
+        env = os.environ.copy()
+        env.pop("BAAS_STANDALONE", None)
+        env.pop("PORTAL_SERVER_FRAMEWORKS", None)
+        env.setdefault("APP_PORTAL_MODE", "admin")
+        proc = subprocess.run([sys.executable, script, "--check"], cwd=root, capture_output=True, text=True, env=env)
         self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
         payload = json.loads(proc.stdout.strip())
         self.assertGreaterEqual(payload.get("paths", 0), 140)

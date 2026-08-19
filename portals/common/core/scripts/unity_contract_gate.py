@@ -29,6 +29,13 @@ def main() -> int:
         from services.release.unity_contract_bridge import export_manifest
 
         export_manifest(manifest_path)
+        sync_proc = subprocess.run(
+            [sys.executable, "scripts/sync_unity_contract_manifest.py", "--local-only"],
+            cwd=ROOT,
+        )
+        if sync_proc.returncode != 0:
+            print("unity_contract_gate FAILED (sync)")
+            return sync_proc.returncode
         print("unity_contract_gate PASS")
     else:
         print("unity_contract_gate FAILED")
