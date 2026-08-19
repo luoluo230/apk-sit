@@ -75,6 +75,16 @@ def main() -> int:
             if not ok:
                 report["verdict"] = "fail"
 
+        fanout_script = ROOT / "scripts" / "run_battle_pvp_fanout_e2e.py"
+        if fanout_script.is_file():
+            cmd = [sys.executable, str(fanout_script)]
+            print("[full-e2e] running", " ".join(cmd))
+            code = subprocess.call(cmd)
+            ok = code == 0
+            report["checks"].append({"name": "battle_pvp_fanout", "ok": ok, "exit_code": code})
+            if not ok:
+                report["verdict"] = "fail"
+
     out = ROOT / "docs" / "evidence" / "full-stack-integration-latest.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

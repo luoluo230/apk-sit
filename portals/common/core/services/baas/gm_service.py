@@ -344,7 +344,57 @@ def list_bans(service_id: str) -> Dict[str, Any]:
             "SELECT * FROM baas_ip_bans WHERE service_id=? ORDER BY created_at DESC",
             (service_id,),
         ).fetchall()
-    return {"player_bans": [dict(r) for r in players], "ip_bans": [dict(r) for r in ips]}
+        rows = cur.execute(
+            "SELECT player_id, profile_json FROM baas_players WHERE service_id=?",
+            (service_id,),
+        ).fetchall()
+    mutes = []
+    now = _now_iso()
+    for row in rows:
+        profile = _json_load(row["profile_json"], {})
+        mute_until = str(profile.get("mute_until") or "").strip()
+        if mute_until and mute_until > now:
+            mutes.append({
+                "player_id": row["player_id"],
+                "mute_until": mute_until,
+                "reason": profile.get("mute_reason") or "",
+            })
+    return {"player_bans": [dict(r) for r in players], "ip_bans": [dict(r) for r in ips], "mutes": mutes}
+
+
+def mute_player(service_id: str, player_id: str, *, hours: int = 0, reason: str = "", actor: str = "") -> Dict[str, Any]:
+    pid = str(player_id or "").strip()
+    if not pid:
+        raise ValueError("player_id 必填")
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT profile_json FROM baas_players WHERE service_id=? AND player_id=?",
+            (service_id, pid),
+        ).fetchone()
+        if not row:
+            raise ValueError("玩家不存在")
+        profile = _json_load(row["profile_json"], {})
+        hrs = int(hours or 0)
+        if hrs <= 0:
+            profile.pop("mute_until", None)
+            profile.pop("mute_reason", None)
+        else:
+            from datetime import datetime, timedelta, timezone
+
+            profile["mute_until"] = (datetime.now(timezone.utc) + timedelta(hours=hrs)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            profile["mute_reason"] = str(reason or "")
+        now = _now_iso()
+        cur.execute(
+            "UPDATE baas_players SET profile_json=?, updated_at=? WHERE service_id=? AND player_id=?",
+            (_json_dump(profile), now, service_id, pid),
+        )
+    log_audit_db("default", actor, "baas_gm_mute", f"{service_id}/{pid} hours={hours}", "")
+    return {"player_id": pid, "mute_until": profile.get("mute_until") or "", "muted": hrs > 0}
+
+
+def unmute_player(service_id: str, player_id: str, *, actor: str = "") -> Dict[str, Any]:
+    return mute_player(service_id, player_id, hours=0, actor=actor)
 
 
 def save_announcement(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
@@ -363,6 +413,150 @@ def save_activity(service_id: str, payload: Dict[str, Any], *, actor: str = "") 
 
 def list_activities(service_id: str) -> List[Dict[str, Any]]:
     return activity_service.admin_list(service_id)
+
+
+def list_gm_audit(service_id: str, *, limit: int = 80) -> List[Dict[str, Any]]:
+    init_db()
+    prefix = f"{service_id}/"
+    with get_cursor() as cur:
+        rows = cur.execute(
+            """
+            SELECT timestamp, user, action, details, ip
+            FROM audit_log
+            WHERE action LIKE 'baas_gm%' AND (details LIKE ? OR details LIKE ?)
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (f"{prefix}%", f"%{service_id}%", max(1, min(int(limit or 80), 200))),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_mail_templates(service_id: str) -> List[Dict[str, Any]]:
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT config_json FROM baas_feature_configs WHERE service_id=? AND feature_key=?",
+            (service_id, "gm_mail_templates"),
+        ).fetchone()
+    data = _json_load(row["config_json"], {}) if row else {}
+    templates = data.get("templates") if isinstance(data.get("templates"), list) else []
+    return templates
+
+
+def save_mail_template(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    template_id = str(payload.get("template_id") or new_id("tpl_")).strip()
+    title = str(payload.get("title") or "系统邮件").strip()
+    body = str(payload.get("body") or "").strip()
+    attachments = payload.get("attachments") if isinstance(payload.get("attachments"), list) else []
+    body_links = payload.get("body_links") if isinstance(payload.get("body_links"), list) else []
+    now = _now_iso()
+    templates = list_mail_templates(service_id)
+    updated = {
+        "template_id": template_id,
+        "title": title,
+        "body": body,
+        "attachments": attachments,
+        "body_links": body_links,
+        "updated_at": now,
+    }
+    replaced = False
+    for idx, tpl in enumerate(templates):
+        if str(tpl.get("template_id") or "") == template_id:
+            templates[idx] = updated
+            replaced = True
+            break
+    if not replaced:
+        updated["created_at"] = now
+        templates.insert(0, updated)
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_feature_configs (service_id, feature_key, config_json, updated_at)
+            VALUES (?,?,?,?)
+            ON CONFLICT(service_id, feature_key) DO UPDATE SET
+                config_json=excluded.config_json, updated_at=excluded.updated_at
+            """,
+            (service_id, "gm_mail_templates", _json_dump({"templates": templates}), now),
+        )
+    log_audit_db("default", actor, "baas_gm_mail_template", f"{service_id}/{template_id}", "")
+    return updated
+
+
+def delete_mail_template(service_id: str, template_id: str, *, actor: str = "") -> Dict[str, Any]:
+    tid = str(template_id or "").strip()
+    templates = [t for t in list_mail_templates(service_id) if str(t.get("template_id") or "") != tid]
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_feature_configs (service_id, feature_key, config_json, updated_at)
+            VALUES (?,?,?,?)
+            ON CONFLICT(service_id, feature_key) DO UPDATE SET
+                config_json=excluded.config_json, updated_at=excluded.updated_at
+            """,
+            (service_id, "gm_mail_templates", _json_dump({"templates": templates}), now),
+        )
+    log_audit_db("default", actor, "baas_gm_mail_template_delete", f"{service_id}/{tid}", "")
+    return {"template_id": tid, "deleted": True}
+
+
+def grant_items(
+    service_id: str,
+    player_id: str,
+    items: List[Dict[str, Any]],
+    *,
+    title: str = "",
+    body: str = "",
+    actor: str = "",
+) -> Dict[str, Any]:
+    pid = str(player_id or "").strip()
+    if not pid:
+        raise ValueError("player_id 必填")
+    attachments = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("item_id") or item.get("id") or "").strip()
+        if not item_id:
+            continue
+        attachments.append({
+            "type": str(item.get("type") or "item"),
+            "item_id": item_id,
+            "quantity": int(item.get("quantity") or item.get("count") or 1),
+            "name": str(item.get("name") or item_id),
+        })
+    if not attachments:
+        raise ValueError("至少发放一项道具")
+    mail = mail_service.send_mail(
+        service_id,
+        {
+            "player_id": pid,
+            "title": title or "道具发放",
+            "body": body or "GM 道具补偿，请在邮件中领取。",
+            "attachments": attachments,
+        },
+        actor=actor,
+    )
+    log_audit_db("default", actor, "baas_gm_grant_items", f"{service_id}/{pid} count={len(attachments)}", "")
+    return {"mail": mail, "attachments": attachments}
+
+
+def resolve_player_session_token(service_id: str, player_id: str) -> str:
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT token FROM baas_players WHERE service_id=? AND player_id=?",
+            (service_id, player_id),
+        ).fetchone()
+    if not row:
+        raise ValueError("玩家不存在")
+    token = str(row["token"] or "").strip()
+    if not token:
+        raise ValueError("玩家无有效 session token，可能未在线登录过")
+    return token
 
 
 def is_player_banned(service_id: str, player_id: str) -> bool:

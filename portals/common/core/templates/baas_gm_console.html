@@ -1,121 +1,245 @@
-<link rel="stylesheet" href="/static/baas_gm_console.css?v=20260724-gm2">
-<section class="delivery-app baas-gm" data-page="baas-gm" data-project-id="{{ project_id }}" data-service-id="{{ service_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+<link rel="stylesheet" href="/static/casual_services_console.css?v=20260724-baas1">
+<link rel="stylesheet" href="/static/baas_gm_console.css?v=20260819-gm4">
+<section class="delivery-app baas-console baas-gm" data-delivery-page="baas-gm" data-project-id="{{ project_id }}" data-service-id="{{ service_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
   <header class="pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_roles_member.svg" alt=""></span>
       <div>
-        <h1>BaaS GM 运维</h1>
-        <p class="baas-gm-sub">封禁、邮件、公告、兑换码、活动、钱包与云存档</p>
+        <h1>GM 运维控制台</h1>
+        <p class="baas-head-sub">按业务域管理玩家、风控、触达、活动与经济；与「休闲服务」配置同属本项目 BaaS 能力</p>
       </div>
     </div>
     <div class="pm-page-head-actions">
-      <a class="pm-btn" href="/admin/projects/{{ project_id }}/casual-services/{{ service_id }}">功能配置</a>
-      <a class="pm-btn" href="/admin/baas">返回 BaaS 首页</a>
+      <a class="pm-btn" href="/admin/projects/{{ project_id }}/casual-services/{{ service_id }}">休闲服务配置</a>
+      <a class="pm-btn" href="/admin/baas">BaaS 首页</a>
     </div>
   </header>
-  <div id="baasGmKpis" class="baas-gm-kpis">加载中…</div>
-  <div class="baas-gm-tabs" role="tablist">
-    <button type="button" class="is-active" data-gm-tab="players">玩家</button>
-    <button type="button" data-gm-tab="bans">封禁</button>
-    <button type="button" data-gm-tab="mail">邮件</button>
-    <button type="button" data-gm-tab="announce">公告</button>
-    <button type="button" data-gm-tab="gifts">兑换码</button>
-    <button type="button" data-gm-tab="activities">活动</button>
-    <button type="button" data-gm-tab="wallet">钱包</button>
-    <button type="button" data-gm-tab="leaderboard">排行榜</button>
-    <button type="button" data-gm-tab="cloudsave">云存档</button>
-  </div>
-  <div class="baas-gm-panel is-active" data-gm-pane="players">
-    <label class="baas-gm-search"><input id="gmPlayerSearch" type="search" placeholder="搜索 player_id / 昵称"><button type="button" id="gmPlayerSearchBtn" class="pm-btn">搜索</button></label>
-    <div id="gmPlayerList" class="baas-gm-list"></div>
-    <div id="gmPlayerDetail" class="baas-gm-detail is-hidden"></div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="bans">
-    <div class="baas-gm-form">
-      <label><span>玩家 ID</span><input id="gmBanPlayer" type="text"></label>
-      <label><span>IP / CIDR</span><input id="gmBanIp" type="text" placeholder="192.168.1.10"></label>
-      <label class="wide"><span>原因</span><input id="gmBanReason" type="text"></label>
-      <label><span>到期时间（ISO，留空=永久）</span><input id="gmBanExpires" type="text" placeholder="2026-12-31T23:59:59"></label>
-      <button type="button" id="gmBanBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>封禁</button>
+  <div class="baas-meta-bar">
+    <div class="baas-meta-copy">
+      <span>服务 ID</span>
+      <code id="gmServiceId">{{ service_id }}</code>
+      <button type="button" class="pm-btn pm-btn--ghost" id="gmCopyServiceId">复制</button>
     </div>
-    <div id="gmBanList" class="baas-gm-list"></div>
+    <div id="baasGmKpis" class="baas-kpi-strip">加载中…</div>
   </div>
-  <div class="baas-gm-panel" data-gm-pane="mail">
-    <div class="baas-gm-form">
-      <label><span>标题</span><input id="gmMailTitle" type="text"></label>
-      <label class="wide"><span>正文</span><textarea id="gmMailBody" rows="3"></textarea></label>
-      <label class="wide"><span>链接 JSON（客户端解析）</span><textarea id="gmMailLinks" rows="3" placeholder='[{"label":"领取奖励","action":"claim","payload":{"item":"gold","amount":100}}]'></textarea></label>
-      <label class="wide"><span>玩家 ID（留空=全服）</span><input id="gmMailPlayers" type="text" placeholder="p_xxx,p_yyy 或留空"></label>
-      <button type="button" id="gmMailSendBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发送邮件</button>
-    </div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="announce">
-    <div class="baas-gm-form">
-      <label><span>标题</span><input id="gmAnnTitle" type="text"></label>
-      <label class="wide"><span>正文</span><textarea id="gmAnnBody" rows="3"></textarea></label>
-      <label><span>展示位置</span>
-        <select id="gmAnnDisplay">
-          <option value="login">登录界面</option>
-          <option value="marquee">游戏内跑马灯</option>
-          <option value="all">全部</option>
-        </select>
-      </label>
-      <label><span>优先级</span><input id="gmAnnPriority" type="number" value="0"></label>
-      <button type="button" id="gmAnnSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发布公告</button>
-    </div>
-    <div id="gmAnnList" class="baas-gm-list"></div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="gifts">
-    <div class="baas-gm-form">
-      <label><span>兑换码</span><input id="gmGiftCode" type="text"></label>
-      <label><span>类型</span>
-        <select id="gmGiftType">
-          <option value="shared">共用码</option>
-          <option value="personal">个人码</option>
-          <option value="compensation">补偿码</option>
-        </select>
-      </label>
-      <label><span>指定玩家 ID</span><input id="gmGiftPlayer" type="text" placeholder="个人码时填写"></label>
-      <label><span>全服最大次数（0=无限）</span><input id="gmGiftMax" type="number" value="100"></label>
-      <label><span>单人上限</span><input id="gmGiftPerPlayer" type="number" value="1"></label>
-      <label><span>过期时间 ISO</span><input id="gmGiftExpires" type="text" placeholder="留空=不过期"></label>
-      <label class="wide"><span>奖励 JSON</span><textarea id="gmGiftRewards" rows="3">[{"type":"gold","amount":100}]</textarea></label>
-      <button type="button" id="gmGiftSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>保存兑换码</button>
-    </div>
-    <div id="gmGiftList" class="baas-gm-list"></div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="activities">
-    <div class="baas-gm-form">
-      <label><span>活动标题</span><input id="gmActTitle" type="text"></label>
-      <label><span>类型</span><input id="gmActType" type="text" value="event"></label>
-      <label><span>开始 ISO</span><input id="gmActStart" type="text"></label>
-      <label><span>结束 ISO</span><input id="gmActEnd" type="text"></label>
-      <label class="wide"><span>门槛 JSON</span><textarea id="gmActGates" rows="2">{"level_min":1,"vip_min":0,"recharge_min":0}</textarea></label>
-      <label class="wide"><span>活动配置 JSON</span><textarea id="gmActPayload" rows="3">{"banner":"default","rewards":[]}</textarea></label>
-      <button type="button" id="gmActSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发布活动</button>
-    </div>
-    <div id="gmActList" class="baas-gm-list"></div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="wallet">
-    <div class="baas-gm-form">
-      <label><span>玩家 ID</span><input id="gmWalletPlayer" type="text"></label>
-      <label><span>货币</span><input id="gmWalletCurrency" type="text" value="gold"></label>
-      <label><span>调整量（±）</span><input id="gmWalletDelta" type="number" value="100"></label>
-      <label class="wide"><span>原因</span><input id="gmWalletReason" type="text" placeholder="补偿说明"></label>
-      <button type="button" id="gmWalletBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>调整余额</button>
-    </div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="leaderboard">
-    <label><span>榜 ID</span><input id="gmBoardId" type="text" value="default"></label>
-    <button type="button" id="gmLbLoadBtn" class="pm-btn">刷新</button>
-    <button type="button" id="gmLbResetBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>清空榜单</button>
-    <div id="gmLbList" class="baas-gm-list"></div>
-  </div>
-  <div class="baas-gm-panel" data-gm-pane="cloudsave">
-    <label><span>玩家 ID</span><input id="gmCsPlayer" type="text"></label>
-    <label><span>Key（留空=列表）</span><input id="gmCsKey" type="text"></label>
-    <button type="button" id="gmCsLoadBtn" class="pm-btn">读取</button>
-    <pre id="gmCsOut" class="baas-gm-pre"></pre>
+  <div class="baas-layout">
+    <aside class="baas-sidebar" id="gmNav" aria-label="GM 业务导航"></aside>
+    <main class="baas-main">
+      <div class="baas-gm-pane is-active" data-pane="overview">
+        <div class="baas-panel-head">
+          <div>
+            <h2>运营概览</h2>
+            <p>查看当前休闲服务玩家规模、未读邮件与活动/兑换码数量；下方为 GM 能力覆盖与待接入项。</p>
+          </div>
+        </div>
+        <div id="gmOverviewStats" class="baas-kpi-strip"></div>
+        <div class="baas-list" style="margin-top:16px;border-top:0;padding-top:0">
+          <h3>最近公告</h3>
+          <div id="gmOverviewAnnounce"></div>
+        </div>
+      </div>
+      <div class="baas-gm-pane" data-pane="players">
+        <div class="baas-panel-head">
+          <div><h2>玩家查询</h2><p>搜索 player_id、昵称或外部账号，查看钱包与邮件概况。</p></div>
+        </div>
+        <div class="baas-inline-toolbar">
+          <input id="gmPlayerSearch" type="search" placeholder="搜索 player_id / 昵称 / external_id">
+          <button type="button" id="gmPlayerSearchBtn" class="pm-btn">搜索</button>
+        </div>
+        <div id="gmPlayerList" class="baas-list"></div>
+        <div id="gmPlayerDetail" class="baas-detail-card is-hidden"></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="moderation">
+        <div class="baas-panel-head">
+          <div><h2>封禁与禁言</h2><p>账号封禁、IP 封禁与禁言（写入玩家 profile，客户端可按 mute_until 限制发言）。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>玩家 ID</span><input id="gmBanPlayer" type="text" placeholder="p_xxx"></label>
+          <label><span>IP / CIDR</span><input id="gmBanIp" type="text" placeholder="192.168.1.10"></label>
+          <label class="wide"><span>原因</span><input id="gmBanReason" type="text" placeholder="违规说明"></label>
+          <label><span>到期时间 ISO（留空=永久）</span><input id="gmBanExpires" type="text" placeholder="2026-12-31T23:59:59Z"></label>
+          <label><span>禁言小时（0=解除禁言）</span><input id="gmMuteHours" type="number" value="0" min="0"></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmBanBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>执行封禁</button>
+          <button type="button" id="gmMuteBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>设置禁言</button>
+        </div>
+        <div class="baas-list"><h3>当前封禁 / 禁言</h3><div id="gmBanList"></div></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="mail">
+        <div class="baas-panel-head">
+          <div><h2>邮件补偿</h2><p>支持纯文本与 body_links JSON（客户端解析 action/payload 发放奖励）。留空玩家 ID 为全服广播。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>标题</span><input id="gmMailTitle" type="text"></label>
+          <label class="wide"><span>正文</span><textarea id="gmMailBody" rows="3"></textarea></label>
+          <label class="wide"><span>链接 JSON</span><textarea id="gmMailLinks" rows="3" placeholder='[{"label":"领取","action":"claim","payload":{"gold":100}}]'></textarea></label>
+          <label class="wide"><span>玩家 ID（逗号分隔，留空=全服）</span><input id="gmMailPlayers" type="text"></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmMailSendBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发送邮件</button>
+        </div>
+      </div>
+      <div class="baas-gm-pane" data-pane="announce">
+        <div class="baas-panel-head">
+          <div><h2>公告与跑马灯</h2><p>登录页公告与游戏内跑马灯分开展示；优先级越高越靠前。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>标题</span><input id="gmAnnTitle" type="text"></label>
+          <label><span>展示位置</span>
+            <select id="gmAnnDisplay">
+              <option value="login">登录界面</option>
+              <option value="marquee">游戏内跑马灯</option>
+              <option value="all">全部</option>
+            </select>
+          </label>
+          <label><span>优先级</span><input id="gmAnnPriority" type="number" value="0"></label>
+          <label class="wide"><span>正文</span><textarea id="gmAnnBody" rows="3"></textarea></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmAnnSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发布公告</button>
+        </div>
+        <div class="baas-list"><h3>已发布公告</h3><div id="gmAnnList"></div></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="gifts">
+        <div class="baas-panel-head">
+          <div><h2>兑换码</h2><p>共用 / 个人 / 补偿码；可设全服次数、单人上限、指定玩家与有效期。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>兑换码</span><input id="gmGiftCode" type="text"></label>
+          <label><span>类型</span>
+            <select id="gmGiftType">
+              <option value="shared">共用码</option>
+              <option value="personal">个人码</option>
+              <option value="compensation">补偿码</option>
+            </select>
+          </label>
+          <label><span>指定玩家</span><input id="gmGiftPlayer" type="text"></label>
+          <label><span>全服上限（0=无限）</span><input id="gmGiftMax" type="number" value="100"></label>
+          <label><span>单人上限</span><input id="gmGiftPerPlayer" type="number" value="1"></label>
+          <label><span>过期 ISO</span><input id="gmGiftExpires" type="text"></label>
+          <label class="wide"><span>奖励 JSON</span><textarea id="gmGiftRewards" rows="3">[{"type":"gold","amount":100}]</textarea></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmGiftSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>保存兑换码</button>
+        </div>
+        <div class="baas-list"><h3>兑换码列表</h3><div id="gmGiftList"></div></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="activities">
+        <div class="baas-panel-head">
+          <div><h2>活动配置</h2><p>配置活动时间、等级/VIP/充值门槛；客户端拉取 active 列表后到期自动开启。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>活动标题</span><input id="gmActTitle" type="text"></label>
+          <label><span>类型</span><input id="gmActType" type="text" value="event"></label>
+          <label><span>开始 ISO</span><input id="gmActStart" type="text"></label>
+          <label><span>结束 ISO</span><input id="gmActEnd" type="text"></label>
+          <label class="wide"><span>门槛 JSON</span><textarea id="gmActGates" rows="2">{"level_min":1,"vip_min":0,"recharge_min":0}</textarea></label>
+          <label class="wide"><span>活动配置 JSON</span><textarea id="gmActPayload" rows="3">{"banner":"default","rewards":[]}</textarea></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmActSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发布活动</button>
+        </div>
+        <div class="baas-list"><h3>活动列表</h3><div id="gmActList"></div></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="wallet">
+        <div class="baas-panel-head">
+          <div><h2>钱包调整</h2><p>对指定玩家增减货币余额，请填写原因便于审计。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>玩家 ID</span><input id="gmWalletPlayer" type="text"></label>
+          <label><span>货币</span><input id="gmWalletCurrency" type="text" value="gold"></label>
+          <label><span>调整量 ±</span><input id="gmWalletDelta" type="number" value="100"></label>
+          <label class="wide"><span>原因</span><input id="gmWalletReason" type="text"></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmWalletBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>提交调整</button>
+        </div>
+      </div>
+      <div class="baas-gm-pane" data-pane="leaderboard">
+        <div class="baas-panel-head">
+          <div><h2>排行榜</h2><p>查看榜单积分，必要时清空测试数据。</p></div>
+        </div>
+        <div class="baas-inline-toolbar">
+          <label><span>榜 ID</span><input id="gmBoardId" type="text" value="default" style="width:140px"></label>
+          <button type="button" id="gmLbLoadBtn" class="pm-btn">刷新</button>
+          <button type="button" id="gmLbResetBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>清空榜单</button>
+        </div>
+        <div id="gmLbList" class="baas-list"></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="cloudsave">
+        <div class="baas-panel-head">
+          <div><h2>云存档</h2><p>按 player_id 读取云存档 key 列表或单个 key 内容。</p></div>
+        </div>
+        <div class="baas-inline-toolbar">
+          <input id="gmCsPlayer" type="text" placeholder="玩家 ID">
+          <input id="gmCsKey" type="text" placeholder="Key（留空=列表）">
+          <button type="button" id="gmCsLoadBtn" class="pm-btn">读取</button>
+        </div>
+        <pre id="gmCsOut" class="baas-pre"></pre>
+      </div>
+      <div class="baas-gm-pane" data-pane="items">
+        <div class="baas-panel-head">
+          <div><h2>道具发放</h2><p>通过带 attachments 的系统邮件发放道具，客户端领取邮件时解析附件。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>玩家 ID</span><input id="gmItemPlayer" type="text"></label>
+          <label><span>邮件标题</span><input id="gmItemTitle" type="text" value="道具发放"></label>
+          <label class="wide"><span>邮件正文</span><textarea id="gmItemBody" rows="2">GM 道具补偿，请在邮件中领取。</textarea></label>
+          <label class="wide"><span>道具 JSON</span><textarea id="gmItemJson" rows="3">[{"item_id":"101","quantity":10,"name":"测试道具"}]</textarea></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmItemGrantBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发放道具</button>
+        </div>
+      </div>
+      <div class="baas-gm-pane" data-pane="templates">
+        <div class="baas-panel-head">
+          <div><h2>邮件模板</h2><p>保存常用邮件标题/正文/附件，可在「邮件补偿」页快速复用。</p></div>
+        </div>
+        <div class="baas-form-grid">
+          <label><span>模板 ID（留空新建）</span><input id="gmTplId" type="text" placeholder="tpl_xxx"></label>
+          <label><span>标题</span><input id="gmTplTitle" type="text"></label>
+          <label class="wide"><span>正文</span><textarea id="gmTplBody" rows="2"></textarea></label>
+          <label class="wide"><span>附件 JSON</span><textarea id="gmTplAttachments" rows="2">[]</textarea></label>
+          <label class="wide"><span>链接 JSON</span><textarea id="gmTplLinks" rows="2">[]</textarea></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmTplSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>保存模板</button>
+        </div>
+        <div class="baas-list"><h3>模板列表</h3><div id="gmTplList"></div></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="gameserver">
+        <div class="baas-panel-head">
+          <div><h2>GameServer 运维</h2><p>桥接本地 GameServer Ops：在线踢人、维护广播、Gateway 停服（NotifyKickOff）。</p></div>
+        </div>
+        <div id="gmGsHealth" class="baas-kpi-strip">检测中…</div>
+        <div class="baas-form-grid" style="margin-top:12px">
+          <label><span>玩家 ID / Session Token</span><input id="gmGsKickTarget" type="text" placeholder="player_id 或 token"></label>
+          <label class="wide"><span>维护/停服提示</span><input id="gmGsMessage" type="text" value="服务器维护中，请稍后再试"></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmGsHealthBtn" class="pm-btn">刷新状态</button>
+          <button type="button" id="gmGsKickBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>在线踢人</button>
+          <button type="button" id="gmGsMaintBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>广播维护</button>
+          <button type="button" id="gmGsStopBtn" class="pm-btn pm-btn--danger" {% if not can_edit %}disabled{% endif %}>停服 Gateway</button>
+        </div>
+      </div>
+      <div class="baas-gm-pane" data-pane="audit">
+        <div class="baas-panel-head">
+          <div><h2>GM 审计日志</h2><p>本服务相关的 BaaS GM 操作记录（封禁、邮件、停服、道具发放等）。</p></div>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmAuditRefreshBtn" class="pm-btn">刷新</button>
+        </div>
+        <div id="gmAuditList" class="baas-list"></div>
+      </div>
+      <div class="baas-gm-pane" data-pane="coverage">
+        <div class="baas-panel-head">
+          <div><h2>能力覆盖清单</h2><p>对比 maclient 原生 GM 与本 Portal BaaS GM 的能力差异，便于排期补齐。</p></div>
+        </div>
+        <div id="gmCoverageGrid" class="baas-gap-grid"></div>
+      </div>
+    </main>
   </div>
 </section>
-<script src="/static/baas_gm_console.js?v=20260724-gm2"></script>
+<script src="/static/baas_gm_console.js?v=20260819-gm4"></script>

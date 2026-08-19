@@ -1,0 +1,12 @@
+{
+  "check": "battle_pvp_fanout",
+  "ok": true,
+  "battleId": "21bbefda2c774a26a24635c9bd224b7c",
+  "notifyLatencyMs": 16,
+  "error": null,
+  "preflight": {
+    "ok": true,
+    "mode": "started"
+  },
+  "generatedUtc": "2026-08-19T04:21:57.037858+00:00"
+}

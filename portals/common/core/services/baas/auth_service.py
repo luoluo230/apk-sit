@@ -11,6 +11,13 @@ from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id, new_
 from services.baas.service_crud import feature_enabled, get_feature_config
 
 
+def _assert_not_banned(service_id: str, player_id: str) -> None:
+    from services.baas.gm_service import is_player_banned
+
+    if is_player_banned(service_id, player_id):
+        raise ValueError("账号已被封禁")
+
+
 def _player_row(row) -> Dict[str, Any]:
     if not row:
         return {}
@@ -62,6 +69,7 @@ def password_login(service_id: str, *, username: str, password: str) -> Dict[str
         profile = _json_load(row["profile_json"], {})
         if str(profile.get("password_hash") or "") != _hash_password(pwd, profile.get("password_salt") or ""):
             raise ValueError("密码错误")
+        _assert_not_banned(service_id, row["player_id"])
         return _refresh_token(cur, row, cfg)
 
 
@@ -121,6 +129,7 @@ def resolve_player(service_id: str, player_id: str, token: str) -> Dict[str, Any
         expires = str(row["token_expires_at"] or "")
         if expires and expires < _now_iso():
             raise ValueError("登录已过期")
+        _assert_not_banned(service_id, player_id)
         return _player_row(row)
 
 

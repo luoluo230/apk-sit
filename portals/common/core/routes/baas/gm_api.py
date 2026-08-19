@@ -13,22 +13,31 @@ from services.baas.gm_service import (
     ban_ip,
     ban_player,
     broadcast_mail,
+    delete_mail_template,
     get_player_detail,
     gm_dashboard,
+    grant_items,
     inspect_cloudsave,
     list_activities,
     list_announcements,
     list_bans,
     list_gift_codes,
+    list_gm_audit,
+    list_mail_templates,
     list_players,
+    mute_player,
     reset_leaderboard,
+    resolve_player_session_token,
     save_activity,
     save_announcement,
+    save_mail_template,
     set_cloudsave,
     unban_ip,
     unban_player,
+    unmute_player,
     upsert_gift_code,
 )
+from services.baas import gameserver_bridge_service
 from services.baas.service_crud import get_service
 
 
@@ -150,6 +159,31 @@ def register_baas_gm_routes(bp) -> None:
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 
+    @bp.route(f"{prefix}/mutes", methods=["POST", "DELETE"])
+    @admin_required("projects")
+    def baas_gm_mutes(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            if request.method == "DELETE":
+                return jsonify({"ok": True, "data": unmute_player(service_id, str(body.get("player_id") or ""), actor=_actor())})
+            return jsonify({
+                "ok": True,
+                "data": mute_player(
+                    service_id,
+                    str(body.get("player_id") or ""),
+                    hours=int(body.get("hours") or 0),
+                    reason=str(body.get("reason") or ""),
+                    actor=_actor(),
+                ),
+            })
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
     @bp.route(f"{prefix}/announcements", methods=["GET", "POST"])
     @admin_required("projects")
     def baas_gm_announcements(project_id: str, service_id: str):
@@ -215,6 +249,111 @@ def register_baas_gm_routes(bp) -> None:
             return jsonify({"ok": True, "data": data})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/audit", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_audit(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        limit = int(request.args.get("limit") or 80)
+        return jsonify({"ok": True, "data": list_gm_audit(service_id, limit=limit)})
+
+    @bp.route(f"{prefix}/mail-templates", methods=["GET", "POST", "DELETE"])
+    @admin_required("projects")
+    def baas_gm_mail_templates(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        if request.method == "GET":
+            return jsonify({"ok": True, "data": list_mail_templates(service_id)})
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            if request.method == "DELETE":
+                return jsonify({"ok": True, "data": delete_mail_template(service_id, str(body.get("template_id") or ""), actor=_actor())})
+            return jsonify({"ok": True, "data": save_mail_template(service_id, body, actor=_actor())})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/grant-items", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_grant_items(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            data = grant_items(
+                service_id,
+                str(body.get("player_id") or ""),
+                body.get("items") if isinstance(body.get("items"), list) else [],
+                title=str(body.get("title") or ""),
+                body=str(body.get("body") or ""),
+                actor=_actor(),
+            )
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/gameserver/health", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_gameserver_health(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        data = gameserver_bridge_service.ops_health(actor=_actor())
+        ok = data.get("success") is True or data.get("reachable") is not False
+        return jsonify({"ok": ok, "data": data})
+
+    @bp.route(f"{prefix}/gameserver/kick", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_gameserver_kick(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            token = str(body.get("session_token") or body.get("token") or "").strip()
+            if not token and body.get("player_id"):
+                token = resolve_player_session_token(service_id, str(body.get("player_id")))
+            if not token:
+                raise ValueError("player_id 或 session_token 必填")
+            data = gameserver_bridge_service.kick_session(token, actor=_actor())
+            from models.db import log_audit_db
+
+            log_audit_db("default", _actor(), "baas_gm_kick_online", f"{service_id}/{body.get('player_id') or token[:8]}", "")
+            ok = data.get("success") is True
+            return jsonify({"ok": ok, "data": data}), (200 if ok else 502)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/gameserver/maintenance", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_gameserver_maintenance(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        message = str(body.get("message") or "服务器维护中，请稍后再试")
+        data = gameserver_bridge_service.trigger_maintenance(message, actor=_actor())
+        from models.db import log_audit_db
+
+        log_audit_db("default", _actor(), "baas_gm_maintenance", f"{service_id} {message[:80]}", "")
+        ok = data.get("success") is True
+        return jsonify({"ok": ok, "data": data}), (200 if ok else 502)
+
+    @bp.route(f"{prefix}/gameserver/stop", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_gameserver_stop(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        message = str(body.get("message") or "服务器维护中，请稍后再试")
+        data = gameserver_bridge_service.stop_gateway(message, actor=_actor())
+        from models.db import log_audit_db
+
+        log_audit_db("default", _actor(), "baas_gm_stop_gateway", f"{service_id} {message[:80]}", "")
+        ok = data.get("success") is True
+        return jsonify({"ok": ok, "data": data}), (200 if ok else 502)
 
     @bp.route("/admin/projects/<project_id>/baas-gm")
     @bp.route("/admin/projects/<project_id>/baas-gm/<service_id>")

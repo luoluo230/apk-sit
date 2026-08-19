@@ -103,6 +103,44 @@ class BaasGmOpsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             retention_services.redeem_gift(self.SERVICE, "p2", code)
 
+    def test_mail_template_and_grant_items(self):
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO baas_players (player_id, service_id, auth_provider, external_id, display_name, profile_json, token, created_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(player_id) DO UPDATE SET token=excluded.token
+                """,
+                (
+                    "p_grant",
+                    self.SERVICE,
+                    "guest",
+                    "ext_grant",
+                    "GrantUser",
+                    "{}",
+                    "tok_grant_123",
+                    "2026-01-01T00:00:00",
+                    "2026-01-01T00:00:00",
+                ),
+            )
+        tpl = gm_service.save_mail_template(
+            self.SERVICE,
+            {"title": "补偿", "body": "请领取", "attachments": [{"type": "gold", "amount": 1}]},
+            actor="admin",
+        )
+        self.assertTrue(tpl.get("template_id"))
+        templates = gm_service.list_mail_templates(self.SERVICE)
+        self.assertTrue(any(t["template_id"] == tpl["template_id"] for t in templates))
+        grant = gm_service.grant_items(
+            self.SERVICE,
+            "p_grant",
+            [{"item_id": "101", "quantity": 3}],
+            actor="admin",
+        )
+        self.assertEqual(len(grant["attachments"]), 1)
+        audit = gm_service.list_gm_audit(self.SERVICE, limit=20)
+        self.assertTrue(any(r["action"] == "baas_gm_grant_items" for r in audit))
+
 
 if __name__ == "__main__":
     unittest.main()
