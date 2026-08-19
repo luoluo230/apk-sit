@@ -10,14 +10,23 @@ from services.authz import admin_required
 from services.baas.gm_service import (
     admin_leaderboard,
     adjust_wallet,
+    ban_ip,
+    ban_player,
     broadcast_mail,
     get_player_detail,
     gm_dashboard,
     inspect_cloudsave,
+    list_activities,
+    list_announcements,
+    list_bans,
     list_gift_codes,
     list_players,
     reset_leaderboard,
+    save_activity,
+    save_announcement,
     set_cloudsave,
+    unban_ip,
+    unban_player,
     upsert_gift_code,
 )
 from services.baas.service_crud import get_service
@@ -102,6 +111,72 @@ def register_baas_gm_routes(bp) -> None:
         try:
             row = upsert_gift_code(service_id, request.get_json(silent=True) or {}, actor=_actor())
             return jsonify({"ok": True, "data": row})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/bans", methods=["GET", "POST", "DELETE"])
+    @admin_required("projects")
+    def baas_gm_bans(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        if request.method == "GET":
+            return jsonify({"ok": True, "data": list_bans(service_id)})
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        body = request.get_json(silent=True) or {}
+        try:
+            if request.method == "DELETE":
+                if body.get("ip_pattern"):
+                    return jsonify({"ok": True, "data": unban_ip(service_id, str(body.get("ip_pattern")), actor=_actor())})
+                return jsonify({"ok": True, "data": unban_player(service_id, str(body.get("player_id") or ""), actor=_actor())})
+            if body.get("ip_pattern"):
+                data = ban_ip(
+                    service_id,
+                    str(body.get("ip_pattern")),
+                    reason=str(body.get("reason") or ""),
+                    expires_at=str(body.get("expires_at") or ""),
+                    actor=_actor(),
+                )
+            else:
+                data = ban_player(
+                    service_id,
+                    str(body.get("player_id") or ""),
+                    reason=str(body.get("reason") or ""),
+                    expires_at=str(body.get("expires_at") or ""),
+                    actor=_actor(),
+                )
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/announcements", methods=["GET", "POST"])
+    @admin_required("projects")
+    def baas_gm_announcements(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        if request.method == "GET":
+            return jsonify({"ok": True, "data": list_announcements(service_id)})
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        try:
+            return jsonify({"ok": True, "data": save_announcement(service_id, request.get_json(silent=True) or {}, actor=_actor())})
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+    @bp.route(f"{prefix}/activities", methods=["GET", "POST"])
+    @admin_required("projects")
+    def baas_gm_activities(project_id: str, service_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return jsonify({"ok": False, "error": "休闲服务不存在"}), 404
+        if request.method == "GET":
+            return jsonify({"ok": True, "data": list_activities(service_id)})
+        if not can_edit_project(project_id, _actor()):
+            return jsonify({"ok": False, "error": "无权限"}), 403
+        try:
+            return jsonify({"ok": True, "data": save_activity(service_id, request.get_json(silent=True) or {}, actor=_actor())})
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
 

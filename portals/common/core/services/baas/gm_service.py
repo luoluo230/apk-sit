@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from models.db import get_cursor, init_db, log_audit_db
 from services.baas import announce_service, mail_service
+from services.baas import activity_service
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
 from services.baas import retention_services
 
@@ -131,19 +132,41 @@ def upsert_gift_code(service_id: str, payload: Dict[str, Any], *, actor: str = "
     rewards = payload.get("rewards") if isinstance(payload.get("rewards"), list) else []
     max_uses = int(payload.get("max_uses") or 0)
     expires_at = str(payload.get("expires_at") or "")
+    code_type = str(payload.get("code_type") or "shared").strip().lower()
+    per_player_limit = int(payload.get("per_player_limit") or 1)
+    assigned_player_id = str(payload.get("assigned_player_id") or "").strip()
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
     now = _now_iso()
     init_db()
     with get_cursor() as cur:
         cur.execute(
             """
-            INSERT INTO baas_gift_codes (service_id, code, rewards_json, max_uses, use_count, expires_at, created_by, created_at)
-            VALUES (?,?,?,?,0,?,?,?)
+            INSERT INTO baas_gift_codes (
+                service_id, code, rewards_json, max_uses, use_count, expires_at,
+                created_by, created_at, code_type, per_player_limit, assigned_player_id, meta_json
+            ) VALUES (?,?,?,?,0,?,?,?,?,?,?,?)
             ON CONFLICT(service_id, code) DO UPDATE SET
                 rewards_json=excluded.rewards_json,
                 max_uses=excluded.max_uses,
-                expires_at=excluded.expires_at
+                expires_at=excluded.expires_at,
+                code_type=excluded.code_type,
+                per_player_limit=excluded.per_player_limit,
+                assigned_player_id=excluded.assigned_player_id,
+                meta_json=excluded.meta_json
             """,
-            (service_id, code, _json_dump(rewards), max_uses, expires_at, actor, now),
+            (
+                service_id,
+                code,
+                _json_dump(rewards),
+                max_uses,
+                expires_at,
+                actor,
+                now,
+                code_type,
+                per_player_limit,
+                assigned_player_id,
+                _json_dump(meta),
+            ),
         )
         row = cur.execute(
             "SELECT * FROM baas_gift_codes WHERE service_id=? AND code=?",
@@ -248,4 +271,109 @@ def gm_dashboard(service_id: str) -> Dict[str, Any]:
         "unread_mail_count": int(mail_unread["cnt"] or 0) if mail_unread else 0,
         "gift_code_count": int(codes["cnt"] or 0) if codes else 0,
         "announcements": announce_service.admin_list(service_id)[:5],
+        "activity_count": len(activity_service.admin_list(service_id)),
     }
+
+
+def ban_player(service_id: str, player_id: str, *, reason: str = "", expires_at: str = "", actor: str = "") -> Dict[str, Any]:
+    pid = str(player_id or "").strip()
+    if not pid:
+        raise ValueError("player_id 必填")
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_player_bans (service_id, player_id, reason, expires_at, created_by, created_at)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(service_id, player_id) DO UPDATE SET
+                reason=excluded.reason, expires_at=excluded.expires_at, created_by=excluded.created_by, created_at=excluded.created_at
+            """,
+            (service_id, pid, str(reason or ""), str(expires_at or ""), actor, now),
+        )
+    log_audit_db("default", actor, "baas_gm_ban_player", f"{service_id}/{pid}", "")
+    return {"player_id": pid, "banned": True, "expires_at": expires_at}
+
+
+def unban_player(service_id: str, player_id: str, *, actor: str = "") -> Dict[str, Any]:
+    pid = str(player_id or "").strip()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM baas_player_bans WHERE service_id=? AND player_id=?", (service_id, pid))
+    log_audit_db("default", actor, "baas_gm_unban_player", f"{service_id}/{pid}", "")
+    return {"player_id": pid, "banned": False}
+
+
+def ban_ip(service_id: str, ip_pattern: str, *, reason: str = "", expires_at: str = "", actor: str = "") -> Dict[str, Any]:
+    ip = str(ip_pattern or "").strip()
+    if not ip:
+        raise ValueError("IP 必填")
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_ip_bans (service_id, ip_pattern, reason, expires_at, created_by, created_at)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(service_id, ip_pattern) DO UPDATE SET
+                reason=excluded.reason, expires_at=excluded.expires_at, created_by=excluded.created_by, created_at=excluded.created_at
+            """,
+            (service_id, ip, str(reason or ""), str(expires_at or ""), actor, now),
+        )
+    log_audit_db("default", actor, "baas_gm_ban_ip", f"{service_id}/{ip}", "")
+    return {"ip_pattern": ip, "banned": True}
+
+
+def unban_ip(service_id: str, ip_pattern: str, *, actor: str = "") -> Dict[str, Any]:
+    ip = str(ip_pattern or "").strip()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute("DELETE FROM baas_ip_bans WHERE service_id=? AND ip_pattern=?", (service_id, ip))
+    log_audit_db("default", actor, "baas_gm_unban_ip", f"{service_id}/{ip}", "")
+    return {"ip_pattern": ip, "banned": False}
+
+
+def list_bans(service_id: str) -> Dict[str, Any]:
+    init_db()
+    with get_cursor() as cur:
+        players = cur.execute(
+            "SELECT * FROM baas_player_bans WHERE service_id=? ORDER BY created_at DESC",
+            (service_id,),
+        ).fetchall()
+        ips = cur.execute(
+            "SELECT * FROM baas_ip_bans WHERE service_id=? ORDER BY created_at DESC",
+            (service_id,),
+        ).fetchall()
+    return {"player_bans": [dict(r) for r in players], "ip_bans": [dict(r) for r in ips]}
+
+
+def save_announcement(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    return announce_service.save_announcement(service_id, payload, actor=actor)
+
+
+def list_announcements(service_id: str) -> List[Dict[str, Any]]:
+    return announce_service.admin_list(service_id)
+
+
+def save_activity(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    row = activity_service.save_activity(service_id, payload, actor=actor)
+    log_audit_db("default", actor, "baas_gm_activity", f"{service_id}/{row.get('activity_id')}", "")
+    return row
+
+
+def list_activities(service_id: str) -> List[Dict[str, Any]]:
+    return activity_service.admin_list(service_id)
+
+
+def is_player_banned(service_id: str, player_id: str) -> bool:
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT expires_at FROM baas_player_bans WHERE service_id=? AND player_id=?",
+            (service_id, player_id),
+        ).fetchone()
+    if not row:
+        return False
+    exp = str(row["expires_at"] or "").strip()
+    return not exp or exp > now

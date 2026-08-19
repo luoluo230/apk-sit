@@ -42,7 +42,8 @@
     host.innerHTML =
       "<span>玩家 " + esc(d.player_count) + "</span>" +
       "<span>未读邮件 " + esc(d.unread_mail_count) + "</span>" +
-      "<span>礼包码 " + esc(d.gift_code_count) + "</span>";
+      "<span>兑换码 " + esc(d.gift_code_count) + "</span>" +
+      "<span>活动 " + esc(d.activity_count || 0) + "</span>";
   }
 
   async function loadPlayers(q) {
@@ -79,10 +80,58 @@
         title: document.getElementById("gmMailTitle").value,
         body: document.getElementById("gmMailBody").value,
       };
+      try {
+        var linksRaw = document.getElementById("gmMailLinks").value.trim();
+        if (linksRaw) body.body_links = JSON.parse(linksRaw);
+      } catch (e) { toast("链接 JSON 无效"); return; }
       if (raw) body.player_ids = raw.split(/[,，\s]+/).filter(Boolean);
       api("/mail/broadcast", { method: "POST", body: JSON.stringify(body) }).then(function (d) {
         toast("已发送 " + d.sent_count + " 封");
       }).catch(function (e) { toast(e.message); });
+    };
+    document.getElementById("gmBanBtn").onclick = function () {
+      var playerId = document.getElementById("gmBanPlayer").value.trim();
+      var ip = document.getElementById("gmBanIp").value.trim();
+      var payload = {
+        reason: document.getElementById("gmBanReason").value.trim(),
+        expires_at: document.getElementById("gmBanExpires").value.trim(),
+      };
+      if (ip) payload.ip_pattern = ip;
+      else payload.player_id = playerId;
+      api("/bans", { method: "POST", body: JSON.stringify(payload) }).then(function () {
+        loadBans(); toast("封禁已生效");
+      }).catch(function (e) { toast(e.message); });
+    };
+    document.getElementById("gmAnnSaveBtn").onclick = function () {
+      api("/announcements", {
+        method: "POST",
+        body: JSON.stringify({
+          title: document.getElementById("gmAnnTitle").value.trim(),
+          body: document.getElementById("gmAnnBody").value.trim(),
+          display_type: document.getElementById("gmAnnDisplay").value,
+          priority: Number(document.getElementById("gmAnnPriority").value || 0),
+          status: "published",
+        }),
+      }).then(function () { loadAnnouncements(); toast("公告已发布"); }).catch(function (e) { toast(e.message); });
+    };
+    document.getElementById("gmActSaveBtn").onclick = function () {
+      var gates, payload;
+      try {
+        gates = JSON.parse(document.getElementById("gmActGates").value || "{}");
+        payload = JSON.parse(document.getElementById("gmActPayload").value || "{}");
+      } catch (e) { toast("活动 JSON 无效"); return; }
+      api("/activities", {
+        method: "POST",
+        body: JSON.stringify({
+          title: document.getElementById("gmActTitle").value.trim(),
+          activity_type: document.getElementById("gmActType").value.trim(),
+          starts_at: document.getElementById("gmActStart").value.trim(),
+          ends_at: document.getElementById("gmActEnd").value.trim(),
+          gates: gates,
+          payload: payload,
+          status: "published",
+        }),
+      }).then(function () { loadActivities(); toast("活动已发布"); }).catch(function (e) { toast(e.message); });
     };
     document.getElementById("gmWalletBtn").onclick = function () {
       api("/wallet", {
@@ -102,7 +151,11 @@
         method: "POST",
         body: JSON.stringify({
           code: document.getElementById("gmGiftCode").value.trim(),
+          code_type: document.getElementById("gmGiftType").value,
+          assigned_player_id: document.getElementById("gmGiftPlayer").value.trim(),
           max_uses: Number(document.getElementById("gmGiftMax").value),
+          per_player_limit: Number(document.getElementById("gmGiftPerPlayer").value),
+          expires_at: document.getElementById("gmGiftExpires").value.trim(),
           rewards: rewards,
         }),
       }).then(function () { loadGifts(); toast("已保存"); }).catch(function (e) { toast(e.message); });
@@ -119,8 +172,38 @@
     var host = document.getElementById("gmGiftList");
     if (!host) return;
     host.innerHTML = rows.map(function (r) {
-      return '<div class="baas-gm-row"><span>' + esc(r.code) + " · " + esc(r.use_count) + "/" + esc(r.max_uses || "∞") + "</span></div>";
-    }).join("") || "<div class='baas-gm-row'>暂无礼包码</div>";
+      return '<div class="baas-gm-row"><span>' + esc(r.code) + " · " + esc(r.code_type || "shared") + " · " + esc(r.use_count) + "/" + esc(r.max_uses || "∞") + "</span></div>";
+    }).join("") || "<div class='baas-gm-row'>暂无兑换码</div>";
+  }
+
+  async function loadBans() {
+    var d = await api("/bans");
+    var host = document.getElementById("gmBanList");
+    if (!host) return;
+    var lines = (d.player_bans || []).map(function (r) {
+      return '<div class="baas-gm-row"><span>玩家 ' + esc(r.player_id) + " · " + esc(r.reason) + '</span></div>';
+    }).concat((d.ip_bans || []).map(function (r) {
+      return '<div class="baas-gm-row"><span>IP ' + esc(r.ip_pattern) + " · " + esc(r.reason) + '</span></div>';
+    }));
+    host.innerHTML = lines.join("") || "<div class='baas-gm-row'>暂无封禁</div>";
+  }
+
+  async function loadAnnouncements() {
+    var rows = await api("/announcements");
+    var host = document.getElementById("gmAnnList");
+    if (!host) return;
+    host.innerHTML = rows.map(function (r) {
+      return '<div class="baas-gm-row"><span>' + esc(r.display_type || "login") + " · " + esc(r.title) + "</span></div>";
+    }).join("") || "<div class='baas-gm-row'>暂无公告</div>";
+  }
+
+  async function loadActivities() {
+    var rows = await api("/activities");
+    var host = document.getElementById("gmActList");
+    if (!host) return;
+    host.innerHTML = rows.map(function (r) {
+      return '<div class="baas-gm-row"><span>' + esc(r.title) + " · " + esc(r.activity_type) + " · " + esc(r.starts_at) + "~" + esc(r.ends_at) + "</span></div>";
+    }).join("") || "<div class='baas-gm-row'>暂无活动</div>";
   }
 
   async function loadLb() {
@@ -146,4 +229,7 @@
   loadDashboard().catch(function () {});
   loadPlayers("").catch(function () {});
   loadGifts().catch(function () {});
+  loadBans().catch(function () {});
+  loadAnnouncements().catch(function () {});
+  loadActivities().catch(function () {});
 })();

@@ -58,14 +58,15 @@ def send_mail(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> D
     mail_id = new_id("mail_")
     now = _now_iso()
     attachments = payload.get("attachments") if isinstance(payload.get("attachments"), list) else []
+    body_links = payload.get("body_links") if isinstance(payload.get("body_links"), list) else []
     init_db()
     with get_cursor() as cur:
         cur.execute(
             """
             INSERT INTO baas_mail_messages (
-                mail_id, service_id, player_id, title, body, attachments_json, status,
+                mail_id, service_id, player_id, title, body, attachments_json, body_links_json, status,
                 created_by, created_at, updated_at, claimed_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 mail_id,
@@ -74,6 +75,7 @@ def send_mail(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> D
                 str(payload.get("title") or "系统邮件"),
                 str(payload.get("body") or ""),
                 _json_dump(attachments),
+                _json_dump(body_links),
                 "unread",
                 actor,
                 now,
@@ -102,6 +104,7 @@ def _row(row) -> Dict[str, Any]:
         "title": row["title"],
         "body": row["body"],
         "attachments": _json_load(row["attachments_json"], []),
+        "body_links": _json_load(row["body_links_json"], []) if "body_links_json" in row.keys() else [],
         "status": row["status"],
         "created_at": row["created_at"],
         "claimed_at": row["claimed_at"],

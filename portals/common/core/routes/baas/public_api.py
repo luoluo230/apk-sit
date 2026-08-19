@@ -6,7 +6,7 @@ from __future__ import annotations
 from flask import Blueprint, g, jsonify, request
 
 from services.baas import announce_service, auth_service, cloudsave_service, compliance_service, mail_service
-from services.baas import pvp_service, retention_services, social_services
+from services.baas import activity_service, pvp_service, retention_services, social_services
 from services.baas import room_service
 from services.baas.helpers import parse_bearer_token, verify_api_secret
 from services.baas.service_crud import get_service_auth_row
@@ -84,7 +84,17 @@ def register_baas_public_routes(bp=None) -> None:
         sid, err = _service_auth(service_id)
         if err:
             return err
-        return jsonify({"ok": True, "data": announce_service.list_active(service_id)})
+        display_type = str(request.args.get("display_type") or request.args.get("type") or "").strip()
+        return jsonify({"ok": True, "data": announce_service.list_active(service_id, display_type=display_type)})
+
+    @target.route(f"{prefix}/activities/active", methods=["GET"])
+    def baas_activities_active(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        profile = (player or {}).get("profile") if player else {}
+        return jsonify({"ok": True, "data": activity_service.list_active_for_player(service_id, profile or {})})
 
     @target.route(f"{prefix}/mail/inbox", methods=["GET"])
     def baas_mail_inbox(service_id: str):

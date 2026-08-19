@@ -902,6 +902,86 @@ def init_db():
                 """
             )
             _mark_migration(conn, "baas_gm_v1")
+        if not _migration_applied(conn, "baas_gm_v2"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_bans (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    reason TEXT DEFAULT '',
+                    expires_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_ip_bans (
+                    service_id TEXT NOT NULL,
+                    ip_pattern TEXT NOT NULL,
+                    reason TEXT DEFAULT '',
+                    expires_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, ip_pattern)
+                );
+                CREATE TABLE IF NOT EXISTS baas_activities (
+                    activity_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    title TEXT DEFAULT '',
+                    activity_type TEXT DEFAULT 'event',
+                    starts_at TEXT DEFAULT '',
+                    ends_at TEXT DEFAULT '',
+                    gates_json TEXT DEFAULT '{}',
+                    payload_json TEXT DEFAULT '{}',
+                    status TEXT DEFAULT 'draft',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            gift_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_gift_codes)").fetchall()}
+            if "code_type" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN code_type TEXT DEFAULT 'shared'")
+            if "per_player_limit" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN per_player_limit INTEGER DEFAULT 1")
+            if "assigned_player_id" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN assigned_player_id TEXT DEFAULT ''")
+            if "meta_json" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN meta_json TEXT DEFAULT '{}'")
+            ann_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_announcements)").fetchall()}
+            if "display_type" not in ann_cols:
+                conn.execute("ALTER TABLE baas_announcements ADD COLUMN display_type TEXT DEFAULT 'login'")
+            if "priority" not in ann_cols:
+                conn.execute("ALTER TABLE baas_announcements ADD COLUMN priority INTEGER DEFAULT 0")
+            mail_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_mail_messages)").fetchall()}
+            if "body_links_json" not in mail_cols:
+                conn.execute("ALTER TABLE baas_mail_messages ADD COLUMN body_links_json TEXT DEFAULT '[]'")
+            _mark_migration(conn, "baas_gm_v2")
+        if not _migration_applied(conn, "baas_gift_redemptions_v3"):
+            red_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_gift_redemptions)").fetchall()}
+            if "redemption_id" not in red_cols:
+                conn.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS baas_gift_redemptions_v2 (
+                        redemption_id TEXT PRIMARY KEY,
+                        service_id TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        rewards_json TEXT DEFAULT '[]',
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_baas_gift_redemptions_lookup
+                        ON baas_gift_redemptions_v2(service_id, player_id, code);
+                    INSERT OR IGNORE INTO baas_gift_redemptions_v2 (
+                        redemption_id, service_id, player_id, code, rewards_json, created_at
+                    )
+                    SELECT service_id || ':' || player_id || ':' || code, service_id, player_id, code, rewards_json, created_at
+                    FROM baas_gift_redemptions;
+                    DROP TABLE baas_gift_redemptions;
+                    ALTER TABLE baas_gift_redemptions_v2 RENAME TO baas_gift_redemptions;
+                    """
+                )
+            _mark_migration(conn, "baas_gift_redemptions_v3")
         if not _migration_applied(conn, "baas_services_v2"):
             cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_services)").fetchall()}
             if "description" not in cols:

@@ -10,22 +10,36 @@ from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
 from services.baas.service_crud import feature_enabled, get_feature_config
 
 
-def list_active(service_id: str) -> List[Dict[str, Any]]:
+def list_active(service_id: str, *, display_type: str = "") -> List[Dict[str, Any]]:
     if not feature_enabled(service_id, "announce"):
         return []
     now = _now_iso()
+    dtype = str(display_type or "").strip().lower()
     init_db()
     with get_cursor() as cur:
-        rows = cur.execute(
-            """
-            SELECT * FROM baas_announcements
-            WHERE service_id=? AND status='published'
-              AND (effective_at='' OR effective_at<=?)
-              AND (expires_at='' OR expires_at>?)
-            ORDER BY effective_at DESC, updated_at DESC
-            """,
-            (service_id, now, now),
-        ).fetchall()
+        if dtype:
+            rows = cur.execute(
+                """
+                SELECT * FROM baas_announcements
+                WHERE service_id=? AND status='published'
+                  AND (display_type=? OR display_type='all')
+                  AND (effective_at='' OR effective_at<=?)
+                  AND (expires_at='' OR expires_at>?)
+                ORDER BY priority DESC, effective_at DESC, updated_at DESC
+                """,
+                (service_id, dtype, now, now),
+            ).fetchall()
+        else:
+            rows = cur.execute(
+                """
+                SELECT * FROM baas_announcements
+                WHERE service_id=? AND status='published'
+                  AND (effective_at='' OR effective_at<=?)
+                  AND (expires_at='' OR expires_at>?)
+                ORDER BY priority DESC, effective_at DESC, updated_at DESC
+                """,
+                (service_id, now, now),
+            ).fetchall()
     return [_row(r) for r in rows]
 
 
@@ -48,12 +62,13 @@ def save_announcement(service_id: str, payload: Dict[str, Any], *, actor: str = 
             """
             INSERT INTO baas_announcements (
                 announcement_id, service_id, title, body, audience, effective_at, expires_at,
-                status, created_by, created_at, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                status, created_by, created_at, updated_at, display_type, priority
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(announcement_id) DO UPDATE SET
                 title=excluded.title, body=excluded.body, audience=excluded.audience,
                 effective_at=excluded.effective_at, expires_at=excluded.expires_at,
-                status=excluded.status, updated_at=excluded.updated_at
+                status=excluded.status, updated_at=excluded.updated_at,
+                display_type=excluded.display_type, priority=excluded.priority
             """,
             (
                 ann_id,
@@ -67,6 +82,8 @@ def save_announcement(service_id: str, payload: Dict[str, Any], *, actor: str = 
                 actor,
                 now,
                 now,
+                str(payload.get("display_type") or "login"),
+                int(payload.get("priority") or 0),
             ),
         )
     rows = admin_list(service_id)
@@ -82,5 +99,7 @@ def _row(row) -> Dict[str, Any]:
         "effective_at": row["effective_at"],
         "expires_at": row["expires_at"],
         "status": row["status"],
+        "display_type": row["display_type"] if "display_type" in row.keys() else "login",
+        "priority": int(row["priority"] or 0) if "priority" in row.keys() else 0,
         "updated_at": row["updated_at"],
     }

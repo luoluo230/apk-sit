@@ -220,6 +220,14 @@ def redeem_gift(service_id: str, player_id: str, code: str) -> Dict[str, Any]:
             (service_id, c),
         ).fetchone()
         if gm_code:
+            code_type = str(gm_code["code_type"] or "shared").lower() if "code_type" in gm_code.keys() else "shared"
+            assigned = str(gm_code["assigned_player_id"] or "").strip() if "assigned_player_id" in gm_code.keys() else ""
+            per_player_limit = int(gm_code["per_player_limit"] or 1) if "per_player_limit" in gm_code.keys() else 1
+            if assigned and assigned != player_id:
+                raise ValueError("兑换码仅限指定玩家使用")
+            if code_type == "personal":
+                if assigned and assigned != player_id:
+                    raise ValueError("个人兑换码不可使用")
             max_uses = int(gm_code["max_uses"] or 0)
             use_count = int(gm_code["use_count"] or 0)
             if max_uses > 0 and use_count >= max_uses:
@@ -228,20 +236,29 @@ def redeem_gift(service_id: str, player_id: str, code: str) -> Dict[str, Any]:
             if exp and exp < _now_iso():
                 raise ValueError("兑换码已过期")
             rewards = _json_load(gm_code["rewards_json"], [])
+            if per_player_limit > 0:
+                used_count = cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM baas_gift_redemptions WHERE service_id=? AND player_id=? AND code=?",
+                    (service_id, player_id, c),
+                ).fetchone()
+                if int(used_count["cnt"] or 0) >= per_player_limit:
+                    raise ValueError("已达个人兑换上限")
         elif not pack:
             raise ValueError("兑换码无效")
         elif int(pack.get("redeemed_count") or 0) >= int(pack.get("max_redeems") or 1):
             raise ValueError("兑换码已用完")
         used = cur.execute(
-            "SELECT 1 FROM baas_gift_redemptions WHERE service_id=? AND player_id=? AND code=?",
+            "SELECT 1 FROM baas_gift_redemptions WHERE service_id=? AND player_id=? AND code=? LIMIT 1",
             (service_id, player_id, c),
         ).fetchone()
-        if used:
+        code_type = str(gm_code["code_type"] or "shared").lower() if gm_code and "code_type" in gm_code.keys() else "shared"
+        if used and code_type != "compensation":
             raise ValueError("已兑换过该礼包")
         now = _now_iso()
+        rid = new_id("gred_")
         cur.execute(
-            "INSERT INTO baas_gift_redemptions (service_id, player_id, code, rewards_json, created_at) VALUES (?,?,?,?,?)",
-            (service_id, player_id, c, _json_dump(rewards), now),
+            "INSERT INTO baas_gift_redemptions (redemption_id, service_id, player_id, code, rewards_json, created_at) VALUES (?,?,?,?,?,?)",
+            (rid, service_id, player_id, c, _json_dump(rewards), now),
         )
         if gm_code:
             cur.execute(
