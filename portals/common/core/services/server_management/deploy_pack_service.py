@@ -70,16 +70,22 @@ def _topology_paths() -> List[str]:
         "scripts/Sync-DevStackClientConfig.ps1",
         "scripts/Stop-Portal5003.ps1",
         "scripts/Start-Portal5003.ps1",
+        "scripts/Export-ClientNetworkModule.ps1",
+        "scripts/Import-ClientNetworkModule.ps1",
         "packages/client_network/topology",
         "packages/client_network/common",
+        "packages/client_network/stubs",
         "portals/common/core/server_frameworks",
         "portals/common/core/routes/ops",
         "portals/common/core/services/ops",
         "portals/common/core/services/release/topology_binding_service.py",
         "portals/common/core/services/server_mode.py",
+        "portals/common/core/requirements-prod.txt",
+        "portals/common/core/requirements.txt",
         "docs/design_specs/server_framework_modules.md",
         "docs/design_specs/topology_binding_architecture.md",
         "docs/runbooks/topology_server_deploy.md",
+        "docs/runbooks/topology_server_deploy_step_by_step.md",
         "docs/runbooks/deploy_architecture.md",
     ]
 
@@ -90,6 +96,9 @@ def _baas_paths() -> List[str]:
         "docker-compose.baas.yml",
         "portals/common/core/app_baas.py",
         "portals/common/core/scripts/run_baas_server.ps1",
+        "portals/common/core/scripts/run_baas_pvp_fanout_e2e.py",
+        "portals/common/core/scripts/seed_baas_playmode_e2e.py",
+        "portals/common/core/scripts/run_baas_playmode_e2e.py",
         "packages/client_network/baas",
         "packages/client_network/common",
         "packages/client_network/stubs",
@@ -100,11 +109,15 @@ def _baas_paths() -> List[str]:
         "portals/common/core/services/baas",
         "portals/common/core/models/baas_migrations.py",
         "portals/common/core/services/server_mode.py",
+        "portals/common/core/requirements-prod.txt",
+        "portals/common/core/requirements.txt",
         "docs/design_specs/server_framework_modules.md",
         "docs/design_specs/casual_baas_services.md",
         "docs/design_specs/casual_baas_pvp_mvp_boundary.md",
         "docs/runbooks/baas_standalone_deploy.md",
+        "docs/runbooks/baas_server_deploy_step_by_step.md",
         "docs/runbooks/deploy_architecture.md",
+        "docs/evidence/baas-playmode-e2e-latest.json",
     ]
 
 
@@ -153,7 +166,16 @@ def _readme_text(kind: str) -> str:
         f"- Bootstrap: `{meta['bootstrap']}`",
         f"- 客户端包: `{meta['client_package']}`",
         "",
-        "详细说明见 docs/runbooks/ 与 docs/design_specs/。",
+        "详细逐步教程（必读）：",
+        "",
+    ])
+    if kind == "topology":
+        lines.append("- `docs/runbooks/topology_server_deploy_step_by_step.md`")
+    else:
+        lines.append("- `docs/runbooks/baas_server_deploy_step_by_step.md`")
+    lines.extend([
+        "",
+        "速查 Runbook 见 docs/runbooks/ 与 docs/design_specs/。",
     ])
     return "\n".join(lines) + "\n"
 

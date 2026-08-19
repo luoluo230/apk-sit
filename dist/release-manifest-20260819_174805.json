@@ -1,0 +1,17 @@
+{
+  "generated_at": "20260819_174805",
+  "artifacts": [
+    {
+      "type": "server_deploy",
+      "kind": "topology",
+      "file": "topology-server-architecture-20260819_174805.zip",
+      "bytes": 331957
+    },
+    {
+      "type": "server_deploy",
+      "kind": "baas",
+      "file": "baas-server-architecture-20260819_174805.zip",
+      "bytes": 89046
+    }
+  ]
+}

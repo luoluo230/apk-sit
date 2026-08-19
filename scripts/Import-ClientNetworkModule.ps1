@@ -64,12 +64,19 @@ if ($Remove) {
 }
 "@ | Set-Content -Path (Join-Path $target $asm) -Encoding UTF8
     }
+    $playModeSrc = Join-Path $pkgRoot "Tests/PlayMode"
+    if ($Module -eq "baas" -and (Test-Path $playModeSrc)) {
+        Copy-Item $playModeSrc (Join-Path $target "Tests/PlayMode") -Recurse -Force
+    }
     if ($Module -eq "topology" -and (Test-Path (Join-Path $pkgRoot "maclient"))) {
         Copy-Item (Join-Path $pkgRoot "maclient/*") $maclient -Recurse -Force
     }
 }
 
-$stubsSrc = Join-Path $repoRoot "packages/client_network/stubs/Runtime"
+$stubsSrc = Join-Path $pkgRoot "stubs/Runtime"
+if (-not (Test-Path $stubsSrc)) {
+    $stubsSrc = Join-Path $repoRoot "packages/client_network/stubs/Runtime"
+}
 $stubsDest = Join-Path $maclient "Assets/Src/HotUpdate/Framework/Network/Abstractions"
 if ((-not $Remove) -and (Test-Path $stubsSrc)) {
     if (-not (Test-Path $stubsDest)) { New-Item -ItemType Directory -Path $stubsDest -Force | Out-Null }
