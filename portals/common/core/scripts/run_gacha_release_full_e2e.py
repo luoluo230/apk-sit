@@ -372,14 +372,14 @@ def ensure_gameserver_for_e2e(results: dict, *, restart: bool = False) -> bool:
         )
     else:
         subprocess.Popen([str(server_exe), GACHA_SERVER_ARGS], cwd=str(cwd))
-    deadline = time.time() + 60
+    deadline = time.time() + 120
     while time.time() < deadline:
         if ws_open():
             time.sleep(3)
             ok(results, "gameserver_preflight", {"ws_port": 15050, "mode": "restarted" if restart else "started"})
             return True
         time.sleep(1)
-    fail(results, "gameserver_preflight", "gateway ws 15050 not ready within 60s")
+    fail(results, "gameserver_preflight", "gateway ws 15050 not ready within 120s")
     return False
 
 
