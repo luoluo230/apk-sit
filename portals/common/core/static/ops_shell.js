@@ -61,13 +61,52 @@
   });
 
   const shellSearch = document.querySelector("[data-shell-search]");
+  const shellSearchDropdown = document.querySelector("[data-shell-search-dropdown]");
+  const categoryLabels = {
+    project: "项目",
+    release_order: "发布单",
+    version: "版本",
+    doc: "文档",
+    task: "任务",
+    user: "用户",
+  };
+  const renderSearchDropdown = (hits, query) => {
+    if (!shellSearchDropdown) return;
+    if (!query || !hits.length) {
+      shellSearchDropdown.hidden = true;
+      shellSearchDropdown.innerHTML = "";
+      return;
+    }
+    shellSearchDropdown.innerHTML = hits.map((item) => {
+      const label = categoryLabels[item.category] || item.category || "结果";
+      const title = item.title || item.name || item.id || "";
+      const meta = item.project_id ? `<span>${item.project_id}</span>` : `<span>${label}</span>`;
+      return `<a class="ops-shell-search-hit" href="${item.link}"><strong>${title}</strong>${meta}</a>`;
+    }).join("") + `<a class="ops-shell-search-more" href="/admin/search?q=${encodeURIComponent(query)}">查看全部结果</a>`;
+    shellSearchDropdown.hidden = false;
+  };
   if (shellSearch) {
     let timer = null;
+    let requestSeq = 0;
     shellSearch.addEventListener("input", () => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        document.dispatchEvent(new CustomEvent("pm-shell-search", { detail: { query: shellSearch.value.trim() } }));
-      }, 200);
+      const query = shellSearch.value.trim();
+      document.dispatchEvent(new CustomEvent("pm-shell-search", { detail: { query } }));
+      timer = setTimeout(async () => {
+        if (!query) {
+          renderSearchDropdown([], "");
+          return;
+        }
+        const seq = ++requestSeq;
+        try {
+          const response = await fetch(`/api/admin/search?q=${encodeURIComponent(query)}`);
+          const payload = await response.json();
+          if (seq !== requestSeq) return;
+          renderSearchDropdown(payload.hits || [], query);
+        } catch (_) {
+          if (seq === requestSeq) renderSearchDropdown([], query);
+        }
+      }, 220);
     });
     shellSearch.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
@@ -75,6 +114,14 @@
       const q = shellSearch.value.trim();
       if (!q) return;
       window.location.href = "/admin/search?q=" + encodeURIComponent(q);
+    });
+    shellSearch.addEventListener("focus", () => {
+      if (shellSearch.value.trim()) shellSearch.dispatchEvent(new Event("input"));
+    });
+    document.addEventListener("click", (event) => {
+      if (!shellSearchDropdown || shellSearchDropdown.hidden) return;
+      if (shellSearchDropdown.contains(event.target) || shellSearch.contains(event.target)) return;
+      shellSearchDropdown.hidden = true;
     });
   }
 

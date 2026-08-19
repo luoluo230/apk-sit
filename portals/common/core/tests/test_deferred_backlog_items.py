@@ -82,6 +82,27 @@ class TestGrayJourneyBff(unittest.TestCase):
         )
         self.assertFalse(view["can_expand_gray"])
 
+    def test_gray_auto_expand_scheduled_view(self):
+        from services.release.channel_journey_bff import _gray_rollout_view
+
+        view = _gray_rollout_view(
+            {
+                "release_order_id": "ro-1",
+                "status": "published",
+                "published_at": "2026-07-24T10:00:00",
+                "payload": {
+                    "release_strategy": "gray",
+                    "gray_ratio": "10",
+                    "gray_success_action": "automatic",
+                    "gray_duration": "30",
+                },
+            },
+            {"client": {"rollout_percentage": 10}, "gray_status": "active"},
+        )
+        self.assertTrue(view["gray_auto_expand_scheduled"])
+        self.assertEqual(view["gray_success_action_label"], "自动放量")
+        self.assertTrue(view["gray_auto_expand_due_at"].startswith("2026-07-24T10:30:00"))
+
 
 class TestOpenApiSchemaCoverage(unittest.TestCase):
     def test_openapi_spec_is_current_and_typed(self):

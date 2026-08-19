@@ -32,10 +32,13 @@
             <div class="ops-context-projects" data-context-projects></div>
           </div>
         </div>
+        <div class="ops-shell-search-wrap">
         <label class="ops-shell-search">
           <img src="/static/project_ui/svg/global_search.svg" alt="">
-          <input type="search" data-shell-search placeholder="搜索项目、文档、任务、版本、发布单...">
+          <input type="search" data-shell-search placeholder="搜索项目、文档、任务、版本、发布单..." autocomplete="off">
         </label>
+        <div class="ops-shell-search-dropdown" data-shell-search-dropdown hidden></div>
+        </div>
         <a class="ops-shell-icon-button" href="/docs?module=projects" title="帮助中心"><img src="/static/project_ui/svg/global_help.svg" alt=""></a>
         <a class="ops-shell-icon-button" href="/admin/notifications" title="通知中心"><img src="/static/project_ui/svg/global_bell.svg" alt="">{% if unread_notification_count %}<span>{{ unread_notification_count }}</span>{% endif %}</a>
         <a class="ops-shell-profile" href="/profile"><span class="ops-shell-avatar"><img src="/static/project_ui/svg/global_user.svg" alt=""></span><span>{{ user_name or '管理员' }}</span><img class="ops-profile-chevron" src="/static/project_ui/svg/global_chevron_down.svg" alt=""></a>

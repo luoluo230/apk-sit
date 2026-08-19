@@ -145,6 +145,8 @@ def _channel_entry_urls(project_id: str, env_key: str, channel_id: str) -> Dict[
 
 
 def _gray_rollout_view(order: Dict[str, Any] | None, active_bundle: Dict[str, Any] | None) -> Dict[str, Any]:
+    from datetime import datetime, timedelta
+
     order = order if isinstance(order, dict) else {}
     bundle = active_bundle if isinstance(active_bundle, dict) else {}
     plan = dict(order.get("payload") or {})
@@ -164,19 +166,45 @@ def _gray_rollout_view(order: Dict[str, Any] | None, active_bundle: Dict[str, An
         rollout = 100
     rollout = max(0, min(100, rollout))
     gray_status = str(bundle.get("gray_status") or ("active" if strategy == "gray" and rollout < 100 else "full"))
+    success_action = str(plan.get("gray_success_action") or bundle.get("gray_success_action") or "manual").strip().lower()
+    duration_raw = plan.get("gray_duration") or bundle.get("gray_duration") or ""
+    try:
+        gray_minutes = max(1, int(duration_raw))
+    except (TypeError, ValueError):
+        gray_minutes = 30
+    published_at_raw = str(order.get("published_at") or bundle.get("published_at") or "").strip()
+    auto_expand_due_at = ""
+    auto_expand_pending = (
+        success_action == "automatic"
+        and str(order.get("status") or "") == "published"
+        and rollout < 100
+    )
+    if auto_expand_pending and published_at_raw:
+        try:
+            published_at = datetime.fromisoformat(published_at_raw.replace("Z", "+00:00").replace("+00:00", ""))
+            auto_expand_due_at = (published_at + timedelta(minutes=gray_minutes)).isoformat(timespec="seconds")
+        except ValueError:
+            auto_expand_due_at = ""
+    action_labels = {"manual": "手动放量", "automatic": "自动放量", "hold": "保持比例"}
     return {
         "release_strategy": strategy,
         "gray_strategy": str(plan.get("gray_strategy") or bundle.get("gray_strategy") or "ratio"),
         "gray_ratio": str(plan.get("gray_ratio") or bundle.get("gray_ratio") or rollout),
         "gray_duration": str(plan.get("gray_duration") or bundle.get("gray_duration") or ""),
-        "gray_success_action": str(plan.get("gray_success_action") or bundle.get("gray_success_action") or "manual"),
+        "gray_success_action": success_action,
+        "gray_success_action_label": action_labels.get(success_action, success_action),
         "rollout_percentage": rollout,
         "gray_status": gray_status,
         "is_gray_active": strategy == "gray" and rollout < 100 and gray_status != "full",
         "can_expand_gray": bool(order.get("release_order_id"))
         and str(order.get("status") or "") == "published"
         and rollout < 100
-        and str(plan.get("gray_success_action") or bundle.get("gray_success_action") or "manual").strip().lower() != "hold",
+        and success_action != "hold",
+        "gray_auto_expand_scheduled": auto_expand_pending,
+        "gray_auto_expand_due_at": auto_expand_due_at,
+        "gray_auto_expand_minutes": gray_minutes if auto_expand_pending else None,
+        "gray_expanded_at": str(bundle.get("gray_expanded_at") or ""),
+        "gray_expanded_by": str(bundle.get("gray_expanded_by") or ""),
     }
 
 

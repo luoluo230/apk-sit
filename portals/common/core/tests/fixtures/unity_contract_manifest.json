@@ -1,8 +1,8 @@
 {
   "manifest_version": "1",
   "generated_by": "apk-site",
-  "portal_base_url": "",
-  "manifest_url": "/api/public/unity-contract-manifest",
+  "portal_base_url": "http://127.0.0.1:5003",
+  "manifest_url": "http://127.0.0.1:5003/api/public/unity-contract-manifest",
   "contracts": [
     {
       "id": "topology_bootstrap_v2",

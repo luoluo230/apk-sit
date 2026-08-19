@@ -361,10 +361,20 @@
     if (status === "published") {
       const grayActive = !!state.is_gray_active;
       const rolloutPct = esc(state.rollout_percentage ?? state.gray_ratio ?? "100");
+      const grayActionLabel = esc(state.gray_success_action_label || state.gray_success_action || "手动放量");
+      const autoExpandHint = state.gray_auto_expand_scheduled && state.gray_auto_expand_due_at
+        ? `<p class="cj-empty-hint cj-gray-auto">自动放量策略：观察 ${esc(state.gray_auto_expand_minutes || state.gray_duration || "30")} 分钟后扩至 100%（预计 ${esc(state.gray_auto_expand_due_at)}）</p>`
+        : (state.gray_success_action === "hold"
+          ? `<p class="cj-empty-hint cj-gray-hold">当前策略为保持比例，后台调度不会自动扩量。</p>`
+          : "");
+      const expandedHint = state.gray_expanded_at
+        ? `<p class="cj-empty-hint">最近放量：${esc(state.gray_expanded_at)}${state.gray_expanded_by ? ` · ${esc(state.gray_expanded_by)}` : ""}</p>`
+        : "";
       const grayMonitor = grayActive
         ? `<p class="cj-section-label">灰度放量</p>
-           <p class="cj-empty-hint">当前 rollout ${rolloutPct}%，客户端 bootstrap 仅对该比例设备生效。</p>`
-        : "";
+           <p class="cj-empty-hint">当前 rollout ${rolloutPct}%，策略 ${grayActionLabel}，客户端 bootstrap 仅对该比例设备生效。</p>
+           ${autoExpandHint}${expandedHint}`
+        : expandedHint;
       const expandBtn = state.can_expand_gray
         ? `<button type="button" class="cj-btn release" id="cjExpandGray">扩大至 100%</button>`
         : "";
