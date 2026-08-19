@@ -157,15 +157,11 @@ def run_hotupdate_regression_for_order(project_id: str, order_id: str) -> Dict[s
     }
 
 
-def validate_fixture_regression(fixture_path: str) -> List[str]:
-    """Validate sample fixture passes contract + self-alignment (CI offline)."""
-    import json
-    import os
-
-    if not os.path.isfile(fixture_path):
-        return [f"fixture missing: {fixture_path}"]
-    with open(fixture_path, encoding="utf-8") as fh:
-        fixture = json.load(fh)
+def validate_hotupdate_contract(sample: Any) -> List[str]:
+    """Validate bootstrap dict fixture for Unity EditMode / Portal validators."""
+    if not isinstance(sample, dict):
+        return ["fixture must be object"]
+    fixture = sample
     bundle = {
         "bundle_id": fixture.get("active_bundle_id"),
         "scope_id": fixture.get("scope_id"),
@@ -177,3 +173,15 @@ def validate_fixture_regression(fixture_path: str) -> List[str]:
     errors = list(validate_bootstrap_contract(expected))
     errors.extend(compare_bootstrap_views(expected, expected))
     return errors
+
+
+def validate_fixture_regression(fixture_path: str) -> List[str]:
+    """Validate sample fixture passes contract + self-alignment (CI offline)."""
+    import json
+    import os
+
+    if not os.path.isfile(fixture_path):
+        return [f"fixture missing: {fixture_path}"]
+    with open(fixture_path, encoding="utf-8") as fh:
+        fixture = json.load(fh)
+    return validate_hotupdate_contract(fixture)

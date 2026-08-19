@@ -1,15 +1,47 @@
 {
   "manifest_version": "1",
-  "portal_core": "portals/common/core",
+  "generated_by": "apk-site",
+  "portal_base_url": "",
+  "manifest_url": "/api/public/unity-contract-manifest",
   "contracts": [
     {
       "id": "topology_bootstrap_v2",
       "framework": "topology",
       "contract_version": "v2",
       "fixture_file": "runtime_bootstrap_contract_v2.sample.json",
-      "fixture_path": "E:\\web\\apk-site\\portals\\common\\core\\tests\\fixtures\\runtime_bootstrap_contract_v2.sample.json",
-      "validator_module": "services.release.bootstrap_contract",
-      "validate_fn": "validate_bootstrap_contract",
+      "fixture": {
+        "ok": true,
+        "project_id": "GomeKu",
+        "scope_id": "gomeku:development:1001:android",
+        "active_bundle_id": "bundle-contract-v2",
+        "release_order_id": "ro-contract-fixture",
+        "topology_id": "topo-dev-1",
+        "network_profile": {
+          "gateway_ws": "ws://127.0.0.1:15050/ws",
+          "login_http": "http://127.0.0.1:15051",
+          "game_ws": "ws://127.0.0.1:15052/ws",
+          "ops_http": "http://127.0.0.1:5504",
+          "notice_url": "http://127.0.0.1:5003/api/public/notices"
+        },
+        "bootstrap": {
+          "version_name": "1.0.0",
+          "version_code": "12",
+          "platform": "android",
+          "resource_relative_path": "development/wechat/android/Version_1.0.0/12",
+          "config_relative_path": "development/wechat/android/Version_1.0.0/12/config",
+          "code_relative_path": "development/wechat/android/Version_1.0.0/12/code",
+          "catalog_file_name": "catalog_1.0.0.bin",
+          "catalog_url": "https://example.oss.aliyuncs.com/bucket/development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
+          "min_client_version": "1.0.0",
+          "max_client_version": "9.9.9",
+          "rollout_percentage": 100,
+          "force_update": false,
+          "is_revoked": false,
+          "resource_server_url": "https://example.oss.aliyuncs.com/bucket"
+        },
+        "rollout_percentage": 100,
+        "rollout_bucket": 42
+      },
       "unity_assets": [
         "Assets/Src/HotUpdate/Framework/Bootstrap/RuntimeBootstrapService.cs",
         "Assets/Resources/Protocol/ProtocolNetworkSettings.asset"
@@ -19,6 +51,8 @@
         "/api/public/runtime-bootstrap",
         "/api/public/client-bootstrap"
       ],
+      "catalog_align_keys": [],
+      "network_align_keys": [],
       "doc": "docs/client_bootstrap_contract.md"
     },
     {
@@ -26,9 +60,31 @@
       "framework": "casual_baas",
       "contract_version": "v1",
       "fixture_file": "baas_bootstrap_contract_v1.sample.json",
-      "fixture_path": "E:\\web\\apk-site\\portals\\common\\core\\tests\\fixtures\\baas_bootstrap_contract_v1.sample.json",
-      "validator_module": "services.release.baas_bootstrap_contract",
-      "validate_fn": "validate_baas_bootstrap_contract",
+      "fixture": {
+        "ok": true,
+        "framework": "casual_baas",
+        "client_module": "baas_client",
+        "bootstrap_kind": "baas",
+        "project_id": "demo_casual",
+        "service_id": "00000000-0000-0000-0000-000000000001",
+        "env_key": "development",
+        "config_version": 1,
+        "public_api_base": "/api/baas/v1/00000000-0000-0000-0000-000000000001",
+        "feature_flags": {
+          "login": true,
+          "announce": true,
+          "mail": true,
+          "cloudsave": true
+        },
+        "endpoints": {
+          "login": "/api/baas/v1/00000000-0000-0000-0000-000000000001/auth",
+          "announce": "/api/baas/v1/00000000-0000-0000-0000-000000000001/announcements",
+          "mail": "/api/baas/v1/00000000-0000-0000-0000-000000000001/mail",
+          "cloudsave": "/api/baas/v1/00000000-0000-0000-0000-000000000001/cloudsave"
+        },
+        "auth_header_service": "X-Baas-Service-Id",
+        "auth_header_key": "X-Baas-Api-Key"
+      },
       "unity_assets": [
         "Assets/Src/HotUpdate/Framework/Bootstrap/BaasBootstrapService.cs",
         "Assets/Resources/Protocol/BaasNetworkSettings.asset"
@@ -38,7 +94,75 @@
         "/api/public/baas-bootstrap",
         "/api/public/client-bootstrap"
       ],
+      "catalog_align_keys": [],
+      "network_align_keys": [],
       "doc": "docs/client_bootstrap_contract_baas.md"
+    },
+    {
+      "id": "hotupdate_regression_v1",
+      "framework": "topology",
+      "contract_version": "v1",
+      "fixture_file": "runtime_bootstrap_contract_v2.sample.json",
+      "fixture": {
+        "ok": true,
+        "project_id": "GomeKu",
+        "scope_id": "gomeku:development:1001:android",
+        "active_bundle_id": "bundle-contract-v2",
+        "release_order_id": "ro-contract-fixture",
+        "topology_id": "topo-dev-1",
+        "network_profile": {
+          "gateway_ws": "ws://127.0.0.1:15050/ws",
+          "login_http": "http://127.0.0.1:15051",
+          "game_ws": "ws://127.0.0.1:15052/ws",
+          "ops_http": "http://127.0.0.1:5504",
+          "notice_url": "http://127.0.0.1:5003/api/public/notices"
+        },
+        "bootstrap": {
+          "version_name": "1.0.0",
+          "version_code": "12",
+          "platform": "android",
+          "resource_relative_path": "development/wechat/android/Version_1.0.0/12",
+          "config_relative_path": "development/wechat/android/Version_1.0.0/12/config",
+          "code_relative_path": "development/wechat/android/Version_1.0.0/12/code",
+          "catalog_file_name": "catalog_1.0.0.bin",
+          "catalog_url": "https://example.oss.aliyuncs.com/bucket/development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
+          "min_client_version": "1.0.0",
+          "max_client_version": "9.9.9",
+          "rollout_percentage": 100,
+          "force_update": false,
+          "is_revoked": false,
+          "resource_server_url": "https://example.oss.aliyuncs.com/bucket"
+        },
+        "rollout_percentage": 100,
+        "rollout_bucket": 42
+      },
+      "unity_assets": [
+        "Assets/Src/HotUpdate/Framework/Bootstrap/RuntimeBootstrapService.cs",
+        "Assets/Src/HotUpdate/Framework/Bootstrap/HotUpdateManifestReader.cs"
+      ],
+      "unity_editmode_filter": "HotUpdateRegressionFixtureTests",
+      "bootstrap_paths": [
+        "/api/public/runtime-bootstrap"
+      ],
+      "catalog_align_keys": [
+        "catalog_url",
+        "catalog_file_name",
+        "resource_relative_path",
+        "config_manifest_url",
+        "code_manifest_url",
+        "min_client_version",
+        "max_client_version",
+        "rollout_percentage",
+        "resource_server_url"
+      ],
+      "network_align_keys": [
+        "gateway_ws",
+        "login_http",
+        "game_ws",
+        "ops_http",
+        "notice_url"
+      ],
+      "doc": "docs/runbooks/unity_editmode_contract_tests.md"
     }
   ]
 }

@@ -183,6 +183,13 @@ def runtime_bootstrap():
     return jsonify(_bootstrap_response(project_id, channel_name, effective, rollout))
 
 
+def unity_contract_manifest():
+    from services.release.unity_contract_bridge import build_portable_unity_contract_manifest
+
+    base = str(request.url_root or "").strip().rstrip("/")
+    return jsonify(build_portable_unity_contract_manifest(portal_base_url=base))
+
+
 def register_public_routes(target_bp):
     """Attach public routes to project_delivery blueprint."""
     from server_frameworks.bootstrap import register_client_bootstrap_routes
@@ -204,5 +211,11 @@ def register_public_routes(target_bp):
         "/api/public/runtime-bootstrap",
         endpoint="delivery_runtime_bootstrap",
         view_func=runtime_bootstrap,
+        methods=["GET"],
+    )
+    target_bp.add_url_rule(
+        "/api/public/unity-contract-manifest",
+        endpoint="delivery_unity_contract_manifest",
+        view_func=unity_contract_manifest,
         methods=["GET"],
     )

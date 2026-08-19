@@ -143,6 +143,11 @@ def _release_order_activities(
         "precheck_started": ("release", "发布"),
         "prechecked": ("release", "发布"),
         "approved": ("approval", "审批"),
+        "promoted": ("approval", "晋级"),
+        "approval_tier_passed": ("approval", "审批"),
+        "verify_failed": ("alert", "告警"),
+        "publish_failed": ("alert", "告警"),
+        "bootstrap_smoke_failed": ("alert", "告警"),
         "created": ("change", "变更"),
         "draft_updated": ("change", "变更"),
         "cancelled": ("change", "变更"),
@@ -174,6 +179,14 @@ def _release_order_activities(
             return f"发布单 {oid} 已回滚恢复 · {env} · {base}"
         if event_type == "approved":
             return f"发布单 {oid} 审批通过 · {env} · {base}"
+        if event_type == "promoted":
+            target = str(payload.get("target_env_key") or env)
+            return f"制品晋级至 {target} · {oid} · {base}"
+        if event_type == "approval_tier_passed":
+            return f"发布单 {oid} 审批层级通过 · {env} · {base}"
+        if event_type in {"verify_failed", "publish_failed", "bootstrap_smoke_failed"}:
+            hint = str(payload.get("error") or payload.get("message") or "失败")[:80]
+            return f"发布单 {oid} {event_type} · {env} · {hint}"
         if event_type == "prechecked":
             return f"发布单 {oid} 预检通过 · {env} · {base}"
         if event_type in {"precheck_started", "publish_started", "verify_started"}:

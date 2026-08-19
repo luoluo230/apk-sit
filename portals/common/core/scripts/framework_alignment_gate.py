@@ -31,6 +31,7 @@ def main() -> int:
             "tests/test_promotion_approval.py",
             "tests/test_server_framework_gating.py",
             "tests/test_unity_contract_bridge.py",
+            "tests/test_unity_contract_manifest_api.py",
             "tests/test_baas_public_api.py",
             "tests/test_baas_standalone.py",
             "tests/test_baas_auth.py",
