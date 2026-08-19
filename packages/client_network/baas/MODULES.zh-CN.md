@@ -129,6 +129,35 @@
 
 ---
 
+## maclient 独立演示场景
+
+在 Unity 菜单 **Tools → BaaS → Create All Module Demo Scenes** 一键生成 16 个场景（15 业务模块 + 推图竞技场组合），路径：
+
+`Assets/Content/Scenes/BaasDemos/`
+
+| 场景文件 | 模块 | Host 组件 |
+|----------|------|-----------|
+| BaasDemo_Login.unity | 账号 | BaasModuleDemoHost |
+| BaasDemo_Announce.unity | 公告 | BaasModuleDemoHost |
+| BaasDemo_Mail.unity | 邮件 | BaasModuleDemoHost |
+| BaasDemo_CloudSave.unity | 云存档 | BaasModuleDemoHost |
+| BaasDemo_Leaderboard.unity | 排行榜 | BaasModuleDemoHost |
+| BaasDemo_Shop.unity | 商城 | BaasModuleDemoHost |
+| BaasDemo_Achievement.unity | 成就 | BaasModuleDemoHost |
+| BaasDemo_Gift.unity | 礼包 | BaasModuleDemoHost |
+| BaasDemo_Guild.unity | 公会 | BaasModuleDemoHost |
+| BaasDemo_BattlePass.unity | 战令 | BaasModuleDemoHost |
+| BaasDemo_PeriodicTask.unity | 周期任务 | BaasModuleDemoHost |
+| BaasDemo_Compliance.unity | 防沉迷 | BaasModuleDemoHost |
+| BaasDemo_Pve.unity | PVE | BaasModuleDemoHost |
+| BaasDemo_Arena.unity | 竞技场 | BaasModuleDemoHost |
+| BaasDemo_PvpRoom.unity | 实时 PVP | BaasModuleDemoHost |
+| BaasCasualBattleDemo.unity | 组合流程 | BaasCasualBattleDemoHost |
+
+Play 前配置 ApiKey 或设置环境变量 `BAAS_E2E_*`；功能未开通时演示会 `[SKIP]` 并写日志。
+
+---
+
 ## 接入检查清单
 
 - [ ] `Import-ClientNetworkModule.ps1 -Module baas` 成功
