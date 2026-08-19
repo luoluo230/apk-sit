@@ -7,12 +7,12 @@
     "passed": true,
     "mode": "in_process",
     "service_id": "c33701aa-d1c1-4a66-a8d7-b4b1c2f9fc07",
-    "room_id": "room_edfad7ffef51438a",
-    "battle_id": "battle_b49e7a2479ac4db5",
+    "room_id": "room_2016fdc4bf8a4895",
+    "battle_id": "battle_2cc7d41939b64723",
     "notifyLatencyMs": 51,
     "frame_count": 1,
     "push_ok": true,
     "polled": true
   },
-  "generatedUtc": "2026-08-19T04:47:39.877778+00:00"
+  "generatedUtc": "2026-08-19T06:34:38.650643+00:00"
 }

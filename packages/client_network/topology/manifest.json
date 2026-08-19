@@ -1,0 +1,21 @@
+{
+  "module": "topology_client",
+  "label": "Topology GameServer Client Network Module",
+  "pairs_with": "topology_server",
+  "namespace": "MAClient.Network.Topology",
+  "asmdef": "MAClient.Network.Topology.asmdef",
+  "import_target": "Assets/Modules/TopologyNetwork",
+  "runtime_files": [
+    "Runtime/TopologyHttp.cs",
+    "Runtime/TopologyNetworkModule.cs"
+  ],
+  "maclient_export_roots": [
+    "Assets/Src/HotUpdate/Framework/Network",
+    "Assets/Src/HotUpdate/Game/Network",
+    "Assets/Editor/Protocol",
+    "Assets/Src/Protocols",
+    "Assets/Resources/Protocol/ProtocolNetworkSettings.asset"
+  ],
+  "bootstrap": "/api/public/client-bootstrap",
+  "bootstrap_legacy": "/api/public/runtime-bootstrap"
+}

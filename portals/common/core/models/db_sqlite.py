@@ -991,6 +991,31 @@ def init_db():
             if "disabled" not in cols:
                 conn.execute("ALTER TABLE baas_services ADD COLUMN disabled INTEGER DEFAULT 0")
             _mark_migration(conn, "baas_services_v2")
+        if not _migration_applied(conn, "baas_rooms_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_rooms (
+                    room_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'waiting',
+                    state_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_rooms_service_status
+                    ON baas_rooms(service_id, status);
+                CREATE TABLE IF NOT EXISTS baas_room_replays (
+                    replay_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    room_id TEXT NOT NULL DEFAULT '',
+                    battle_id TEXT NOT NULL DEFAULT '',
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_room_replays_service
+                    ON baas_room_replays(service_id, created_at);
+                """
+            )
+            _mark_migration(conn, "baas_rooms_v1")
         conn.commit()
         _schema_initialized = True
 

@@ -114,5 +114,26 @@ class RoomServiceTests(unittest.TestCase):
         self.assertEqual(closed["status"], "closed")
 
 
+    @mock.patch("services.baas.room_service.feature_enabled", return_value=True)
+    @mock.patch("services.baas.room_service.get_feature_config", return_value={"max_players": 2, "max_spectators": 4})
+    def test_room_persistence_reload(self, _cfg, _enabled):
+        from services.baas import room_service, room_store
+
+        room_service._rooms.clear()
+        room_service._replays.clear()
+        host = room_service.create_room("svc1", "host", visibility="public")
+        room_service.join_room("svc1", "guest", room_id=host["room_id"])
+        room_service.start_battle("svc1", host["room_id"], "host")
+        room_service.push_frame("svc1", host["room_id"], "host", {"action": "move"})
+        room_id = host["room_id"]
+        room_service._rooms.clear()
+        reloaded = room_service.get_room("svc1", room_id)
+        self.assertEqual(reloaded["status"], "active")
+        self.assertGreaterEqual(int(reloaded.get("frame_seq") or 0), 1)
+        stored = room_store.load_room(room_id)
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored.get("room_id"), room_id)
+
+
 if __name__ == "__main__":
     unittest.main()

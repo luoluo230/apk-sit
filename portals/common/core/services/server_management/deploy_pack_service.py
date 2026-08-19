@@ -92,6 +92,9 @@ def _baas_paths() -> List[str]:
         "portals/common/core/scripts/run_baas_server.ps1",
         "packages/client_network/baas",
         "packages/client_network/common",
+        "packages/client_network/stubs",
+        "scripts/Export-ClientNetworkModule.ps1",
+        "scripts/Import-ClientNetworkModule.ps1",
         "portals/common/core/server_frameworks",
         "portals/common/core/routes/baas",
         "portals/common/core/services/baas",
@@ -99,6 +102,7 @@ def _baas_paths() -> List[str]:
         "portals/common/core/services/server_mode.py",
         "docs/design_specs/server_framework_modules.md",
         "docs/design_specs/casual_baas_services.md",
+        "docs/design_specs/casual_baas_pvp_mvp_boundary.md",
         "docs/runbooks/baas_standalone_deploy.md",
         "docs/runbooks/deploy_architecture.md",
     ]

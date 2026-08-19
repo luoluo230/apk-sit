@@ -191,6 +191,25 @@ CREATE TABLE IF NOT EXISTS baas_gift_codes (
     created_at TEXT NOT NULL,
     PRIMARY KEY (service_id, code)
 );
+
+CREATE TABLE IF NOT EXISTS baas_rooms (
+    room_id TEXT PRIMARY KEY,
+    service_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'waiting',
+    state_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_baas_rooms_service_status ON baas_rooms(service_id, status);
+
+CREATE TABLE IF NOT EXISTS baas_room_replays (
+    replay_id TEXT PRIMARY KEY,
+    service_id TEXT NOT NULL,
+    room_id TEXT NOT NULL DEFAULT '',
+    battle_id TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_baas_room_replays_service ON baas_room_replays(service_id, created_at);
 """
 
 BAAS_SERVICES_V2_ALTER_SQL = """

@@ -61,6 +61,12 @@ def _cleanup_expired() -> None:
                 expired.append(room_id)
         for room_id in expired:
             _rooms.pop(room_id, None)
+            try:
+                from services.baas import room_store
+
+                room_store.delete_room(room_id)
+            except Exception:
+                pass
 
 
 def _public_view(room: Dict[str, Any], *, viewer_id: str = "") -> Dict[str, Any]:
@@ -99,6 +105,45 @@ def _public_view(room: Dict[str, Any], *, viewer_id: str = "") -> Dict[str, Any]
 def _touch(room: Dict[str, Any]) -> None:
     room["updated_at"] = _now_iso()
     room["updated_ts"] = time.time()
+    _persist_room(room)
+
+
+def _persist_room(room: Dict[str, Any]) -> None:
+    try:
+        from services.baas import room_store
+
+        room_store.save_room(room)
+    except Exception:
+        pass
+
+
+def _resolve_room(room_id: str) -> Optional[Dict[str, Any]]:
+    rid = str(room_id or "").strip()
+    if not rid:
+        return None
+    room = _rooms.get(rid)
+    if room is not None:
+        return room
+    try:
+        from services.baas import room_store
+
+        loaded = room_store.load_room(rid)
+        if loaded:
+            loaded["updated_ts"] = time.time()
+            _rooms[rid] = loaded
+            return loaded
+    except Exception:
+        pass
+    return None
+
+
+def _persist_replay(replay: Dict[str, Any]) -> None:
+    try:
+        from services.baas import room_store
+
+        room_store.save_replay(replay)
+    except Exception:
+        pass
 
 
 def create_room(
@@ -194,7 +239,7 @@ def join_room(
     with _lock:
         room = None
         if rid:
-            room = _rooms.get(rid)
+            room = _resolve_room(rid)
         elif code:
             room = next(
                 (
@@ -240,7 +285,7 @@ def join_room(
 def rejoin_room(service_id: str, room_id: str, player_id: str) -> Dict[str, Any]:
     _require_feature(service_id)
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         players = list(room.get("players") or [])
@@ -257,7 +302,7 @@ def rejoin_room(service_id: str, room_id: str, player_id: str) -> Dict[str, Any]
 
 def leave_room(service_id: str, room_id: str, player_id: str) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         players = [p for p in (room.get("players") or []) if p != player_id]
@@ -282,7 +327,7 @@ def leave_room(service_id: str, room_id: str, player_id: str) -> Dict[str, Any]:
 
 def kick_player(service_id: str, room_id: str, host_id: str, target_id: str) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if str(room.get("host_id") or "") != host_id:
@@ -300,7 +345,7 @@ def kick_player(service_id: str, room_id: str, host_id: str, target_id: str) -> 
 
 def mark_disconnected(service_id: str, room_id: str, player_id: str) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if player_id not in (room.get("players") or []):
@@ -316,7 +361,7 @@ def mark_disconnected(service_id: str, room_id: str, player_id: str) -> Dict[str
 
 def start_battle(service_id: str, room_id: str, player_id: str) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if str(room.get("host_id") or "") != player_id:
@@ -337,7 +382,7 @@ def start_battle(service_id: str, room_id: str, player_id: str) -> Dict[str, Any
 
 def sync_state(service_id: str, room_id: str, player_id: str, state: Dict[str, Any]) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if player_id not in (room.get("players") or []):
@@ -351,7 +396,7 @@ def sync_state(service_id: str, room_id: str, player_id: str, state: Dict[str, A
 
 def push_frame(service_id: str, room_id: str, player_id: str, frame: Dict[str, Any]) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if room.get("status") != "active":
@@ -375,7 +420,7 @@ def push_frame(service_id: str, room_id: str, player_id: str, frame: Dict[str, A
 
 def get_frames(service_id: str, room_id: str, *, since_seq: int = 0, limit: int = 120) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         frames = [f for f in (room.get("frames") or []) if int(f.get("seq") or 0) > int(since_seq or 0)]
@@ -403,7 +448,7 @@ def poll_frames(
     lim = max(1, min(500, int(limit or 120)))
     while True:
         with _lock:
-            room = _rooms.get(room_id)
+            room = _resolve_room(room_id)
             if not room or room.get("service_id") != service_id:
                 raise ValueError("房间不存在")
             frames = [f for f in (room.get("frames") or []) if int(f.get("seq") or 0) > int(since_seq or 0)]
@@ -472,7 +517,7 @@ def list_all_rooms(service_id: str, *, status: str = "", limit: int = 50) -> Lis
 
 def get_room_detail(service_id: str, room_id: str) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         return _admin_view(room)
@@ -480,7 +525,7 @@ def get_room_detail(service_id: str, room_id: str) -> Dict[str, Any]:
 
 def admin_force_close(service_id: str, room_id: str, *, reason: str = "") -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         room["status"] = "closed"
@@ -495,7 +540,7 @@ def admin_kick_player(service_id: str, room_id: str, target_id: str) -> Dict[str
     if not target:
         raise ValueError("target_id 必填")
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         room["players"] = [p for p in (room.get("players") or []) if p != target]
@@ -518,7 +563,7 @@ def admin_kick_player(service_id: str, room_id: str, target_id: str) -> Dict[str
 
 def admin_finish_battle(service_id: str, room_id: str, *, result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if room.get("status") not in {"active", "paused", "ready"}:
@@ -537,6 +582,7 @@ def admin_finish_battle(service_id: str, room_id: str, *, result: Optional[Dict[
             "result": payload,
             "created_at": _now_iso(),
         }
+        _persist_replay(_replays[replay_id])
         room["replay_id"] = replay_id
         _touch(room)
         _notify_frame_waiters(room_id)
@@ -548,13 +594,24 @@ def admin_finish_battle(service_id: str, room_id: str, *, result: Optional[Dict[
 def list_replays(service_id: str, *, limit: int = 20) -> List[Dict[str, Any]]:
     lim = max(1, min(int(limit or 20), 100))
     rows = [dict(row) for row in _replays.values() if row.get("service_id") == service_id]
+    if len(rows) < lim:
+        try:
+            from services.baas import room_store
+
+            for row in room_store.list_replays(service_id, limit=lim):
+                rid = str(row.get("replay_id") or "")
+                if rid and rid not in _replays:
+                    _replays[rid] = row
+                    rows.append(dict(row))
+        except Exception:
+            pass
     rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
     return rows[:lim]
 
 
 def finish_battle(service_id: str, room_id: str, player_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         if str(room.get("host_id") or "") != player_id:
@@ -572,6 +629,7 @@ def finish_battle(service_id: str, room_id: str, player_id: str, result: Dict[st
             "result": dict(result or {}),
             "created_at": _now_iso(),
         }
+        _persist_replay(_replays[replay_id])
         room["replay_id"] = replay_id
         _touch(room)
         view = _public_view(room, viewer_id=player_id)
@@ -581,6 +639,15 @@ def finish_battle(service_id: str, room_id: str, player_id: str, result: Dict[st
 
 def get_replay(service_id: str, replay_id: str) -> Dict[str, Any]:
     row = _replays.get(replay_id)
+    if not row:
+        try:
+            from services.baas import room_store
+
+            row = room_store.load_replay(replay_id)
+            if row:
+                _replays[replay_id] = row
+        except Exception:
+            row = None
     if not row or row.get("service_id") != service_id:
         raise ValueError("回放不存在")
     return dict(row)
@@ -611,7 +678,7 @@ def matchmake(service_id: str, player_id: str, *, env_key: str = "", battle_mode
 
 def get_room(service_id: str, room_id: str, *, viewer_id: str = "") -> Dict[str, Any]:
     with _lock:
-        room = _rooms.get(room_id)
+        room = _resolve_room(room_id)
         if not room or room.get("service_id") != service_id:
             raise ValueError("房间不存在")
         return _public_view(room, viewer_id=viewer_id)

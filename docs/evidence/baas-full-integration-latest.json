@@ -1,0 +1,41 @@
+{
+  "checks": [
+    {
+      "name": "pytest_baas",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "exit_code": 0,
+        "output_tail": "................s..                                                      [100%]\n============================== warnings summary ===============================\nportals/common/core/tests/test_baas_room_service.py: 49 warnings\nportals/common/core/tests/test_baas_gm_ops.py: 23 warnings\nportals/common/core/tests/test_baas_public_api.py: 33 warnings\nportals/common/core/tests/test_baas_auth.py: 3 warnings\nportals/common/core/tests/test_baas_standalone.py: 4 warnings\n  E:\\web\\apk-site\\portals\\common\\core\\services\\baas\\helpers.py:17: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n    return datetime.utcnow().replace(microsecond=0).isoformat() + \"Z\"\n\nportals/common/core/tests/test_baas_public_api.py::BaasPublicApiTests::test_guest_login_announce_mail_cloudsave_flow\nportals/common/core/tests/test_baas_public_api.py::BaasPublicApiTests::test_pvp_matchmake_and_frame_fanout\nportals/common/core/tests/test_baas_public_api.py::BaasPublicApiTests::test_pvp_matchmake_and_frame_fanout\nportals/common/core/tests/test_baas_auth.py::BaasAuthServiceTests::test_guest_login_and_resolve_player\nportals/common/core/tests/test_baas_standalone.py::BaasStandaloneTests::test_gm_wallet_and_gift_code\n  E:\\web\\apk-site\\portals\\common\\core\\services\\baas\\helpers.py:62: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n    return (datetime.utcnow() + timedelta(hours=max(1, int(hours or 168)))).replace(microsecond=0).isoformat() + \"Z\"\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nSKIPPED [1] tests\\test_server_framework_modules.py:78: no api secret\n18 passed, 1 skipped, 117 warnings in 1.38s\n"
+      }
+    },
+    {
+      "name": "fanout_in_process",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "exit_code": 0
+      }
+    },
+    {
+      "name": "fanout_portal",
+      "ok": true,
+      "detail": {
+        "ok": false,
+        "skipped": true,
+        "error": "BAAS_E2E_SERVICE_ID / BAAS_E2E_API_KEY not set"
+      }
+    },
+    {
+      "name": "unity_playmode_fanout",
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "skipped": true,
+        "reason": "UNITY_PATH not set"
+      }
+    }
+  ],
+  "verdict": "pass",
+  "generatedUtc": "2026-08-19T06:34:35.169122+00:00"
+}

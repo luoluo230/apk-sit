@@ -1,0 +1,15 @@
+{
+  "module": "baas_client",
+  "label": "Casual BaaS Client Network Module",
+  "pairs_with": "casual_baas_server",
+  "namespace": "MAClient.Network.Baas",
+  "asmdef": "MAClient.Network.Baas.asmdef",
+  "import_target": "Assets/Modules/BaasNetwork",
+  "runtime_files": [
+    "Runtime/BaasHttp.cs",
+    "Runtime/BaasNetworkModule.cs",
+    "Runtime/BaasRoomClient.cs"
+  ],
+  "bootstrap": "/api/public/client-bootstrap",
+  "bootstrap_legacy": "/api/public/baas-bootstrap"
+}

@@ -1,72 +1,143 @@
 using System;
 using System.Collections;
-using System.Text;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
-namespace Baas.Client
+namespace MAClient.Network.Baas
 {
     /// <summary>
-    /// Fast integration client for casual room + battle REST APIs.
+    /// REST client for casual BaaS room + battle APIs. Pairs with casual_baas_server.
     /// </summary>
     public sealed class BaasRoomClient
     {
-        readonly string _baseUrl;
+        readonly string _portalBase;
         readonly string _serviceId;
         readonly string _apiKey;
-        readonly string _playerToken;
-        readonly string _playerId;
+        string _playerToken;
+        string _playerId;
 
-        public BaasRoomClient(string baseUrl, string serviceId, string apiKey, string playerToken, string playerId)
+        public BaasRoomClient(string portalBaseUrl, string serviceId, string apiKey, string playerToken = "", string playerId = "")
         {
-            _baseUrl = (baseUrl ?? string.Empty).TrimEnd('/');
+            _portalBase = (portalBaseUrl ?? string.Empty).TrimEnd('/');
             _serviceId = serviceId ?? string.Empty;
             _apiKey = apiKey ?? string.Empty;
             _playerToken = playerToken ?? string.Empty;
             _playerId = playerId ?? string.Empty;
         }
 
-        public IEnumerator MatchmakeAsync(string envKey, string battleMode, Action<string, string> onComplete)
+        public string PlayerId => _playerId;
+        public string PlayerToken => _playerToken;
+
+        public void SetSession(string playerToken, string playerId)
         {
-            string url = $"{_baseUrl}/api/baas/v1/{_serviceId}/pvp/matchmake";
-            var body = $"{{\"env_key\":\"{envKey}\",\"battle_mode\":\"{battleMode}\"}}";
-            yield return PostJsonAsync(url, body, onComplete);
+            _playerToken = playerToken ?? string.Empty;
+            _playerId = playerId ?? string.Empty;
         }
 
-        public IEnumerator SyncStateAsync(string roomId, string stateJson, Action<string, string> onComplete)
+        string ApiPrefix => _portalBase + "/api/baas/v1/" + _serviceId;
+
+        Dictionary<string, string> ServiceHeaders()
         {
-            string url = $"{_baseUrl}/api/baas/v1/{_serviceId}/pvp/rooms/{roomId}/state";
-            var body = $"{{\"state\":{stateJson}}}";
-            yield return PostJsonAsync(url, body, onComplete);
+            return new Dictionary<string, string>
+            {
+                ["X-Baas-Api-Key"] = _apiKey,
+                ["X-Baas-Service-Id"] = _serviceId,
+            };
+        }
+
+        Dictionary<string, string> PlayerHeaders()
+        {
+            var headers = ServiceHeaders();
+            headers["Authorization"] = "Bearer " + _playerToken;
+            headers["X-Baas-Player-Id"] = _playerId;
+            return headers;
+        }
+
+        public IEnumerator GuestLoginAsync(string displayName, Action<string, string> onComplete)
+        {
+            string url = ApiPrefix + "/auth/guest";
+            var body = "{\"display_name\":\"" + EscapeJson(displayName) + "\"}";
+            yield return BaasHttp.PostJson(url, body, ServiceHeaders(), (json, err) =>
+            {
+                if (!string.IsNullOrEmpty(err)) { onComplete?.Invoke(null, err); return; }
+                var token = ExtractString(json, "token");
+                var pid = ExtractString(json, "player_id");
+                if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(pid))
+                {
+                    onComplete?.Invoke(null, "guest login parse failed");
+                    return;
+                }
+                _playerToken = token;
+                _playerId = pid;
+                onComplete?.Invoke(json, null);
+            });
+        }
+
+        public IEnumerator MatchmakeAsync(string battleMode, Action<string, string> onComplete)
+        {
+            string url = ApiPrefix + "/pvp/matchmake";
+            var body = "{\"battle_mode\":\"" + EscapeJson(battleMode) + "\"}";
+            yield return BaasHttp.PostJson(url, body, PlayerHeaders(), onComplete);
         }
 
         public IEnumerator StartBattleAsync(string roomId, Action<string, string> onComplete)
         {
-            string url = $"{_baseUrl}/api/baas/v1/{_serviceId}/rooms/{roomId}/start-battle";
-            yield return PostJsonAsync(url, "{}", onComplete);
+            string url = ApiPrefix + "/rooms/" + Uri.EscapeDataString(roomId) + "/start-battle";
+            yield return BaasHttp.PostJson(url, "{}", PlayerHeaders(), onComplete);
         }
 
-        IEnumerator PostJsonAsync(string url, string jsonBody, Action<string, string> onComplete)
+        public IEnumerator SyncStateAsync(string roomId, string stateJson, Action<string, string> onComplete)
         {
-            using (var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
+            string url = ApiPrefix + "/pvp/rooms/" + Uri.EscapeDataString(roomId) + "/state";
+            var body = "{\"state\":" + (string.IsNullOrWhiteSpace(stateJson) ? "{}" : stateJson) + "}";
+            yield return BaasHttp.PostJson(url, body, PlayerHeaders(), onComplete);
+        }
+
+        public IEnumerator PushFrameAsync(string roomId, string frameJson, Action<string, string> onComplete)
+        {
+            string url = ApiPrefix + "/rooms/" + Uri.EscapeDataString(roomId) + "/frames";
+            var body = "{\"frame\":" + (string.IsNullOrWhiteSpace(frameJson) ? "{}" : frameJson) + "}";
+            yield return BaasHttp.PostJson(url, body, PlayerHeaders(), onComplete);
+        }
+
+        public IEnumerator PollFramesAsync(string roomId, int sinceSeq, int waitMs, Action<string, string> onComplete)
+        {
+            string url = ApiPrefix + "/rooms/" + Uri.EscapeDataString(roomId)
+                + "/frames?since_seq=" + sinceSeq + "&wait_ms=" + Math.Max(0, waitMs);
+            var headers = ServiceHeaders();
+            headers["X-Baas-Player-Id"] = _playerId;
+            yield return BaasHttp.Get(url, headers, onComplete, Math.Max(10, waitMs / 1000 + 5));
+        }
+
+        public IEnumerator FinishBattleAsync(string roomId, string resultJson, Action<string, string> onComplete)
+        {
+            string url = ApiPrefix + "/rooms/" + Uri.EscapeDataString(roomId) + "/finish-battle";
+            var body = "{\"result\":" + (string.IsNullOrWhiteSpace(resultJson) ? "{}" : resultJson) + "}";
+            yield return BaasHttp.PostJson(url, body, PlayerHeaders(), onComplete);
+        }
+
+        static string EscapeJson(string value)
+        {
+            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        static string ExtractString(string json, string key)
+        {
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key)) return string.Empty;
+            var marker = "\"" + key + "\":";
+            int idx = json.IndexOf(marker, StringComparison.Ordinal);
+            if (idx < 0) return string.Empty;
+            idx += marker.Length;
+            while (idx < json.Length && char.IsWhiteSpace(json[idx])) idx++;
+            if (idx >= json.Length) return string.Empty;
+            if (json[idx] == '"')
             {
-                byte[] payload = Encoding.UTF8.GetBytes(jsonBody ?? "{}");
-                request.uploadHandler = new UploadHandlerRaw(payload);
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-                request.SetRequestHeader("X-Baas-Api-Key", _apiKey);
-                request.SetRequestHeader("X-Baas-Service-Id", _serviceId);
-                request.SetRequestHeader("Authorization", "Bearer " + _playerToken);
-                request.SetRequestHeader("X-Baas-Player-Id", _playerId);
-                request.timeout = 15;
-                yield return request.SendWebRequest();
-                if (request.result != UnityWebRequest.Result.Success)
-                {
-                    onComplete?.Invoke(null, request.error ?? "request failed");
-                    yield break;
-                }
-                onComplete?.Invoke(request.downloadHandler.text, null);
+                int end = json.IndexOf('"', idx + 1);
+                return end > idx ? json.Substring(idx + 1, end - idx - 1) : string.Empty;
             }
+            return string.Empty;
         }
     }
 }

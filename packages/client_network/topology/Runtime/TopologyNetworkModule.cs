@@ -1,13 +1,9 @@
-// Topology client network module — pairs with topology_server.
-// Copy Runtime/ + ../common/Runtime/PortalHttp.cs to Unity project.
-
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Game.Network.Common;
 using UnityEngine;
 
-namespace Game.Network.Topology
+namespace MAClient.Network.Topology
 {
     [Serializable]
     public class NetworkProfile
@@ -29,7 +25,7 @@ namespace Game.Network.Topology
     }
 
     /// <summary>
-    /// Fetches client-bootstrap and applies WebSocket gateway endpoints.
+    /// Bootstrap helper for topology / GameServer WebSocket client module.
     /// </summary>
     public static class TopologyNetworkModule
     {
@@ -52,7 +48,7 @@ namespace Game.Network.Topology
                 ["platform"] = platform,
             };
             var url = portalBaseUrl.TrimEnd('/') + DefaultBootstrapPath + "?" + BuildQuery(qs);
-            var json = await PortalHttp.GetAsync(url);
+            var json = await TopologyHttp.GetAsync(url);
             var resp = JsonUtility.FromJson<RuntimeBootstrapResponse>(json);
             if (resp == null || !resp.ok || resp.network_profile == null)
                 throw new InvalidOperationException("topology bootstrap failed");
@@ -71,7 +67,7 @@ namespace Game.Network.Topology
         {
             var parts = new List<string>();
             foreach (var p in kv)
-                parts.Add(Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value ?? ""));
+                parts.Add(Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value ?? string.Empty));
             return string.Join("&", parts);
         }
     }

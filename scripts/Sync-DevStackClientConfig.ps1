@@ -203,6 +203,10 @@ if ($Mode -eq "baas") {
     Write-Host "[sync] BaaS client module: packages/client_network/baas" -ForegroundColor Yellow
     Write-Host "[sync] Bootstrap: $portal/api/public/client-bootstrap" -ForegroundColor Yellow
     Write-Host "[sync] Skip ProtocolNetworkSettings (topology-only)" -ForegroundColor Yellow
+    $importScript = Join-Path (Split-Path -Parent $PSScriptRoot) "Import-ClientNetworkModule.ps1"
+    if (Test-Path $importScript) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript -Module baas -MaclientRoot $maclient
+    }
 }
 
 if ($UseUnity) {

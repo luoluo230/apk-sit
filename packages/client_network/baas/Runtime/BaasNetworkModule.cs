@@ -1,13 +1,10 @@
-// BaaS client network module — pairs with casual_baas_server.
-// Copy Runtime/ + ../common/Runtime/PortalHttp.cs to Unity project.
-
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Game.Network.Common;
 using UnityEngine;
+using UnityEngine.Networking;
 
-namespace Game.Network.Baas
+namespace MAClient.Network.Baas
 {
     [Serializable]
     public class BaasBootstrapResponse
@@ -23,9 +20,9 @@ namespace Game.Network.Baas
     }
 
     /// <summary>
-    /// Fetches client-bootstrap and configures REST client base URL.
+    /// Bootstrap helper for casual BaaS REST client module.
     /// </summary>
-    public class BaasNetworkModule
+    public sealed class BaasNetworkModule
     {
         public const string DefaultBootstrapPath = "/api/public/client-bootstrap";
 
@@ -34,53 +31,49 @@ namespace Game.Network.Baas
         public string ApiKey { get; private set; }
         public string PublicApiBase { get; private set; }
 
-        public async Task<BaasBootstrapResponse> BootstrapAsync(
+        public IEnumerator BootstrapCoroutine(
             string portalBaseUrl,
             string gameId,
             string gameKey,
             string envKey,
-            string apiKey)
+            string apiKey,
+            Action<BaasBootstrapResponse, string> onComplete)
         {
             PortalBaseUrl = portalBaseUrl.TrimEnd('/');
             ApiKey = apiKey;
-            var qs = new Dictionary<string, string>
+            var qs = "game_id=" + Uri.EscapeDataString(gameId)
+                + "&game_key=" + Uri.EscapeDataString(gameKey)
+                + "&env_key=" + Uri.EscapeDataString(envKey ?? "development");
+            var url = PortalBaseUrl + DefaultBootstrapPath + "?" + qs;
+            yield return BaasHttp.Get(url, null, (json, err) =>
             {
-                ["game_id"] = gameId,
-                ["game_key"] = gameKey,
-                ["env_key"] = envKey,
-            };
-            var url = PortalBaseUrl + DefaultBootstrapPath + "?" + BuildQuery(qs);
-            var json = await PortalHttp.GetAsync(url);
-            var resp = JsonUtility.FromJson<BaasBootstrapResponse>(json);
-            if (resp == null || !resp.ok)
-                throw new InvalidOperationException("baas bootstrap failed");
-            ServiceId = resp.service_id;
-            PublicApiBase = resp.public_api_base;
-            Debug.Log("[BaasNetwork] base=" + PublicApiBase);
-            return resp;
+                if (!string.IsNullOrEmpty(err)) { onComplete?.Invoke(null, err); return; }
+                var resp = JsonUtility.FromJson<BaasBootstrapResponse>(json);
+                if (resp == null || !resp.ok)
+                {
+                    onComplete?.Invoke(null, "baas bootstrap failed");
+                    return;
+                }
+                ServiceId = resp.service_id;
+                PublicApiBase = resp.public_api_base;
+                Debug.Log("[BaasNetwork] base=" + PublicApiBase);
+                onComplete?.Invoke(resp, null);
+            });
         }
 
         public Dictionary<string, string> ServiceHeaders()
         {
             return new Dictionary<string, string>
             {
-                ["X-Baas-Api-Key"] = ApiKey ?? "",
-                ["X-Baas-Service-Id"] = ServiceId ?? "",
+                ["X-Baas-Api-Key"] = ApiKey ?? string.Empty,
+                ["X-Baas-Service-Id"] = ServiceId ?? string.Empty,
             };
         }
 
         public string Url(string relativePath)
         {
-            var basePath = string.IsNullOrEmpty(PublicApiBase) ? "" : PublicApiBase.TrimEnd('/');
+            var basePath = string.IsNullOrEmpty(PublicApiBase) ? string.Empty : PublicApiBase.TrimEnd('/');
             return PortalBaseUrl + basePath + relativePath;
-        }
-
-        static string BuildQuery(Dictionary<string, string> kv)
-        {
-            var parts = new List<string>();
-            foreach (var p in kv)
-                parts.Add(Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value ?? ""));
-            return string.Join("&", parts);
         }
     }
 }
