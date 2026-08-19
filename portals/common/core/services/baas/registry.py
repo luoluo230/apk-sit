@@ -60,13 +60,31 @@ def default_feature_configs() -> Dict[str, Dict[str, Any]]:
         "pve": {
             "stamina_max": 120,
             "stamina_recover_seconds": 360,
+            "heroes": [
+                {"id": 1, "name": "战士", "base_power": 120, "role": "tank"},
+                {"id": 2, "name": "法师", "base_power": 150, "role": "dps"},
+                {"id": 3, "name": "射手", "base_power": 140, "role": "dps"},
+                {"id": 11, "name": "圣骑士", "base_power": 180, "role": "tank"},
+                {"id": 12, "name": "牧师", "base_power": 130, "role": "support"},
+                {"id": 21, "name": "刺客", "base_power": 160, "role": "dps"},
+                {"id": 22, "name": "游侠", "base_power": 155, "role": "dps"},
+            ],
+            "anti_cheat": {
+                "require_checksum": True,
+                "require_replay_hash": True,
+                "min_duration_ms": 3000,
+                "max_duration_ms": 600000,
+                "max_power_delta_ratio": 0.35,
+            },
             "stages": [
                 {"id": "1-1", "chapter": 1, "stage": 1, "name": "第一章-1", "power_required": 100, "stamina_cost": 6, "rewards": {"gold": 100}},
-                {"id": "1-2", "chapter": 1, "stage": 2, "name": "第一章-2", "power_required": 150, "stamina_cost": 6, "rewards": {"gold": 120}},
-                {"id": "2-1", "chapter": 2, "stage": 1, "name": "第二章-1", "power_required": 300, "stamina_cost": 8, "rewards": {"gold": 200}},
+                {"id": "1-2", "chapter": 1, "stage": 2, "name": "第一章-2", "power_required": 250, "stamina_cost": 6, "rewards": {"gold": 120}},
+                {"id": "2-1", "chapter": 2, "stage": 1, "name": "第二章-1", "power_required": 400, "stamina_cost": 8, "rewards": {"gold": 200}},
             ],
         },
         "arena": {
+            "season_id": "arena_s1",
+            "season_name": "第一赛季",
             "daily_attempts": 5,
             "rating_board_id": "arena",
             "win_rating_delta": 15,

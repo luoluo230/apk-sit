@@ -83,8 +83,10 @@ def ensure_baas(portal: str) -> dict:
 def seed_credentials(portal: str) -> dict:
     env = os.environ.copy()
     env["BAAS_E2E_PORTAL"] = portal
+    prod_creds_path = REPO / "docs/evidence/baas-production-e2e-credentials.json"
+    env["BAAS_E2E_CREDENTIALS"] = str(prod_creds_path)
     proc = subprocess.run(
-        [sys.executable, str(CORE / "scripts/seed_baas_playmode_e2e.py")],
+        [sys.executable, str(CORE / "scripts/seed_baas_production_e2e.py")],
         cwd=str(CORE),
         env=env,
         capture_output=True,
@@ -92,9 +94,9 @@ def seed_credentials(portal: str) -> dict:
     )
     if proc.returncode != 0:
         return {"ok": False, "error": proc.stderr or proc.stdout}
-    if not CREDS.is_file():
-        return {"ok": False, "error": f"credentials missing: {CREDS}"}
-    return {"ok": True, "credentials": json.loads(CREDS.read_text(encoding="utf-8"))}
+    if not prod_creds_path.is_file():
+        return {"ok": False, "error": f"credentials missing: {prod_creds_path}"}
+    return {"ok": True, "credentials": json.loads(prod_creds_path.read_text(encoding="utf-8"))}
 
 
 def find_unity() -> Path | None:
@@ -133,6 +135,8 @@ def run_playmode(portal: str, creds: dict) -> dict:
     env["BAAS_E2E_PORTAL"] = portal
     env["BAAS_E2E_SERVICE_ID"] = creds["service_id"]
     env["BAAS_E2E_API_KEY"] = creds["api_key"]
+    env["BAAS_E2E_GAME_ID"] = creds.get("game_id", "")
+    env["BAAS_E2E_GAME_KEY"] = creds.get("game_key", "")
     cmd = [
         str(unity),
         "-batchmode",
@@ -145,13 +149,13 @@ def run_playmode(portal: str, creds: dict) -> dict:
         "-assemblyNames",
         "MAClient.Network.Baas.PlayModeTests",
         "-testFilter",
-        "BaasRoomFanoutPlayModeTests",
+        "BaasPveArenaPlayModeTests|BaasRoomFanoutPlayModeTests",
         "-testResults",
         str(results),
         "-logFile",
         str(log),
     ]
-    print("[playmode] running Unity PlayMode BaasRoomFanoutPlayModeTests")
+    print("[playmode] running Unity PlayMode Baas PVE/Arena + Room fanout tests")
     proc = subprocess.Popen(cmd, env=env, cwd=str(MACLIENT))
     deadline = time.time() + 300
     while time.time() < deadline:

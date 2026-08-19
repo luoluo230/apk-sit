@@ -22,7 +22,7 @@ namespace MAClient.Network.Baas
             yield return BaasHttp.Get(_ctx.ApiPrefix + "/arena/state", _ctx.PlayerHeaders(), onComplete);
         }
 
-        /// <summary>PUT 更新自己的防守阵容快照。defenseJson 例如 {"heroes":[...],"power":1234}。</summary>
+        /// <summary>POST 更新自己的防守阵容快照。defenseJson 例如 {"heroes":[11,12]}。</summary>
         public IEnumerator UpdateDefenseAsync(string defenseJson, int power, Action<BaasApiResponse<string>> onComplete)
         {
             var body = "{\"power\":" + power + ",\"defense\":" + (string.IsNullOrWhiteSpace(defenseJson) ? "{}" : defenseJson) + "}";
@@ -49,20 +49,40 @@ namespace MAClient.Network.Baas
         }
 
         /// <summary>POST 结算竞技场战斗。</summary>
-        public IEnumerator SettleBattleAsync(string battleId, bool win, int durationMs, string checksum, Action<BaasApiResponse<string>> onComplete)
+        public IEnumerator SettleBattleAsync(
+            string battleId,
+            bool win,
+            int durationMs,
+            string checksum,
+            string replayHash,
+            int replayTicks,
+            Action<BaasApiResponse<string>> onComplete)
         {
             var body = "{\"battle_id\":\"" + BaasJsonBody.Escape(battleId) + "\",\"win\":" + (win ? "true" : "false")
-                + ",\"duration_ms\":" + durationMs + ",\"checksum\":\"" + BaasJsonBody.Escape(checksum ?? string.Empty) + "\"}";
+                + ",\"duration_ms\":" + durationMs + ",\"checksum\":\"" + BaasJsonBody.Escape(checksum ?? string.Empty) + "\""
+                + ",\"replay_hash\":\"" + BaasJsonBody.Escape(replayHash ?? string.Empty) + "\""
+                + ",\"replay_ticks\":" + Math.Max(0, replayTicks) + "}";
             yield return BaasHttp.PostJson(_ctx.ApiPrefix + "/arena/battle/settle", body, _ctx.PlayerHeaders(), onComplete);
         }
 
-        /// <summary>生成竞技场结算 checksum（可选）。</summary>
+        /// <summary>生成竞技场结算 checksum。</summary>
         public static string BuildChecksum(int seed, string defenderId, bool win)
         {
             var raw = seed + ":" + (defenderId ?? string.Empty) + ":" + (win ? 1 : 0);
+            return Sha16(raw);
+        }
+
+        /// <summary>生成竞技场 replay hash。</summary>
+        public static string BuildReplayHash(int seed, string teamJson, string defenderId, bool win, int ticks)
+        {
+            return BaasPveClient.BuildReplayHash(seed, "arena", teamJson, win, ticks, defenderId);
+        }
+
+        static string Sha16(string raw)
+        {
             using (var sha = SHA256.Create())
             {
-                var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
+                var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw ?? string.Empty));
                 var sb = new StringBuilder();
                 for (int i = 0; i < 8; i++) sb.Append(hash[i].ToString("x2"));
                 return sb.ToString();

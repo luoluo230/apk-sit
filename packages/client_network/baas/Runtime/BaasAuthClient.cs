@@ -3,6 +3,10 @@ using System.Collections;
 
 namespace MAClient.Network.Baas
 {
+    /// <summary>
+    /// 账号模块：游客登录、密码注册/登录。
+    /// Bootstrap 阶段可直接 new 本类；业务期建议通过 <see cref="BaasFeatureHub.Auth"/> 获取。
+    /// </summary>
     public sealed class BaasAuthClient : IBaasFeatureClient
     {
         readonly BaasClientContext _ctx;

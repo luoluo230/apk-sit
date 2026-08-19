@@ -1069,6 +1069,11 @@ def init_db():
                 """
             )
             _mark_migration(conn, "baas_pve_arena_v1")
+        if not _migration_applied(conn, "baas_pve_arena_v2"):
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(baas_battles)").fetchall()}
+            if "replay_hash" not in cols:
+                conn.execute("ALTER TABLE baas_battles ADD COLUMN replay_hash TEXT NOT NULL DEFAULT ''")
+            _mark_migration(conn, "baas_pve_arena_v2")
         conn.commit()
         _schema_initialized = True
 

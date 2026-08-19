@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace MAClient.Network.Baas
 {
-    /// <summary>Shared runtime context after bootstrap + optional guest login.</summary>
+    /// <summary>登录/bootstrap 后的共享运行时上下文。</summary>
     public sealed class BaasClientContext
     {
         public string PortalBaseUrl { get; internal set; }
@@ -13,6 +13,8 @@ namespace MAClient.Network.Baas
         public string PlayerId { get; internal set; }
         public string PlayerToken { get; internal set; }
         public BaasEndpointRegistry Endpoints { get; } = new BaasEndpointRegistry();
+        /// <summary>bootstrap 下发的功能开关，用于 <see cref="BaasFeatureHub"/> 门控。</summary>
+        public BaasFeatureFlags FeatureFlags { get; } = new BaasFeatureFlags();
 
         public string ApiPrefix => (PortalBaseUrl ?? string.Empty).TrimEnd('/') + (PublicApiBase ?? string.Empty);
 

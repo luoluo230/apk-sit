@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -31,6 +32,7 @@ class BaasPveArenaTests(unittest.TestCase):
     def setUpClass(cls):
         from models.data import projects_db
         from repositories.admin import projects_repo
+        from services.baas.registry import default_feature_configs
         from services.baas.service_crud import ensure_service, update_service
 
         projects_db[_TEST_PROJECT] = {
@@ -58,7 +60,8 @@ class BaasPveArenaTests(unittest.TestCase):
                     "arena": True,
                     "leaderboard": True,
                     "economy": True,
-                }
+                },
+                "feature_configs": default_feature_configs(),
             },
             actor="admin",
         )
@@ -67,10 +70,14 @@ class BaasPveArenaTests(unittest.TestCase):
         self.client = app.test_client()
         app.config["WTF_CSRF_ENABLED"] = False
 
-    def _login(self):
+    def _login(self, name="Hero"):
         base = f"/api/baas/v1/{self.service_id}"
         headers = {"X-Baas-Api-Key": self.api_secret, "Content-Type": "application/json"}
-        resp = self.client.post(f"{base}/auth/guest", headers=headers, data=json.dumps({"display_name": "Hero"}))
+        resp = self.client.post(
+            f"{base}/auth/guest",
+            headers=headers,
+            data=json.dumps({"display_name": name}),
+        )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()["data"]
         player_headers = dict(headers)
@@ -78,28 +85,51 @@ class BaasPveArenaTests(unittest.TestCase):
         player_headers["X-Baas-Player-Id"] = data["player_id"]
         return base, player_headers, data["player_id"]
 
+    def _replay_hash(self, seed, battle_type, team, win, ticks, defender_id=""):
+        from services.baas.battle_antifraud import compute_replay_hash
+
+        return compute_replay_hash(
+            seed=seed,
+            battle_type=battle_type,
+            team=team,
+            defender_id=defender_id,
+            win=win,
+            ticks=ticks,
+        )
+
     def test_pve_start_settle_flow(self):
         base, headers, _pid = self._login()
         prog = self.client.get(f"{base}/pve/progress", headers=headers)
         self.assertEqual(prog.status_code, 200)
         self.assertTrue(prog.get_json().get("ok"))
+        team = {"heroes": [1, 2, 3]}
         start = self.client.post(
             f"{base}/pve/battle/start",
             headers=headers,
-            data=json.dumps({"stage_id": "1-1", "team": {"heroes": [1, 2, 3]}}),
+            data=json.dumps({"stage_id": "1-1", "team": team}),
         )
         self.assertEqual(start.status_code, 200)
         start_body = start.get_json()
         self.assertTrue(start_body.get("ok"))
         battle_id = start_body["data"]["battle_id"]
         seed = start_body["data"]["seed"]
-        import hashlib
-
-        checksum = hashlib.sha256(f"{seed}:1-1:1:3".encode()).hexdigest()[:16]
+        win = True
+        stars = 3
+        ticks = 20
+        checksum = hashlib.sha256(f"{seed}:1-1:1:{stars}".encode()).hexdigest()[:16]
+        replay_hash = self._replay_hash(seed, "pve", team, win, ticks)
         settle = self.client.post(
             f"{base}/pve/battle/settle",
             headers=headers,
-            data=json.dumps({"battle_id": battle_id, "win": True, "stars": 3, "duration_ms": 12000, "checksum": checksum}),
+            data=json.dumps({
+                "battle_id": battle_id,
+                "win": win,
+                "stars": stars,
+                "duration_ms": 12000,
+                "checksum": checksum,
+                "replay_hash": replay_hash,
+                "replay_ticks": ticks,
+            }),
         )
         self.assertEqual(settle.status_code, 200)
         settle_body = settle.get_json()
@@ -109,39 +139,49 @@ class BaasPveArenaTests(unittest.TestCase):
         self.assertGreaterEqual(progress.get("total_cleared", 0), 1)
 
     def test_arena_offline_battle_flow(self):
-        base, headers, pid = self._login()
-        base2, headers2, pid2 = self._login()
+        base, headers, pid = self._login("ArenaAtk")
+        base2, headers2, pid2 = self._login("ArenaDef")
         self.assertNotEqual(pid, pid2)
-        for h, p, defense in ((headers, pid, {"heroes": [11, 12]}), (headers2, pid2, {"heroes": [21, 22]})):
+        for h, defense, power in (
+            (headers2, {"heroes": [21, 22]}, 315),
+            (headers, {"heroes": [11, 12]}, 310),
+        ):
             resp = self.client.post(
                 f"{base}/arena/defense",
                 headers=h,
-                data=json.dumps({"defense": defense, "power": 500}),
+                data=json.dumps({"defense": defense, "power": power}),
             )
             self.assertEqual(resp.status_code, 200)
             self.assertTrue(resp.get_json().get("ok"))
         opponents = self.client.get(f"{base}/arena/opponents?count=3", headers=headers)
         self.assertEqual(opponents.status_code, 200)
-        opp_list = opponents.get_json().get("data") or []
         defender_id = pid2
-        if opp_list:
-            defender_id = opp_list[0]["player_id"]
+        team = {"heroes": [1, 2]}
         start = self.client.post(
             f"{base}/arena/battle/start",
             headers=headers,
-            data=json.dumps({"defender_id": defender_id, "team": {"heroes": [1, 2]}}),
+            data=json.dumps({"defender_id": defender_id, "team": team}),
         )
-        self.assertEqual(start.status_code, 200)
+        if start.status_code != 200:
+            self.fail(start.get_json())
         start_data = start.get_json()["data"]
         battle_id = start_data["battle_id"]
         seed = start_data["seed"]
-        import hashlib
-
+        win = True
+        ticks = 18
         checksum = hashlib.sha256(f"{seed}:{defender_id}:1".encode()).hexdigest()[:16]
+        replay_hash = self._replay_hash(seed, "arena", team, win, ticks, defender_id)
         settle = self.client.post(
             f"{base}/arena/battle/settle",
             headers=headers,
-            data=json.dumps({"battle_id": battle_id, "win": True, "duration_ms": 8000, "checksum": checksum}),
+            data=json.dumps({
+                "battle_id": battle_id,
+                "win": win,
+                "duration_ms": 8000,
+                "checksum": checksum,
+                "replay_hash": replay_hash,
+                "replay_ticks": ticks,
+            }),
         )
         self.assertEqual(settle.status_code, 200)
         result = settle.get_json()["data"]

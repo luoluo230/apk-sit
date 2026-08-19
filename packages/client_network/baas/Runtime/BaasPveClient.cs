@@ -36,22 +36,46 @@ namespace MAClient.Network.Baas
             yield return BaasHttp.PostJson(_ctx.ApiPrefix + "/pve/battle/start", body, _ctx.PlayerHeaders(), onComplete);
         }
 
-        /// <summary>POST 结算 PVE。checksum 可选，用于基础防篡改（seed+stage+结果）。</summary>
-        public IEnumerator SettleBattleAsync(string battleId, bool win, int stars, int durationMs, string checksum, Action<BaasApiResponse<string>> onComplete)
+        /// <summary>POST 结算 PVE。checksum / replay_hash 用于防篡改与回放摘要校验。</summary>
+        public IEnumerator SettleBattleAsync(
+            string battleId,
+            bool win,
+            int stars,
+            int durationMs,
+            string checksum,
+            string replayHash,
+            int replayTicks,
+            Action<BaasApiResponse<string>> onComplete)
         {
             var body = "{\"battle_id\":\"" + BaasJsonBody.Escape(battleId) + "\",\"win\":" + (win ? "true" : "false")
                 + ",\"stars\":" + stars + ",\"duration_ms\":" + durationMs
-                + ",\"checksum\":\"" + BaasJsonBody.Escape(checksum ?? string.Empty) + "\"}";
+                + ",\"checksum\":\"" + BaasJsonBody.Escape(checksum ?? string.Empty) + "\""
+                + ",\"replay_hash\":\"" + BaasJsonBody.Escape(replayHash ?? string.Empty) + "\""
+                + ",\"replay_ticks\":" + Math.Max(0, replayTicks) + "}";
             yield return BaasHttp.PostJson(_ctx.ApiPrefix + "/pve/battle/settle", body, _ctx.PlayerHeaders(), onComplete);
         }
 
-        /// <summary>生成与服务端一致的结算 checksum（可选）。</summary>
+        /// <summary>生成与服务端一致的结算 checksum。</summary>
         public static string BuildChecksum(int seed, string stageId, bool win, int stars)
         {
             var raw = seed + ":" + (stageId ?? string.Empty) + ":" + (win ? 1 : 0) + ":" + stars;
+            return Sha16(raw);
+        }
+
+        /// <summary>生成与服务端一致的 replay hash（需与 BaasSeedBattleSimulator 输出一致）。</summary>
+        public static string BuildReplayHash(int seed, string battleType, string teamJson, bool win, int ticks, string defenderId = "")
+        {
+            var normalizedTeam = string.IsNullOrWhiteSpace(teamJson) ? "{}" : teamJson.Trim();
+            var raw = seed + ":" + (battleType ?? string.Empty) + ":" + normalizedTeam + ":"
+                + (defenderId ?? string.Empty) + ":" + (win ? 1 : 0) + ":" + Math.Max(0, ticks);
+            return Sha16(raw);
+        }
+
+        static string Sha16(string raw)
+        {
             using (var sha = SHA256.Create())
             {
-                var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
+                var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw ?? string.Empty));
                 var sb = new StringBuilder();
                 for (int i = 0; i < 8; i++) sb.Append(hash[i].ToString("x2"));
                 return sb.ToString();

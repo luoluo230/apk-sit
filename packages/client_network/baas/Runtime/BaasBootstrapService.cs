@@ -4,7 +4,10 @@ using UnityEngine;
 
 namespace MAClient.Network.Baas
 {
-    /// <summary>One-call bootstrap + optional guest login for BaaS projects.</summary>
+    /// <summary>
+    /// BaaS 一键 Bootstrap：拉取服务配置、端点表，可选自动游客登录。
+    /// 新项目接入标准流程：创建 <see cref="BaasNetworkSettings"/> → 本类 → <see cref="BaasFeatureHub"/>。
+    /// </summary>
     public sealed class BaasBootstrapService : INetworkModule
     {
         public const string FrameworkIdValue = "casual_baas";
@@ -57,7 +60,10 @@ namespace MAClient.Network.Baas
                 PublicApiBase = _module.PublicApiBase,
             };
             if (!string.IsNullOrEmpty(bootstrapJson))
+            {
                 _context.Endpoints.LoadFromBootstrapJson(bootstrapJson, _context.ServiceId);
+                _context.FeatureFlags.LoadFromBootstrapJson(bootstrapJson);
+            }
 
             if (!_settings.AutoGuestLoginAfterBootstrap)
             {

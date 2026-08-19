@@ -250,7 +250,14 @@ class BaasLiveBusinessChain:
                 return self._record("pve_afk_chain", False, {"step": "start", "response": start})
             battle_id = (start.get("data") or {}).get("battle_id")
             seed = (start.get("data") or {}).get("seed")
+            stage_id = "1-1"
+            stars = 3
+            ticks = 20
+            team = {"heroes": [1, 2, 3]}
             checksum = hashlib.sha256(f"{seed}:{stage_id}:1:{stars}".encode()).hexdigest()[:16]
+            from services.baas.battle_antifraud import compute_replay_hash
+
+            replay_hash = compute_replay_hash(seed=seed, battle_type="pve", team=team, win=True, ticks=ticks)
             settle = http_json(
                 f"{self.base}/pve/battle/settle",
                 method="POST",
@@ -260,6 +267,8 @@ class BaasLiveBusinessChain:
                     "stars": stars,
                     "duration_ms": 12000,
                     "checksum": checksum,
+                    "replay_hash": replay_hash,
+                    "replay_ticks": ticks,
                 },
                 headers=h1,
             )
@@ -291,21 +300,19 @@ class BaasLiveBusinessChain:
             def_up = http_json(
                 f"{self.base}/arena/defense",
                 method="POST",
-                body={"defense": {"heroes": [21, 22]}, "power": 500},
+                body={"defense": {"heroes": [21, 22]}, "power": 315},
                 headers=h2,
             )
             def_atk = http_json(
                 f"{self.base}/arena/defense",
                 method="POST",
-                body={"defense": {"heroes": [11, 12]}, "power": 480},
+                body={"defense": {"heroes": [11, 12]}, "power": 310},
                 headers=h1,
             )
             state0 = http_json(f"{self.base}/arena/state", headers=h1)
             opponents = http_json(f"{self.base}/arena/opponents?count=3", headers=h1)
             opp_list = opponents.get("data") or []
             defender_id = p2["player_id"]
-            if opp_list:
-                defender_id = opp_list[0].get("player_id") or defender_id
             start = http_json(
                 f"{self.base}/arena/battle/start",
                 method="POST",
@@ -317,11 +324,25 @@ class BaasLiveBusinessChain:
             battle_id = (start.get("data") or {}).get("battle_id")
             seed = (start.get("data") or {}).get("seed")
             win = True
+            ticks = 18
+            team = {"heroes": [1, 2]}
             checksum = hashlib.sha256(f"{seed}:{defender_id}:{int(win)}".encode()).hexdigest()[:16]
+            from services.baas.battle_antifraud import compute_replay_hash
+
+            replay_hash = compute_replay_hash(
+                seed=seed, battle_type="arena", team=team, defender_id=defender_id, win=win, ticks=ticks
+            )
             settle = http_json(
                 f"{self.base}/arena/battle/settle",
                 method="POST",
-                body={"battle_id": battle_id, "win": win, "duration_ms": 8000, "checksum": checksum},
+                body={
+                    "battle_id": battle_id,
+                    "win": win,
+                    "duration_ms": 8000,
+                    "checksum": checksum,
+                    "replay_hash": replay_hash,
+                    "replay_ticks": ticks,
+                },
                 headers=h1,
             )
             state1 = http_json(f"{self.base}/arena/state", headers=h1)

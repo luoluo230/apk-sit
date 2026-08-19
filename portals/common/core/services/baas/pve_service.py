@@ -9,6 +9,18 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from models.db import get_cursor, init_db
+from services.baas.battle_antifraud import (
+    anti_cheat_cfg,
+    audit_battle_anomaly,
+    compute_replay_hash,
+    heroes_catalog,
+    prior_stage_id,
+    team_power,
+    validate_team,
+    verify_checksum,
+    verify_duration,
+    verify_replay_hash,
+)
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
 from services.baas.service_crud import feature_enabled, get_feature_config
 
@@ -62,6 +74,19 @@ def _save_stamina(cur, service_id: str, player_id: str, payload: Dict[str, Any])
     )
 
 
+def _stage_cleared(cur, service_id: str, player_id: str, stage_id: str) -> bool:
+    if not stage_id:
+        return True
+    row = cur.execute(
+        """
+        SELECT cleared FROM baas_chapter_progress
+        WHERE service_id=? AND player_id=? AND stage_id=?
+        """,
+        (service_id, player_id, stage_id),
+    ).fetchone()
+    return bool(row and int(row["cleared"] or 0))
+
+
 def get_stamina(service_id: str, player_id: str) -> Dict[str, Any]:
     if not feature_enabled(service_id, "pve"):
         raise ValueError("PVE 功能未启用")
@@ -102,9 +127,20 @@ def start_battle(
         raise ValueError("PVE 功能未启用")
     cfg = get_feature_config(service_id, "pve")
     stage = _stage_def(cfg, stage_id)
-    cost = int(stage.get("stamina_cost") or 6)
+    heroes = heroes_catalog(cfg)
+    ok, msg = validate_team(team, heroes)
+    if not ok:
+        raise ValueError(msg)
+    power = team_power(team, heroes)
+    required = int(stage.get("power_required") or 0)
+    if required > 0 and power < required:
+        raise ValueError("战力不足，无法挑战该关卡")
+    prev = prior_stage_id(cfg, stage_id)
     init_db()
     with get_cursor() as cur:
+        if prev and not _stage_cleared(cur, service_id, player_id, prev):
+            raise ValueError("请先通关前置关卡")
+        cost = int(stage.get("stamina_cost") or 6)
         stamina = _stamina_state(cur, service_id, player_id, cfg)
         if int(stamina.get("current") or 0) < cost:
             raise ValueError("体力不足")
@@ -117,8 +153,8 @@ def start_battle(
             """
             INSERT INTO baas_battles (
                 battle_id, service_id, player_id, battle_type, stage_id, defender_id,
-                status, seed, team_json, result_json, started_at, settled_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                status, seed, team_json, result_json, started_at, settled_at, replay_hash
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 battle_id,
@@ -133,6 +169,7 @@ def start_battle(
                 "{}",
                 now,
                 "",
+                "",
             ),
         )
     return {
@@ -141,6 +178,7 @@ def start_battle(
         "stage_id": stage_id,
         "seed": seed,
         "stage": stage,
+        "team_power": power,
         "stamina": stamina,
         "server_time": now,
     }
@@ -155,10 +193,13 @@ def settle_battle(
     stars: int = 0,
     duration_ms: int = 0,
     checksum: str = "",
+    replay_hash: str = "",
+    replay_ticks: int = 0,
 ) -> Dict[str, Any]:
     if not feature_enabled(service_id, "pve"):
         raise ValueError("PVE 功能未启用")
     cfg = get_feature_config(service_id, "pve")
+    ac = anti_cheat_cfg(cfg)
     bid = str(battle_id or "").strip()
     if not bid:
         raise ValueError("battle_id 必填")
@@ -181,9 +222,23 @@ def settle_battle(
             raise ValueError("战斗已结束或已过期")
         stage_id = str(row["stage_id"] or "")
         stage = _stage_def(cfg, stage_id)
-        expected = hashlib.sha256(f"{row['seed']}:{stage_id}:{int(win)}:{stars}".encode()).hexdigest()[:16]
-        if checksum and str(checksum).strip() not in (expected, ""):
-            raise ValueError("战斗校验失败")
+        team = _json_load(row["team_json"], {})
+        seed = int(row["seed"] or 0)
+        expected_checksum = hashlib.sha256(f"{seed}:{stage_id}:{int(win)}:{stars}".encode()).hexdigest()[:16]
+        expected_replay = compute_replay_hash(
+            seed=seed,
+            battle_type="pve",
+            team=team,
+            win=win,
+            ticks=int(replay_ticks or 0),
+        )
+        try:
+            verify_checksum(expected_checksum, checksum, required=ac["require_checksum"])
+            verify_replay_hash(expected_replay, replay_hash, required=ac["require_replay_hash"])
+            verify_duration(int(duration_ms or 0), ac)
+        except ValueError as exc:
+            audit_battle_anomaly(service_id, player_id, bid, str(exc), {"battle_type": "pve", "stage_id": stage_id})
+            raise
         rewards = dict(stage.get("rewards") or {})
         if not win:
             rewards = {}
@@ -195,11 +250,12 @@ def settle_battle(
             "duration_ms": int(duration_ms or 0),
             "rewards": rewards,
             "stage_id": stage_id,
+            "replay_hash": str(replay_hash or ""),
             "settled_at": now,
         }
         cur.execute(
-            "UPDATE baas_battles SET status=?, result_json=?, settled_at=? WHERE battle_id=?",
-            ("settled", _json_dump(result), now, bid),
+            "UPDATE baas_battles SET status=?, result_json=?, settled_at=?, replay_hash=? WHERE battle_id=?",
+            ("settled", _json_dump(result), now, str(replay_hash or ""), bid),
         )
         if win:
             prev = cur.execute(

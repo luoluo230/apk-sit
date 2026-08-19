@@ -460,6 +460,8 @@ def register_baas_public_routes(bp=None) -> None:
                     stars=int(body.get("stars") or 0),
                     duration_ms=int(body.get("duration_ms") or 0),
                     checksum=str(body.get("checksum") or ""),
+                    replay_hash=str(body.get("replay_hash") or ""),
+                    replay_ticks=int(body.get("replay_ticks") or 0),
                 ),
             })
         except Exception as exc:
@@ -559,6 +561,8 @@ def register_baas_public_routes(bp=None) -> None:
                     win=bool(body.get("win")),
                     duration_ms=int(body.get("duration_ms") or 0),
                     checksum=str(body.get("checksum") or ""),
+                    replay_hash=str(body.get("replay_hash") or ""),
+                    replay_ticks=int(body.get("replay_ticks") or 0),
                 ),
             })
         except Exception as exc:

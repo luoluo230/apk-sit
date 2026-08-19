@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Seed BaaS PlayMode E2E project/service credentials (pvp enabled)."""
+"""Seed BaaS PlayMode E2E project/service credentials (pvp + pve + arena enabled)."""
 
 from __future__ import annotations
 
@@ -29,8 +29,9 @@ _GAME_KEY = "baas-playmode-e2e-key"
 
 def main() -> int:
     from models.data import projects_db
-    from models.db import get_cursor, init_db
+    from models.db import init_db
     from repositories.admin import projects_repo
+    from services.baas.registry import default_feature_configs
     from services.baas.service_crud import ensure_service, rotate_api_secret, update_service
 
     init_db()
@@ -47,6 +48,7 @@ def main() -> int:
     service_id = svc["service_id"]
     if not secret:
         secret, _ = rotate_api_secret(_PROJECT, service_id)
+    configs = default_feature_configs()
     update_service(
         _PROJECT,
         service_id,
@@ -56,8 +58,11 @@ def main() -> int:
                 "announce": True,
                 "mail": True,
                 "cloudsave": True,
+                "pve": True,
+                "arena": True,
                 "pvp": True,
-            }
+            },
+            "feature_configs": configs,
         },
         actor="admin",
     )

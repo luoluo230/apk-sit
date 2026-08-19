@@ -52,8 +52,10 @@ namespace MAClient.Network.Baas
 
         public static BaasApiResponse<string> FromRawJson(string json)
         {
-            return FromJson(json, raw => raw);
+            return BaasApiResponse<string>.FromJson(json, ParseStringFragment);
         }
+
+        static string ParseStringFragment(string raw) => raw ?? string.Empty;
 
         static bool ExtractBool(string json, string key)
         {
@@ -85,7 +87,16 @@ namespace MAClient.Network.Baas
                 }
                 return end > idx + 1 ? json.Substring(idx + 1, end - idx - 1) : string.Empty;
             }
-            return string.Empty;
+            int endNum = idx;
+            while (endNum < json.Length && (char.IsDigit(json[endNum]) || json[endNum] == '-' || json[endNum] == '.'))
+                endNum++;
+            return endNum > idx ? json.Substring(idx, endNum - idx) : string.Empty;
+        }
+
+        public static int ExtractInt(string json, string key, int defaultValue = 0)
+        {
+            var raw = ExtractString(json, key);
+            return int.TryParse(raw, out var value) ? value : defaultValue;
         }
 
         public static string ExtractObject(string json, string key)

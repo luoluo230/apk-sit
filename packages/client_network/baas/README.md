@@ -1,40 +1,75 @@
 # BaaS Client Network Module
 
-Pairs with **casual_baas_server** (`PORTAL_SERVER_FRAMEWORKS=baas`).
+轻量级休闲游戏 **客户端网络模块**，与 Portal `casual_baas_server` 配对使用。
 
-## Export / Import (decoupled)
+> 中文模块说明见 [MODULES.zh-CN.md](./MODULES.zh-CN.md)  
+> 接入步骤见 [docs/runbooks/baas_client_onboarding.md](../../docs/runbooks/baas_client_onboarding.md)
+
+## Export / Import
 
 ```powershell
-# From apk-site repo root — export standalone zip
 powershell -ExecutionPolicy Bypass -File scripts/Export-ClientNetworkModule.ps1 -Module baas
-
-# Import into maclient (creates Assets/Modules/BaasNetwork)
 powershell -ExecutionPolicy Bypass -File scripts/Import-ClientNetworkModule.ps1 -Module baas -MaclientRoot E:\maclient
 ```
 
-Unity menu (maclient): `Tools/MAClient/协议与网络/导出BaaS网络模块ZIP`
+Base project only needs `ClientNetworkModuleGate` (stubs). Do not import topology in the same product unless dual-stack.
 
-Base project only needs `ClientNetworkModuleGate` (stubs). **Do not** import topology module in the same product unless running dual-stack.
+## Architecture
+
+```
+BaasNetworkSettings
+    → BaasBootstrapService (INetworkModule)
+        → BaasClientContext + FeatureFlags + Endpoints
+            → BaasFeatureHub
+                → BaasAuthClient / BaasPveClient / BaasArenaClient / …
+```
 
 ## Runtime API
 
-| Class | Purpose |
-|-------|---------|
-| `BaasNetworkModule` | client-bootstrap |
-| `BaasRoomClient` | guest login, matchmake, start, push_frame, poll_frames, finish |
+| Class | Feature key | Purpose |
+|-------|-------------|---------|
+| `BaasBootstrapService` | — | Bootstrap + optional guest login |
+| `BaasFeatureHub` | — | Unified module accessor with feature gating |
+| `BaasFeatureKeys` | — | Feature flag constants |
+| `BaasCoroutineHelper` | — | Coroutine invoke + error helper |
+| `BaasAuthClient` | login | Guest / password auth |
+| `BaasAnnounceClient` | announce | Announcements |
+| `BaasMailClient` | mail | Inbox + claim |
+| `BaasCloudSaveClient` | cloudsave | KV cloud save |
+| `BaasLeaderboardClient` | leaderboard | Score boards |
+| `BaasShopClient` | economy | Shop + wallet |
+| `BaasAchievementClient` | achievement | Achievements |
+| `BaasGiftClient` | gift | Gift codes |
+| `BaasGuildClient` | guild | Guilds |
+| `BaasBattlePassClient` | battlepass | Battle pass |
+| `BaasTaskClient` | periodic_task | Daily/weekly tasks |
+| `BaasComplianceClient` | compliance | Anti-addiction |
+| `BaasPveClient` | pve | AFK-style PVE stages |
+| `BaasArenaClient` | arena | Async arena PVP |
+| `BaasRoomClient` | pvp | Realtime room PVP |
 
 Namespace: `MAClient.Network.Baas`  
 Assembly: `MAClient.Network.Baas.asmdef`
 
-## Live E2E (PlayMode)
+## Quick start
 
-```powershell
-$env:BAAS_E2E_PORTAL="http://127.0.0.1:5004"
-$env:BAAS_E2E_SERVICE_ID="<service-uuid>"
-$env:BAAS_E2E_API_KEY="<api-secret>"
-# Unity PlayMode: BaasRoomFanoutPlayModeTests
+```csharp
+var bootstrap = new BaasBootstrapService(BaasNetworkSettings.LoadOrDefault());
+yield return bootstrap.BootstrapCoroutine((ok, err) => { /* ... */ });
+var hub = new BaasFeatureHub(bootstrap.Context);
+yield return hub.Pve.GetStaminaAsync(resp => Debug.Log(resp.UserMessage));
 ```
 
-## MVP boundary
+## E2E
 
-See `docs/design_specs/casual_baas_pvp_mvp_boundary.md`
+```powershell
+cd portals/common/core
+py -3 scripts/run_baas_playmode_e2e.py
+py -3 scripts/run_baas_production_readiness_e2e.py
+```
+
+Environment: `BAAS_E2E_PORTAL`, `BAAS_E2E_API_KEY`, `BAAS_E2E_GAME_ID`, `BAAS_E2E_GAME_KEY`
+
+## Contract version
+
+Bootstrap returns `contract_version`; client zip includes generated `BaasErrorCodes` / `BaasOpenApiEndpoints` from `scripts/generate_baas_error_artifacts.py`.
