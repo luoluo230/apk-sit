@@ -77,6 +77,10 @@ def register_routes(bp, *, current_username):
             abort(403)
 
         env_key = str(request.args.get("env_key") or "").strip()
+        if not env_key:
+            return redirect(
+                f"/admin/projects/{project_id}/overview?{urlencode({'tab': 'environments', 'hint': 'pick_env'})}"
+            )
         channel_filter = str(request.args.get("channel_id") or "").strip()
         platform_filter = str(request.args.get("platform") or "").strip().lower()
         can_edit = can_edit_project(project_id, current_username())
