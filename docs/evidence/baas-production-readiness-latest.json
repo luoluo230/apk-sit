@@ -1,0 +1,214 @@
+{
+  "verdict": "pass",
+  "generatedUtc": "2026-08-19T10:16:10.673472+00:00",
+  "portal": "http://127.0.0.1:5004",
+  "checks": [
+    {
+      "name": "deploy_pack_baas",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "bytes": 90535,
+        "file": "E:\\web\\apk-site\\dist\\baas-server-architecture-e2e-verify.zip",
+        "missing": []
+      }
+    },
+    {
+      "name": "baas_server_start",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "mode": "skip_start"
+      }
+    },
+    {
+      "name": "monitoring_endpoints",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "checks": {
+          "health": true,
+          "health_detailed": true,
+          "metrics": true,
+          "metrics_after_traffic": true
+        }
+      }
+    },
+    {
+      "name": "seed_production_project",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "credentials": {
+          "project_id": "baas_production_e2e",
+          "game_id": "baas-production-e2e",
+          "game_key": "baas-production-e2e-key",
+          "service_id": "1a29ea11-cd7f-416c-a371-d14dd86bc6cd",
+          "api_key": "VbFCRD_RFp-rcQzg6isysnnyJ7rirYjRmD8PPqlDjWs",
+          "portal": "http://127.0.0.1:5004",
+          "env_key": "development"
+        }
+      }
+    },
+    {
+      "name": "pytest_baas_suite",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "exit_code": 0,
+        "output_tail": "................s..                                                      [100%]\n============================== warnings summary ===============================\nportals/common/core/tests/test_baas_room_service.py: 49 warnings\nportals/common/core/tests/test_baas_gm_ops.py: 23 warnings\nportals/common/core/tests/test_baas_public_api.py: 33 warnings\nportals/common/core/tests/test_baas_auth.py: 3 warnings\nportals/common/core/tests/test_baas_standalone.py: 4 warnings\n  E:\\web\\apk-site\\portals\\common\\core\\services\\baas\\helpers.py:17: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n    return datetime.utcnow().replace(microsecond=0).isoformat() + \"Z\"\n\nportals/common/core/tests/test_baas_public_api.py::BaasPublicApiTests::test_guest_login_announce_mail_cloudsave_flow\nportals/common/core/tests/test_baas_public_api.py::BaasPublicApiTests::test_pvp_matchmake_and_frame_fanout\nportals/common/core/tests/test_baas_public_api.py::BaasPublicApiTests::test_pvp_matchmake_and_frame_fanout\nportals/common/core/tests/test_baas_auth.py::BaasAuthServiceTests::test_guest_login_and_resolve_player\nportals/common/core/tests/test_baas_standalone.py::BaasStandaloneTests::test_gm_wallet_and_gift_code\n  E:\\web\\apk-site\\portals\\common\\core\\services\\baas\\helpers.py:62: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).\n    return (datetime.utcnow() + timedelta(hours=max(1, int(hours or 168)))).replace(microsecond=0).isoformat() + \"Z\"\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ===========================\nSKIPPED [1] tests\\test_server_framework_modules.py:78: no api secret\n18 passed, 1 skipped, 117 warnings in 0.97s\n"
+      }
+    },
+    {
+      "name": "gm_web_and_api",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "scenarios": [
+          {
+            "name": "admin_login",
+            "ok": true,
+            "detail": {
+              "status": 302
+            }
+          },
+          {
+            "name": "gm_web_console",
+            "ok": true,
+            "detail": {
+              "page_200": true,
+              "baas_gm_marker": true,
+              "nav_players": true,
+              "nav_rooms": true,
+              "js_loaded": true
+            }
+          },
+          {
+            "name": "gm_api_chain",
+            "ok": true,
+            "detail": {
+              "dashboard": true,
+              "wallet": true,
+              "mail_broadcast": true,
+              "gift_code": true,
+              "rooms": true,
+              "audit": true,
+              "gameserver_health_reachable": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "live_business_chain",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "scenarios": [
+          {
+            "name": "bootstrap_dual_path",
+            "ok": true,
+            "detail": {
+              "client_bootstrap": true,
+              "baas_bootstrap": true
+            }
+          },
+          {
+            "name": "phase1_core",
+            "ok": true,
+            "detail": {
+              "register": true,
+              "announce": true,
+              "mail_inbox": true,
+              "cloudsave_level": true
+            }
+          },
+          {
+            "name": "phase2_retention",
+            "ok": true,
+            "detail": {
+              "leaderboard": true,
+              "shop_purchase": true,
+              "achievement_claim": true
+            }
+          },
+          {
+            "name": "phase3_social",
+            "ok": true,
+            "detail": {
+              "guild_create": true,
+              "battlepass_claim": true,
+              "task_claim": true
+            }
+          },
+          {
+            "name": "phase4_compliance",
+            "ok": true,
+            "detail": {
+              "session_start": true,
+              "heartbeat": true,
+              "verify": true
+            }
+          },
+          {
+            "name": "pvp_frame_fanout",
+            "ok": true,
+            "detail": {
+              "room_id": "room_251081a2452e44b5",
+              "notifyLatencyMs": 53,
+              "frame_count": 1,
+              "finish": true
+            }
+          },
+          {
+            "name": "gift_redeem_gm_code",
+            "ok": true,
+            "detail": {
+              "code": "PRODE2E2026",
+              "response": true
+            }
+          },
+          {
+            "name": "mail_claim",
+            "ok": true,
+            "detail": {
+              "skipped": true,
+              "reason": "no mail yet"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "client_module_import",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "exit_code": 0,
+        "output": "[import] module=baas target=Assets/Modules/BaasNetwork remove=False\n"
+      }
+    },
+    {
+      "name": "unity_playmode",
+      "ok": true,
+      "required": true,
+      "detail": {
+        "ok": true,
+        "detail": {
+          "ok": true,
+          "exit_code": 0,
+          "log_tail": "ne.Debug:ExtractStackTraceNoAlloc (byte*,int,string)\nUnityEngine.StackTraceUtility:ExtractStackTrace ()\nUnityEngine.DebugLogHandler:Internal_Log (UnityEngine.LogType,UnityEngine.LogOption,string,UnityEngine.Object)\nUnityEngine.DebugLogHandler:LogFormat (UnityEngine.LogType,UnityEngine.Object,string,object[])\nUnityEngine.Logger:Log (UnityEngine.LogType,object)\nUnityEngine.Debug:Log (object)\nMCPForUnity.Editor.Helpers.McpLog:Info (string,bool) (at Assets/ThirdParty/MCPForUnity/Editor/Helpers/McpLog.cs:40)\nMCPForUnity.Editor.Services.ServerManagementService:StopLocalHttpServerInternal (bool,System.Nullable`1<int>,bool) (at Assets/ThirdParty/MCPForUnity/Editor/Services/ServerManagementService.cs:650)\nMCPForUnity.Editor.Services.ServerManagementService:StopLocalHttpServer () (at Assets/ThirdParty/MCPForUnity/Editor/Services/ServerManagementService.cs:340)\nMCPForUnity.Editor.Services.McpEditorShutdownCleanup:OnEditorQuitting () (at Assets/ThirdParty/MCPForUnity/Editor/Services/McpEditorShutdownCleanup.cs:60)\nUnityEditor.EditorApplication:Internal_EditorApplicationQuit ()\nUnityEditor.TestTools.TestRunner.CommandLineTest.Executer:ExitApplication (UnityEditor.TestTools.TestRunner.CommandLineTest.Executer/ReturnCodes,string) (at ./Library/PackageCache/com.unity.test-framework@aebcb98460c6/UnityEditor.TestRunner/CommandLineTest/Executer.cs:83)\nUnityEditor.TestTools.TestRunner.CommandLineTest.Executer:ExitIfRunIsCompleted () (at ./Library/PackageCache/com.unity.test-framework@aebcb98460c6/UnityEditor.TestRunner/CommandLineTest/Executer.cs:74)\nUnityEditor.EditorApplication:Internal_CallUpdateFunctions ()\n\n(Filename: Assets/ThirdParty/MCPForUnity/Editor/Helpers/McpLog.cs Line: 40)\n\nKilling ADB server in 2.082398 seconds.\n[Physics::Module] Cleanup current backend.\n[Physics::Module] Id: 0xf2b8ea05\nInput System module state changed to: ShutdownInProgress.\nInput System polling thread exited.\nInput System module state changed to: Shutdown.\n[Licensing::IpcConnector] LicenseClient-Administrator-6000.3.15-notifications channel disconnected successfully.\n[Licensing::IpcConnector] LicenseClient-Administrator-6000.3.15 channel disconnected successfully.\nAcceleratorClientConnectionCallback - disconnected - :0\nCleanup mono\nChecking for leaked weakptr:\n  Found no leaked weakptrs.\n[Package Manager] Server process was shutdown\n##utp:{\"type\":\"MemoryLeaks\",\"version\":2,\"phase\":\"Immediate\",\"time\":1787134590870,\"processId\":22548,\"allocatedMemory\":18581447,\"memoryLabels\":[{\"Default\":14409},{\"Permanent\":15236},{\"NewDelete\":68443},{\"Thread\":4230384},{\"Manager\":35037},{\"VertexData\":60896},{\"Geometry\":816},{\"Texture\":296},{\"Shader\":79381},{\"Material\":24},{\"GfxDevice\":55873},{\"Animation\":392},{\"Audio\":2664},{\"FreeType\":8},{\"FontEngine\":736},{\"Physics\":2090},{\"Physics2D\":16},{\"Serialization\":20052},{\"Input\":14984},{\"JobScheduler\":33024},{\"TextLib\":216},{\"Mono\":32},{\"ScriptingNativeRuntime\":155060},{\"BaseObject\":1620400},{\"Resource\":1336},{\"Renderer\":3000},{\"Transform\":4685},{\"File\":27449},{\"WebCam\":616},{\"Culling\":32},{\"Terrain\":11394},{\"Wind\":24},{\"STL\":40},{\"String\":13579},{\"DynamicArray\":120900},{\"HashMap\":3859414},{\"Utility\":2661366},{\"Curl\":2559},{\"PoolAlloc\":2056},{\"AI\":80},{\"TypeTree\":5341},{\"ScriptManager\":512},{\"RuntimeInitializeOnLoadManager\":64},{\"SpriteAtlas\":112},{\"GI\":7792},{\"Director\":8240},{\"CloudService\":432},{\"WebRequest\":145034},{\"VR\":47994},{\"SceneManager\":504},{\"Video\":64},{\"LazyScriptCache\":32},{\"Camera\":17},{\"Secure\":2113},{\"SerializationCache\":1576},{\"APIUpdating\":10320},{\"Subsystems\":336},{\"VirtualTexturing\":57888},{\"StaticSafetyDebugInfo\":278528},{\"Analytics\":256},{\"Hierarchy\":608},{\"CoreStats\":13032},{\"Identifiers\":12960},{\"Gui\":96},{\"EditorUtility\":125929},{\"VersionControl\":4},{\"Undo\":947},{\"AssetDatabase\":4696904},{\"EditorGi\":328},{\"UnityConnect\":29232},{\"Upm\":1896},{\"AssetCompliance\":64},{\"DrivenProperties\":72},{\"LocalIPC\":219},{\"ProfilerEditor\":9746},{\"CoreBusinessMetrics\":2632},{\"Licensing\":664},{\"AssetReference\":32},{\"IPCStream\":32}]}\n",
+          "results_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<test-run id=\"2\" testcasecount=\"0\" result=\"Passed\" total=\"0\" passed=\"0\" failed=\"0\" inconclusive=\"0\" skipped=\"0\" asserts=\"0\" engine-version=\"3.5.0.0\" clr-version=\"4.0.30319.42000\" start-time=\"2026-08-19 10:16:27Z\" end-time=\"2026-08-19 10:16:27Z\" duration=\"0.002639\">\n  <test-suite type=\"TestSuite\" id=\"1012\" name=\"My project (2)\" fullname=\"My project (2)\" runstate=\"Runnable\" testcasecount=\"7\" result=\"Passed\" start-time=\"2026-08-19 10:16:27Z\" end-time=\"2026-08-19 10:16:27Z\" duration=\"0.002639\" total=\"0\" passed=\"0\" failed=\"0\" inconclusive=\"0\" skipped=\"0\" asserts=\"0\">\n    <properties>\n      <property name=\"platform\" value=\"PlayMode\" />\n    </properties>\n  </test-suite>\n</test-run>"
+        }
+      }
+    }
+  ]
+}

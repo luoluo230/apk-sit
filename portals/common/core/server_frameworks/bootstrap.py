@@ -111,6 +111,12 @@ def register_client_bootstrap_routes(target_bp) -> None:
         methods=["GET"],
     )
     target_bp.add_url_rule(
+        "/api/public/baas-bootstrap",
+        endpoint="baas_client_bootstrap_legacy",
+        view_func=client_bootstrap,
+        methods=["GET"],
+    )
+    target_bp.add_url_rule(
         "/api/public/client-network-module",
         endpoint="delivery_client_network_module",
         view_func=client_network_module,

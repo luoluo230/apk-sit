@@ -24,14 +24,16 @@ def render_baas_page(
     if project_id not in projects_db:
         return "项目不存在", 404
     if is_baas_standalone():
+        ctx = dict(context)
+        env_key = str(ctx.pop("env_key", None) or request.args.get("env_key") or "development")
         return render_template(
             template_name,
             project_id=project_id,
             project=projects_db.get(project_id) or {},
             page_title=title,
             active_page=active_page,
-            env_key=str(context.get("env_key") or request.args.get("env_key") or "development"),
-            **context,
+            env_key=env_key,
+            **ctx,
         )
     from routes.delivery.helpers import render_delivery_page as _page
 

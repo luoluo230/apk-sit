@@ -24,8 +24,10 @@ def _add_path(zf: zipfile.ZipFile, abs_path: str, arc_prefix: str = "") -> int:
     if not os.path.exists(abs_path):
         return 0
     if os.path.isfile(abs_path):
-        arc = os.path.join(arc_prefix, os.path.basename(abs_path)).replace("\\", "/")
-        zf.write(abs_path, arc)
+        rel = os.path.relpath(abs_path, _repo_root()).replace("\\", "/")
+        if arc_prefix:
+            rel = os.path.join(arc_prefix, rel).replace("\\", "/")
+        zf.write(abs_path, rel)
         return 1
     for dirpath, dirnames, filenames in os.walk(abs_path):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_PARTS and not d.startswith(".")]
@@ -99,6 +101,10 @@ def _baas_paths() -> List[str]:
         "portals/common/core/scripts/run_baas_pvp_fanout_e2e.py",
         "portals/common/core/scripts/seed_baas_playmode_e2e.py",
         "portals/common/core/scripts/run_baas_playmode_e2e.py",
+        "portals/common/core/scripts/seed_baas_production_e2e.py",
+        "portals/common/core/scripts/run_baas_production_readiness_e2e.py",
+        "portals/common/core/scripts/baas_live_business_chain.py",
+        "portals/common/core/scripts/baas_gm_live_chain.py",
         "packages/client_network/baas",
         "packages/client_network/common",
         "packages/client_network/stubs",
