@@ -16,6 +16,79 @@ def _order_crud():
     return mod
 
 
+def pause_gray_rollout_for_order(
+    project_id: str,
+    order: Dict[str, Any],
+    actor: str,
+    *,
+    reason: str = "",
+) -> Dict[str, Any]:
+    """Hold gray rollout after verify failure or metric incident."""
+    order_id = str(order.get("release_order_id") or "")
+    if not order_id:
+        return {"ok": False, "reason": "missing_order_id"}
+    if str(order.get("status") or "") not in {"published", "verify_failed", "verified"}:
+        return {"ok": False, "reason": "invalid_status"}
+    bundle_id = str(order.get("bundle_id") or "").strip()
+    if not bundle_id:
+        return {"ok": False, "reason": "missing_bundle"}
+    plan = dict(order.get("payload") or {})
+    strategy = str(plan.get("release_strategy") or "standard").strip().lower()
+    if strategy != "gray":
+        return {"ok": False, "reason": "not_gray", "skipped": True}
+    if str(plan.get("gray_success_action") or "").strip().lower() == "hold":
+        return {"ok": True, "already_paused": True, "release_order_id": order_id}
+    now = _now_iso()
+    pause_reason = str(reason or "verify_failed")[:500]
+    init_db()
+    with get_cursor() as cur:
+        bundle_row = cur.execute("SELECT payload FROM release_bundles WHERE bundle_id=?", (bundle_id,)).fetchone()
+        if not bundle_row:
+            return {"ok": False, "reason": "bundle_not_found"}
+        bundle = _decode(bundle_row["payload"], {}) or {}
+        bundle["gray_success_action"] = "hold"
+        bundle["gray_paused_at"] = now
+        bundle["gray_paused_reason"] = pause_reason
+        bundle["gray_paused_by"] = actor
+        bundle["updated_at"] = now
+        cur.execute(
+            "UPDATE release_bundles SET payload=?, updated_at=? WHERE bundle_id=?",
+            (_json(bundle), now, bundle_id),
+        )
+        plan["gray_success_action"] = "hold"
+        plan["gray_paused_at"] = now
+        plan["gray_paused_reason"] = pause_reason
+        cur.execute(
+            "UPDATE release_orders SET payload=?, updated_at=? WHERE project_id=? AND release_order_id=?",
+            (_json(plan), now, project_id, order_id),
+        )
+        _event(
+            cur,
+            order_id,
+            "gray_rollout_paused",
+            actor,
+            str(order.get("status") or "published"),
+            str(order.get("status") or "published"),
+            {"bundle_id": bundle_id, "reason": pause_reason},
+        )
+    try:
+        from services.notify.outbound_webhook import EVENT_GRAY_ROLLOUT_PAUSED, notify_release_event
+
+        notify_release_event(
+            EVENT_GRAY_ROLLOUT_PAUSED,
+            {
+                "project_id": project_id,
+                "release_order_id": order_id,
+                "bundle_id": bundle_id,
+                "reason": pause_reason,
+                "actor": actor,
+            },
+        )
+    except Exception:
+        pass
+    return {"ok": True, "release_order_id": order_id, "gray_success_action": "hold", "reason": pause_reason}
+
+
 def expand_gray_rollout(
     project_id: str,
     order_id: str,

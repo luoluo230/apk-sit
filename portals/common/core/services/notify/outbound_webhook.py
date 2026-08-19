@@ -21,6 +21,7 @@ EVENT_PUBLISH_FAILED = "publish_failed"
 EVENT_BOOTSTRAP_SMOKE_FAILED = "bootstrap_smoke_failed"
 EVENT_APPROVAL_SLA_TIMEOUT = "approval_sla_timeout"
 EVENT_AUTO_ROLLBACK_EXECUTED = "auto_rollback_executed"
+EVENT_GRAY_ROLLOUT_PAUSED = "gray_rollout_paused"
 EVENT_SERVER_DEPLOY_COMPLETED = "server_deploy_completed"
 EVENT_SERVER_DEPLOY_FAILED = "server_deploy_failed"
 
@@ -30,6 +31,7 @@ INCIDENT_EVENTS = {
     EVENT_BOOTSTRAP_SMOKE_FAILED,
     EVENT_APPROVAL_SLA_TIMEOUT,
     EVENT_AUTO_ROLLBACK_EXECUTED,
+    EVENT_GRAY_ROLLOUT_PAUSED,
     EVENT_SERVER_DEPLOY_FAILED,
 }
 
@@ -130,6 +132,7 @@ def _default_title(event_type: str) -> str:
         EVENT_BOOTSTRAP_SMOKE_FAILED: "Bootstrap Smoke 失败",
         EVENT_APPROVAL_SLA_TIMEOUT: "审批 SLA 超时",
         EVENT_AUTO_ROLLBACK_EXECUTED: "自动回滚已执行",
+        EVENT_GRAY_ROLLOUT_PAUSED: "灰度放量已暂停",
         EVENT_SERVER_DEPLOY_COMPLETED: "服务端部署完成",
         EVENT_SERVER_DEPLOY_FAILED: "服务端部署失败",
         "release_awaiting_approval": "发布单待审批",

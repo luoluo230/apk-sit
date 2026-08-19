@@ -13,7 +13,7 @@ from services.notify.outbound_webhook import (
     EVENT_VERIFY_FAILED,
     notify_release_event,
 )
-from services.release.release_policy_service import should_auto_rollback_on_verify_fail
+from services.release.release_policy_service import should_auto_rollback_on_verify_fail, should_auto_pause_gray_on_verify_fail
 
 
 def _base_order_fields(order: Dict[str, Any], project_id: str = "") -> Dict[str, Any]:
@@ -106,10 +106,28 @@ def handle_verify_failure(
         fields["validation_error"] = str(validation.get("error") or "validation plan failed")[:300]
     notify_release_event(EVENT_VERIFY_FAILED, {**fields, "smoke": smoke_report, "validation": validation})
 
+    gray_pause = {"attempted": False}
+    if should_auto_pause_gray_on_verify_fail(project_id, str(order.get("env_key") or "")):
+        try:
+            from services.release.order_publish_lifecycle import pause_gray_rollout_for_order
+
+            reason = fields.get("smoke_error") or fields.get("validation_error") or "verify_failed"
+            gray_pause = {
+                "attempted": True,
+                **pause_gray_rollout_for_order(project_id, order, actor, reason=str(reason)),
+            }
+        except Exception:
+            pass
+
     rollback_result = {"attempted": False}
     if should_auto_rollback_on_verify_fail(project_id, str(order.get("env_key") or "")):
         rollback_result = {"attempted": True, **attempt_auto_rollback_after_verify_fail(project_id, order, actor)}
-    return rollback_result
+    return {
+        "gray_pause": gray_pause,
+        "rollback": rollback_result,
+        "attempted": rollback_result.get("attempted"),
+        "ok": rollback_result.get("ok"),
+    }
 
 
 def handle_publish_failure(project_id: str, order: Dict[str, Any], actor: str, error: str) -> None:

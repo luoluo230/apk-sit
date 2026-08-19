@@ -200,6 +200,22 @@ def unity_contract_manifest():
     return jsonify(build_portable_unity_contract_manifest(portal_base_url=base))
 
 
+def startup_gate():
+    from services.release.startup_gate_service import resolve_startup_gate
+
+    project_id = str(request.args.get("game_id") or request.args.get("project_id") or "").strip()
+    return jsonify(
+        resolve_startup_gate(
+            project_id,
+            env_key=str(request.args.get("env_key") or ""),
+            channel_id=str(request.args.get("channel") or request.args.get("channel_id") or ""),
+            platform=str(request.args.get("platform") or "android"),
+            version_name=str(request.args.get("version_name") or ""),
+            version_code=str(request.args.get("version_code") or ""),
+        )
+    )
+
+
 def register_public_routes(target_bp):
     """Attach public routes to project_delivery blueprint."""
     from server_frameworks.bootstrap import register_client_bootstrap_routes
@@ -227,5 +243,11 @@ def register_public_routes(target_bp):
         "/api/public/unity-contract-manifest",
         endpoint="delivery_unity_contract_manifest",
         view_func=unity_contract_manifest,
+        methods=["GET"],
+    )
+    target_bp.add_url_rule(
+        "/api/public/startup-gate",
+        endpoint="delivery_startup_gate",
+        view_func=startup_gate,
         methods=["GET"],
     )

@@ -28,7 +28,11 @@ def _plan(order: Dict[str, Any]) -> Dict[str, Any]:
 def _should_auto_expand(order: Dict[str, Any], bundle: Dict[str, Any]) -> bool:
     if str(order.get("status") or "") != "published":
         return False
+    if str(order.get("status") or "") in {"verify_failed"}:
+        return False
     plan = _plan(order)
+    if plan.get("gray_paused_at"):
+        return False
     if str(plan.get("release_strategy") or bundle.get("release_strategy") or "standard").lower() != "gray":
         return False
     action = str(plan.get("gray_success_action") or bundle.get("gray_success_action") or "manual").strip().lower()

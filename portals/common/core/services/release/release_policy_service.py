@@ -102,6 +102,7 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
     policy["runtime_required"] = ENV_DEFAULT_RUNTIME_REQUIRED.get(ek, RUNTIME_REQUIRED_BLOCK)
     policy["auto_ensure_runtime"] = bool(ENV_DEFAULT_AUTO_ENSURE_RUNTIME.get(ek, False))
     policy["auto_rollback_on_verify_fail"] = bool(ENV_DEFAULT_AUTO_ROLLBACK_ON_VERIFY_FAIL.get(ek, False))
+    policy["auto_pause_gray_on_verify_fail"] = True
     if ek in ("production", "prod"):
         policy["require_approval"] = True
         policy["two_tier_approval"] = True
@@ -133,6 +134,16 @@ def normalize_release_policy(raw: Optional[dict], env_key: str, project_id: str 
             policy["allow_gray_release"] = bool(raw.get("allow_gray_release"))
         if "auto_rollback_on_verify_fail" in raw:
             policy["auto_rollback_on_verify_fail"] = bool(raw.get("auto_rollback_on_verify_fail"))
+        if "auto_pause_gray_on_verify_fail" in raw:
+            policy["auto_pause_gray_on_verify_fail"] = bool(raw.get("auto_pause_gray_on_verify_fail"))
+        if "maintenance_mode" in raw:
+            policy["maintenance_mode"] = bool(raw.get("maintenance_mode"))
+        if str(raw.get("maintenance_message") or "").strip():
+            policy["maintenance_message"] = str(raw.get("maintenance_message") or "").strip()
+        if str(raw.get("force_update_url") or "").strip():
+            policy["force_update_url"] = str(raw.get("force_update_url") or "").strip()
+        if "force_client_update" in raw:
+            policy["force_client_update"] = bool(raw.get("force_client_update"))
         for src, dst in (
             ("default_validation_plan", "validation_plan"),
             ("default_rollback_plan", "rollback_plan"),
@@ -171,6 +182,11 @@ def should_auto_rollback_on_verify_fail(project_id: str, env_key: str, policy: O
     """True when verify failure should trigger automatic rollback (staging default on, production off)."""
     row = policy if isinstance(policy, dict) else get_env_release_policy(project_id, env_key)
     return bool(row.get("auto_rollback_on_verify_fail"))
+
+
+def should_auto_pause_gray_on_verify_fail(project_id: str, env_key: str, policy: Optional[Dict[str, Any]] = None) -> bool:
+    row = policy if isinstance(policy, dict) else get_env_release_policy(project_id, env_key)
+    return bool(row.get("auto_pause_gray_on_verify_fail", True))
 
 
 PROMOTION_APPROVAL_ENVS = frozenset({"staging", "production"})
