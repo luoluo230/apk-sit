@@ -1,11 +1,14 @@
-# 技能框架评估（SkillKit 已实现 Phase 1）
+# 技能框架评估（SkillKit Phase 1–3，BaaS 轻量路径）
 
-> 通用技能模块路径：`maclient/Assets/Modules/SkillKit/`
+> 通用技能模块路径：`maclient/Assets/Modules/SkillKit/`  
+> UPM 包名：`com.maclients.skillkit@0.3.0`  
+> **AFK / 推图 MVP 不需要 GameServer 帧同步** — 见 [PHASE3.md](../../../maclient/Assets/Modules/SkillKit/PHASE3.md)
 
 ## 架构
 
-- **SkillKit.Runtime** — SkillExecutor / TargetSelector / EffectPipeline / BuffSystem / 双 Clock
-- **SkillKit.Editor** — SkillAuthoringWindow + Sandbox + Validator
+- **SkillKit.Runtime** — SkillExecutor / TargetSelector / EffectPipeline / BuffSystem / 双 Clock / 弹道 AOI
+- **SkillKit.Editor** — SkillAuthoringWindow + Sandbox + Validator + Config 导出
+- **BaaS 桥接** — `BaasReplayDigest` / `SkillKitBaasSettlement` → `battle_antifraud.py`
 - **集成** — `SkillKitBattleEventAdapter` → BattleEventBus
 
 详见 [SkillKit README](../../../maclient/Assets/Modules/SkillKit/README.md)（maclient 仓库内）。
@@ -86,12 +89,12 @@
 - 链式技能 / 被动反击
 - 复杂 AOI（多圈、矩形位移）
 
-### Phase C（Realtime PVP 才需要）
+### Phase C（Realtime PVP 才需要 — **AFK MVP 可跳过**）
 
 - 帧同步 / 状态同步技能锁
 - 服务端技能校验或 GameServer 接管
 
-**纯 BaaS AFK 推图不需要 Phase C。**
+**纯 BaaS AFK 推图不需要 Phase C。** SkillKit Phase 3 已提供客户端弹道 + `replay_hash` 桥接，轻量 BaaS 足够。
 
 ---
 
