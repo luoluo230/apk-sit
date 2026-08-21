@@ -65,6 +65,24 @@ namespace MAClient.Network.Baas
         /// <summary>异步竞技场：对手列表、防守阵容、离线对战结算。</summary>
         public BaasArenaClient Arena => Require(BaasFeatureKeys.Arena, () => new BaasArenaClient(_ctx));
 
+        /// <summary>英雄：背包、升级、装备。</summary>
+        public BaasHeroClient Hero => Require(BaasFeatureKeys.Hero, () => new BaasHeroClient(_ctx));
+
+        /// <summary>背包：道具/装备列表与消耗。</summary>
+        public BaasInventoryClient Inventory => Require(BaasFeatureKeys.Inventory, () => new BaasInventoryClient(_ctx));
+
+        /// <summary>抽卡：卡池、pity、召唤。</summary>
+        public BaasGachaClient Gacha => Require(BaasFeatureKeys.Gacha, () => new BaasGachaClient(_ctx));
+
+        /// <summary>挂机：离线收益查询与领取。</summary>
+        public BaasIdleClient Idle => Require(BaasFeatureKeys.Idle, () => new BaasIdleClient(_ctx));
+
+        /// <summary>爬塔：层数进度、开战、结算。</summary>
+        public BaasTowerClient Tower => Require(BaasFeatureKeys.Tower, () => new BaasTowerClient(_ctx));
+
+        /// <summary>内购：下单、验单、发钻石。</summary>
+        public BaasIapClient Iap => Require(BaasFeatureKeys.Iap, () => new BaasIapClient(_ctx));
+
         /// <summary>实时房间 PVP：匹配、帧同步（AFK 类游戏通常不启用）。</summary>
         public BaasRoomClient Room => Require(BaasFeatureKeys.Pvp, () => new BaasRoomClient(_ctx));
 

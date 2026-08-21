@@ -20,6 +20,12 @@ FEATURE_CATALOG: List[Dict[str, Any]] = [
     {"key": "compliance", "label": "防沉迷", "phase": 4, "group": "compliance", "default_enabled": False},
     {"key": "pve", "label": "PVE 推图战斗", "phase": 1, "group": "battle", "default_enabled": True},
     {"key": "arena", "label": "异步竞技场", "phase": 2, "group": "battle", "default_enabled": True},
+    {"key": "hero", "label": "英雄养成", "phase": 1, "group": "battle", "default_enabled": True},
+    {"key": "inventory", "label": "背包道具", "phase": 2, "group": "battle", "default_enabled": True},
+    {"key": "gacha", "label": "抽卡召唤", "phase": 1, "group": "battle", "default_enabled": True},
+    {"key": "idle", "label": "挂机离线收益", "phase": 1, "group": "retention", "default_enabled": True},
+    {"key": "tower", "label": "爬塔副本", "phase": 2, "group": "battle", "default_enabled": True},
+    {"key": "iap", "label": "应用内购", "phase": 2, "group": "monetization", "default_enabled": False},
     {"key": "pvp", "label": "PVP 实时房间(可选)", "phase": 4, "group": "pvp", "default_enabled": False},
 ]
 
@@ -40,14 +46,26 @@ def default_feature_configs() -> Dict[str, Dict[str, Any]]:
         "announce": {"audience": "all"},
         "mail": {"max_inbox": 100, "expire_days": 30},
         "cloudsave": {"max_keys_per_player": 32, "max_value_bytes": 65536},
-        "leaderboard": {"boards": [{"id": "default", "name": "默认榜", "sort": "desc", "limit": 100}]},
+        "leaderboard": {
+            "boards": [
+                {"id": "default", "name": "默认榜", "sort": "desc", "limit": 100},
+                {"id": "guild_war:gw_s1", "name": "公会战跨服榜", "sort": "desc", "limit": 100, "scope": "cross_server"},
+            ],
+        },
         "economy": {
-            "currencies": [{"id": "gold", "name": "金币", "initial": 1000}],
+            "currencies": [
+                {"id": "gold", "name": "金币", "initial": 1000},
+                {"id": "diamond", "name": "钻石", "initial": 200},
+            ],
             "products": [],
         },
         "achievement": {"definitions": []},
         "gift": {"packs": [], "codes": []},
-        "guild": {"max_members": 50, "create_cost": 0},
+        "guild": {
+            "max_members": 50,
+            "create_cost": 0,
+            "active_season": {"season_id": "gw_s1", "name": "公会战 S1", "max_guilds": 64},
+        },
         "battlepass": {"season_id": "s1", "levels": 30, "premium_enabled": False},
         "periodic_task": {"daily_tasks": [], "weekly_tasks": []},
         "compliance": {
@@ -94,6 +112,70 @@ def default_feature_configs() -> Dict[str, Dict[str, Any]]:
             "lose_rewards": {"gold": 20},
         },
         "pvp": {"mode": "state_sync", "room_ttl_seconds": 600, "max_players": 2},
+        "hero": {
+            "max_level": 100,
+            "level_cost_gold": 100,
+            "duplicate_shards": 10,
+            "equipment_slots": ["weapon", "armor"],
+            "hero_defs": [
+                {"id": 1, "name": "战士", "base_power": 120, "role": "tank"},
+                {"id": 2, "name": "法师", "base_power": 150, "role": "dps"},
+                {"id": 3, "name": "射手", "base_power": 140, "role": "dps"},
+                {"id": 11, "name": "圣骑士", "base_power": 180, "role": "tank", "rare": True},
+                {"id": 12, "name": "牧师", "base_power": 130, "role": "support", "rare": True},
+            ],
+        },
+        "gacha": {
+            "pools": [{
+                "id": "standard",
+                "name": "标准召唤",
+                "cost_currency": "diamond",
+                "cost_amount": 100,
+                "pity_max": 10,
+                "items": [
+                    {"type": "hero", "hero_id": 1, "weight": 40},
+                    {"type": "hero", "hero_id": 2, "weight": 35},
+                    {"type": "hero", "hero_id": 3, "weight": 20},
+                    {"type": "hero", "hero_id": 11, "weight": 4, "rare": True},
+                    {"type": "hero", "hero_id": 12, "weight": 1, "rare": True},
+                ],
+            }],
+        },
+        "idle": {
+            "max_hours": 12,
+            "gold_per_hour": 500,
+            "requires_stage_cleared": "1-1",
+        },
+        "tower": {
+            "towers": [{
+                "id": "main",
+                "name": "试炼之塔",
+                "floors": [
+                    {"floor": 1, "name": "第1层", "power_required": 80, "rewards": {"gold": 50}},
+                    {"floor": 2, "name": "第2层", "power_required": 150, "rewards": {"gold": 80}},
+                    {"floor": 3, "name": "第3层", "power_required": 220, "rewards": {"gold": 120, "diamond": 5}},
+                ],
+            }],
+        },
+        "iap": {
+            "dev_verify_always_ok": True,
+            "apple_shared_secret": "",
+            "apple_sandbox": True,
+            "wechat_app_id": "",
+            "wechat_mch_id": "",
+            "wechat_api_key": "",
+            "products": [
+                {"id": "com.game.diamond60", "name": "60钻石", "diamond": 60, "price_display": "¥6"},
+                {"id": "com.game.diamond300", "name": "300钻石", "diamond": 300, "price_display": "¥30"},
+            ],
+        },
+        "inventory": {
+            "item_defs": [
+                {"id": "sword_001", "name": "铁剑", "type": "equipment", "slot": "weapon", "stack_limit": 1},
+                {"id": "armor_001", "name": "皮甲", "type": "equipment", "slot": "armor", "stack_limit": 1},
+                {"id": "potion_hp", "name": "生命药水", "type": "consumable", "stack_limit": 99},
+            ],
+        },
     }
 
 
@@ -114,6 +196,12 @@ def public_endpoints_for_features(flags: Dict[str, bool]) -> Dict[str, str]:
         "compliance": f"{base}/compliance",
         "pve": f"{base}/pve",
         "arena": f"{base}/arena",
+        "hero": f"{base}/heroes",
+        "inventory": f"{base}/inventory",
+        "gacha": f"{base}/gacha",
+        "idle": f"{base}/idle",
+        "tower": f"{base}/tower",
+        "iap": f"{base}/iap",
         "pvp": f"{base}/pvp",
     }
     return {k: v for k, v in mapping.items() if flags.get(k)}

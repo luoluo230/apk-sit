@@ -28,6 +28,12 @@ _FEATURE_DISABLED_CODES: Dict[str, str] = {
     "compliance": "BAAS_COMPLIANCE_DISABLED",
     "pve": "BAAS_PVE_DISABLED",
     "arena": "BAAS_ARENA_DISABLED",
+    "hero": "BAAS_VALIDATION_FAILED",
+    "inventory": "BAAS_VALIDATION_FAILED",
+    "gacha": "BAAS_VALIDATION_FAILED",
+    "idle": "BAAS_VALIDATION_FAILED",
+    "tower": "BAAS_VALIDATION_FAILED",
+    "iap": "BAAS_VALIDATION_FAILED",
     "pvp": "BAAS_FEATURE_ROOM_DISABLED",
 }
 

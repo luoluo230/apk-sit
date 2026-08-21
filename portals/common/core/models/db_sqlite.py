@@ -1074,6 +1074,111 @@ def init_db():
             if "replay_hash" not in cols:
                 conn.execute("ALTER TABLE baas_battles ADD COLUMN replay_hash TEXT NOT NULL DEFAULT ''")
             _mark_migration(conn, "baas_pve_arena_v2")
+        if not _migration_applied(conn, "baas_afk_pack_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_heroes (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    hero_id INTEGER NOT NULL,
+                    level INTEGER NOT NULL DEFAULT 1,
+                    exp INTEGER NOT NULL DEFAULT 0,
+                    equipment_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, hero_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_gacha_state (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    pool_id TEXT NOT NULL,
+                    pity_counter INTEGER NOT NULL DEFAULT 0,
+                    total_pulls INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, pool_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_gacha_pulls (
+                    pull_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    pool_id TEXT NOT NULL,
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_gacha_pulls_player
+                    ON baas_gacha_pulls(service_id, player_id, created_at);
+                CREATE TABLE IF NOT EXISTS baas_idle_state (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    last_claim_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_tower_progress (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    tower_id TEXT NOT NULL,
+                    floor INTEGER NOT NULL DEFAULT 0,
+                    best_stars INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, tower_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_iap_orders (
+                    order_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    product_id TEXT NOT NULL,
+                    platform TEXT NOT NULL DEFAULT '',
+                    receipt_hash TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    rewards_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    verified_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_iap_orders_player
+                    ON baas_iap_orders(service_id, player_id, status);
+                """
+            )
+            _mark_migration(conn, "baas_afk_pack_v1")
+        if not _migration_applied(conn, "baas_phase2_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_inventory (
+                    item_uid TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    item_def_id TEXT NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 0,
+                    meta_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_player_inventory_player
+                    ON baas_player_inventory(service_id, player_id, item_def_id);
+                CREATE TABLE IF NOT EXISTS baas_guild_war_entries (
+                    service_id TEXT NOT NULL,
+                    season_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    total_score INTEGER NOT NULL DEFAULT 0,
+                    battles_won INTEGER NOT NULL DEFAULT 0,
+                    battles_lost INTEGER NOT NULL DEFAULT 0,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, season_id, guild_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_guild_war_matches (
+                    match_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    season_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    win INTEGER NOT NULL DEFAULT 0,
+                    score_delta INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_guild_war_matches_guild
+                    ON baas_guild_war_matches(service_id, season_id, guild_id, created_at);
+                """
+            )
+            _mark_migration(conn, "baas_phase2_v1")
         conn.commit()
         _schema_initialized = True
 

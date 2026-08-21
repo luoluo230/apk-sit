@@ -34,6 +34,18 @@ namespace MAClient.Network.Baas
         public const string Pve = "pve";
         /// <summary>异步竞技场 PVP。</summary>
         public const string Arena = "arena";
+        /// <summary>英雄背包与养成。</summary>
+        public const string Hero = "hero";
+        /// <summary>道具/装备背包。</summary>
+        public const string Inventory = "inventory";
+        /// <summary>抽卡 / 召唤。</summary>
+        public const string Gacha = "gacha";
+        /// <summary>挂机离线收益。</summary>
+        public const string Idle = "idle";
+        /// <summary>爬塔 / 副本变体。</summary>
+        public const string Tower = "tower";
+        /// <summary>应用内购 IAP。</summary>
+        public const string Iap = "iap";
         /// <summary>实时房间 PVP（可选）。</summary>
         public const string Pvp = "pvp";
     }
