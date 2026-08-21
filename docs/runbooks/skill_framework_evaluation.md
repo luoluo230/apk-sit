@@ -1,12 +1,14 @@
-# 技能框架评估（剑与远征 / AFK 推图类）
+# 技能框架评估（SkillKit 已实现 Phase 1）
 
-## 结论（先给答案）
+> 通用技能模块路径：`maclient/Assets/Modules/SkillKit/`
 
-| 问题 | 建议 |
-|------|------|
-| 是否需要「完整技能框架」？ | **需要，但分两层做**：数据驱动逻辑层 + 表现时间轴层 |
-| 是否现在就做全量？ | **否**。MVP 阶段用「轻量 Skill Runtime + 现有 Excel 表」即可上线 |
-| 与 BaaS 关系 | 战斗逻辑在**客户端确定性模拟**；BaaS 只验 `checksum/replay_hash`，不跑技能帧 |
+## 架构
+
+- **SkillKit.Runtime** — SkillExecutor / TargetSelector / EffectPipeline / BuffSystem / 双 Clock
+- **SkillKit.Editor** — SkillAuthoringWindow + Sandbox + Validator
+- **集成** — `SkillKitBattleEventAdapter` → BattleEventBus
+
+详见 [SkillKit README](../../../maclient/Assets/Modules/SkillKit/README.md)（maclient 仓库内）。
 
 ---
 
