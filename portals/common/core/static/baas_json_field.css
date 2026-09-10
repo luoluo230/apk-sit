@@ -1,0 +1,8 @@
+.baas-json-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.baas-json-field textarea.baas-json-input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5}
+.baas-json-field textarea.is-json-invalid{border-color:#ff4d4f!important;box-shadow:0 0 0 3px rgba(255,77,79,.12)}
+.baas-json-field textarea.is-json-valid{border-color:#52c41a!important}
+.baas-json-field__hint{font-size:11px;line-height:16px}
+.baas-json-field__hint.is-error{color:#cf1322}
+.baas-json-field__hint.is-ok{color:#389e0d}
+.baas-json-field__hint.is-hidden{display:none}

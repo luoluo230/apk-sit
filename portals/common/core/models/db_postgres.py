@@ -8,7 +8,6 @@ import re
 import threading
 
 import psycopg2
-from psycopg2 import extras
 
 from contextlib import contextmanager
 from datetime import datetime
@@ -23,6 +22,37 @@ _local = threading.local()
 # Per-thread SQLite connections (WAL). Replaces global _conn — avoids SIGSEGV under Waitress.
 _db_lock = threading.RLock()
 _schema_initialized = False
+
+
+class _PGRow:
+    """Tuple + dict row access (sqlite3.Row compatible)."""
+
+    __slots__ = ("_cols", "_vals", "_dict")
+
+    def __init__(self, description, values):
+        self._cols = [d[0] for d in description] if description else []
+        self._vals = tuple(values) if values is not None else ()
+        self._dict = dict(zip(self._cols, self._vals))
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._vals[key]
+        return self._dict[key]
+
+    def keys(self):
+        return self._dict.keys()
+
+    def get(self, key, default=None):
+        return self._dict.get(key, default)
+
+    def __contains__(self, key):
+        return key in self._dict
+
+    def __iter__(self):
+        return iter(self._vals)
+
+    def __len__(self):
+        return len(self._vals)
 
 
 def _get_conn():
@@ -46,15 +76,20 @@ class _PGCursor:
     def execute(self, sql, params=None):
         sql = _translate_sql(sql)
         if params is None:
-            return self._cur.execute(sql)
-        return self._cur.execute(sql, params)
+            self._cur.execute(sql)
+        else:
+            self._cur.execute(sql, params)
+        return self
 
     def fetchone(self):
         row = self._cur.fetchone()
-        return row
+        if row is None:
+            return None
+        return _PGRow(self._cur.description, row)
 
     def fetchall(self):
-        return self._cur.fetchall()
+        desc = self._cur.description
+        return [_PGRow(desc, row) for row in self._cur.fetchall()]
 
 
 class _PGConn:
@@ -62,20 +97,18 @@ class _PGConn:
         self._raw = raw
 
     def cursor(self):
-        return _PGCursor(self._raw.cursor(cursor_factory=extras.RealDictCursor))
+        return _PGCursor(self._raw.cursor())
 
     def execute(self, sql, params=()):
         sql = _translate_sql(sql)
-        cur = self._raw.cursor(cursor_factory=extras.RealDictCursor)
-        try:
-            if params:
-                cur.execute(sql, params)
-            else:
-                cur.execute(sql)
+        cur = self._raw.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        if not sql.lstrip().upper().startswith("SELECT"):
             self._raw.commit()
-            return cur
-        finally:
-            cur.close()
+        return _PGCursor(cur)
 
     def executemany(self, sql, seq):
         sql = _translate_sql(sql)
@@ -100,6 +133,9 @@ class _PGConn:
     def commit(self):
         self._raw.commit()
 
+    def rollback(self):
+        self._raw.rollback()
+
     def close(self):
         self._raw.close()
 
@@ -110,6 +146,13 @@ def _split_sql_script(script: str):
 
 def _translate_sql(sql: str) -> str:
     s = sql.strip()
+    m = re.match(r"PRAGMA\s+table_info\s*\(\s*([^\)]+)\s*\)", s, re.I)
+    if m:
+        tbl = m.group(1).strip().strip("'\"")
+        return (
+            "SELECT column_name AS name FROM information_schema.columns "
+            f"WHERE table_schema = current_schema() AND table_name = '{tbl}'"
+        )
     if s.upper().startswith("PRAGMA"):
         return "SELECT 1"
     s = s.replace("?", "%s")
@@ -119,13 +162,31 @@ def _translate_sql(sql: str) -> str:
         s,
         flags=re.I,
     )
+    had_ignore = bool(re.search(r"INSERT OR IGNORE INTO", sql, re.I))
     s = re.sub(
         r"INSERT OR IGNORE INTO",
         "INSERT INTO",
         s,
         flags=re.I,
     )
+    if had_ignore and " ON CONFLICT " not in s.upper():
+        s = s.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
     s = s.replace("sqlite_master", "information_schema.tables")
+    s = _quote_pg_reserved_identifiers(s)
+    return s
+
+
+def _quote_pg_reserved_identifiers(sql: str) -> str:
+    s = sql
+    for col in ("user", "desc"):
+        s = re.sub(
+            rf"(?m)^(\s+){col}(\s+(?:TEXT|INTEGER|INT|REAL|DEFAULT|NOT NULL))",
+            rf'\1"{col}"\2',
+            s,
+            flags=re.I,
+        )
+    s = s.replace("(tenant_id, timestamp, user, action", '(tenant_id, timestamp, "user", action')
+    s = s.replace(" AND user=", ' AND "user"=')
     return s
 
 
@@ -823,11 +884,325 @@ def init_db():
                 """
             )
             _mark_migration(conn, "baas_gm_v1")
+        if not _migration_applied(conn, "baas_gm_v2"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_bans (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    reason TEXT DEFAULT '',
+                    expires_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_ip_bans (
+                    service_id TEXT NOT NULL,
+                    ip_pattern TEXT NOT NULL,
+                    reason TEXT DEFAULT '',
+                    expires_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, ip_pattern)
+                );
+                CREATE TABLE IF NOT EXISTS baas_activities (
+                    activity_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    title TEXT DEFAULT '',
+                    activity_type TEXT DEFAULT 'event',
+                    starts_at TEXT DEFAULT '',
+                    ends_at TEXT DEFAULT '',
+                    gates_json TEXT DEFAULT '{}',
+                    payload_json TEXT DEFAULT '{}',
+                    status TEXT DEFAULT 'draft',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            gift_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_gift_codes)").fetchall()}
+            if "code_type" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN code_type TEXT DEFAULT 'shared'")
+            if "per_player_limit" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN per_player_limit INTEGER DEFAULT 1")
+            if "assigned_player_id" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN assigned_player_id TEXT DEFAULT ''")
+            if "meta_json" not in gift_cols:
+                conn.execute("ALTER TABLE baas_gift_codes ADD COLUMN meta_json TEXT DEFAULT '{}'")
+            ann_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_announcements)").fetchall()}
+            if "display_type" not in ann_cols:
+                conn.execute("ALTER TABLE baas_announcements ADD COLUMN display_type TEXT DEFAULT 'login'")
+            if "priority" not in ann_cols:
+                conn.execute("ALTER TABLE baas_announcements ADD COLUMN priority INTEGER DEFAULT 0")
+            mail_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_mail_messages)").fetchall()}
+            if "body_links_json" not in mail_cols:
+                conn.execute("ALTER TABLE baas_mail_messages ADD COLUMN body_links_json TEXT DEFAULT '[]'")
+            _mark_migration(conn, "baas_gm_v2")
+        if not _migration_applied(conn, "baas_gift_redemptions_v3"):
+            red_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_gift_redemptions)").fetchall()}
+            if red_cols and "redemption_id" not in red_cols:
+                conn.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS baas_gift_redemptions_v2 (
+                        redemption_id TEXT PRIMARY KEY,
+                        service_id TEXT NOT NULL,
+                        player_id TEXT NOT NULL,
+                        code TEXT NOT NULL,
+                        rewards_json TEXT DEFAULT '[]',
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_baas_gift_redemptions_lookup
+                        ON baas_gift_redemptions_v2(service_id, player_id, code);
+                    INSERT OR IGNORE INTO baas_gift_redemptions_v2 (
+                        redemption_id, service_id, player_id, code, rewards_json, created_at
+                    )
+                    SELECT service_id || ':' || player_id || ':' || code, service_id, player_id, code, rewards_json, created_at
+                    FROM baas_gift_redemptions;
+                    DROP TABLE baas_gift_redemptions;
+                    ALTER TABLE baas_gift_redemptions_v2 RENAME TO baas_gift_redemptions;
+                    """
+                )
+            _mark_migration(conn, "baas_gift_redemptions_v3")
         if not _migration_applied(conn, "baas_services_v2"):
-            conn.execute("ALTER TABLE baas_services ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''")
-            conn.execute("ALTER TABLE baas_services ADD COLUMN IF NOT EXISTS icon_url TEXT DEFAULT ''")
-            conn.execute("ALTER TABLE baas_services ADD COLUMN IF NOT EXISTS disabled INTEGER DEFAULT 0")
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_services)").fetchall()}
+            if "description" not in cols:
+                conn.execute("ALTER TABLE baas_services ADD COLUMN description TEXT DEFAULT ''")
+            if "icon_url" not in cols:
+                conn.execute("ALTER TABLE baas_services ADD COLUMN icon_url TEXT DEFAULT ''")
+            if "disabled" not in cols:
+                conn.execute("ALTER TABLE baas_services ADD COLUMN disabled INTEGER DEFAULT 0")
             _mark_migration(conn, "baas_services_v2")
+        if not _migration_applied(conn, "baas_rooms_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_rooms (
+                    room_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'waiting',
+                    state_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_rooms_service_status
+                    ON baas_rooms(service_id, status);
+                CREATE TABLE IF NOT EXISTS baas_room_replays (
+                    replay_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    room_id TEXT NOT NULL DEFAULT '',
+                    battle_id TEXT NOT NULL DEFAULT '',
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_room_replays_service
+                    ON baas_room_replays(service_id, created_at);
+                """
+            )
+            _mark_migration(conn, "baas_rooms_v1")
+        if not _migration_applied(conn, "baas_pve_arena_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_battles (
+                    battle_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    battle_type TEXT NOT NULL DEFAULT 'pve',
+                    stage_id TEXT NOT NULL DEFAULT '',
+                    defender_id TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    seed INTEGER NOT NULL DEFAULT 0,
+                    team_json TEXT NOT NULL DEFAULT '{}',
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    started_at TEXT NOT NULL,
+                    settled_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_battles_player
+                    ON baas_battles(service_id, player_id, status);
+                CREATE TABLE IF NOT EXISTS baas_chapter_progress (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    stage_id TEXT NOT NULL,
+                    stars INTEGER NOT NULL DEFAULT 0,
+                    best_time_ms INTEGER NOT NULL DEFAULT 0,
+                    cleared INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id, stage_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_player_snapshots (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    snapshot_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    power INTEGER NOT NULL DEFAULT 0,
+                    display_name TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id, snapshot_type)
+                );
+                CREATE TABLE IF NOT EXISTS baas_arena_ratings (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    rating INTEGER NOT NULL DEFAULT 1000,
+                    wins INTEGER NOT NULL DEFAULT 0,
+                    losses INTEGER NOT NULL DEFAULT 0,
+                    daily_attempts_used INTEGER NOT NULL DEFAULT 0,
+                    daily_reset_date TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id)
+                );
+                """
+            )
+            _mark_migration(conn, "baas_pve_arena_v1")
+        if not _migration_applied(conn, "baas_pve_arena_v2"):
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_battles)").fetchall()}
+            if cols and "replay_hash" not in cols:
+                conn.execute("ALTER TABLE baas_battles ADD COLUMN replay_hash TEXT NOT NULL DEFAULT ''")
+            _mark_migration(conn, "baas_pve_arena_v2")
+        if not _migration_applied(conn, "baas_afk_pack_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_heroes (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    hero_id INTEGER NOT NULL,
+                    level INTEGER NOT NULL DEFAULT 1,
+                    exp INTEGER NOT NULL DEFAULT 0,
+                    equipment_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, hero_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_gacha_state (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    pool_id TEXT NOT NULL,
+                    pity_counter INTEGER NOT NULL DEFAULT 0,
+                    total_pulls INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, pool_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_gacha_pulls (
+                    pull_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    pool_id TEXT NOT NULL,
+                    result_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_gacha_pulls_player
+                    ON baas_gacha_pulls(service_id, player_id, created_at);
+                CREATE TABLE IF NOT EXISTS baas_idle_state (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    last_claim_at TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_tower_progress (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    tower_id TEXT NOT NULL,
+                    floor INTEGER NOT NULL DEFAULT 0,
+                    best_stars INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, tower_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_iap_orders (
+                    order_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    product_id TEXT NOT NULL,
+                    platform TEXT NOT NULL DEFAULT '',
+                    receipt_hash TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    rewards_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT '',
+                    verified_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_iap_orders_player
+                    ON baas_iap_orders(service_id, player_id, status);
+                """
+            )
+            _mark_migration(conn, "baas_afk_pack_v1")
+        if not _migration_applied(conn, "baas_phase2_v1"):
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_inventory (
+                    item_uid TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    item_def_id TEXT NOT NULL,
+                    quantity INTEGER NOT NULL DEFAULT 0,
+                    meta_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_player_inventory_player
+                    ON baas_player_inventory(service_id, player_id, item_def_id);
+                CREATE TABLE IF NOT EXISTS baas_guild_war_entries (
+                    service_id TEXT NOT NULL,
+                    season_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    total_score INTEGER NOT NULL DEFAULT 0,
+                    battles_won INTEGER NOT NULL DEFAULT 0,
+                    battles_lost INTEGER NOT NULL DEFAULT 0,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, season_id, guild_id)
+                );
+                CREATE TABLE IF NOT EXISTS baas_guild_war_matches (
+                    match_id TEXT PRIMARY KEY,
+                    service_id TEXT NOT NULL,
+                    season_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    win INTEGER NOT NULL DEFAULT 0,
+                    score_delta INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_baas_guild_war_matches_guild
+                    ON baas_guild_war_matches(service_id, season_id, guild_id, created_at);
+                """
+            )
+            _mark_migration(conn, "baas_phase2_v1")
+        if not _migration_applied(conn, "baas_afk_growth_v1"):
+            hero_cols = {row["name"] for row in conn.execute("PRAGMA table_info(baas_player_heroes)").fetchall()}
+            if hero_cols and "star" not in hero_cols:
+                conn.execute("ALTER TABLE baas_player_heroes ADD COLUMN star INTEGER NOT NULL DEFAULT 1")
+            if hero_cols and "shards" not in hero_cols:
+                conn.execute("ALTER TABLE baas_player_heroes ADD COLUMN shards INTEGER NOT NULL DEFAULT 0")
+            if hero_cols and "talent_points" not in hero_cols:
+                conn.execute("ALTER TABLE baas_player_heroes ADD COLUMN talent_points INTEGER NOT NULL DEFAULT 0")
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_equipment (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    slot TEXT NOT NULL,
+                    quality INTEGER NOT NULL DEFAULT 3,
+                    enhance_level INTEGER NOT NULL DEFAULT 0,
+                    refine_level INTEGER NOT NULL DEFAULT 0,
+                    awaken INTEGER NOT NULL DEFAULT 0,
+                    gem_count INTEGER NOT NULL DEFAULT 0,
+                    affix_seed INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, slot)
+                );
+                CREATE TABLE IF NOT EXISTS baas_dungeon_daily (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    dungeon_id TEXT NOT NULL,
+                    run_date TEXT NOT NULL,
+                    run_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, dungeon_id, run_date)
+                );
+                CREATE TABLE IF NOT EXISTS baas_afk_solo_tower (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    floor INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id)
+                );
+                """
+            )
+            _mark_migration(conn, "baas_afk_growth_v1")
         conn.commit()
         _schema_initialized = True
 

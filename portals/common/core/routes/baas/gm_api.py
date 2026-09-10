@@ -43,6 +43,17 @@ from services.baas.gm_service import (
     get_room_admin,
     kick_room_player_admin,
     finish_room_battle_admin,
+    get_player_afk_snapshot,
+    gm_grant_hero,
+    gm_set_hero,
+    gm_set_stamina,
+    gm_set_pve_stage,
+    gm_reset_dungeons,
+    gm_set_equipment,
+    update_player_profile,
+    gm_send_player_mail,
+    gm_set_tower_floor,
+    gm_set_vip,
 )
 from services.baas import gameserver_bridge_service
 from services.baas.service_crud import get_service
@@ -302,6 +313,192 @@ def register_baas_gm_routes(bp) -> None:
             return jsonify({"ok": True, "data": data})
         except ValueError as exc:
             return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/snapshot/<player_id>", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_afk_snapshot(project_id: str, service_id: str, player_id: str):
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return baas_fail_exc(Exception("休闲服务不存在"))
+        try:
+            return jsonify({"ok": True, "data": get_player_afk_snapshot(service_id, player_id)})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/grant-hero", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_afk_grant_hero(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            data = gm_grant_hero(service_id, str(body.get("player_id") or ""), int(body.get("hero_id") or 0), actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/set-hero", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_afk_set_hero(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            data = gm_set_hero(
+                service_id, str(body.get("player_id") or ""), int(body.get("hero_id") or 0),
+                level=body.get("level"), star=body.get("star"), shards=body.get("shards"),
+                talent_points=body.get("talent_points"), actor=_actor(),
+            )
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/set-stamina", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_afk_set_stamina(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            data = gm_set_stamina(service_id, str(body.get("player_id") or ""), int(body.get("value") or 0), actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/set-pve-stage", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_afk_set_pve_stage(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            data = gm_set_pve_stage(service_id, str(body.get("player_id") or ""), str(body.get("stage_id") or ""), actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/reset-dungeons", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_afk_reset_dungeons(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            data = gm_reset_dungeons(service_id, str(body.get("player_id") or ""), str(body.get("dungeon_id") or ""), actor=_actor())
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/afk/set-equipment", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_afk_set_equipment(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            data = gm_set_equipment(
+                service_id, str(body.get("player_id") or ""), str(body.get("slot") or ""),
+                quality=body.get("quality"), enhance_level=body.get("enhance_level"),
+                refine_level=body.get("refine_level"), awaken=body.get("awaken"),
+                gem_count=body.get("gem_count"), actor=_actor(),
+            )
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/players/<player_id>/profile", methods=["PATCH"])
+    @admin_required("projects")
+    def baas_gm_update_profile(project_id: str, service_id: str, player_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        try:
+            return jsonify({"ok": True, "data": update_player_profile(service_id, player_id, request.get_json(silent=True) or {}, actor=_actor())})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/mail/send", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_mail_send(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        try:
+            return jsonify({"ok": True, "data": gm_send_player_mail(service_id, request.get_json(silent=True) or {}, actor=_actor())})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/retention/tower-floor", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_set_tower(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": gm_set_tower_floor(service_id, str(body.get("player_id") or ""), int(body.get("floor") or 0), tower_id=str(body.get("tower_id") or "main"), actor=_actor())})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/retention/vip", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_set_vip_route(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({"ok": True, "data": gm_set_vip(service_id, str(body.get("player_id") or ""), int(body.get("vip_level") or 0), int(body.get("vip_exp") or 0), actor=_actor())})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/retention/arena-settle", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_arena_settle(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        from services.baas import afk_season_service
+        try:
+            return jsonify({"ok": True, "data": afk_season_service.settle_arena_season(service_id, actor=_actor())})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/retention/battlepass-rollover", methods=["POST"])
+    @admin_required("projects")
+    def baas_gm_bp_rollover(project_id: str, service_id: str):
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        from services.baas import afk_season_service
+        try:
+            return jsonify({"ok": True, "data": afk_season_service.rollover_battlepass_season(service_id, actor=_actor())})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(f"{prefix}/retention/overview", methods=["GET"])
+    @admin_required("projects")
+    def baas_gm_retention_overview(project_id: str, service_id: str):
+        from services.baas.service_crud import feature_enabled, get_feature_config
+        svc = get_service(service_id)
+        if not svc or svc.get("project_id") != project_id:
+            return baas_fail_exc(Exception("休闲服务不存在"))
+        gifts = list_gift_codes(service_id)
+        arena_cfg = get_feature_config(service_id, "arena") if feature_enabled(service_id, "arena") else {}
+        bp_cfg = get_feature_config(service_id, "battlepass") if feature_enabled(service_id, "battlepass") else {}
+        return jsonify({
+            "ok": True,
+            "data": {
+                "arena": {
+                    "season_id": arena_cfg.get("season_id"),
+                    "season_name": arena_cfg.get("season_name"),
+                    "season_ends_at": arena_cfg.get("season_ends_at"),
+                    "enabled": feature_enabled(service_id, "arena"),
+                },
+                "battlepass": {
+                    "season_id": bp_cfg.get("season_id"),
+                    "season_name": bp_cfg.get("season_name"),
+                    "season_ends_at": bp_cfg.get("season_ends_at"),
+                    "enabled": feature_enabled(service_id, "battlepass"),
+                },
+                "gift_code_count": len(gifts),
+                "gift_codes": gifts[:50],
+            },
+        })
 
     @bp.route(f"{prefix}/gameserver/health", methods=["GET"])
     @admin_required("projects")

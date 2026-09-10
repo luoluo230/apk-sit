@@ -18,6 +18,27 @@
   var toast = window.DeliveryCommon && window.DeliveryCommon.toast
     ? window.DeliveryCommon.toast
     : function (msg) { alert(msg); };
+  var jsonField = window.BaasJsonField;
+
+  function syncSaveButton() {
+    var saveBtn = document.getElementById("baasSaveBtn");
+    if (!saveBtn || !canEdit) return;
+    var area = document.querySelector("[data-cfg-json]");
+    if (area && area.dataset.jsonValid === "0") {
+      saveBtn.disabled = true;
+      return;
+    }
+    saveBtn.disabled = false;
+  }
+
+  function bindJsonEditor() {
+    if (!jsonField) return;
+    var area = document.querySelector("[data-cfg-json]");
+    if (area) {
+      jsonField.bind(area, { onChange: syncSaveButton });
+    }
+    syncSaveButton();
+  }
 
   function esc(text) {
     return String(text == null ? "" : text)
@@ -119,7 +140,7 @@
         '<label><span>单值最大字节</span><input type="number" data-cfg="max_value_bytes" value="' + esc(cfg.max_value_bytes != null ? cfg.max_value_bytes : 65536) + '"' + (canEdit ? "" : " disabled") + "></label>"
       );
     }
-    return '<label class="wide"><span>配置 JSON</span><textarea data-cfg-json rows="8"' + (canEdit ? "" : " disabled") + ">" + esc(JSON.stringify(cfg, null, 2)) + "</textarea></label>";
+    return '<label class="wide"><span>配置 JSON</span><textarea data-cfg-json data-json-field data-json-empty="object" data-json-type="object" data-json-label="配置 JSON" rows="8"' + (canEdit ? "" : " disabled") + ">" + esc(JSON.stringify(cfg, null, 2)) + "</textarea></label>";
   }
 
   function renderPanel() {
@@ -143,6 +164,7 @@
     );
     if (item.key === "announce") loadAnnouncements();
     if (item.key === "mail") loadMail();
+    bindJsonEditor();
   }
 
   async function loadAnnouncements() {
@@ -184,6 +206,7 @@
     if (!form) return {};
     var jsonArea = form.querySelector("[data-cfg-json]");
     if (jsonArea) {
+      if (jsonField) return jsonField.parse(jsonArea);
       try { return JSON.parse(jsonArea.value || "{}"); } catch (e) { throw new Error("配置 JSON 无效"); }
     }
     var cfg = {};
@@ -210,6 +233,9 @@
   }
 
   async function saveService() {
+    if (jsonField) {
+      try { jsonField.requireScope(root); } catch (e) { throw e; }
+    }
     var enabledEl = document.getElementById("baasFeatureEnabled");
     var flags = Object.assign({}, state.service.feature_flags || {});
     if (enabledEl) flags[state.activeKey] = enabledEl.checked;
@@ -248,7 +274,11 @@
   }
 
   var saveBtn = document.getElementById("baasSaveBtn");
-  if (saveBtn) saveBtn.onclick = function () { saveService().catch(function (e) { toast(e.message, "error"); }); };
+  if (saveBtn) {
+    if (saveBtn.disabled) saveBtn.dataset.jsonLocked = "1";
+    if (jsonField) jsonField.guardSubmit(saveBtn);
+    saveBtn.onclick = function () { saveService().catch(function (e) { toast(e.message, "error"); }); };
+  }
   var rotateBtn = document.getElementById("baasRotateSecretBtn");
   if (rotateBtn) rotateBtn.onclick = function () { rotateSecret().catch(function (e) { toast(e.message, "error"); }); };
   var copyCfg = document.getElementById("baasCopyConfigId");

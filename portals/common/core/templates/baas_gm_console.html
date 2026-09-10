@@ -1,5 +1,3 @@
-<link rel="stylesheet" href="/static/casual_services_console.css?v=20260724-baas1">
-<link rel="stylesheet" href="/static/baas_gm_console.css?v=20260819-gm4">
 <section class="delivery-app baas-console baas-gm" data-delivery-page="baas-gm" data-project-id="{{ project_id }}" data-service-id="{{ service_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
   <header class="pm-page-head">
     <div class="pm-page-head-copy">
@@ -73,11 +71,11 @@
         <div class="baas-form-grid">
           <label><span>标题</span><input id="gmMailTitle" type="text"></label>
           <label class="wide"><span>正文</span><textarea id="gmMailBody" rows="3"></textarea></label>
-          <label class="wide"><span>链接 JSON</span><textarea id="gmMailLinks" rows="3" placeholder='[{"label":"领取","action":"claim","payload":{"gold":100}}]'></textarea></label>
+          <label class="wide"><span>链接 JSON</span><textarea id="gmMailLinks" data-json-field data-json-empty="optional" data-json-type="array" data-json-label="链接 JSON" rows="3" placeholder='[{"label":"领取","action":"claim","payload":{"gold":100}}]'></textarea></label>
           <label class="wide"><span>玩家 ID（逗号分隔，留空=全服）</span><input id="gmMailPlayers" type="text"></label>
         </div>
         <div class="baas-form-actions">
-          <button type="button" id="gmMailSendBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发送邮件</button>
+          <button type="button" id="gmMailSendBtn" class="pm-btn pm-btn--primary" data-json-guard="1" {% if not can_edit %}disabled{% endif %}>发送邮件</button>
         </div>
       </div>
       <div class="baas-gm-pane" data-pane="announce">
@@ -101,6 +99,34 @@
         </div>
         <div class="baas-list"><h3>已发布公告</h3><div id="gmAnnList"></div></div>
       </div>
+      <div class="baas-gm-pane" data-pane="retention">
+        <div class="baas-panel-head">
+          <div><h2>留存运营</h2><p>礼包兑换码、竞技赛季结算、战令 rollover、VIP / 爬塔 GM 工具。</p></div>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmRetentionRefreshBtn" class="pm-btn">刷新概览</button>
+        </div>
+        <div id="gmRetentionOverview" class="baas-list"></div>
+        <h3 style="margin:16px 0 8px">兑换码概览</h3>
+        <div id="gmRetentionGiftList" class="baas-list"></div>
+        <h3 style="margin:16px 0 8px">赛季运维</h3>
+        <div class="baas-form-actions">
+          <button type="button" id="gmRetentionArenaSettleBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>竞技赛季结算（发排名邮件）</button>
+          <button type="button" id="gmRetentionBpRolloverBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>战令赛季 rollover</button>
+        </div>
+        <h3 style="margin:16px 0 8px">玩家留存 GM</h3>
+        <div class="baas-form-grid">
+          <label><span>玩家 ID</span><input id="gmRetentionPlayerId" type="text" placeholder="player_id"></label>
+          <label><span>VIP 等级</span><input id="gmRetentionVipLevel" type="number" value="5"></label>
+          <label><span>VIP 经验</span><input id="gmRetentionVipExp" type="number" value="0"></label>
+          <label><span>爬塔层数</span><input id="gmRetentionTowerFloor" type="number" value="100"></label>
+          <label><span>塔 ID</span><input id="gmRetentionTowerId" type="text" value="main"></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmRetentionVipBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>设置 VIP</button>
+          <button type="button" id="gmRetentionTowerBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>设置爬塔层</button>
+        </div>
+      </div>
       <div class="baas-gm-pane" data-pane="gifts">
         <div class="baas-panel-head">
           <div><h2>兑换码</h2><p>共用 / 个人 / 补偿码；可设全服次数、单人上限、指定玩家与有效期。</p></div>
@@ -118,10 +144,10 @@
           <label><span>全服上限（0=无限）</span><input id="gmGiftMax" type="number" value="100"></label>
           <label><span>单人上限</span><input id="gmGiftPerPlayer" type="number" value="1"></label>
           <label><span>过期 ISO</span><input id="gmGiftExpires" type="text"></label>
-          <label class="wide"><span>奖励 JSON</span><textarea id="gmGiftRewards" rows="3">[{"type":"gold","amount":100}]</textarea></label>
+          <label class="wide"><span>奖励 JSON</span><textarea id="gmGiftRewards" data-json-field data-json-empty="array" data-json-type="array" data-json-label="奖励 JSON" rows="3">[{"type":"gold","amount":100}]</textarea></label>
         </div>
         <div class="baas-form-actions">
-          <button type="button" id="gmGiftSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>保存兑换码</button>
+          <button type="button" id="gmGiftSaveBtn" class="pm-btn pm-btn--primary" data-json-guard="1" {% if not can_edit %}disabled{% endif %}>保存兑换码</button>
         </div>
         <div class="baas-list"><h3>兑换码列表</h3><div id="gmGiftList"></div></div>
       </div>
@@ -134,11 +160,11 @@
           <label><span>类型</span><input id="gmActType" type="text" value="event"></label>
           <label><span>开始 ISO</span><input id="gmActStart" type="text"></label>
           <label><span>结束 ISO</span><input id="gmActEnd" type="text"></label>
-          <label class="wide"><span>门槛 JSON</span><textarea id="gmActGates" rows="2">{"level_min":1,"vip_min":0,"recharge_min":0}</textarea></label>
-          <label class="wide"><span>活动配置 JSON</span><textarea id="gmActPayload" rows="3">{"banner":"default","rewards":[]}</textarea></label>
+          <label class="wide"><span>门槛 JSON</span><textarea id="gmActGates" data-json-field data-json-empty="object" data-json-type="object" data-json-label="门槛 JSON" rows="2">{"level_min":1,"vip_min":0,"recharge_min":0}</textarea></label>
+          <label class="wide"><span>活动配置 JSON</span><textarea id="gmActPayload" data-json-field data-json-empty="object" data-json-type="object" data-json-label="活动配置 JSON" rows="3">{"banner":"default","rewards":[]}</textarea></label>
         </div>
         <div class="baas-form-actions">
-          <button type="button" id="gmActSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发布活动</button>
+          <button type="button" id="gmActSaveBtn" class="pm-btn pm-btn--primary" data-json-guard="1" {% if not can_edit %}disabled{% endif %}>发布活动</button>
         </div>
         <div class="baas-list"><h3>活动列表</h3><div id="gmActList"></div></div>
       </div>
@@ -186,10 +212,10 @@
           <label><span>玩家 ID</span><input id="gmItemPlayer" type="text"></label>
           <label><span>邮件标题</span><input id="gmItemTitle" type="text" value="道具发放"></label>
           <label class="wide"><span>邮件正文</span><textarea id="gmItemBody" rows="2">GM 道具补偿，请在邮件中领取。</textarea></label>
-          <label class="wide"><span>道具 JSON</span><textarea id="gmItemJson" rows="3">[{"item_id":"101","quantity":10,"name":"测试道具"}]</textarea></label>
+          <label class="wide"><span>道具 JSON</span><textarea id="gmItemJson" data-json-field data-json-empty="array" data-json-type="array" data-json-label="道具 JSON" rows="3">[{"item_id":"101","quantity":10,"name":"测试道具"}]</textarea></label>
         </div>
         <div class="baas-form-actions">
-          <button type="button" id="gmItemGrantBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>发放道具</button>
+          <button type="button" id="gmItemGrantBtn" class="pm-btn pm-btn--primary" data-json-guard="1" {% if not can_edit %}disabled{% endif %}>发放道具</button>
         </div>
       </div>
       <div class="baas-gm-pane" data-pane="templates">
@@ -200,11 +226,11 @@
           <label><span>模板 ID（留空新建）</span><input id="gmTplId" type="text" placeholder="tpl_xxx"></label>
           <label><span>标题</span><input id="gmTplTitle" type="text"></label>
           <label class="wide"><span>正文</span><textarea id="gmTplBody" rows="2"></textarea></label>
-          <label class="wide"><span>附件 JSON</span><textarea id="gmTplAttachments" rows="2">[]</textarea></label>
-          <label class="wide"><span>链接 JSON</span><textarea id="gmTplLinks" rows="2">[]</textarea></label>
+          <label class="wide"><span>附件 JSON</span><textarea id="gmTplAttachments" data-json-field data-json-empty="array" data-json-type="array" data-json-label="附件 JSON" rows="2">[]</textarea></label>
+          <label class="wide"><span>链接 JSON</span><textarea id="gmTplLinks" data-json-field data-json-empty="array" data-json-type="array" data-json-label="链接 JSON" rows="2">[]</textarea></label>
         </div>
         <div class="baas-form-actions">
-          <button type="button" id="gmTplSaveBtn" class="pm-btn pm-btn--primary" {% if not can_edit %}disabled{% endif %}>保存模板</button>
+          <button type="button" id="gmTplSaveBtn" class="pm-btn pm-btn--primary" data-json-guard="1" {% if not can_edit %}disabled{% endif %}>保存模板</button>
         </div>
         <div class="baas-list"><h3>模板列表</h3><div id="gmTplList"></div></div>
       </div>
@@ -245,6 +271,34 @@
           <button type="button" id="gmGsStopBtn" class="pm-btn pm-btn--danger" {% if not can_edit %}disabled{% endif %}>停服 Gateway</button>
         </div>
       </div>
+      <div class="baas-gm-pane" data-pane="afk">
+        <div class="baas-panel-head">
+          <div><h2>AFK 养成运维</h2><p>英雄 / 体力 / 推图进度 / 装备成长 / 副本次数 — 针对 AFK 项目完整 GM 能力。</p></div>
+        </div>
+        <div class="baas-inline-toolbar">
+          <input id="gmAfkPlayerId" type="text" placeholder="玩家 ID">
+          <button type="button" id="gmAfkSnapshotBtn" class="pm-btn">加载快照</button>
+        </div>
+        <pre id="gmAfkSnapshot" class="baas-pre is-hidden"></pre>
+        <div class="baas-form-grid" style="margin-top:12px">
+          <label><span>英雄 ID</span><input id="gmAfkHeroId" type="number" value="1"></label>
+          <label><span>等级</span><input id="gmAfkHeroLevel" type="number" placeholder="可选"></label>
+          <label><span>星级</span><input id="gmAfkHeroStar" type="number" placeholder="1-5"></label>
+          <label><span>碎片</span><input id="gmAfkHeroShards" type="number" placeholder="可选"></label>
+          <label><span>体力值</span><input id="gmAfkStamina" type="number" placeholder="500"></label>
+          <label><span>推图 stage_id</span><input id="gmAfkStageId" type="text" placeholder="AFK_01_01"></label>
+          <label><span>装备槽位</span><input id="gmAfkEquipSlot" type="text" value="weapon"></label>
+          <label><span>强化等级</span><input id="gmAfkEnhance" type="number" placeholder="0"></label>
+        </div>
+        <div class="baas-form-actions">
+          <button type="button" id="gmAfkGrantHeroBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>发放英雄</button>
+          <button type="button" id="gmAfkSetHeroBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>设置英雄</button>
+          <button type="button" id="gmAfkSetStaminaBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>设置体力</button>
+          <button type="button" id="gmAfkSetStageBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>解锁关卡</button>
+          <button type="button" id="gmAfkSetEquipBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>设置装备</button>
+          <button type="button" id="gmAfkResetDgBtn" class="pm-btn" {% if not can_edit %}disabled{% endif %}>重置副本次数</button>
+        </div>
+      </div>
       <div class="baas-gm-pane" data-pane="audit">
         <div class="baas-panel-head">
           <div><h2>GM 审计日志</h2><p>本服务相关的 BaaS GM 操作记录（封禁、邮件、停服、道具发放等）。</p></div>
@@ -263,4 +317,3 @@
     </main>
   </div>
 </section>
-<script src="/static/baas_gm_console.js?v=20260819-gm5"></script>

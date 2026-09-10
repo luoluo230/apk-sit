@@ -37,7 +37,7 @@ def default_feature_flags() -> Dict[str, bool]:
 
 
 def default_feature_configs() -> Dict[str, Dict[str, Any]]:
-    return {
+    configs = {
         "login": {
             "guest_login_enabled": True,
             "password_login_enabled": True,
@@ -177,6 +177,18 @@ def default_feature_configs() -> Dict[str, Dict[str, Any]]:
             ],
         },
     }
+    _merge_afk_shared_configs(configs)
+    return configs
+
+
+def _merge_afk_shared_configs(configs: Dict[str, Dict[str, Any]]) -> None:
+    try:
+        from services.baas.afk_config_loader import afk_feature_configs
+
+        for key, val in afk_feature_configs().items():
+            configs[key] = val
+    except Exception:
+        pass
 
 
 def public_endpoints_for_features(flags: Dict[str, bool]) -> Dict[str, str]:

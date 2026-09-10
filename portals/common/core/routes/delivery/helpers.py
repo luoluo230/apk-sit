@@ -34,6 +34,8 @@ BREADCRUMB_BY_PAGE = {
     "project-tasks": "协作",
     "project-docs": "协作",
     "project-settings": "项目设置",
+    "casual-services": "BaaS 配置",
+    "baas-gm": "GM 运维",
 }
 
 
@@ -173,6 +175,24 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
             f'<script src="/static/journey_common.js?v={DELIVERY_ASSET_VER}"></script>'
             f'<script src="/static/delivery_order_detail.js?v={DELIVERY_ASSET_VER}"></script>'
         )
+    elif template_name == "casual_services_console.html":
+        json_css, json_js = (
+            f'<link rel="stylesheet" href="/static/baas_json_field.css?v={DELIVERY_ASSET_VER}">',
+            f'<script src="/static/baas_json_field.js?v={DELIVERY_ASSET_VER}"></script>',
+        )
+        css = json_css + f'<link rel="stylesheet" href="/static/casual_services_console.css?v={DELIVERY_ASSET_VER}">'
+        js = json_js + f'<script src="/static/casual_services_console.js?v={DELIVERY_ASSET_VER}"></script>'
+    elif template_name == "baas_gm_console.html":
+        json_css, json_js = (
+            f'<link rel="stylesheet" href="/static/baas_json_field.css?v={DELIVERY_ASSET_VER}">',
+            f'<script src="/static/baas_json_field.js?v={DELIVERY_ASSET_VER}"></script>',
+        )
+        css = (
+            json_css
+            + f'<link rel="stylesheet" href="/static/casual_services_console.css?v={DELIVERY_ASSET_VER}">'
+            + f'<link rel="stylesheet" href="/static/baas_gm_console.css?v={DELIVERY_ASSET_VER}">'
+        )
+        js = json_js + f'<script src="/static/baas_gm_console.js?v={DELIVERY_ASSET_VER}"></script>'
     else:
         css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
         js = delivery_js_bundle()

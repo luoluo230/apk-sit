@@ -24,6 +24,7 @@ from app_new import app  # noqa: F401
 
 from models.db import get_cursor
 from services.baas import auth_service, gacha_service, hero_service, idle_service, iap_service, pve_service, tower_service
+from services.baas import afk_growth_service, inventory_service
 from services.baas.battle_antifraud import compute_replay_hash
 from services.baas.registry import default_feature_configs
 from services.baas.wallet_helpers import credit_wallet
@@ -51,7 +52,7 @@ class BaasAfkPackTests(unittest.TestCase):
         projects_repo.upsert_project(_TEST_PROJECT, projects_db[_TEST_PROJECT])
         svc, cls.api_secret = ensure_service(_TEST_PROJECT, "development", actor="admin")
         cls.service_id = svc["service_id"]
-        flags = {k: True for k in ("login", "hero", "gacha", "idle", "tower", "iap", "pve", "economy")}
+        flags = {k: True for k in ("login", "hero", "gacha", "idle", "tower", "iap", "pve", "economy", "inventory")}
         update_service(
             _TEST_PROJECT,
             cls.service_id,
@@ -81,12 +82,12 @@ class BaasAfkPackTests(unittest.TestCase):
 
     def test_idle_claim_after_pve_clear(self):
         team = {"heroes": [1, 2, 3]}
-        start = pve_service.start_battle(self.service_id, self.player_id, "1-1", team=team)
+        start = pve_service.start_battle(self.service_id, self.player_id, "AFK_01_01", team=team)
         seed = int(start["seed"])
         win = True
         stars = 1
         ticks = 20
-        checksum = hashlib.sha256(f"{seed}:1-1:{int(win)}:{stars}".encode()).hexdigest()[:16]
+        checksum = hashlib.sha256(f"{seed}:AFK_01_01:{int(win)}:{stars}".encode()).hexdigest()[:16]
         replay_hash = compute_replay_hash(seed=seed, battle_type="pve", team=team, win=win, ticks=ticks)
         pve_service.settle_battle(
             self.service_id,
@@ -146,6 +147,66 @@ class BaasAfkPackTests(unittest.TestCase):
         )
         self.assertEqual(delivered.get("status"), "delivered")
         self.assertGreater(delivered.get("rewards", {}).get("diamond", 0), 0)
+
+    def test_equipment_enhance_and_star_up(self):
+        gacha_service.pull(self.service_id, self.player_id, "standard", count=1)
+        roster = hero_service.get_roster(self.service_id, self.player_id)
+        if not roster["heroes"]:
+            self.skipTest("no hero")
+        hid = roster["heroes"][0]["hero_id"]
+        with get_cursor() as cur:
+            inventory_service.grant_item(cur, self.service_id, self.player_id, "enhance_stone", quantity=20)
+            inventory_service.grant_item(cur, self.service_id, self.player_id, "star_up_crystal", quantity=10)
+            cur.execute(
+                "UPDATE baas_player_heroes SET shards=? WHERE service_id=? AND player_id=? AND hero_id=?",
+                (500, self.service_id, self.player_id, hid),
+            )
+        eq = afk_growth_service.get_equipment_state(self.service_id, self.player_id)
+        self.assertGreaterEqual(len(eq.get("equipment") or []), 8)
+        enh = afk_growth_service.enhance_equipment(self.service_id, self.player_id, "weapon")
+        self.assertGreaterEqual(enh.get("enhance_level", 0), 1)
+        star = afk_growth_service.star_up_hero(self.service_id, self.player_id, hid, use_crystal=True)
+        self.assertGreaterEqual(star.get("star", 1), 2)
+
+    def test_dungeon_run_after_pve_unlock(self):
+        for _ in range(5):
+            gacha_service.pull(self.service_id, self.player_id, "standard", count=1)
+        roster = hero_service.get_roster(self.service_id, self.player_id)
+        heroes = roster.get("heroes") or []
+        if len(heroes) < 3:
+            self.skipTest("need heroes")
+        team_ids = [int(h["hero_id"]) for h in heroes[:3]]
+        team = {"heroes": team_ids}
+        start = pve_service.start_battle(self.service_id, self.player_id, "AFK_01_01", team=team)
+        seed = int(start["seed"])
+        checksum = hashlib.sha256(f"{seed}:AFK_01_01:1:1".encode()).hexdigest()[:16]
+        replay_hash = compute_replay_hash(seed=seed, battle_type="pve", team=team, win=True, ticks=20)
+        pve_service.settle_battle(
+            self.service_id, self.player_id, start["battle_id"],
+            win=True, stars=1, duration_ms=5000, checksum=checksum, replay_hash=replay_hash, replay_ticks=20,
+        )
+        with get_cursor() as cur:
+            for sid in [f"AFK_{ch:02d}_{lv:02d}" for ch in range(1, 3) for lv in range(1, 11)]:
+                cur.execute(
+                    """
+                    INSERT INTO baas_chapter_progress (service_id, player_id, stage_id, stars, best_time_ms, cleared, updated_at)
+                    VALUES (?,?,?,?,?,?,?)
+                    ON CONFLICT(service_id, player_id, stage_id) DO UPDATE SET cleared=1
+                    """,
+                    (self.service_id, self.player_id, sid, 3, 0, 1, "2026-01-01T00:00:00Z"),
+                )
+            for hid in team_ids:
+                cur.execute(
+                    "UPDATE baas_player_heroes SET level=80 WHERE service_id=? AND player_id=? AND hero_id=?",
+                    (self.service_id, self.player_id, hid),
+                )
+            credit_wallet(cur, self.service_id, self.player_id, "gold", 500000)
+        dgs = afk_growth_service.list_dungeons_status(self.service_id, self.player_id)
+        solo_gold = next((d for d in dgs.get("dungeons") or [] if d.get("id") == "solo_gold"), None)
+        if not solo_gold or not solo_gold.get("unlocked"):
+            self.skipTest("solo_gold not unlocked in config")
+        result = afk_growth_service.run_dungeon(self.service_id, self.player_id, "solo_gold", team=team)
+        self.assertIn("rewards", result)
 
 
 if __name__ == "__main__":

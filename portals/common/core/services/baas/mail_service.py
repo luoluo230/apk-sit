@@ -43,6 +43,27 @@ def claim_mail(service_id: str, player_id: str, mail_id: str) -> Dict[str, Any]:
         if row["status"] == "claimed":
             return _row(row)
         now = _now_iso()
+        attachments = _json_load(row["attachments_json"], [])
+        reward_map = {}
+        for att in attachments or []:
+            if not isinstance(att, dict):
+                continue
+            if str(att.get("type") or "") == "currency":
+                cid = str(att.get("currency_id") or "gold")
+                reward_map[cid] = reward_map.get(cid, 0) + int(att.get("amount") or 0)
+            elif str(att.get("type") or "") in ("item", "material", "equipment"):
+                iid = str(att.get("item_id") or att.get("key") or "")
+                if iid:
+                    reward_map[iid] = reward_map.get(iid, 0) + int(att.get("quantity") or att.get("amount") or 1)
+            elif att.get("item_key"):
+                reward_map[str(att["item_key"])] = reward_map.get(str(att["item_key"]), 0) + int(att.get("count") or att.get("quantity") or 1)
+            elif att.get("gold"):
+                reward_map["gold"] = reward_map.get("gold", 0) + int(att["gold"])
+            elif att.get("diamond"):
+                reward_map["diamond"] = reward_map.get("diamond", 0) + int(att["diamond"])
+        if reward_map:
+            from services.baas.afk_reward_grants import grant_rewards
+            grant_rewards(cur, service_id, player_id, reward_map)
         cur.execute(
             "UPDATE baas_mail_messages SET status='claimed', claimed_at=?, updated_at=? WHERE mail_id=?",
             (now, now, mail_id),

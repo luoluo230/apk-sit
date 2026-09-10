@@ -219,6 +219,17 @@ def list_opponents(service_id: str, player_id: str, *, count: int = 3) -> List[D
             "power": int(row["power"] or 0),
             "defense_preview": _json_load(row["payload_json"], {}),
         })
+    if not out:
+        for i in range(1, limit + 1):
+            bot_id = f"arena_bot_{i}"
+            bot = get_defense(service_id, bot_id)
+            out.append({
+                "player_id": bot_id,
+                "display_name": bot.get("display_name") or bot_id,
+                "rating": int(bot.get("rating") or 1000),
+                "power": int(bot.get("power") or 800),
+                "defense_preview": bot.get("defense") or {},
+            })
     return out
 
 
@@ -228,6 +239,19 @@ def get_defense(service_id: str, target_player_id: str) -> Dict[str, Any]:
     tid = str(target_player_id or "").strip()
     if not tid:
         raise ValueError("player_id 必填")
+    if tid.startswith("arena_bot_"):
+        suffix = tid.rsplit("_", 1)[-1]
+        idx = int(suffix) if suffix.isdigit() else 1
+        heroes = [11, 12, 21, 22, 3][: min(5, idx + 1)]
+        power = 750 + idx * 130
+        return {
+            "player_id": tid,
+            "display_name": f"训练假人 #{idx}",
+            "power": power,
+            "defense": {"heroes": heroes},
+            "rating": 980 + idx * 40,
+            "updated_at": _now_iso(),
+        }
     init_db()
     with get_cursor() as cur:
         snap = cur.execute(
@@ -398,4 +422,9 @@ def settle_battle(
 
     retention_services.submit_score(service_id, player_id, board_id, final_rating)
     result["arena_state"] = get_state(service_id, player_id)
+    try:
+        from services.baas.afk_retention_hooks import on_arena_settled
+        on_arena_settled(service_id, player_id)
+    except Exception:
+        pass
     return result

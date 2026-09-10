@@ -95,13 +95,29 @@ def battlepass_state(service_id: str, player_id: str) -> Dict[str, Any]:
             (service_id, player_id, season_id),
         ).fetchone()
     if not row:
-        return {"season_id": season_id, "level": 1, "xp": 0, "premium": False, "claimed_levels": []}
+        return {"season_id": season_id, "level": 1, "xp": 0, "premium": False, "claimed_levels": [], "claimed_premium_levels": []}
+    prem_row = None
+    with get_cursor() as cur2:
+        cur2.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baas_battlepass_premium_claims (
+                service_id TEXT NOT NULL, player_id TEXT NOT NULL, season_id TEXT NOT NULL,
+                claimed_levels_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+                PRIMARY KEY (service_id, player_id, season_id)
+            )
+            """
+        )
+        prem_row = cur2.execute(
+            "SELECT claimed_levels_json FROM baas_battlepass_premium_claims WHERE service_id=? AND player_id=? AND season_id=?",
+            (service_id, player_id, season_id),
+        ).fetchone()
     return {
         "season_id": season_id,
         "level": int(row["level"] or 1),
         "xp": int(row["xp"] or 0),
         "premium": bool(row["premium"]),
         "claimed_levels": _json_load(row["claimed_levels_json"], []),
+        "claimed_premium_levels": _json_load(prem_row["claimed_levels_json"], []) if prem_row else [],
     }
 
 
@@ -140,20 +156,69 @@ def battlepass_claim(service_id: str, player_id: str, level: int) -> Dict[str, A
     if int(level) > int(state["level"]):
         raise ValueError("等级不足")
     claimed = list(state.get("claimed_levels") or [])
-    if int(level) in claimed:
+    claimed_premium = list(state.get("claimed_premium_levels") or [])
+    is_premium = bool(state.get("premium"))
+    grant_free = int(level) not in claimed
+    grant_prem = is_premium and int(level) not in claimed_premium
+    if not grant_free and not grant_prem:
         raise ValueError("已领取")
-    claimed.append(int(level))
+    rewards_granted = []
+    cfg = get_feature_config(service_id, "battlepass")
     now = _now_iso()
     init_db()
     with get_cursor() as cur:
+        for row in cfg.get("level_rewards") or []:
+            if int(row.get("level") or 0) != int(level):
+                continue
+            free_rewards = dict(row.get("free_rewards") or {})
+            if grant_free and free_rewards:
+                from services.baas.afk_reward_grants import grant_rewards
+                rewards_granted.extend(grant_rewards(cur, service_id, player_id, free_rewards))
+                claimed.append(int(level))
+            if grant_prem:
+                prem = dict(row.get("premium_rewards") or {})
+                if prem:
+                    from services.baas.afk_reward_grants import grant_rewards
+                    rewards_granted.extend(grant_rewards(cur, service_id, player_id, prem))
+                claimed_premium.append(int(level))
+            break
         cur.execute(
             """
-            UPDATE baas_battlepass_progress SET claimed_levels_json=?, updated_at=?
-            WHERE service_id=? AND player_id=? AND season_id=?
+            INSERT INTO baas_battlepass_progress (service_id, player_id, season_id, level, xp, premium, claimed_levels_json, updated_at)
+            VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT(service_id, player_id, season_id) DO UPDATE SET
+                claimed_levels_json=excluded.claimed_levels_json, updated_at=excluded.updated_at
             """,
-            (_json_dump(claimed), now, service_id, player_id, state["season_id"]),
+            (
+                service_id,
+                player_id,
+                state["season_id"],
+                int(state["level"]),
+                int(state["xp"]),
+                bool(state.get("premium")),
+                _json_dump(claimed),
+                now,
+            ),
         )
-    return {"level": int(level), "claimed_levels": claimed}
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baas_battlepass_premium_claims (
+                service_id TEXT NOT NULL, player_id TEXT NOT NULL, season_id TEXT NOT NULL,
+                claimed_levels_json TEXT NOT NULL, updated_at TEXT NOT NULL,
+                PRIMARY KEY (service_id, player_id, season_id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            INSERT INTO baas_battlepass_premium_claims (service_id, player_id, season_id, claimed_levels_json, updated_at)
+            VALUES (?,?,?,?,?)
+            ON CONFLICT(service_id, player_id, season_id) DO UPDATE SET
+                claimed_levels_json=excluded.claimed_levels_json, updated_at=excluded.updated_at
+            """,
+            (service_id, player_id, state["season_id"], _json_dump(claimed_premium), now),
+        )
+    return {"level": int(level), "claimed_levels": claimed, "claimed_premium_levels": claimed_premium, "rewards": rewards_granted}
 
 
 def list_periodic_tasks(service_id: str, player_id: str) -> List[Dict[str, Any]]:
@@ -200,6 +265,15 @@ def claim_periodic_task(service_id: str, player_id: str, task_id: str) -> Dict[s
             "UPDATE baas_periodic_tasks SET status='claimed', claimed_at=?, updated_at=? WHERE service_id=? AND player_id=? AND task_id=?",
             (now, now, service_id, player_id, tid),
         )
+        cfg = get_feature_config(service_id, "periodic_task")
+        task_def = None
+        for bucket in (cfg.get("daily_tasks") or []) + (cfg.get("weekly_tasks") or []):
+            if str(bucket.get("id")) == tid:
+                task_def = bucket
+                break
+        if task_def and task_def.get("rewards"):
+            from services.baas.afk_reward_grants import grant_rewards
+            grant_rewards(cur, service_id, player_id, dict(task_def["rewards"]))
     return {"task_id": tid, "status": "claimed"}
 
 

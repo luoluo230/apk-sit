@@ -13,15 +13,17 @@
   var toast = window.DeliveryCommon && window.DeliveryCommon.toast
     ? function (m, t) { window.DeliveryCommon.toast(m, t || "info"); }
     : function (m) { alert(m); };
+  var jsonField = window.BaasJsonField;
 
   var NAV = [
     { group: "概览", items: [{ id: "overview", label: "运营概览" }] },
     { group: "玩家运营", items: [{ id: "players", label: "玩家查询" }, { id: "moderation", label: "封禁与禁言" }] },
     { group: "触达", items: [{ id: "mail", label: "邮件补偿" }, { id: "templates", label: "邮件模板" }, { id: "announce", label: "公告跑马灯" }] },
-    { group: "活动留存", items: [{ id: "gifts", label: "兑换码" }, { id: "activities", label: "活动配置" }] },
+    { group: "活动留存", items: [{ id: "retention", label: "留存运营" }, { id: "gifts", label: "兑换码" }, { id: "activities", label: "活动配置" }] },
     { group: "经济数据", items: [{ id: "wallet", label: "钱包调整" }, { id: "items", label: "道具发放" }, { id: "leaderboard", label: "排行榜" }, { id: "cloudsave", label: "云存档" }] },
     { group: "GameServer", items: [{ id: "gameserver", label: "在线运维" }] },
     { group: "休闲对战", items: [{ id: "rooms", label: "房间与对战" }] },
+    { group: "AFK 养成", items: [{ id: "afk", label: "AFK 运维" }] },
     { group: "治理", items: [{ id: "audit", label: "审计日志" }, { id: "coverage", label: "能力清单" }] }
   ];
 
@@ -39,7 +41,9 @@
     { title: "在线踢人 / 顶号", status: "done", note: "gameserver 页签 → Ops kick-session + NotifyKickOff。" },
     { title: "GameServer 运维停服广播", status: "done", note: "维护广播 + Gateway stop（StopAsync NotifyKickOff）。" },
     { title: "休闲服房间 / 对战运维", status: "done", note: "rooms 页签：在线房间、强制解散、踢人、结束对局、回放列表。" },
-    { title: "审计日志 UI", status: "done", note: "audit 页签展示 baas_gm* 操作记录。" }
+    { title: "审计日志 UI", status: "done", note: "audit 页签展示 baas_gm* 操作记录。" },
+    { title: "AFK 英雄 / 体力 / 推图 / 装备 GM", status: "done", note: "afk 页签：快照、发英雄、设等级星级、体力、关卡、装备、重置副本。" },
+    { title: "留存运营（赛季/战令/VIP/爬塔）", status: "done", note: "retention 页签：兑换码概览、竞技结算、战令 rollover、VIP/爬塔 GM。" }
   ];
 
   function csrf() {
@@ -84,6 +88,7 @@
     document.querySelectorAll(".baas-gm-pane").forEach(function (p) {
       p.classList.toggle("is-active", p.getAttribute("data-pane") === activePane);
     });
+    if (activePane === "retention") loadRetention().catch(function () {});
   }
 
   function renderCoverage() {
@@ -208,6 +213,26 @@
     }).join("") || '<div class="baas-list-row"><span>暂无兑换码</span></div>';
   }
 
+  async function loadRetention() {
+    var d = await api("/retention/overview");
+    var ov = document.getElementById("gmRetentionOverview");
+    if (ov) {
+      var arena = d.arena || {};
+      var bp = d.battlepass || {};
+      ov.innerHTML =
+        '<div class="baas-list-row"><div><div>竞技赛季</div><div class="meta">' + esc(arena.season_name || arena.season_id || "—") + " · 截止 " + esc(arena.season_ends_at || "—") + '</div></div></div>' +
+        '<div class="baas-list-row"><div><div>战令赛季</div><div class="meta">' + esc(bp.season_name || bp.season_id || "—") + " · 截止 " + esc(bp.season_ends_at || "—") + '</div></div></div>' +
+        '<div class="baas-list-row"><div><div>兑换码</div><div class="meta">共 ' + esc(d.gift_code_count || 0) + " 条</div></div></div>";
+    }
+    var giftHost = document.getElementById("gmRetentionGiftList");
+    if (giftHost) {
+      var rows = d.gift_codes || [];
+      giftHost.innerHTML = rows.slice(0, 20).map(function (r) {
+        return '<div class="baas-list-row"><div><div>' + esc(r.code) + '</div><div class="meta">' + esc(r.code_type || "shared") + " · " + esc(r.use_count) + "/" + esc(r.max_uses || "∞") + "</div></div></div>";
+      }).join("") || '<div class="baas-list-row"><span>暂无兑换码</span></div>';
+    }
+  }
+
   async function loadAnnouncements() {
     var rows = await api("/announcements");
     var host = document.getElementById("gmAnnList");
@@ -254,6 +279,7 @@
         document.getElementById("gmMailTitle").value = tpl.title || "";
         document.getElementById("gmMailBody").value = tpl.body || "";
         document.getElementById("gmMailLinks").value = JSON.stringify(tpl.body_links || [], null, 2);
+        if (jsonField) jsonField.validate(document.getElementById("gmMailLinks"));
         toast("已套用模板", "success");
       };
     });
@@ -359,7 +385,17 @@
     }
   }
 
+  function initJsonGuards() {
+    if (!jsonField) return;
+    jsonField.bindScope(root);
+    root.querySelectorAll("[data-json-guard]").forEach(function (btn) {
+      if (btn.disabled) btn.dataset.jsonLocked = "1";
+      jsonField.guardSubmit(btn);
+    });
+  }
+
   function bindActions() {
+    initJsonGuards();
     document.getElementById("gmCopyServiceId").onclick = function () {
       var text = document.getElementById("gmServiceId").textContent;
       if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { toast("已复制", "success"); });
@@ -378,12 +414,16 @@
     };
     if (!canEdit) return;
     document.getElementById("gmMailSendBtn").onclick = function () {
+      var pane = document.querySelector('[data-pane="mail"]');
+      try {
+        if (jsonField) jsonField.requireScope(pane);
+      } catch (e) { toast(e.message, "error"); return; }
       var raw = document.getElementById("gmMailPlayers").value.trim();
       var body = { title: document.getElementById("gmMailTitle").value, body: document.getElementById("gmMailBody").value };
-      try {
-        var linksRaw = document.getElementById("gmMailLinks").value.trim();
-        if (linksRaw) body.body_links = JSON.parse(linksRaw);
-      } catch (e) { toast("链接 JSON 无效", "error"); return; }
+      var links = jsonField
+        ? jsonField.parse(document.getElementById("gmMailLinks"))
+        : JSON.parse(document.getElementById("gmMailLinks").value.trim() || "null");
+      if (links != null) body.body_links = links;
       if (raw) body.player_ids = raw.split(/[,，\s]+/).filter(Boolean);
       api("/mail/broadcast", { method: "POST", body: JSON.stringify(body) }).then(function (d) {
         toast("已发送 " + d.sent_count + " 封", "success");
@@ -428,11 +468,12 @@
         .catch(function (e) { toast(e.message, "error"); });
     };
     document.getElementById("gmActSaveBtn").onclick = function () {
-      var gates, payload;
+      var pane = document.querySelector('[data-pane="activities"]');
       try {
-        gates = JSON.parse(document.getElementById("gmActGates").value || "{}");
-        payload = JSON.parse(document.getElementById("gmActPayload").value || "{}");
-      } catch (e) { toast("活动 JSON 无效", "error"); return; }
+        if (jsonField) jsonField.requireScope(pane);
+      } catch (e) { toast(e.message, "error"); return; }
+      var gates = jsonField.parse(document.getElementById("gmActGates"));
+      var payload = jsonField.parse(document.getElementById("gmActPayload"));
       api("/activities", {
         method: "POST",
         body: JSON.stringify({
@@ -459,8 +500,11 @@
       }).then(function (d) { toast("余额: " + d.balance, "success"); }).catch(function (e) { toast(e.message, "error"); });
     };
     document.getElementById("gmGiftSaveBtn").onclick = function () {
-      var rewards;
-      try { rewards = JSON.parse(document.getElementById("gmGiftRewards").value || "[]"); } catch (e) { toast("奖励 JSON 无效", "error"); return; }
+      var pane = document.querySelector('[data-pane="gifts"]');
+      try {
+        if (jsonField) jsonField.requireScope(pane);
+      } catch (e) { toast(e.message, "error"); return; }
+      var rewards = jsonField.parse(document.getElementById("gmGiftRewards"));
       api("/gift-codes", {
         method: "POST",
         body: JSON.stringify({
@@ -482,8 +526,11 @@
     };
     var itemBtn = document.getElementById("gmItemGrantBtn");
     if (itemBtn) itemBtn.onclick = function () {
-      var items;
-      try { items = JSON.parse(document.getElementById("gmItemJson").value || "[]"); } catch (e) { toast("道具 JSON 无效", "error"); return; }
+      var pane = document.querySelector('[data-pane="items"]');
+      try {
+        if (jsonField) jsonField.requireScope(pane);
+      } catch (e) { toast(e.message, "error"); return; }
+      var items = jsonField.parse(document.getElementById("gmItemJson"));
       api("/grant-items", {
         method: "POST",
         body: JSON.stringify({
@@ -497,11 +544,12 @@
     };
     var tplBtn = document.getElementById("gmTplSaveBtn");
     if (tplBtn) tplBtn.onclick = function () {
-      var attachments, links;
+      var pane = document.querySelector('[data-pane="templates"]');
       try {
-        attachments = JSON.parse(document.getElementById("gmTplAttachments").value || "[]");
-        links = JSON.parse(document.getElementById("gmTplLinks").value || "[]");
-      } catch (e) { toast("模板 JSON 无效", "error"); return; }
+        if (jsonField) jsonField.requireScope(pane);
+      } catch (e) { toast(e.message, "error"); return; }
+      var attachments = jsonField.parse(document.getElementById("gmTplAttachments"));
+      var links = jsonField.parse(document.getElementById("gmTplLinks"));
       api("/mail-templates", {
         method: "POST",
         body: JSON.stringify({
@@ -548,6 +596,103 @@
     if (roomRefreshBtn) roomRefreshBtn.onclick = function () { loadRooms().catch(function (e) { toast(e.message, "error"); }); };
     var roomStatusEl = document.getElementById("gmRoomStatus");
     if (roomStatusEl) roomStatusEl.onchange = function () { loadRooms().catch(function (e) { toast(e.message, "error"); }); };
+
+    function afkPlayerId() {
+      return (document.getElementById("gmAfkPlayerId") || {}).value.trim();
+    }
+    var snapBtn = document.getElementById("gmAfkSnapshotBtn");
+    if (snapBtn) snapBtn.onclick = function () {
+      var pid = afkPlayerId();
+      if (!pid) { toast("请填写玩家 ID", "error"); return; }
+      api("/afk/snapshot/" + encodeURIComponent(pid)).then(function (d) {
+        var el = document.getElementById("gmAfkSnapshot");
+        if (el) { el.textContent = JSON.stringify(d, null, 2); el.classList.remove("is-hidden"); }
+      }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var grantHeroBtn = document.getElementById("gmAfkGrantHeroBtn");
+    if (grantHeroBtn) grantHeroBtn.onclick = function () {
+      api("/afk/grant-hero", { method: "POST", body: JSON.stringify({ player_id: afkPlayerId(), hero_id: Number(document.getElementById("gmAfkHeroId").value) }) })
+        .then(function () { toast("英雄已发放", "success"); loadAudit(); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var setHeroBtn = document.getElementById("gmAfkSetHeroBtn");
+    if (setHeroBtn) setHeroBtn.onclick = function () {
+      var body = { player_id: afkPlayerId(), hero_id: Number(document.getElementById("gmAfkHeroId").value) };
+      var lv = document.getElementById("gmAfkHeroLevel").value;
+      var st = document.getElementById("gmAfkHeroStar").value;
+      var sh = document.getElementById("gmAfkHeroShards").value;
+      if (lv) body.level = Number(lv);
+      if (st) body.star = Number(st);
+      if (sh) body.shards = Number(sh);
+      api("/afk/set-hero", { method: "POST", body: JSON.stringify(body) })
+        .then(function () { toast("英雄已更新", "success"); loadAudit(); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var setStBtn = document.getElementById("gmAfkSetStaminaBtn");
+    if (setStBtn) setStBtn.onclick = function () {
+      api("/afk/set-stamina", { method: "POST", body: JSON.stringify({ player_id: afkPlayerId(), value: Number(document.getElementById("gmAfkStamina").value) }) })
+        .then(function () { toast("体力已设置", "success"); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var setStageBtn = document.getElementById("gmAfkSetStageBtn");
+    if (setStageBtn) setStageBtn.onclick = function () {
+      api("/afk/set-pve-stage", { method: "POST", body: JSON.stringify({ player_id: afkPlayerId(), stage_id: document.getElementById("gmAfkStageId").value.trim() }) })
+        .then(function () { toast("关卡已解锁", "success"); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var setEquipBtn = document.getElementById("gmAfkSetEquipBtn");
+    if (setEquipBtn) setEquipBtn.onclick = function () {
+      var enh = document.getElementById("gmAfkEnhance").value;
+      api("/afk/set-equipment", {
+        method: "POST",
+        body: JSON.stringify({
+          player_id: afkPlayerId(),
+          slot: document.getElementById("gmAfkEquipSlot").value.trim(),
+          enhance_level: enh ? Number(enh) : undefined
+        })
+      }).then(function () { toast("装备已设置", "success"); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var resetDgBtn = document.getElementById("gmAfkResetDgBtn");
+    if (resetDgBtn) resetDgBtn.onclick = function () {
+      api("/afk/reset-dungeons", { method: "POST", body: JSON.stringify({ player_id: afkPlayerId() }) })
+        .then(function () { toast("副本次数已重置", "success"); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var retRefreshBtn = document.getElementById("gmRetentionRefreshBtn");
+    if (retRefreshBtn) retRefreshBtn.onclick = function () { loadRetention().catch(function (e) { toast(e.message, "error"); }); };
+    var retArenaBtn = document.getElementById("gmRetentionArenaSettleBtn");
+    if (retArenaBtn) retArenaBtn.onclick = function () {
+      if (!canEdit) return;
+      api("/retention/arena-settle", { method: "POST", body: "{}" })
+        .then(function (d) { toast("竞技赛季已结算，邮件 " + (d.mails_sent || 0), "success"); loadRetention(); loadAudit(); })
+        .catch(function (e) { toast(e.message, "error"); });
+    };
+    var retBpBtn = document.getElementById("gmRetentionBpRolloverBtn");
+    if (retBpBtn) retBpBtn.onclick = function () {
+      if (!canEdit) return;
+      api("/retention/battlepass-rollover", { method: "POST", body: "{}" })
+        .then(function (d) { toast("战令已 rollover → " + (d.new_season_id || ""), "success"); loadRetention(); loadAudit(); })
+        .catch(function (e) { toast(e.message, "error"); });
+    };
+    var retVipBtn = document.getElementById("gmRetentionVipBtn");
+    if (retVipBtn) retVipBtn.onclick = function () {
+      if (!canEdit) return;
+      api("/retention/vip", {
+        method: "POST",
+        body: JSON.stringify({
+          player_id: document.getElementById("gmRetentionPlayerId").value.trim(),
+          vip_level: Number(document.getElementById("gmRetentionVipLevel").value || 0),
+          vip_exp: Number(document.getElementById("gmRetentionVipExp").value || 0)
+        })
+      }).then(function () { toast("VIP 已设置", "success"); loadAudit(); }).catch(function (e) { toast(e.message, "error"); });
+    };
+    var retTowerBtn = document.getElementById("gmRetentionTowerBtn");
+    if (retTowerBtn) retTowerBtn.onclick = function () {
+      if (!canEdit) return;
+      api("/retention/tower-floor", {
+        method: "POST",
+        body: JSON.stringify({
+          player_id: document.getElementById("gmRetentionPlayerId").value.trim(),
+          floor: Number(document.getElementById("gmRetentionTowerFloor").value || 0),
+          tower_id: document.getElementById("gmRetentionTowerId").value.trim() || "main"
+        })
+      }).then(function () { toast("爬塔层数已设置", "success"); loadAudit(); }).catch(function (e) { toast(e.message, "error"); });
+    };
   }
 
   renderNav();

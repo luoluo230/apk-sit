@@ -32,7 +32,23 @@ def team_hero_ids(team: Optional[Dict[str, Any]]) -> List[int]:
     return ids
 
 
-def team_power(team: Optional[Dict[str, Any]], heroes: Dict[int, Dict[str, Any]]) -> int:
+def team_power(
+    team: Optional[Dict[str, Any]],
+    heroes: Dict[int, Dict[str, Any]],
+    *,
+    hero_defs: Optional[Dict[int, Dict[str, Any]]] = None,
+    levels: Optional[Dict[int, int]] = None,
+    formulas: Optional[Dict[str, str]] = None,
+) -> int:
+    try:
+        from services.baas.afk_formula_engine import team_power_from_defs
+
+        defs = hero_defs or heroes
+        ids = team_hero_ids(team)
+        if defs and ids:
+            return team_power_from_defs(defs, ids, levels, formulas=formulas)
+    except Exception:
+        pass
     total = 0
     for hid in team_hero_ids(team):
         row = heroes.get(hid) or {}

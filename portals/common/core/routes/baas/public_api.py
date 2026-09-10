@@ -10,7 +10,7 @@ from services.baas import announce_service, auth_service, cloudsave_service, com
 from services.baas import activity_service, pvp_service, retention_services, social_services
 from services.baas import room_service, pve_service, arena_service
 from services.baas import gacha_service, hero_service, idle_service, tower_service, iap_service
-from services.baas import inventory_service, guild_war_service
+from services.baas import inventory_service, guild_war_service, afk_growth_service, afk_economy_service
 from services.baas.errors import baas_fail_exc, baas_success
 
 baas_public_bp = Blueprint("baas_public", __name__)
@@ -406,6 +406,47 @@ def register_baas_public_routes(bp=None) -> None:
         except ValueError as exc:
             return baas_fail_exc(exc)
 
+    @target.route(f"{prefix}/friends", methods=["GET"])
+    def baas_friends_list(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        from services.baas import afk_friend_service
+        return jsonify({"ok": True, "data": afk_friend_service.list_friends(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/friends/add", methods=["POST"])
+    def baas_friends_add(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_friend_service
+        try:
+            return jsonify({"ok": True, "data": afk_friend_service.add_friend(service_id, player["player_id"], body.get("friend_player_id"))})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/friends/assist", methods=["POST"])
+    def baas_friends_assist(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_friend_service
+        try:
+            return jsonify({"ok": True, "data": afk_friend_service.assist_friend(service_id, player["player_id"], body.get("friend_player_id"))})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
     @target.route(f"{prefix}/compliance/session-start", methods=["POST"])
     def baas_compliance_start(service_id: str):
         sid, err = _service_auth(service_id)
@@ -659,9 +700,190 @@ def register_baas_public_routes(bp=None) -> None:
                 "ok": True,
                 "data": hero_service.equip(
                     service_id, player["player_id"], hero_id,
-                    str(body.get("slot") or ""), str(body.get("equipment_id") or ""),
+                    str(body.get("slot") or ""), str(body.get("equipment_id") or body.get("item_id") or ""),
                 ),
             })
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/heroes/<int:hero_id>/star-up", methods=["POST"])
+    def baas_hero_star_up(service_id: str, hero_id: int):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({
+                "ok": True,
+                "data": afk_growth_service.star_up_hero(
+                    service_id, player["player_id"], hero_id,
+                    use_crystal=bool(body.get("use_crystal")),
+                ),
+            })
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/heroes/<int:hero_id>/talent", methods=["POST"])
+    def baas_hero_talent(service_id: str, hero_id: int):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.add_talent_point(service_id, player["player_id"], hero_id)})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/equipment", methods=["GET"])
+    def baas_growth_equipment(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.get_equipment_state(service_id, player["player_id"])})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/equipment/<slot>/enhance", methods=["POST"])
+    def baas_growth_enhance(service_id: str, slot: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({
+                "ok": True,
+                "data": afk_growth_service.enhance_equipment(
+                    service_id, player["player_id"], slot, use_luck=bool(body.get("use_luck")),
+                ),
+            })
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/equipment/<slot>/refine", methods=["POST"])
+    def baas_growth_refine(service_id: str, slot: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.refine_equipment(service_id, player["player_id"], slot)})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/equipment/<slot>/awaken", methods=["POST"])
+    def baas_growth_awaken(service_id: str, slot: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.awaken_equipment(service_id, player["player_id"], slot)})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/equipment/<slot>/reforge", methods=["POST"])
+    def baas_growth_reforge(service_id: str, slot: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.reforge_equipment(service_id, player["player_id"], slot)})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/equipment/<slot>/socket", methods=["POST"])
+    def baas_growth_socket(service_id: str, slot: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({
+                "ok": True,
+                "data": afk_growth_service.socket_gem(
+                    service_id, player["player_id"], slot, str(body.get("gem_item_id") or "gem_ruby"),
+                ),
+            })
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/growth/team-power", methods=["GET"])
+    def baas_growth_team_power(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        raw = str(request.args.get("heroes") or "").strip()
+        team_ids = [int(x) for x in raw.split(",") if x.strip().isdigit()] if raw else None
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.estimate_team_power(service_id, player["player_id"], team_ids=team_ids)})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/dungeons", methods=["GET"])
+    def baas_dungeons_list(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_growth_service.list_dungeons_status(service_id, player["player_id"])})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/dungeons/<dungeon_id>/run", methods=["POST"])
+    def baas_dungeon_run(service_id: str, dungeon_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({
+                "ok": True,
+                "data": afk_growth_service.run_dungeon(
+                    service_id, player["player_id"], dungeon_id,
+                    team=body.get("team") if isinstance(body.get("team"), dict) else None,
+                ),
+            })
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/economy/items", methods=["GET"])
+    def baas_economy_items(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        try:
+            return jsonify({"ok": True, "data": {"items": afk_economy_service.list_items(service_id)}})
         except Exception as exc:
             return baas_fail_exc(exc)
 
@@ -816,6 +1038,163 @@ def register_baas_public_routes(bp=None) -> None:
                 ),
             })
         except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/tower/<tower_id>/daily-claim", methods=["POST"])
+    def baas_tower_daily_claim(service_id: str, tower_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": tower_service.claim_daily_rewards(service_id, player["player_id"], tower_id)})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/tower/<tower_id>/battle/start-assist", methods=["POST"])
+    def baas_tower_battle_start_assist(service_id: str, tower_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({
+                "ok": True,
+                "data": tower_service.start_battle_with_assist(
+                    service_id, player["player_id"], tower_id, int(body.get("floor") or 1),
+                    team=body.get("team") if isinstance(body.get("team"), dict) else {},
+                    assist_friend_id=str(body.get("assist_friend_id") or ""),
+                    assist_hero_id=int(body.get("assist_hero_id") or 0),
+                ),
+            })
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/vip/state", methods=["GET"])
+    def baas_vip_state(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        from services.baas import afk_vip_service
+        return jsonify({"ok": True, "data": afk_vip_service.get_state(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/vip/daily-claim", methods=["POST"])
+    def baas_vip_daily_claim(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        from services.baas import afk_vip_service
+        try:
+            return jsonify({"ok": True, "data": afk_vip_service.claim_daily(service_id, player["player_id"])})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/arena/season", methods=["GET"])
+    def baas_arena_season(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        from services.baas import afk_season_service
+        return jsonify({"ok": True, "data": afk_season_service.list_arena_tier_status(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/arena/season/tier-claim", methods=["POST"])
+    def baas_arena_tier_claim(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_season_service
+        try:
+            return jsonify({"ok": True, "data": afk_season_service.claim_arena_tier_reward(service_id, player["player_id"], str(body.get("tier") or ""))})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/guild/status", methods=["GET"])
+    def baas_guild_status(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        from services.baas import afk_guild_service
+        return jsonify({"ok": True, "data": afk_guild_service.guild_status(service_id, player["player_id"])})
+
+    @target.route(f"{prefix}/guild/donate", methods=["POST"])
+    def baas_guild_donate(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_guild_service
+        try:
+            return jsonify({"ok": True, "data": afk_guild_service.donate(service_id, player["player_id"], amount=int(body.get("amount") or 1000))})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/guild/tech/upgrade", methods=["POST"])
+    def baas_guild_tech_upgrade(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_guild_service
+        try:
+            return jsonify({"ok": True, "data": afk_guild_service.upgrade_tech(service_id, player["player_id"], str(body.get("tech_id") or ""))})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/guild/shop/purchase", methods=["POST"])
+    def baas_guild_shop_purchase(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_guild_service
+        try:
+            return jsonify({"ok": True, "data": afk_guild_service.guild_shop_purchase(service_id, player["player_id"], str(body.get("goods_id") or ""))})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/guild/raid/hit", methods=["POST"])
+    def baas_guild_raid_hit(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        from services.baas import afk_guild_service
+        try:
+            return jsonify({"ok": True, "data": afk_guild_service.raid_hit(service_id, player["player_id"], int(body.get("damage") or 1000))})
+        except ValueError as exc:
             return baas_fail_exc(exc)
 
     @target.route(f"{prefix}/iap/products", methods=["GET"])

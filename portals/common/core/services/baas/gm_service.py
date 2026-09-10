@@ -69,7 +69,7 @@ def get_player_detail(service_id: str, player_id: str) -> Dict[str, Any]:
         ).fetchone()
     detail = _player_row(row)
     detail["wallets"] = [dict(w) for w in wallets]
-    detail["mail_count"] = int((mail_count or {}).get("cnt") or 0)
+    detail["mail_count"] = int(mail_count["cnt"] or 0) if mail_count else 0
     return detail
 
 
@@ -629,3 +629,302 @@ def is_player_banned(service_id: str, player_id: str) -> bool:
         return False
     exp = str(row["expires_at"] or "").strip()
     return not exp or exp > now
+
+
+def get_player_afk_snapshot(service_id: str, player_id: str) -> Dict[str, Any]:
+    """GM：AFK 玩家养成 / 推图 / 副本快照。"""
+    from services.baas import hero_service, pve_service, afk_growth_service, inventory_service
+
+    pid = str(player_id or "").strip()
+    if not pid:
+        raise ValueError("player_id 必填")
+    detail = get_player_detail(service_id, pid)
+    snapshot: Dict[str, Any] = {"player": detail}
+    try:
+        snapshot["roster"] = hero_service.get_roster(service_id, pid)
+    except ValueError:
+        snapshot["roster"] = {"heroes": [], "count": 0}
+    try:
+        snapshot["pve"] = {
+            "progress": pve_service.get_progress(service_id, pid),
+            "stamina": pve_service.get_stamina(service_id, pid),
+        }
+    except ValueError:
+        snapshot["pve"] = {}
+    try:
+        snapshot["equipment"] = afk_growth_service.get_equipment_state(service_id, pid)
+    except ValueError:
+        snapshot["equipment"] = {}
+    try:
+        snapshot["dungeons"] = afk_growth_service.list_dungeons_status(service_id, pid)
+    except ValueError:
+        snapshot["dungeons"] = {}
+    try:
+        snapshot["inventory"] = inventory_service.list_inventory(service_id, pid)
+    except ValueError:
+        snapshot["inventory"] = {"items": [], "count": 0}
+    try:
+        snapshot["team_power"] = afk_growth_service.estimate_team_power(service_id, pid)
+    except ValueError:
+        snapshot["team_power"] = {"team_power": 0}
+    return snapshot
+
+
+def gm_grant_hero(service_id: str, player_id: str, hero_id: int, *, actor: str = "") -> Dict[str, Any]:
+    from services.baas import hero_service
+
+    init_db()
+    with get_cursor() as cur:
+        result = hero_service.grant_hero(cur, service_id, player_id, int(hero_id))
+    log_audit_db("default", actor, "baas_gm_grant_hero", f"{service_id}/{player_id} hero={hero_id}", "")
+    return result
+
+
+def gm_set_hero(
+    service_id: str,
+    player_id: str,
+    hero_id: int,
+    *,
+    level: Optional[int] = None,
+    star: Optional[int] = None,
+    shards: Optional[int] = None,
+    talent_points: Optional[int] = None,
+    actor: str = "",
+) -> Dict[str, Any]:
+    hid = int(hero_id or 0)
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT * FROM baas_player_heroes WHERE service_id=? AND player_id=? AND hero_id=?",
+            (service_id, player_id, hid),
+        ).fetchone()
+        if not row:
+            from services.baas import hero_service
+            hero_service.grant_hero(cur, service_id, player_id, hid)
+        sets = []
+        vals: List[Any] = []
+        if level is not None:
+            sets.append("level=?")
+            vals.append(max(1, int(level)))
+        if star is not None:
+            sets.append("star=?")
+            vals.append(max(1, min(5, int(star))))
+        if shards is not None:
+            sets.append("shards=?")
+            vals.append(max(0, int(shards)))
+        if talent_points is not None:
+            sets.append("talent_points=?")
+            vals.append(max(0, int(talent_points)))
+        if not sets:
+            raise ValueError("至少指定 level / star / shards / talent_points 之一")
+        sets.append("updated_at=?")
+        vals.append(now)
+        vals.extend([service_id, player_id, hid])
+        cur.execute(
+            f"UPDATE baas_player_heroes SET {', '.join(sets)} WHERE service_id=? AND player_id=? AND hero_id=?",
+            tuple(vals),
+        )
+    log_audit_db("default", actor, "baas_gm_set_hero", f"{service_id}/{player_id} hero={hid}", "")
+    return {"hero_id": hid, "level": level, "star": star, "shards": shards, "talent_points": talent_points}
+
+
+def gm_set_stamina(service_id: str, player_id: str, value: int, *, actor: str = "") -> Dict[str, Any]:
+    from services.baas.pve_service import _save_stamina, _stamina_state
+    from services.baas.service_crud import get_feature_config
+
+    cfg = get_feature_config(service_id, "pve")
+    init_db()
+    with get_cursor() as cur:
+        state = _stamina_state(cur, service_id, player_id, cfg)
+        state["current"] = max(0, min(int(value), int(state.get("max") or cfg.get("stamina_max") or 9999)))
+        _save_stamina(cur, service_id, player_id, state)
+    log_audit_db("default", actor, "baas_gm_set_stamina", f"{service_id}/{player_id}={value}", "")
+    return {"stamina": state}
+
+
+def gm_set_pve_stage(service_id: str, player_id: str, stage_id: str, *, actor: str = "") -> Dict[str, Any]:
+    sid = str(stage_id or "").strip()
+    if not sid:
+        raise ValueError("stage_id 必填")
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_chapter_progress (service_id, player_id, stage_id, stars, best_time_ms, cleared, updated_at)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(service_id, player_id, stage_id) DO UPDATE SET
+                stars=excluded.stars, cleared=excluded.cleared, updated_at=excluded.updated_at
+            """,
+            (service_id, player_id, sid, 3, 0, 1, now),
+        )
+    log_audit_db("default", actor, "baas_gm_set_pve_stage", f"{service_id}/{player_id} stage={sid}", "")
+    return {"stage_id": sid, "cleared": True}
+
+
+def gm_reset_dungeons(service_id: str, player_id: str, dungeon_id: str = "", *, actor: str = "") -> Dict[str, Any]:
+    init_db()
+    with get_cursor() as cur:
+        if dungeon_id:
+            cur.execute(
+                "DELETE FROM baas_dungeon_daily WHERE service_id=? AND player_id=? AND dungeon_id=?",
+                (service_id, player_id, str(dungeon_id)),
+            )
+        else:
+            cur.execute(
+                "DELETE FROM baas_dungeon_daily WHERE service_id=? AND player_id=?",
+                (service_id, player_id),
+            )
+    log_audit_db("default", actor, "baas_gm_reset_dungeons", f"{service_id}/{player_id} dg={dungeon_id or '*'}", "")
+    return {"reset": True, "dungeon_id": dungeon_id or "*"}
+
+
+def gm_set_equipment(
+    service_id: str,
+    player_id: str,
+    slot: str,
+    *,
+    quality: Optional[int] = None,
+    enhance_level: Optional[int] = None,
+    refine_level: Optional[int] = None,
+    awaken: Optional[bool] = None,
+    gem_count: Optional[int] = None,
+    actor: str = "",
+) -> Dict[str, Any]:
+    from services.baas.afk_growth_service import EQUIP_SLOTS
+
+    slot_name = str(slot or "").strip()
+    if slot_name not in EQUIP_SLOTS:
+        raise ValueError("装备槽位无效")
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT slot FROM baas_player_equipment WHERE service_id=? AND player_id=? AND slot=?",
+            (service_id, player_id, slot_name),
+        ).fetchone()
+        if not row:
+            cur.execute(
+                """
+                INSERT INTO baas_player_equipment
+                (service_id, player_id, slot, quality, enhance_level, refine_level, awaken, gem_count, affix_seed, updated_at)
+                VALUES (?,?,?,?,0,0,0,0,0,?)
+                """,
+                (service_id, player_id, slot_name, int(quality or 3), now),
+            )
+        sets = ["updated_at=?"]
+        vals: List[Any] = [now]
+        if quality is not None:
+            sets.append("quality=?")
+            vals.append(int(quality))
+        if enhance_level is not None:
+            sets.append("enhance_level=?")
+            vals.append(max(0, int(enhance_level)))
+        if refine_level is not None:
+            sets.append("refine_level=?")
+            vals.append(max(0, int(refine_level)))
+        if awaken is not None:
+            sets.append("awaken=?")
+            vals.append(1 if awaken else 0)
+        if gem_count is not None:
+            sets.append("gem_count=?")
+            vals.append(max(0, int(gem_count)))
+        vals.extend([service_id, player_id, slot_name])
+        cur.execute(
+            f"UPDATE baas_player_equipment SET {', '.join(sets)} WHERE service_id=? AND player_id=? AND slot=?",
+            tuple(vals),
+        )
+    log_audit_db("default", actor, "baas_gm_set_equipment", f"{service_id}/{player_id} slot={slot_name}", "")
+    return {"slot": slot_name, "quality": quality, "enhance_level": enhance_level, "refine_level": refine_level}
+
+
+def update_player_profile(service_id: str, player_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    """GM 修改玩家 profile：display_name / vip_level / level 等。"""
+    pid = str(player_id or "").strip()
+    if not pid:
+        raise ValueError("player_id 必填")
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute("SELECT * FROM baas_players WHERE service_id=? AND player_id=?", (service_id, pid)).fetchone()
+        if not row:
+            raise ValueError("玩家不存在")
+        prof = _json_load(row["profile_json"], {})
+        display = payload.get("display_name")
+        if display is not None:
+            display = str(display).strip()
+        now = _now_iso()
+        if display:
+            cur.execute(
+                "UPDATE baas_players SET display_name=?, updated_at=? WHERE service_id=? AND player_id=?",
+                (display, now, service_id, pid),
+            )
+        for key in ("vip_level", "vip_exp", "level", "recharge_total", "muted"):
+            if key in payload:
+                prof[key] = payload[key]
+        cur.execute(
+            "UPDATE baas_players SET profile_json=?, updated_at=? WHERE service_id=? AND player_id=?",
+            (_json_dump(prof), now, service_id, pid),
+        )
+        if "vip_level" in payload or "vip_exp" in payload:
+            try:
+                from services.baas.afk_vip_service import add_vip_exp
+                exp = int(prof.get("vip_exp") or payload.get("vip_exp") or 0)
+                add_vip_exp(service_id, pid, max(0, exp - int(prof.get("vip_exp") or 0)))
+            except Exception:
+                pass
+    log_audit_db("default", actor, "baas_gm_update_profile", f"{service_id}/{pid}", "")
+    return get_player_detail(service_id, pid)
+
+
+def gm_send_player_mail(service_id: str, payload: Dict[str, Any], *, actor: str = "") -> Dict[str, Any]:
+    pid = str(payload.get("player_id") or "").strip()
+    if not pid:
+        raise ValueError("player_id 必填")
+    return mail_service.send_mail(service_id, payload, actor=actor)
+
+
+def gm_set_tower_floor(service_id: str, player_id: str, floor: int, *, tower_id: str = "main", actor: str = "") -> Dict[str, Any]:
+    from services.baas import tower_service
+
+    init_db()
+    now = _now_iso()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_tower_progress (service_id, player_id, tower_id, floor, best_stars, updated_at)
+            VALUES (?,?,?,?,1,?)
+            ON CONFLICT(service_id, player_id, tower_id) DO UPDATE SET floor=excluded.floor, updated_at=excluded.updated_at
+            """,
+            (service_id, player_id, tower_id, max(0, int(floor)), now),
+        )
+    log_audit_db("default", actor, "baas_gm_set_tower", f"{service_id}/{player_id} floor={floor}", "")
+    return tower_service.get_progress(service_id, player_id, tower_id)
+
+
+def gm_set_vip(service_id: str, player_id: str, vip_level: int, vip_exp: int = 0, *, actor: str = "") -> Dict[str, Any]:
+    from services.baas.afk_vip_service import add_vip_exp, get_state
+
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baas_vip_progress (
+                service_id TEXT NOT NULL, player_id TEXT NOT NULL,
+                vip_exp INTEGER NOT NULL DEFAULT 0, vip_level INTEGER NOT NULL DEFAULT 0,
+                last_daily_claim_at TEXT NOT NULL DEFAULT '', premium_battlepass INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL, PRIMARY KEY (service_id, player_id)
+            )
+            """
+        )
+        now = _now_iso()
+        cur.execute(
+            """
+            INSERT INTO baas_vip_progress (service_id, player_id, vip_exp, vip_level, last_daily_claim_at, premium_battlepass, updated_at)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(service_id, player_id) DO UPDATE SET vip_exp=excluded.vip_exp, vip_level=excluded.vip_level, updated_at=excluded.updated_at
+            """,
+            (service_id, player_id, int(vip_exp), int(vip_level), "", 0, now),
+        )
+    log_audit_db("default", actor, "baas_gm_set_vip", f"{service_id}/{player_id} lv={vip_level}", "")
+    return get_state(service_id, player_id)

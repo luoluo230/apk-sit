@@ -1,0 +1,36 @@
+/* BaaS standalone shell — aligns with Dev Portal ops shell */
+.baas-shell-app .ops-shell-content{padding:24px 24px 32px}
+.baas-shell-context{height:38px;padding:0 12px;display:flex;align-items:center;gap:8px;border:1px solid #dce4f2;border-radius:7px;background:#fff;color:#344054;font-size:13px;font-weight:500}
+.baas-shell-context img{width:17px;height:17px}
+
+.baas-home-app{color:var(--color-text);font-family:var(--font-family)}
+.baas-home-app .baas-home-sub{margin:0;font-size:13px;line-height:20px;color:var(--color-muted)}
+.baas-home-panel{border:1px solid var(--color-line);border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-sm);overflow:hidden}
+.baas-home-panel__body{padding:16px}
+.baas-home-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.baas-proj-card{border:1px solid #dce4f2;border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05);padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.baas-proj-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.baas-proj-card__icon{width:44px;height:44px;border-radius:10px;background:#eef4ff;border:1px solid #e0e7ff;display:grid;place-items:center;flex-shrink:0}
+.baas-proj-card__icon img{width:22px;height:22px}
+.baas-proj-card__title{min-width:0;flex:1}
+.baas-proj-card__title h2{margin:0;font-size:15px;line-height:22px;font-weight:600;color:#1d2939;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.baas-proj-card__meta{margin-top:4px;font-size:11px;line-height:16px;color:#667085;word-break:break-all}
+.baas-proj-card__meta code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10px;background:#f6f8fb;border:1px solid #eef1f6;border-radius:4px;padding:1px 4px}
+.baas-proj-card__actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid #f0f2f5}
+.baas-home-empty{padding:32px 16px;text-align:center;color:#667085;font-size:13px}
+.baas-create-panel{margin-top:16px;border:1px dashed #dce4f2;border-radius:var(--radius-lg);background:#fafbfc;padding:16px 18px}
+.baas-create-panel h3{margin:0 0 12px;font-size:14px;font-weight:600;color:#1d2939}
+.baas-create-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;max-width:720px}
+.baas-create-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:500;color:#667085}
+.baas-create-grid input{min-height:38px;padding:8px 12px;border:1px solid #dce4f2;border-radius:8px;font-size:13px;background:#fff;color:#1d2939}
+.baas-create-grid input:focus{outline:none;border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(22,119,255,.12)}
+.baas-create-actions{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
+.baas-create-result{margin-top:12px;padding:12px;border-radius:8px;background:#0f172a;color:#86efac;font-size:11px;line-height:1.5;overflow:auto;max-height:180px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.baas-create-result.is-hidden{display:none}
+
+.baas-shell-app .delivery-app.baas-console{max-width:none;margin:0}
+.baas-shell-app .baas-meta-bar{margin-top:0}
+.baas-shell-app .baas-layout{min-height:calc(100vh - 220px)}
+
+@media(max-width:1200px){.baas-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:768px){.baas-home-grid,.baas-create-grid{grid-template-columns:1fr}.baas-shell-context{display:none}}

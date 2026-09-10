@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""挂机离线收益：按离线时长发放金币等资源。"""
+"""挂机离线收益 — 使用正式 ROI 公式。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from services.baas.helpers import _now_iso
 from services.baas.pve_service import get_progress
 from services.baas.service_crud import feature_enabled, get_feature_config
 from services.baas.wallet_helpers import credit_wallet
+from services.baas.afk_config_loader import afk_formulas
+from services.baas.afk_formula_engine import eval_formula, team_power_from_defs
+from services.baas.afk_config_loader import hero_def_map
 
 
 def _parse_iso(ts: str) -> datetime:
@@ -23,12 +26,35 @@ def _parse_iso(ts: str) -> datetime:
         return datetime.now(timezone.utc)
 
 
+def _max_cleared_stage(progress: Dict[str, Any]) -> int:
+    best = 0
+    for row in progress.get("stages") or []:
+        if int(row.get("cleared") or 0) <= 0:
+            continue
+        sid = str(row.get("stage_id") or "")
+        if sid.startswith("AFK_"):
+            try:
+                parts = sid.split("_")
+                num = (int(parts[1]) - 1) * 10 + int(parts[2])
+                best = max(best, num)
+            except (IndexError, ValueError):
+                pass
+    return best
+
+
+def _estimate_team_power(service_id: str, player_id: str) -> int:
+    from services.baas.afk_power_service import team_power_unified
+
+    info = team_power_unified(service_id, player_id)
+    return int(info.get("team_power") or 0)
+
+
 def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
     if not feature_enabled(service_id, "idle"):
         raise ValueError("挂机功能未启用")
     cfg = get_feature_config(service_id, "idle")
-    max_hours = float(cfg.get("max_hours") or 12)
-    gold_per_hour = int(cfg.get("gold_per_hour") or 500)
+    formulas = afk_formulas() or None
+    max_hours = float(eval_formula("idle_max_hours", {}, formulas=formulas))
     required_stage = str(cfg.get("requires_stage_cleared") or "").strip()
     if required_stage:
         progress = get_progress(service_id, player_id)
@@ -46,6 +72,22 @@ def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
     minutes = max(0, int((now - last).total_seconds() // 60))
     cap_minutes = int(max_hours * 60)
     minutes = min(minutes, cap_minutes)
+    progress = get_progress(service_id, player_id)
+    max_cleared = _max_cleared_stage(progress)
+    team_pwr = _estimate_team_power(service_id, player_id)
+    gold_per_hour = eval_formula(
+        "idle_gold_per_hour",
+        {"max_cleared_stage": max_cleared, "team_power": team_pwr},
+        formulas=formulas,
+    )
+    vip_mul = 1.0
+    try:
+        from services.baas.afk_vip_service import idle_bonus_mul
+
+        vip_mul = idle_bonus_mul(service_id, player_id)
+    except Exception:
+        pass
+    gold_per_hour = int(gold_per_hour * vip_mul)
     est_gold = int(minutes / 60 * gold_per_hour)
     return {
         "eligible": True,
@@ -53,6 +95,9 @@ def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
         "max_minutes": cap_minutes,
         "gold_per_hour": gold_per_hour,
         "estimated_gold": est_gold,
+        "vip_idle_bonus_mul": vip_mul,
+        "team_power": team_pwr,
+        "max_cleared_stage": max_cleared,
         "last_claim_at": row["last_claim_at"] if row else "",
     }
 
@@ -79,4 +124,9 @@ def claim(service_id: str, player_id: str) -> Dict[str, Any]:
             """,
             (service_id, player_id, now, now),
         )
+    try:
+        from services.baas.afk_retention_hooks import on_idle_claim
+        on_idle_claim(service_id, player_id)
+    except Exception:
+        pass
     return {"claimed_gold": gold, "accumulated_minutes": status.get("accumulated_minutes"), "claimed_at": now}

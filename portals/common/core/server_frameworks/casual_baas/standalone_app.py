@@ -52,8 +52,19 @@ def create_baas_app() -> Flask:
         from services.monitor import record_request_end
 
         start = getattr(request, "_baas_monitor_start", None)
+        duration_ms = 0.0
         if start is not None:
-            record_request_end(request.path, start, resp.status_code)
+            duration_ms = record_request_end(request.path, start, resp.status_code) * 1000.0
+        if os.getenv("BAAS_ACCESS_LOG", "1").strip().lower() in ("1", "true", "yes"):
+            path = request.path or "/"
+            if not path.startswith("/static"):
+                logger.info(
+                    "HTTP %s %s -> %s (%.1f ms)",
+                    request.method,
+                    path,
+                    resp.status_code,
+                    duration_ms,
+                )
         return apply_security_headers(resp)
 
     @app.route("/health")
@@ -128,4 +139,10 @@ def create_baas_app() -> Flask:
         return redirect("/login")
 
     logger.info("BaaS standalone app ready (topology modules disabled)")
+    log_dir = getattr(Config, "LOG_DIR", "logs")
+    logger.info(
+        "BaaS access log enabled (BAAS_ACCESS_LOG=%s); file logs under %s",
+        os.getenv("BAAS_ACCESS_LOG", "1"),
+        log_dir,
+    )
     return app

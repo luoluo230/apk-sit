@@ -89,11 +89,25 @@ def get_wallet(service_id: str, player_id: str) -> Dict[str, Any]:
 
 
 def shop_catalog(service_id: str) -> List[Dict[str, Any]]:
+    try:
+        from services.baas.afk_shop_service import shop_catalog as afk_catalog
+        rows = afk_catalog(service_id)
+        if rows:
+            return rows
+    except Exception:
+        pass
     cfg = get_feature_config(service_id, "economy")
     return list(cfg.get("products") or [])
 
 
 def purchase(service_id: str, player_id: str, product_id: str) -> Dict[str, Any]:
+    try:
+        from services.baas.afk_shop_service import purchase as afk_purchase
+        return afk_purchase(service_id, player_id, product_id)
+    except ValueError:
+        raise
+    except Exception:
+        pass
     if not feature_enabled(service_id, "economy"):
         raise ValueError("经济系统未启用")
     cfg = get_feature_config(service_id, "economy")
@@ -176,6 +190,11 @@ def claim_achievement(service_id: str, player_id: str, achievement_id: str) -> D
             "UPDATE baas_player_achievements SET status='claimed', claimed_at=?, updated_at=? WHERE service_id=? AND player_id=? AND achievement_id=?",
             (now, now, service_id, player_id, aid),
         )
+        cfg = get_feature_config(service_id, "achievement")
+        defn = next((d for d in (cfg.get("definitions") or []) if str(d.get("id")) == aid), None)
+        if defn and defn.get("rewards"):
+            from services.baas.afk_reward_grants import grant_rewards
+            grant_rewards(cur, service_id, player_id, dict(defn["rewards"]))
     return {"achievement_id": aid, "status": "claimed", "claimed_at": now}
 
 
@@ -265,4 +284,27 @@ def redeem_gift(service_id: str, player_id: str, code: str) -> Dict[str, Any]:
                 "UPDATE baas_gift_codes SET use_count=use_count+1 WHERE service_id=? AND code=?",
                 (service_id, c),
             )
-    return {"code": c, "rewards": rewards}
+        from services.baas.wallet_helpers import credit_wallet
+        from services.baas import inventory_service
+
+        granted: List[Dict[str, Any]] = []
+        for reward in rewards or []:
+            rtype = str(reward.get("type") or "")
+            if rtype == "currency":
+                credit_wallet(
+                    cur,
+                    service_id,
+                    player_id,
+                    str(reward.get("currency_id") or "gold"),
+                    int(reward.get("amount") or 0),
+                )
+                granted.append(reward)
+            elif rtype in ("item", "material", "equipment") and feature_enabled(service_id, "inventory"):
+                item_id = str(reward.get("item_id") or reward.get("item_def_id") or reward.get("key") or "")
+                if item_id:
+                    inventory_service.grant_item(
+                        cur, service_id, player_id, item_id,
+                        quantity=int(reward.get("quantity") or reward.get("amount") or 1),
+                    )
+                    granted.append(reward)
+    return {"code": c, "rewards": granted or rewards}

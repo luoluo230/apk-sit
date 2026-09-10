@@ -15,6 +15,7 @@ from services.baas.battle_antifraud import (
     compute_replay_hash,
     heroes_catalog,
     prior_stage_id,
+    team_hero_ids,
     team_power,
     validate_team,
     verify_checksum,
@@ -22,6 +23,7 @@ from services.baas.battle_antifraud import (
     verify_replay_hash,
 )
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
+from services.baas.afk_config_loader import afk_formulas, hero_def_map
 from services.baas.service_crud import feature_enabled, get_feature_config
 
 
@@ -87,6 +89,20 @@ def _stage_cleared(cur, service_id: str, player_id: str, stage_id: str) -> bool:
     return bool(row and int(row["cleared"] or 0))
 
 
+def _player_hero_levels(cur, service_id: str, player_id: str) -> Dict[int, int]:
+    rows = cur.execute(
+        "SELECT hero_id, level FROM baas_player_heroes WHERE service_id=? AND player_id=?",
+        (service_id, player_id),
+    ).fetchall()
+    out: Dict[int, int] = {}
+    for row in rows:
+        try:
+            out[int(row["hero_id"])] = int(row["level"] or 1)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def get_stamina(service_id: str, player_id: str) -> Dict[str, Any]:
     if not feature_enabled(service_id, "pve"):
         raise ValueError("PVE 功能未启用")
@@ -131,13 +147,21 @@ def start_battle(
     ok, msg = validate_team(team, heroes)
     if not ok:
         raise ValueError(msg)
-    power = team_power(team, heroes)
-    required = int(stage.get("power_required") or 0)
-    if required > 0 and power < required:
-        raise ValueError("战力不足，无法挑战该关卡")
-    prev = prior_stage_id(cfg, stage_id)
     init_db()
     with get_cursor() as cur:
+        hero_cfg = get_feature_config(service_id, "hero")
+        team_ids = team_hero_ids(team)
+        from services.baas.afk_power_service import stage_power_required, validate_growth_gate, team_power_unified
+
+        power_info = team_power_unified(service_id, player_id, team_ids=team_ids, hero_cfg=hero_cfg)
+        power = int(power_info.get("team_power") or 0)
+        required = stage_power_required(stage_id, stage_row=stage, formulas=afk_formulas())
+        if required > 0 and power < required:
+            raise ValueError("战力不足，无法挑战该关卡")
+        ok_gate, gate_msg = validate_growth_gate(service_id, player_id, stage_id, team_ids=team_ids)
+        if not ok_gate:
+            raise ValueError(gate_msg or "养成进度未达该关卡要求")
+        prev = prior_stage_id(cfg, stage_id)
         if prev and not _stage_cleared(cur, service_id, player_id, prev):
             raise ValueError("请先通关前置关卡")
         cost = int(stage.get("stamina_cost") or 6)
@@ -179,6 +203,7 @@ def start_battle(
         "seed": seed,
         "stage": stage,
         "team_power": power,
+        "power_required": required,
         "stamina": stamina,
         "server_time": now,
     }
@@ -282,6 +307,12 @@ def settle_battle(
         if rewards:
             for currency, amount in rewards.items():
                 _credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
+    if win:
+        try:
+            from services.baas.afk_retention_hooks import on_pve_win
+            on_pve_win(service_id, player_id, stage_id=stage_id)
+        except Exception:
+            pass
     result["progress"] = get_progress(service_id, player_id)
     return result
 

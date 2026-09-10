@@ -115,6 +115,19 @@ def verify_and_deliver(
             if amt > 0:
                 credit_wallet(cur, service_id, player_id, "diamond", amt)
                 rewards["diamond"] = amt
+        reward_map = dict(product.get("rewards") or {})
+        if reward_map:
+            from services.baas.afk_reward_grants import grant_rewards
+            granted = grant_rewards(cur, service_id, player_id, reward_map)
+            rewards.update({k: v for k, v in granted.items() if k not in rewards})
+        try:
+            from services.baas.afk_vip_service import add_vip_exp
+            vip_exp = int(product.get("vip_exp") or 0)
+            unlock_bp = bool(product.get("unlock_battlepass_premium"))
+            if vip_exp > 0 or unlock_bp:
+                add_vip_exp(service_id, player_id, vip_exp, unlock_bp_premium=unlock_bp)
+        except Exception:
+            pass
         now = _now_iso()
         result = {
             "order_id": oid,

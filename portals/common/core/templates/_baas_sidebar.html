@@ -1,0 +1,30 @@
+{% macro nav_item(page, href, icon, label) -%}
+<a {% if active_page == page %}class="active"{% endif %} href="{{ href }}">
+  <img src="/static/project_ui/svg/{{ icon }}.svg" alt=""><span>{{ label }}</span>
+</a>
+{%- endmacro %}
+{% macro service_href(project_id, service_id, suffix) -%}
+{%- if service_id -%}
+/admin/projects/{{ project_id }}/{{ suffix }}/{{ service_id }}
+{%- else -%}
+/admin/projects/{{ project_id }}/{{ suffix }}
+{%- endif -%}
+{%- endmacro %}
+<aside class="ops-shell-nav">
+  <a class="ops-shell-brand" href="/admin/baas">
+    <img src="/static/project_ui/svg/logo_mark.svg" alt="">
+    <div><strong>Dev Portal</strong><span>轻度 BaaS 控制台</span></div>
+  </a>
+  <nav class="ops-shell-nav-tree">
+    <div class="ops-shell-nav-group"><b>全局</b>
+      {{ nav_item('baas-home', '/admin/baas', 'nav_project_list', 'BaaS 项目') }}
+    </div>
+    {% if project_id %}
+    <div class="ops-shell-nav-group"><b>{{ project_name or project_id }}</b>
+      {{ nav_item('casual-services', service_href(project_id, service_id, 'casual-services'), 'nav_project_setting', '功能配置') }}
+      {{ nav_item('baas-gm', service_href(project_id, service_id, 'baas-gm'), 'nav_roles_member', 'GM 运维') }}
+    </div>
+    {% endif %}
+  </nav>
+  <button class="ops-shell-collapse-btn" type="button"><img src="/static/project_ui/svg/nav_collapse.svg" alt=""><b>收起菜单</b></button>
+</aside>

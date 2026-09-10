@@ -9,7 +9,7 @@
 .baas-nav-group{margin-top:8px;font-size:10px;font-weight:600;color:#98a2b3;text-transform:uppercase;letter-spacing:.04em;padding:4px 8px 0}
 .baas-nav-item{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:transparent;border-radius:6px;padding:8px 10px;font-size:13px;color:#344054;text-align:left;cursor:pointer}
 .baas-nav-item:hover{background:#f2f4f7}
-.baas-nav-item.is-active{background:#eef4ff;color:#175cd3;font-weight:600}
+.baas-nav-item.is-active{background:var(--color-primary-weak,#eef4ff);color:var(--color-primary,#1677ff);font-weight:600}
 .baas-nav-item .baas-phase{font-size:10px;color:#98a2b3}
 .baas-main{border:1px solid #e8ecf2;border-radius:8px;background:#fff;padding:16px;min-width:0}
 .baas-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #eef1f6}

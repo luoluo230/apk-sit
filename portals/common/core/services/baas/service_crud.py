@@ -314,6 +314,32 @@ def get_feature_config(service_id: str, feature_key: str) -> Dict[str, Any]:
     return dict(configs.get(feature_key) or default_feature_configs().get(feature_key, {}))
 
 
+def patch_feature_config(service_id: str, feature_key: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+    """合并更新单个 feature 配置并递增 config_version。"""
+    fk = str(feature_key or "").strip()
+    if not fk:
+        raise ValueError("feature_key 不能为空")
+    cfg = dict(get_feature_config(service_id, fk))
+    cfg.update(dict(patch or {}))
+    now = _now_iso()
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO baas_feature_configs (service_id, feature_key, config_json, updated_at)
+            VALUES (?,?,?,?)
+            ON CONFLICT(service_id, feature_key) DO UPDATE SET
+                config_json=excluded.config_json, updated_at=excluded.updated_at
+            """,
+            (service_id, fk, _json_dump(cfg), now),
+        )
+        cur.execute(
+            "UPDATE baas_services SET config_version=config_version+1, updated_at=? WHERE service_id=?",
+            (now, service_id),
+        )
+    return cfg
+
+
 def feature_enabled(service_id: str, feature_key: str) -> bool:
     svc = get_service(service_id)
     if not svc or svc.get("status") != "active":

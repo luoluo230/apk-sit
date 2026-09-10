@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{{ title }} - Dev Portal BaaS</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/project_ui/design-tokens.css?v={{ baas_shell_asset_ver }}">
+  <link rel="stylesheet" href="/static/ops_shell.css?v={{ baas_shell_asset_ver }}">
+  <link rel="stylesheet" href="/static/project_ui/pm-shell.css?v={{ baas_shell_asset_ver }}">
+  <link rel="stylesheet" href="/static/project_ui/pm-modal.css?v={{ baas_shell_asset_ver }}">
+  <link rel="stylesheet" href="/static/project_delivery.css?v={{ baas_shell_asset_ver }}">
+  <link rel="stylesheet" href="/static/baas_shell.css?v={{ baas_shell_asset_ver }}">
+  {% if extra_css %}{{ extra_css|safe }}{% endif %}
+</head>
+<body>
+<div class="ops-shell-app baas-shell-app" data-page="{{ active_page }}" data-project-id="{{ project_id or '' }}" data-service-id="{{ service_id or '' }}">
+  {% include '_baas_sidebar.html' %}
+  <main class="ops-shell-main">
+    <header class="ops-shell-topbar">
+      <div class="ops-shell-breadcrumb">
+        <button class="ops-shell-menu-button" type="button" aria-label="收起或展开导航"><img src="/static/project_ui/svg/global_menu.svg" alt=""></button>
+        <span>BaaS</span><b>/</b>
+        {% if project_name %}<span>{{ project_name }}</span><b>/</b>{% endif %}
+        <strong>{{ title }}</strong>
+      </div>
+      <div class="ops-shell-top-actions">
+        {% if project_id %}
+        <div class="baas-shell-context">
+          <img src="/static/project_ui/svg/nav_project_overview.svg" alt="">
+          <span>{{ project_name or project_id }}</span>
+        </div>
+        {% endif %}
+        <a class="ops-shell-profile" href="/logout"><span class="ops-shell-avatar"><img src="/static/project_ui/svg/global_user.svg" alt=""></span><span>{{ user_name or '管理员' }}</span></a>
+      </div>
+    </header>
+    <section class="ops-shell-content">{{ content|safe }}</section>
+  </main>
+</div>
+<script src="/static/ops_shell.js?v={{ baas_shell_asset_ver }}"></script>
+<script>
+  (function () {
+    var tokenEl = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = tokenEl && tokenEl.content ? tokenEl.content : '';
+    if (!csrfToken || !window.fetch || window.__opsFetchCsrfPatched) return;
+    var originalFetch = window.fetch.bind(window);
+    window.fetch = function (resource, init) {
+      init = init || {};
+      var method = String(init.method || 'GET').toUpperCase();
+      var target = typeof resource === 'string' ? resource : (resource && resource.url) || '';
+      var isRelative = target && !/^https?:\/\//i.test(target);
+      if (isRelative && ['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(method) >= 0) {
+        var headers = new Headers(init.headers || (resource && resource.headers) || undefined);
+        if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
+        init.headers = headers;
+      }
+      return originalFetch(resource, init);
+    };
+    window.__opsFetchCsrfPatched = true;
+  })();
+</script>
+{% if extra_js %}{{ extra_js|safe }}{% endif %}
+</body>
+</html>

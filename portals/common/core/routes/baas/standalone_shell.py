@@ -8,12 +8,14 @@ import uuid
 from datetime import datetime
 
 from services.baas.errors import baas_fail, baas_fail_exc, baas_success
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, jsonify, redirect, render_template, request, session
+
+from routes.baas.layout import render_baas_home_page
 
 from models.data import can_edit_project, can_view_project, projects_db
 from repositories.admin import projects_repo
 from services.authz import admin_required, login_required
-from services.baas.service_crud import ensure_service
+from services.baas.service_crud import ensure_service, list_services
 from routes.baas.admin_api import register_baas_admin_routes
 from routes.baas.gm_api import register_baas_gm_routes
 from routes.baas.pages import register_baas_pages
@@ -31,16 +33,33 @@ def _actor() -> str:
     return str(session.get("user") or "admin")
 
 
+def _resolve_baas_service_id(project_id: str, item: dict) -> str:
+    sid = str(item.get("baas_service_id") or "").strip()
+    if sid:
+        return sid
+    services = list_services(project_id, "development")
+    if services:
+        sid = str(services[0].get("service_id") or "").strip()
+    if not sid:
+        svc, _ = ensure_service(project_id, "development")
+        sid = str(svc.get("service_id") or "").strip()
+    if sid and sid != str(item.get("baas_service_id") or "").strip():
+        item["baas_service_id"] = sid
+        projects_repo.upsert_project(project_id, item)
+    return sid
+
+
 def _baas_projects():
     rows = []
     for pid, item in projects_db.items():
         mode = str(item.get("server_mode") or "topology").strip().lower()
         if mode != "casual_baas":
             continue
+        sid = _resolve_baas_service_id(pid, item)
         rows.append({
             "id": pid,
             "name": item.get("name") or pid,
-            "baas_service_id": str(item.get("baas_service_id") or ""),
+            "baas_service_id": sid,
             "game_id": str(item.get("game_id") or ""),
             "status": item.get("status") or "active",
         })
@@ -53,11 +72,12 @@ def _baas_projects():
 def baas_home():
     username = _actor()
     projects = [p for p in _baas_projects() if can_view_project(p["id"], username)]
-    return render_template(
+    content = render_template(
         "baas_standalone_home.html",
         projects=projects,
         username=username,
     )
+    return render_baas_home_page(content)
 
 
 @bp.route("/api/baas/projects", methods=["GET", "POST"])

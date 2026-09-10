@@ -22,6 +22,7 @@ from services.baas.battle_antifraud import (
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
 from services.baas.service_crud import feature_enabled, get_feature_config
 from services.baas.wallet_helpers import credit_wallet
+from services.baas.afk_tower_scaling import max_floor as tower_max_floor, daily_passive_rewards
 
 
 def _tower_cfg(cfg: Dict[str, Any], tower_id: str) -> Dict[str, Any]:
@@ -33,9 +34,13 @@ def _tower_cfg(cfg: Dict[str, Any], tower_id: str) -> Dict[str, Any]:
 
 
 def _floor_def(tower: Dict[str, Any], floor: int) -> Dict[str, Any]:
+    from services.baas.afk_tower_scaling import floor_def as scaled_floor
+
     for row in tower.get("floors") or []:
         if int(row.get("floor") or 0) == int(floor):
             return dict(row)
+    if tower.get("scaling") or tower.get("max_floor"):
+        return scaled_floor(tower, floor)
     raise ValueError("层数不存在")
 
 
@@ -54,7 +59,101 @@ def get_progress(service_id: str, player_id: str, tower_id: str = "main") -> Dic
         "current_floor": int(row["floor"] or 0) if row else 0,
         "best_stars": int(row["best_stars"] or 0) if row else 0,
         "next_floor": (int(row["floor"] or 0) + 1) if row else 1,
+        "max_floor": tower_max_floor(_tower_cfg(get_feature_config(service_id, "tower"), tid)),
     }
+
+
+def claim_daily_rewards(service_id: str, player_id: str, tower_id: str = "main") -> Dict[str, Any]:
+    if not feature_enabled(service_id, "tower"):
+        raise ValueError("爬塔功能未启用")
+    cfg = get_feature_config(service_id, "tower")
+    tower = _tower_cfg(cfg, tower_id)
+    progress = get_progress(service_id, player_id, tower_id)
+    best = int(progress.get("current_floor") or 0)
+    if best < 1:
+        raise ValueError("尚未通关任何层")
+    from services.baas.afk_tower_scaling import daily_passive_rewards as _daily_passive
+
+    rewards = _daily_passive(best, tower)
+    if not rewards:
+        raise ValueError("无可领奖励")
+    init_db()
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baas_tower_daily_claim (
+                service_id TEXT NOT NULL, player_id TEXT NOT NULL, tower_id TEXT NOT NULL,
+                claim_date TEXT NOT NULL, claimed_at TEXT NOT NULL,
+                PRIMARY KEY (service_id, player_id, tower_id, claim_date)
+            )
+            """
+        )
+        today = _now_iso()[:10]
+        if cur.execute(
+            "SELECT 1 FROM baas_tower_daily_claim WHERE service_id=? AND player_id=? AND tower_id=? AND claim_date=?",
+            (service_id, player_id, tower_id, today),
+        ).fetchone():
+            raise ValueError("今日已领取")
+        for currency, amount in rewards.items():
+            credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
+        now = _now_iso()
+        cur.execute(
+            "INSERT INTO baas_tower_daily_claim (service_id, player_id, tower_id, claim_date, claimed_at) VALUES (?,?,?,?,?)",
+            (service_id, player_id, tower_id, today, now),
+        )
+    return {"rewards": rewards, "best_floor": best}
+
+
+def start_battle_with_assist(
+    service_id: str,
+    player_id: str,
+    tower_id: str,
+    floor: int,
+    *,
+    team: Optional[Dict[str, Any]] = None,
+    assist_friend_id: str = "",
+    assist_hero_id: int = 0,
+) -> Dict[str, Any]:
+    """每日可邀请一位好友的一名英雄助战，仅助战一层。"""
+    aid = str(assist_friend_id or "").strip()
+    if aid:
+        init_db()
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS baas_tower_assist_log (
+                    service_id TEXT NOT NULL, player_id TEXT NOT NULL, assist_date TEXT NOT NULL,
+                    friend_id TEXT NOT NULL, floor INTEGER NOT NULL, used_at TEXT NOT NULL,
+                    PRIMARY KEY (service_id, player_id, assist_date)
+                )
+                """
+            )
+            today = _now_iso()[:10]
+            if cur.execute(
+                "SELECT 1 FROM baas_tower_assist_log WHERE service_id=? AND player_id=? AND assist_date=?",
+                (service_id, player_id, today),
+            ).fetchone():
+                raise ValueError("今日已使用好友助战")
+            from services.baas import afk_friend_service
+
+            friends = {f["friend_player_id"] for f in afk_friend_service.list_friends(service_id, player_id)}
+            if aid not in friends:
+                raise ValueError("不是好友")
+        team = dict(team or {})
+        heroes = list((team.get("heroes") or []))
+        if assist_hero_id > 0 and len(heroes) < 6:
+            heroes.append(int(assist_hero_id))
+            team["heroes"] = heroes
+            team["assist_friend_id"] = aid
+    result = start_battle(service_id, player_id, tower_id, floor, team=team)
+    if aid:
+        with get_cursor() as cur:
+            cur.execute(
+                "INSERT INTO baas_tower_assist_log (service_id, player_id, assist_date, friend_id, floor, used_at) VALUES (?,?,?,?,?,?)",
+                (service_id, player_id, _now_iso()[:10], aid, int(floor), _now_iso()),
+            )
+    result["assist_used"] = bool(aid)
+    return result
 
 
 def start_battle(
@@ -174,5 +273,16 @@ def settle_battle(
             )
             for currency, amount in rewards.items():
                 credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
+            from services.baas import retention_services
+
+            retention_services.submit_score(service_id, player_id, f"tower_{tower_id}", float(floor))
         result["progress"] = get_progress(service_id, player_id, tower_id)
-        return result
+        result["boss_type"] = floor_def.get("boss_type") or "normal"
+        settled_floor = floor
+    if win:
+        try:
+            from services.baas.afk_retention_hooks import on_tower_win
+            on_tower_win(service_id, player_id, floor=settled_floor)
+        except Exception:
+            pass
+    return result

@@ -1179,6 +1179,48 @@ def init_db():
                 """
             )
             _mark_migration(conn, "baas_phase2_v1")
+        if not _migration_applied(conn, "baas_afk_growth_v1"):
+            hero_cols = {row[1] for row in conn.execute("PRAGMA table_info(baas_player_heroes)").fetchall()}
+            if "star" not in hero_cols:
+                conn.execute("ALTER TABLE baas_player_heroes ADD COLUMN star INTEGER NOT NULL DEFAULT 1")
+            if "shards" not in hero_cols:
+                conn.execute("ALTER TABLE baas_player_heroes ADD COLUMN shards INTEGER NOT NULL DEFAULT 0")
+            if "talent_points" not in hero_cols:
+                conn.execute("ALTER TABLE baas_player_heroes ADD COLUMN talent_points INTEGER NOT NULL DEFAULT 0")
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS baas_player_equipment (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    slot TEXT NOT NULL,
+                    quality INTEGER NOT NULL DEFAULT 3,
+                    enhance_level INTEGER NOT NULL DEFAULT 0,
+                    refine_level INTEGER NOT NULL DEFAULT 0,
+                    awaken INTEGER NOT NULL DEFAULT 0,
+                    gem_count INTEGER NOT NULL DEFAULT 0,
+                    affix_seed INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, slot)
+                );
+                CREATE TABLE IF NOT EXISTS baas_dungeon_daily (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    dungeon_id TEXT NOT NULL,
+                    run_date TEXT NOT NULL,
+                    run_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id, dungeon_id, run_date)
+                );
+                CREATE TABLE IF NOT EXISTS baas_afk_solo_tower (
+                    service_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    floor INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (service_id, player_id)
+                );
+                """
+            )
+            _mark_migration(conn, "baas_afk_growth_v1")
         conn.commit()
         _schema_initialized = True
 
