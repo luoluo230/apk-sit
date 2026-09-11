@@ -60,6 +60,13 @@ class BaasStandaloneTests(unittest.TestCase):
         body = resp.get_json()
         self.assertEqual(body.get("service"), "casual_baas_standalone")
 
+    def test_health_detailed_standalone(self):
+        resp = self.client.get("/health/detailed")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertGreater(body.get("database", {}).get("baas_tables", 0), 0)
+
     def test_gm_wallet_and_gift_code(self):
         from flask import session as flask_session
 

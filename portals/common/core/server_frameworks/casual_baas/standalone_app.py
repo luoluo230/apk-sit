@@ -83,9 +83,16 @@ def create_baas_app() -> Flask:
         tables = 0
         try:
             with get_cursor() as cur:
-                row = cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name LIKE 'baas_%'"
-                ).fetchone()
+                is_postgres = (os.getenv("DATABASE_URL") or "").strip().lower().startswith(("postgres://", "postgresql://"))
+                if is_postgres:
+                    row = cur.execute(
+                        "SELECT COUNT(*) AS cnt FROM information_schema.tables "
+                        "WHERE table_schema = current_schema() AND table_name LIKE 'baas_%'"
+                    ).fetchone()
+                else:
+                    row = cur.execute(
+                        "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name LIKE 'baas_%'"
+                    ).fetchone()
                 tables = int(row["cnt"] or 0) if row else 0
                 db_ok = tables > 0
         except Exception as exc:

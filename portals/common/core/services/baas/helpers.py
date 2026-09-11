@@ -7,14 +7,14 @@ import hashlib
 import json
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 from models.data import projects_db
 
 
 def _now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _json_load(raw: Any, default=None):
@@ -59,7 +59,7 @@ from server_frameworks.credentials import resolve_project_id as resolve_project_
 
 
 def token_expiry(hours: int) -> str:
-    return (datetime.utcnow() + timedelta(hours=max(1, int(hours or 168)))).replace(microsecond=0).isoformat() + "Z"
+    return (datetime.now(UTC) + timedelta(hours=max(1, int(hours or 168)))).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def parse_bearer_token(auth_header: str) -> str:

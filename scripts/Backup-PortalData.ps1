@@ -8,6 +8,9 @@
 #>
 param(
     [string]$OutputDir = "",
+    [string]$DatabaseUrl = $env:DATABASE_URL,
+    [int]$RetainCount = 14,
+    [switch]$RequirePostgres,
     [switch]$DryRun
 )
 
@@ -26,6 +29,37 @@ $Include = @(
 )
 $JenkinsRoot = Join-Path $DataDir "jenkins_instances"
 
+function Resolve-PgTool([string]$Name) {
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    $roots = @("C:\Program Files\PostgreSQL", "C:\Program Files (x86)\PostgreSQL")
+    foreach ($root in $roots) {
+        if (Test-Path -LiteralPath $root) {
+            $candidate = Get-ChildItem -LiteralPath $root -Recurse -Filter "$Name.exe" -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($candidate) { return $candidate.FullName }
+        }
+    }
+    return $null
+}
+
+function Write-BackupManifest([string]$Path) {
+    $files = Get-ChildItem -LiteralPath $Path -File -Recurse | Where-Object { $_.Name -ne "manifest.json" } |
+        ForEach-Object {
+            [ordered]@{
+                path = $_.FullName.Substring($Path.Length).TrimStart([char[]]'\\/')
+                bytes = $_.Length
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+        }
+    [ordered]@{
+        schemaVersion = 2
+        createdAtUtc = [DateTime]::UtcNow.ToString("o")
+        databaseBackend = if ($DatabaseUrl) { "postgresql" } else { "sqlite" }
+        files = @($files)
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Path "manifest.json") -Encoding UTF8
+}
+
 Write-Host "Backup source: $DataDir"
 Write-Host "Destination:   $Dest"
 
@@ -37,6 +71,14 @@ if ($DryRun) {
         Get-ChildItem -Path $JenkinsRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Host "[dry-run] jenkins instance $($_.Name)"
         }
+    }
+    if ($DatabaseUrl) {
+        if ($DatabaseUrl -notmatch '^postgres(?:ql)?://') { throw "DatabaseUrl must be a PostgreSQL URL" }
+        $pgDump = Resolve-PgTool "pg_dump"
+        if (-not $pgDump) { throw "pg_dump.exe is required for a PostgreSQL backup" }
+        Write-Host "[dry-run] PostgreSQL custom dump -> database.postgres.dump"
+    } elseif ($RequirePostgres) {
+        throw "-RequirePostgres requires DATABASE_URL or -DatabaseUrl"
     }
     Write-Host "Dry run complete."
     exit 0
@@ -64,6 +106,26 @@ if (Test-Path $JenkinsRoot) {
     }
 }
 
+if ($DatabaseUrl) {
+    if ($DatabaseUrl -notmatch '^postgres(?:ql)?://') { throw "DatabaseUrl must be a PostgreSQL URL" }
+    $pgDump = Resolve-PgTool "pg_dump"
+    if (-not $pgDump) { throw "pg_dump.exe is required for a PostgreSQL backup" }
+    $dumpPath = Join-Path $Dest "database.postgres.dump"
+    & $pgDump "--dbname=$DatabaseUrl" --format=custom --no-owner --no-privileges "--file=$dumpPath"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $dumpPath)) { throw "pg_dump failed" }
+} elseif ($RequirePostgres) {
+    throw "-RequirePostgres requires DATABASE_URL or -DatabaseUrl"
+}
+
+Write-BackupManifest $Dest
+
 $zip = "$Dest.zip"
 Compress-Archive -Path $Dest -DestinationPath $zip -Force
 Write-Host "Backup written: $zip"
+
+if ($RetainCount -gt 0) {
+    $parent = Split-Path -Parent $Dest
+    Get-ChildItem -LiteralPath $parent -Filter "apk-site-backup-*.zip" -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -Skip $RetainCount |
+        Remove-Item -Force -ErrorAction Stop
+}

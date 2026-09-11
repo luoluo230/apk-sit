@@ -12,6 +12,7 @@ import sys
 from typing import Any, Dict, List, Tuple
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+CORE_ROOT = os.path.join(ROOT, "portals", "common", "core")
 DB_PATH = os.path.join(ROOT, "data", "apk_site.db")
 
 REGISTRY_TABLES = ("projects", "channels", "project_versions", "infra_nodes")
@@ -33,7 +34,10 @@ def _sqlite_tables(conn: sqlite3.Connection) -> List[str]:
 
 
 def _export_table(conn: sqlite3.Connection, table: str) -> Tuple[List[str], List[Tuple[Any, ...]]]:
-    cur = conn.execute(f"SELECT * FROM {table}")
+    # Table names come from sqlite_master, but quote them anyway so a valid
+    # legacy table name cannot turn this operational tool into SQL injection.
+    identifier = '"' + table.replace('"', '""') + '"'
+    cur = conn.execute(f"SELECT * FROM {identifier}")
     cols = [d[0] for d in cur.description]
     rows = cur.fetchall()
     return cols, rows
@@ -54,32 +58,73 @@ def dry_run(sqlite_path: str) -> Dict[str, Any]:
         conn.close()
 
 
+def _bootstrap_postgres_schema(database_url: str) -> None:
+    """Create the application schema before importing any legacy rows."""
+    if CORE_ROOT not in sys.path:
+        sys.path.insert(0, CORE_ROOT)
+    os.environ["DATABASE_URL"] = database_url
+    from models import db_postgres
+
+    db_postgres.reset_db_connection(close_all=True)
+    db_postgres.init_db()
+
+
+def _postgres_columns(cur: Any, table: str) -> List[str]:
+    cur.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = %s
+        ORDER BY ordinal_position
+        """,
+        (table,),
+    )
+    return [str(row[0]) for row in cur.fetchall()]
+
+
 def apply_postgres(database_url: str, sqlite_path: str) -> Dict[str, Any]:
     try:
         import psycopg2
-        from psycopg2 import extras
+        from psycopg2 import extras, sql
     except ImportError as exc:
         raise RuntimeError("psycopg2 required for --apply; pip install psycopg2-binary") from exc
 
     summary = dry_run(sqlite_path)
+    _bootstrap_postgres_schema(database_url)
     conn_sqlite = sqlite3.connect(sqlite_path)
     pg = psycopg2.connect(database_url)
     pg.autocommit = False
-    inserted = 0
+    inserted_attempts = 0
+    migrated_tables: Dict[str, Any] = {}
+    skipped_tables: Dict[str, str] = {}
     try:
         cur = pg.cursor()
-        for table, meta in summary["tables"].items():
+        for table in summary["tables"]:
             cols, rows = _export_table(conn_sqlite, table)
             if not rows:
+                migrated_tables[table] = {"source_rows": 0, "selected_columns": cols, "attempted": 0}
                 continue
-            col_list = ", ".join(f'"{c}"' for c in cols)
-            placeholders = ", ".join(["%s"] * len(cols))
-            for row in rows:
-                cur.execute(
-                    f'INSERT INTO "{table}" ({col_list}) VALUES ({placeholders}) ON CONFLICT DO NOTHING',
-                    row,
-                )
-                inserted += 1
+            target_columns = _postgres_columns(cur, table)
+            if not target_columns:
+                skipped_tables[table] = "not part of the initialized PostgreSQL application schema"
+                continue
+            selected = [col for col in cols if col in set(target_columns)]
+            if not selected:
+                skipped_tables[table] = "no compatible target columns"
+                continue
+            indexes = [cols.index(col) for col in selected]
+            values = [tuple(row[index] for index in indexes) for row in rows]
+            statement = sql.SQL("INSERT INTO {} ({}) VALUES %s ON CONFLICT DO NOTHING").format(
+                sql.Identifier(table),
+                sql.SQL(", ").join(sql.Identifier(column) for column in selected),
+            )
+            extras.execute_values(cur, statement.as_string(pg), values, page_size=500)
+            inserted_attempts += len(values)
+            migrated_tables[table] = {
+                "source_rows": len(rows),
+                "selected_columns": selected,
+                "attempted": len(values),
+            }
         pg.commit()
     except Exception:
         pg.rollback()
@@ -87,7 +132,9 @@ def apply_postgres(database_url: str, sqlite_path: str) -> Dict[str, Any]:
     finally:
         conn_sqlite.close()
         pg.close()
-    summary["postgres_insert_attempts"] = inserted
+    summary["postgres_insert_attempts"] = inserted_attempts
+    summary["migrated_tables"] = migrated_tables
+    summary["skipped_tables"] = skipped_tables
     summary["database_url"] = database_url.split("@")[-1]
     return summary
 
@@ -98,6 +145,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL", ""))
+    parser.add_argument("--report", help="Write the JSON migration report atomically to this path")
     args = parser.parse_args()
 
     if args.apply:
@@ -108,7 +156,15 @@ def main() -> int:
     else:
         result = dry_run(args.sqlite)
 
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    rendered = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.report:
+        report_path = os.path.abspath(args.report)
+        os.makedirs(os.path.dirname(report_path), exist_ok=True)
+        temporary = report_path + ".tmp"
+        with open(temporary, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(rendered + "\n")
+        os.replace(temporary, report_path)
+    print(rendered)
     return 0
 
 
