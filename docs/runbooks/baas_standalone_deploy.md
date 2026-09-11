@@ -22,6 +22,19 @@ powershell -ExecutionPolicy Bypass -File scripts\Start-BaaSStack.ps1 -UsePostgre
 
 默认地址：`http://127.0.0.1:5004`
 
+## 生产部署
+
+生产环境使用 `docker-compose.baas.production.yml`，不接受仓库中的默认口令。将
+`.env.baas.production.example` 复制到部署机的非版本控制目录，并由密钥管理系统写入
+`BAAS_POSTGRES_*` 与 `BAAS_SECRET_KEY` 后执行：
+
+```powershell
+powershell -File scripts\Test-BaasProductionReadiness.ps1 -RequireEnvironmentSecrets
+docker compose --env-file C:\secure\baas.production.env -f docker-compose.baas.production.yml up -d
+```
+
+该拓扑只将 BaaS 端口绑定到回环地址；公网访问必须经由受管 TLS 反向代理或 API 网关。
+
 | 入口 | URL |
 |------|-----|
 | BaaS 首页 | `/admin/baas` |

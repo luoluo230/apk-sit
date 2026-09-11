@@ -1,0 +1,50 @@
+# Production BaaS topology. Supply secrets through the deployment secret store or a local
+# untracked .env.baas.production file; this compose file intentionally has no defaults.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${BAAS_POSTGRES_USER:?BAAS_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${BAAS_POSTGRES_PASSWORD:?BAAS_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${BAAS_POSTGRES_DB:?BAAS_POSTGRES_DB is required}
+    volumes:
+      - baas_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [baas_internal]
+
+  baas-portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "waitress", "--listen=0.0.0.0:5004", "app_baas:app"]
+    environment:
+      BAAS_STANDALONE: "1"
+      PORTAL_SERVER_FRAMEWORKS: baas
+      BAAS_PORT: "5004"
+      USE_SQLITE: "false"
+      DATABASE_URL: postgresql://${BAAS_POSTGRES_USER}:${BAAS_POSTGRES_PASSWORD}@postgres:5432/${BAAS_POSTGRES_DB}
+      SECRET_KEY: ${BAAS_SECRET_KEY:?BAAS_SECRET_KEY is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BAAS_BIND_ADDRESS:-127.0.0.1}:${BAAS_PORT:-5004}:5004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5004/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    networks: [baas_internal]
+
+networks:
+  baas_internal:
+    driver: bridge
+
+volumes:
+  baas_postgres_data:
