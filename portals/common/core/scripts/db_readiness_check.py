@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import sys
+import argparse
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
@@ -12,6 +13,9 @@ if ROOT not in sys.path:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate the selected Portal/BaaS database backend")
+    parser.add_argument("--require-postgres", action="store_true", help="Reject SQLite; required for production multi-worker BaaS")
+    args = parser.parse_args()
     url = (os.getenv("DATABASE_URL") or "").strip()
     workers = int(os.getenv("WEB_CONCURRENCY") or os.getenv("PORTAL_WORKERS") or "1")
     report = {"database_url_set": bool(url), "workers": workers, "checks": []}
@@ -29,6 +33,13 @@ def main() -> int:
         report["ok"] = all(item.get("ok") for item in report["checks"])
         print(report)
         return 0 if report["ok"] else 2
+
+    if args.require_postgres:
+        report["backend"] = "sqlite"
+        report["checks"].append({"name": "production_backend", "ok": False, "error": "PostgreSQL DATABASE_URL is required"})
+        report["ok"] = False
+        print(report)
+        return 3
 
     from models import db_sqlite
 

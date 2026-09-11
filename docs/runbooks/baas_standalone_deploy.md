@@ -29,7 +29,7 @@ powershell -ExecutionPolicy Bypass -File scripts\Start-BaaSStack.ps1 -UsePostgre
 `BAAS_POSTGRES_*` 与 `BAAS_SECRET_KEY` 后执行：
 
 ```powershell
-powershell -File scripts\Test-BaasProductionReadiness.ps1 -RequireEnvironmentSecrets
+powershell -File scripts\Test-BaasProductionReadiness.ps1 -RequireEnvironmentSecrets -RequirePostgres
 docker compose --env-file C:\secure\baas.production.env -f docker-compose.baas.production.yml up -d
 ```
 
