@@ -80,9 +80,24 @@ def ensure_baas(portal: str) -> dict:
     return {"ok": False, "error": "health timeout"}
 
 
-def seed_credentials(portal: str) -> dict:
+def resolve_database_url(explicit: str = "") -> str:
+    value = (explicit or os.environ.get("DATABASE_URL") or "").strip()
+    if value:
+        return value
+    env_file = CORE / "scripts" / "baas-database.env"
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if line.strip().startswith("DATABASE_URL="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def seed_credentials(portal: str, database_url: str) -> dict:
+    if not database_url.lower().startswith(("postgres://", "postgresql://")):
+        return {"ok": False, "error": "a PostgreSQL DATABASE_URL is required to seed the live BaaS"}
     env = os.environ.copy()
     env["BAAS_E2E_PORTAL"] = portal
+    env["DATABASE_URL"] = database_url
     prod_creds_path = REPO / "docs/evidence/baas-production-e2e-credentials.json"
     env["BAAS_E2E_CREDENTIALS"] = str(prod_creds_path)
     proc = subprocess.run(
@@ -190,8 +205,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--portal", default="http://127.0.0.1:5004")
     parser.add_argument("--skip-server", action="store_true")
+    parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", ""), help="PostgreSQL URL; never persisted")
     args = parser.parse_args()
 
+    database_url = resolve_database_url(args.database_url)
     report = {"checks": [], "verdict": "pass"}
     if not args.skip_server:
         srv = ensure_baas(args.portal)
@@ -201,8 +218,14 @@ def main() -> int:
             _write(report)
             return 1
 
-    creds_detail = seed_credentials(args.portal)
-    report["checks"].append({"name": "seed_credentials", "ok": creds_detail.get("ok"), "detail": creds_detail})
+    creds_detail = seed_credentials(args.portal, database_url)
+    seed_detail = {"ok": creds_detail.get("ok")}
+    if creds_detail.get("ok"):
+        values = creds_detail.get("credentials") or {}
+        seed_detail.update({"project_id": values.get("project_id", ""), "service_id": values.get("service_id", ""), "api_key_redacted": bool(values.get("api_key")), "database_backend": "postgresql"})
+    else:
+        seed_detail["error"] = creds_detail.get("error", "")
+    report["checks"].append({"name": "seed_credentials", "ok": creds_detail.get("ok"), "detail": seed_detail})
     if not creds_detail.get("ok"):
         report["verdict"] = "fail"
         _write(report)

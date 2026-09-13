@@ -242,6 +242,11 @@ def import_client_module() -> dict:
             source = tmp
         else:
             return {"ok": False, "error": "ClientNetworkModule folder missing in zip"}
+    # Verify installability in an isolated disposable Unity-like layout.  A
+    # readiness probe must never replace the caller's active client module.
+    staging_root = tmp / "staging-client"
+    (staging_root / "Assets/StreamingAssets").mkdir(parents=True, exist_ok=True)
+    (staging_root / "Assets/Src/HotUpdate/Framework/Network/Abstractions").mkdir(parents=True, exist_ok=True)
     script = REPO / "scripts" / "Import-ClientNetworkModule.ps1"
     proc = subprocess.run(
         [
@@ -254,7 +259,7 @@ def import_client_module() -> dict:
             "-Module",
             "baas",
             "-MaclientRoot",
-            str(MACLIENT),
+            str(staging_root),
             "-SourceDir",
             str(source),
         ],
@@ -262,8 +267,9 @@ def import_client_module() -> dict:
         capture_output=True,
         text=True,
     )
-    test_path = MACLIENT / "Assets/Modules/BaasNetwork/Runtime/BaasRoomClient.cs"
-    ok = proc.returncode == 0 and test_path.is_file()
+    test_path = staging_root / "Assets/Modules/BaasNetwork/Runtime/BaasRoomClient.cs"
+    manifest_path = staging_root / "Assets/StreamingAssets/client_network_modules.json"
+    ok = proc.returncode == 0 and test_path.is_file() and manifest_path.is_file()
     return {"ok": ok, "exit_code": proc.returncode, "output": (proc.stdout + proc.stderr)[-1500:]}
 
 
