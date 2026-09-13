@@ -134,10 +134,12 @@ class BaasLiveBusinessChain:
             top = http_json(f"{self.base}/leaderboards/default/top", headers=self.api_headers)
             wallet = http_json(f"{self.base}/shop/wallet", headers=h1)
             catalog = http_json(f"{self.base}/shop/catalog", headers=self.api_headers)
+            products = (catalog.get("data") or []) if catalog.get("ok") else []
+            product_id = str((products[0] or {}).get("product_id") or (products[0] or {}).get("id") or "") if products else ""
             purchase = http_json(
                 f"{self.base}/shop/purchase",
                 method="POST",
-                body={"product_id": "potion_small"},
+                body={"product_id": product_id},
                 headers=h1,
             )
             ach_list = http_json(f"{self.base}/achievements", headers=h1)
@@ -238,7 +240,9 @@ class BaasLiveBusinessChain:
             p1, h1 = self._guest("PveHero")
             stamina = http_json(f"{self.base}/pve/stamina", headers=h1)
             progress0 = http_json(f"{self.base}/pve/progress", headers=h1)
-            stage_id = "1-1"
+            # The production AFK pack exposes canonical stage IDs.  The returned
+            # ID is also the one used for settlement signing.
+            stage_id = "AFK_01_01"
             stars = 3
             start = http_json(
                 f"{self.base}/pve/battle/start",
@@ -250,7 +254,7 @@ class BaasLiveBusinessChain:
                 return self._record("pve_afk_chain", False, {"step": "start", "response": start})
             battle_id = (start.get("data") or {}).get("battle_id")
             seed = (start.get("data") or {}).get("seed")
-            stage_id = "1-1"
+            stage_id = str((start.get("data") or {}).get("stage_id") or stage_id)
             stars = 3
             ticks = 20
             team = {"heroes": [1, 2, 3]}
@@ -300,13 +304,13 @@ class BaasLiveBusinessChain:
             def_up = http_json(
                 f"{self.base}/arena/defense",
                 method="POST",
-                body={"defense": {"heroes": [21, 22]}, "power": 315},
+                body={"defense": {"heroes": [4, 5]}, "power": 315},
                 headers=h2,
             )
             def_atk = http_json(
                 f"{self.base}/arena/defense",
                 method="POST",
-                body={"defense": {"heroes": [11, 12]}, "power": 310},
+                body={"defense": {"heroes": [1, 2]}, "power": 310},
                 headers=h1,
             )
             state0 = http_json(f"{self.base}/arena/state", headers=h1)
@@ -444,7 +448,8 @@ class BaasLiveBusinessChain:
         try:
             p1, h1 = self._guest("MailClaim")
             inbox = http_json(f"{self.base}/mail/inbox", headers=h1)
-            mails = (inbox.get("data") or {}).get("messages") or inbox.get("data") or []
+            inbox_data = inbox.get("data") or {}
+            mails = inbox_data.get("messages") or [] if isinstance(inbox_data, dict) else inbox_data if isinstance(inbox_data, list) else []
             if not mails:
                 return self._record("mail_claim", True, {"skipped": True, "reason": "no mail yet"})
             mail_id = str(mails[0].get("mail_id") or mails[0].get("id") or "")

@@ -481,7 +481,7 @@ def list_gm_audit(service_id: str, *, limit: int = 80) -> List[Dict[str, Any]]:
             """
             SELECT timestamp, user, action, details, ip
             FROM audit_log
-            WHERE action LIKE 'baas_gm%' AND (details LIKE ? OR details LIKE ?)
+            WHERE action LIKE 'baas_gm%%' AND (details LIKE ? OR details LIKE ?)
             ORDER BY timestamp DESC
             LIMIT ?
             """,

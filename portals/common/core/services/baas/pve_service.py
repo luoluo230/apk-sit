@@ -32,10 +32,25 @@ def _utc_today() -> str:
 
 
 def _stage_def(cfg: Dict[str, Any], stage_id: str) -> Dict[str, Any]:
+    """Resolve a stage through its stable ID or the universal ``chapter-stage`` alias.
+
+    AFK content uses IDs such as ``AFK_01_01`` while a lightweight BaaS client
+    commonly uses ``1-1``.  Both identify the same configured row; battles are
+    always persisted with the configured stable ID returned to the client.
+    """
     sid = str(stage_id or "").strip()
     for row in cfg.get("stages") or []:
         if str(row.get("id") or "") == sid:
             return dict(row)
+    if "-" in sid:
+        try:
+            chapter, stage = (int(part) for part in sid.split("-", 1))
+        except ValueError:
+            chapter = stage = 0
+        if chapter > 0 and stage > 0:
+            for row in cfg.get("stages") or []:
+                if int(row.get("chapter") or 0) == chapter and int(row.get("stage") or 0) == stage:
+                    return dict(row)
     raise ValueError("关卡不存在")
 
 
@@ -143,6 +158,8 @@ def start_battle(
         raise ValueError("PVE 功能未启用")
     cfg = get_feature_config(service_id, "pve")
     stage = _stage_def(cfg, stage_id)
+    # Persist and sign the configured canonical ID, never an arbitrary client alias.
+    stage_id = str(stage.get("id") or stage_id)
     heroes = heroes_catalog(cfg)
     ok, msg = validate_team(team, heroes)
     if not ok:

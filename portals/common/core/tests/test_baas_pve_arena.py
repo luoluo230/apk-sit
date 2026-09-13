@@ -57,6 +57,8 @@ class BaasPveArenaTests(unittest.TestCase):
                 "feature_flags": {
                     "login": True,
                     "pve": True,
+                    "hero": True,
+                    "inventory": True,
                     "arena": True,
                     "leaderboard": True,
                     "economy": True,
@@ -116,7 +118,8 @@ class BaasPveArenaTests(unittest.TestCase):
         win = True
         stars = 3
         ticks = 20
-        checksum = hashlib.sha256(f"{seed}:1-1:1:{stars}".encode()).hexdigest()[:16]
+        stage_id = start_body["data"]["stage_id"]
+        checksum = hashlib.sha256(f"{seed}:{stage_id}:1:{stars}".encode()).hexdigest()[:16]
         replay_hash = self._replay_hash(seed, "pve", team, win, ticks)
         settle = self.client.post(
             f"{base}/pve/battle/settle",
@@ -143,8 +146,8 @@ class BaasPveArenaTests(unittest.TestCase):
         base2, headers2, pid2 = self._login("ArenaDef")
         self.assertNotEqual(pid, pid2)
         for h, defense, power in (
-            (headers2, {"heroes": [21, 22]}, 315),
-            (headers, {"heroes": [11, 12]}, 310),
+            (headers2, {"heroes": [4, 5]}, 315),
+            (headers, {"heroes": [1, 2]}, 310),
         ):
             resp = self.client.post(
                 f"{base}/arena/defense",

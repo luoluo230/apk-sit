@@ -144,6 +144,9 @@ def update_defense(
         gap = abs(int(power) - derived) / float(derived)
         ac = anti_cheat_cfg(_pve_cfg(service_id))
         if gap > float(ac.get("max_power_delta_ratio") or 0.35) + 1e-6:
+            # A client-provided display value is never authoritative.  Keep the
+            # snapshot usable at the server-derived value and record the anomaly
+            # for review instead of allowing a forged value to control matchmaking.
             audit_battle_anomaly(
                 service_id,
                 player_id,
@@ -151,7 +154,6 @@ def update_defense(
                 "defense_power_mismatch",
                 {"client_power": int(power), "server_power": derived},
             )
-            raise ValueError("防守战力与阵容不匹配")
     final_power = derived
     init_db()
     now = _now_iso()

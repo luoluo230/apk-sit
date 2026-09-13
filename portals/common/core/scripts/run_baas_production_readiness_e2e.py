@@ -48,7 +48,7 @@ def _http_get(url: str) -> tuple[int, str]:
         return exc.code, exc.read().decode("utf-8", errors="replace")
 
 
-def ensure_baas(portal: str) -> dict:
+def ensure_baas(portal: str, database_url: str) -> dict:
     host, port = "127.0.0.1", 5004
     if "://" in portal:
         tail = portal.split("://", 1)[1]
@@ -61,7 +61,10 @@ def ensure_baas(portal: str) -> dict:
             return {"ok": True, "mode": "reuse"}
     script = REPO / "scripts" / "Start-BaaSStack.ps1"
     proc = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-Background", "-Port", str(port)],
+        [
+            "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
+            "-Background", "-UsePostgres", "-DatabaseUrl", database_url, "-Port", str(port),
+        ],
         cwd=str(REPO),
         capture_output=True,
         text=True,
@@ -76,6 +79,31 @@ def ensure_baas(portal: str) -> dict:
                 return {"ok": True, "mode": "started"}
         time.sleep(1)
     return {"ok": False, "error": "health timeout"}
+
+
+def resolve_database_url(explicit: str = "") -> str:
+    """Resolve a local runtime database URL without adding it to evidence output."""
+    value = (explicit or os.environ.get("DATABASE_URL") or "").strip()
+    if value:
+        return value
+    env_file = CORE / "scripts" / "baas-database.env"
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if line.strip().startswith("DATABASE_URL="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def public_seed_result(seed: dict) -> dict:
+    """Keep secrets out of durable readiness evidence."""
+    public = dict(seed)
+    creds = public.pop("credentials", None)
+    if isinstance(creds, dict):
+        public["service_id"] = creds.get("service_id", "")
+        public["project_id"] = creds.get("project_id", "")
+        public["database_backend"] = "postgresql"
+        public["api_key_redacted"] = bool(creds.get("api_key"))
+    return public
 
 
 def check_monitoring(portal: str) -> dict:
@@ -127,9 +155,14 @@ def check_deploy_pack() -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def seed_production(portal: str) -> dict:
+def seed_production(portal: str, database_url: str) -> dict:
+    if not database_url.lower().startswith(("postgres://", "postgresql://")):
+        return {"ok": False, "error": "a PostgreSQL DATABASE_URL is required to seed the running production BaaS"}
     env = os.environ.copy()
     env["BAAS_E2E_PORTAL"] = portal
+    # Seed through the identical database backend used by the standalone server.
+    # Do not log this process environment because it contains the connection secret.
+    env["DATABASE_URL"] = database_url
     env["BAAS_E2E_CREDENTIALS"] = str(CREDS)
     proc = subprocess.run(
         [sys.executable, str(CORE / "scripts/seed_baas_production_e2e.py")],
@@ -143,6 +176,33 @@ def seed_production(portal: str) -> dict:
     if not CREDS.is_file():
         return {"ok": False, "error": f"missing credentials: {CREDS}"}
     return {"ok": True, "credentials": json.loads(CREDS.read_text(encoding="utf-8"))}
+
+
+def run_gm_suite(creds: dict, database_url: str, *, admin_user: str, admin_pass: str) -> dict:
+    """Use a fresh process so its DB dispatch exactly matches the live PostgreSQL server."""
+    env = os.environ.copy()
+    env["DATABASE_URL"] = database_url
+    proc = subprocess.run(
+        [
+            sys.executable, str(CORE / "scripts/baas_gm_live_chain.py"),
+            "--credentials", str(CREDS), "--admin-user", admin_user, "--admin-pass", admin_pass,
+        ],
+        cwd=str(CORE), env=env, capture_output=True, text=True,
+    )
+    marker = "GM_CHAIN_RESULT="
+    result = None
+    for line in reversed((proc.stdout or "").splitlines()):
+        if line.startswith(marker):
+            try:
+                result = json.loads(line[len(marker):])
+            except json.JSONDecodeError:
+                pass
+            break
+    if not isinstance(result, dict):
+        return {"ok": False, "error": "GM chain did not emit a result", "output_tail": (proc.stdout + proc.stderr)[-1800:]}
+    if proc.returncode != 0 and result.get("ok"):
+        result = {**result, "ok": False, "error": "GM chain process failed"}
+    return result
 
 
 def run_pytest_suite() -> dict:
@@ -230,10 +290,12 @@ def main() -> int:
     parser.add_argument("--portal", default=os.environ.get("BAAS_E2E_PORTAL", "http://127.0.0.1:5004"))
     parser.add_argument("--skip-server", action="store_true")
     parser.add_argument("--skip-unity", action="store_true")
+    parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", ""), help="PostgreSQL URL; never written to evidence")
     parser.add_argument("--admin-user", default=os.environ.get("BAAS_ADMIN_USER", "admin"))
     parser.add_argument("--admin-pass", default=os.environ.get("BAAS_ADMIN_PASS", "admin123"))
     args = parser.parse_args()
 
+    database_url = resolve_database_url(args.database_url)
     report = {
         "verdict": "pass",
         "generatedUtc": datetime.now(timezone.utc).isoformat(),
@@ -252,7 +314,7 @@ def main() -> int:
 
     # 2) Server
     if not args.skip_server:
-        add("baas_server_start", ensure_baas(args.portal))
+        add("baas_server_start", ensure_baas(args.portal, database_url))
     else:
         add("baas_server_start", {"ok": _http_get(args.portal.rstrip("/") + "/health")[0] == 200, "mode": "skip_start"})
 
@@ -260,8 +322,8 @@ def main() -> int:
     add("monitoring_endpoints", check_monitoring(args.portal))
 
     # 4) Seed full-feature project
-    seed = seed_production(args.portal)
-    add("seed_production_project", seed)
+    seed = seed_production(args.portal, database_url)
+    add("seed_production_project", public_seed_result(seed))
     if not seed.get("ok"):
         EVIDENCE.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -271,11 +333,9 @@ def main() -> int:
     # 5) Unit/integration pytest
     add("pytest_baas_suite", run_pytest_suite())
 
-    # 6) GM web + API (before gift redeem scenarios)
-    sys.path.insert(0, str(CORE / "scripts"))
-    from baas_gm_live_chain import run_gm_chain
-
-    gm = run_gm_chain(creds, admin_user=args.admin_user, admin_pass=args.admin_pass)
+    # 6) GM web + API (before gift redeem scenarios).  Run in a fresh
+    # process because models.db selects its backend at import time.
+    gm = run_gm_suite(creds, database_url, admin_user=args.admin_user, admin_pass=args.admin_pass)
     add("gm_web_and_api", gm)
 
     # 7) Full business chain (+ GM-dependent gift/mail)

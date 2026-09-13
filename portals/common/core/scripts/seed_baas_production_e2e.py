@@ -40,6 +40,8 @@ _ALL_FLAGS = {
     "periodic_task": True,
     "compliance": True,
     "pve": True,
+    "hero": True,
+    "inventory": True,
     "arena": True,
     "pvp": True,
 }

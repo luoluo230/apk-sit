@@ -167,3 +167,22 @@ def run_gm_chain(creds: dict, *, admin_user: str = "admin", admin_pass: str = "a
         admin_user=admin_user,
         admin_pass=admin_pass,
     ).run_all()
+
+
+def main() -> int:
+    """Run against an explicitly supplied database in a clean Python process."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="BaaS GM route and service chain")
+    parser.add_argument("--credentials", required=True)
+    parser.add_argument("--admin-user", default=os.environ.get("BAAS_ADMIN_USER", "admin"))
+    parser.add_argument("--admin-pass", default=os.environ.get("BAAS_ADMIN_PASS", "admin123"))
+    args = parser.parse_args()
+    creds = json.loads(Path(args.credentials).read_text(encoding="utf-8"))
+    result = run_gm_chain(creds, admin_user=args.admin_user, admin_pass=args.admin_pass)
+    print("GM_CHAIN_RESULT=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    return 0 if result.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
