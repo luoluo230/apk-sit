@@ -7,7 +7,9 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 $envFile = Join-Path $PSScriptRoot "baas-database.env"
-if (-not $env:DATABASE_URL -and (Test-Path $envFile)) {
+# A caller that selected standalone SQLite must not be silently redirected to
+# baas-database.env by this child process. PostgreSQL launchers opt in explicitly.
+if (-not $env:DATABASE_URL -and $env:BAAS_USE_DATABASE_ENV -eq "1" -and (Test-Path $envFile)) {
     Get-Content $envFile | ForEach-Object {
         $line = $_.Trim()
         if (-not $line -or $line.StartsWith("#")) { return }
