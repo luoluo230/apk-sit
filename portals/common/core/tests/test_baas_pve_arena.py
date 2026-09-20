@@ -188,6 +188,15 @@ class BaasPveArenaTests(unittest.TestCase):
         start_data = start.get_json()["data"]
         battle_id = start_data["battle_id"]
         seed = start_data["seed"]
+        # A defender may update its snapshot after matchmaking.  This must not
+        # rewrite the plan already frozen for this battle.
+        changed_defense = self.client.post(
+            f"{base2}/arena/defense",
+            headers=headers2,
+            data=json.dumps({"defense": {"heroes": [4]}, "power": 1}),
+        )
+        self.assertEqual(changed_defense.status_code, 200)
+        self.assertTrue(changed_defense.get_json().get("ok"))
         # The client deliberately reports a loss with invalid legacy proof.
         # Server-owned battle plan must still decide the result and ranking.
         win = False
