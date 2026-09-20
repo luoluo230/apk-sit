@@ -53,12 +53,15 @@ class BaasAfkPackTests(unittest.TestCase):
         svc, cls.api_secret = ensure_service(_TEST_PROJECT, "development", actor="admin")
         cls.service_id = svc["service_id"]
         flags = {k: True for k in ("login", "hero", "gacha", "idle", "tower", "iap", "pve", "economy", "inventory")}
+        test_configs = default_feature_configs()
+        test_configs["iap"]["dev_verify_always_ok"] = True
         update_service(
             _TEST_PROJECT,
             cls.service_id,
-            {"feature_flags": flags, "feature_configs": default_feature_configs()},
+            {"feature_flags": flags, "feature_configs": test_configs},
             actor="admin",
         )
+        os.environ["BAAS_ALLOW_DEV_IAP"] = "1"
         login = auth_service.guest_login(cls.service_id, display_name="afk_tester")
         cls.player_id = login["player_id"]
         with get_cursor() as cur:
@@ -134,6 +137,16 @@ class BaasAfkPackTests(unittest.TestCase):
         self.assertFalse(result.get("client_report", {}).get("win"))
         prog = tower_service.get_progress(self.service_id, self.player_id, "main")
         self.assertEqual(prog["current_floor"], 1)
+
+    def test_iap_dev_receipt_requires_explicit_runtime_switch(self):
+        original = os.environ.pop("BAAS_ALLOW_DEV_IAP", None)
+        try:
+            order = iap_service.create_order(self.service_id, self.player_id, "iap_diamond_300", platform="dev")
+            with self.assertRaises(ValueError):
+                iap_service.verify_and_deliver(self.service_id, self.player_id, order["order_id"], receipt="forbidden-dev-receipt")
+        finally:
+            if original is not None:
+                os.environ["BAAS_ALLOW_DEV_IAP"] = original
 
     def test_iap_dev_verify(self):
         order = iap_service.create_order(self.service_id, self.player_id, "iap_diamond_60", platform="dev")

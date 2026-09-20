@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from typing import Any, Dict
 
 from models.db import get_cursor, init_db
@@ -81,8 +82,10 @@ def verify_and_deliver(
         ).fetchone()
         if dup and receipt_hash:
             raise ValueError("收据已使用")
-        dev_ok = bool(cfg.get("dev_verify_always_ok"))
+        dev_ok = bool(cfg.get("dev_verify_always_ok")) and os.getenv("BAAS_ALLOW_DEV_IAP", "").strip().lower() in ("1", "true", "yes")
         verify_info: Dict[str, Any]
+        if plat in ("dev", "development", "test", "") and not dev_ok:
+            raise ValueError("开发环境验单未启用；仅测试部署可设置 BAAS_ALLOW_DEV_IAP=1")
         if dev_ok and plat in ("dev", "development", "test", ""):
             verify_info = {"platform": "dev", "transaction_id": receipt_hash, "product_id": str(row["product_id"] or "")}
         else:

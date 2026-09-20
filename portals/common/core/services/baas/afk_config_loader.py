@@ -191,7 +191,9 @@ def afk_feature_configs() -> Dict[str, Dict[str, Any]]:
                 "daily_rewards": dict(row.get("daily_rewards") or {}),
             })
         out["iap"] = {
-            "dev_verify_always_ok": True,
+            # Development receipts require BAAS_ALLOW_DEV_IAP=1 at runtime; a shipped
+            # feature config must never make fake receipt delivery the default.
+            "dev_verify_always_ok": False,
             "products": products,
             "vip_levels": list(vip_iap.get("vip_levels") or []),
         }
