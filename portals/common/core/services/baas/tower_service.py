@@ -275,6 +275,9 @@ def settle_battle(
                 credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
             from services.baas import retention_services
 
+            # Ranking is an optional retention capability. Tower progression and rewards
+        # must remain usable when a lightweight deployment deliberately omits it.
+        if feature_enabled(service_id, "leaderboard"):
             retention_services.submit_score(service_id, player_id, f"tower_{tower_id}", float(floor))
         result["progress"] = get_progress(service_id, player_id, tower_id)
         result["boss_type"] = floor_def.get("boss_type") or "normal"

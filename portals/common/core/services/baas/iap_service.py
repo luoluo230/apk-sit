@@ -100,6 +100,10 @@ def verify_and_deliver(
             ).fetchone()
             if dup2:
                 raise ValueError("交易号已使用")
+        delivered_before = cur.execute(
+            "SELECT 1 FROM baas_iap_orders WHERE service_id=? AND player_id=? AND product_id=? AND status='delivered' AND order_id<>? LIMIT 1",
+            (service_id, player_id, str(row["product_id"] or ""), oid),
+        ).fetchone()
         rewards: Dict[str, Any] = {}
         for key, val in product.items():
             if key.endswith("_grant") or key in ("diamond", "gold"):
@@ -116,10 +120,22 @@ def verify_and_deliver(
                 credit_wallet(cur, service_id, player_id, "diamond", amt)
                 rewards["diamond"] = amt
         reward_map = dict(product.get("rewards") or {})
+        if not delivered_before:
+            for key, value in dict(product.get("first_bonus") or {}).items():
+                reward_map[str(key)] = int(reward_map.get(str(key)) or 0) + int(value or 0)
         if reward_map:
             from services.baas.afk_reward_grants import grant_rewards
             granted = grant_rewards(cur, service_id, player_id, reward_map)
-            rewards.update({k: v for k, v in granted.items() if k not in rewards})
+            item_grants = []
+            for grant in granted:
+                if str(grant.get("type") or "") == "currency":
+                    currency = str(grant.get("currency_id") or "")
+                    if currency:
+                        rewards[currency] = int(rewards.get(currency) or 0) + int(grant.get("amount") or 0)
+                else:
+                    item_grants.append(grant)
+            if item_grants:
+                rewards["items"] = item_grants
         try:
             from services.baas.afk_vip_service import add_vip_exp
             vip_exp = int(product.get("vip_exp") or 0)

@@ -67,6 +67,47 @@ def _shop_products(bundle: Dict[str, Any]) -> list:
     return out
 
 
+def _gacha_runtime_config(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert planner-facing AFK pool rows into BaaS executable draw tables."""
+    source = bundle.get("gacha") or {}
+    heroes = list((bundle.get("hero") or {}).get("hero_defs") or [])
+    by_quality: Dict[int, list] = {}
+    for hero in heroes:
+        try:
+            quality = int(hero.get("quality") or 3)
+            hero_id = int(hero.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if hero_id > 0:
+            by_quality.setdefault(quality, []).append(hero_id)
+    pools = []
+    for raw in source.get("pools") or []:
+        pool = dict(raw)
+        pool_id = str(pool.get("pool_id") or pool.get("id") or pool.get("key") or "").strip()
+        if not pool_id:
+            continue
+        rates = dict(pool.get("rates_json") or {})
+        items = []
+        for quality, ids in sorted(by_quality.items()):
+            rate = float(rates.get(f"quality_{quality}") or 0)
+            if rate <= 0 or not ids:
+                continue
+            weight = max(1, int(round(rate * 10000 / len(ids))))
+            items.extend({"type": "hero", "hero_id": hero_id, "weight": weight, "rare": quality >= 5} for hero_id in ids)
+        if not items:
+            continue
+        pools.append({
+            "id": pool_id,
+            "name": pool.get("name_zh") or pool.get("name") or pool_id,
+            "cost_currency": pool.get("cost_currency") or "diamond",
+            "cost_amount": int(pool.get("cost_amount") or 0),
+            "pity_max": int(pool.get("pity_max") or 0),
+            "unlock_stage": int(pool.get("unlock_stage") or 0),
+            "items": items,
+        })
+    return {"pools": pools}
+
+
 def afk_feature_configs() -> Dict[str, Dict[str, Any]]:
     bundle = load_afk_bundle()
     if not bundle:
@@ -79,7 +120,7 @@ def afk_feature_configs() -> Dict[str, Dict[str, Any]]:
     if isinstance(bundle.get("idle"), dict):
         out["idle"] = dict(bundle["idle"])
     if isinstance(bundle.get("gacha"), dict):
-        out["gacha"] = dict(bundle["gacha"])
+        out["gacha"] = _gacha_runtime_config(bundle)
     if isinstance(bundle.get("economy_system"), dict):
         out["economy_system"] = dict(bundle["economy_system"])
     if isinstance(bundle.get("tower"), dict):

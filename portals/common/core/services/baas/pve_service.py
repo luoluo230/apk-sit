@@ -207,7 +207,7 @@ def start_battle(
                 "pending",
                 seed,
                 _json_dump(team or {}),
-                "{}",
+                _json_dump({"authority": _authoritative_outcome(seed, power, required)}),
                 now,
                 "",
                 "",
@@ -226,28 +226,77 @@ def start_battle(
     }
 
 
+def _authoritative_outcome(seed: int, team_power_value: int, power_required: int) -> Dict[str, int | bool]:
+    """Resolve the PVE result from server-owned inputs frozen at battle start.
+
+    The client may render a local simulation, but it never supplies the
+    progression decision.  The small seed spread keeps close-power encounters
+    from being deterministic while making retries and investigations reproducible.
+    """
+    required = max(1, int(power_required or 1))
+    power = max(0, int(team_power_value or 0))
+    variance_percent = (int(seed or 0) % 17) - 8  # [-8%, +8%]
+    effective_power = power * (100 + variance_percent)
+    win = effective_power >= required * 100
+    ratio = power / float(required)
+    stars = 0 if not win else 3 if ratio >= 1.28 else 2 if ratio >= 1.08 else 1
+    # A display metric only. It is never accepted from the client as a score.
+    duration_ms = 8500 + (int(seed or 0) % 3500)
+    return {"win": bool(win), "stars": int(stars), "duration_ms": int(duration_ms), "team_power": power, "power_required": required}
+
+
+def _grant_team_exp(cur, service_id: str, player_id: str, team: Dict[str, Any], amount: int, hero_cfg: Dict[str, Any]) -> List[Dict[str, int]]:
+    """Applies configured PVE experience to the frozen, server-owned formation."""
+    award = max(0, int(amount or 0))
+    if award <= 0:
+        return []
+    cap = max(1, int(hero_cfg.get("max_level") or 100))
+    updates: List[Dict[str, int]] = []
+    for hero_id in team_hero_ids(team):
+        row = cur.execute(
+            "SELECT level, exp FROM baas_player_heroes WHERE service_id=? AND player_id=? AND hero_id=?",
+            (service_id, player_id, hero_id),
+        ).fetchone()
+        if not row:
+            continue
+        level = max(1, int(row["level"] or 1))
+        exp = max(0, int(row["exp"] or 0)) + award
+        while level < cap and exp >= level * 100:
+            exp -= level * 100
+            level += 1
+        if level >= cap:
+            exp = min(exp, max(0, cap * 100 - 1))
+        cur.execute(
+            "UPDATE baas_player_heroes SET level=?, exp=?, updated_at=? WHERE service_id=? AND player_id=? AND hero_id=?",
+            (level, exp, _now_iso(), service_id, player_id, hero_id),
+        )
+        updates.append({"hero_id": int(hero_id), "level": level, "exp": exp})
+    return updates
+
+
 def settle_battle(
     service_id: str,
     player_id: str,
     battle_id: str,
     *,
-    win: bool,
+    win: bool = False,
     stars: int = 0,
     duration_ms: int = 0,
     checksum: str = "",
     replay_hash: str = "",
     replay_ticks: int = 0,
 ) -> Dict[str, Any]:
+    """Settle a PVE battle from the authority plan stored at start.
+
+    Legacy client result fields remain accepted for wire compatibility and audit,
+    but none participates in reward/progression decisions.
+    """
     if not feature_enabled(service_id, "pve"):
         raise ValueError("PVE 功能未启用")
     cfg = get_feature_config(service_id, "pve")
-    ac = anti_cheat_cfg(cfg)
     bid = str(battle_id or "").strip()
     if not bid:
         raise ValueError("battle_id 必填")
-    stars = max(0, min(3, int(stars or 0)))
-    if win and stars <= 0:
-        stars = 1
     init_db()
     with get_cursor() as cur:
         row = cur.execute(
@@ -262,69 +311,62 @@ def settle_battle(
             return _json_load(row["result_json"], {})
         if str(row["status"] or "") != "pending":
             raise ValueError("战斗已结束或已过期")
+
         stage_id = str(row["stage_id"] or "")
         stage = _stage_def(cfg, stage_id)
         team = _json_load(row["team_json"], {})
-        seed = int(row["seed"] or 0)
-        expected_checksum = hashlib.sha256(f"{seed}:{stage_id}:{int(win)}:{stars}".encode()).hexdigest()[:16]
-        expected_replay = compute_replay_hash(
-            seed=seed,
-            battle_type="pve",
-            team=team,
-            win=win,
-            ticks=int(replay_ticks or 0),
-        )
-        try:
-            verify_checksum(expected_checksum, checksum, required=ac["require_checksum"])
-            verify_replay_hash(expected_replay, replay_hash, required=ac["require_replay_hash"])
-            verify_duration(int(duration_ms or 0), ac)
-        except ValueError as exc:
-            audit_battle_anomaly(service_id, player_id, bid, str(exc), {"battle_type": "pve", "stage_id": stage_id})
-            raise
-        rewards = dict(stage.get("rewards") or {})
-        if not win:
-            rewards = {}
+        plan_doc = _json_load(row["result_json"], {})
+        authority = dict(plan_doc.get("authority") or {})
+        if not authority:
+            # Compatibility for a battle started before the authority plan rollout.
+            hero_cfg = get_feature_config(service_id, "hero")
+            power_info = team_power_unified(service_id, player_id, team_ids=team_hero_ids(team), hero_cfg=hero_cfg)
+            authority = _authoritative_outcome(
+                int(row["seed"] or 0),
+                int(power_info.get("team_power") or 0),
+                stage_power_required(stage_id, stage_row=stage, formulas=afk_formulas()),
+            )
+        server_win = bool(authority.get("win"))
+        server_stars = max(0, min(3, int(authority.get("stars") or 0))) if server_win else 0
+        rewards = dict(stage.get("rewards") or {}) if server_win else {}
+        hero_cfg = get_feature_config(service_id, "hero")
+        hero_updates = _grant_team_exp(cur, service_id, player_id, team, int(rewards.pop("exp", 0) or 0), hero_cfg) if server_win else []
         now = _now_iso()
         result = {
             "battle_id": bid,
-            "win": bool(win),
-            "stars": stars if win else 0,
-            "duration_ms": int(duration_ms or 0),
+            "win": server_win,
+            "stars": server_stars,
+            "duration_ms": int(authority.get("duration_ms") or 0),
             "rewards": rewards,
+            "experience": int((stage.get("rewards") or {}).get("exp") or 0) if server_win else 0,
+            "hero_updates": hero_updates,
             "stage_id": stage_id,
-            "replay_hash": str(replay_hash or ""),
+            "authority": {"team_power": int(authority.get("team_power") or 0), "power_required": int(authority.get("power_required") or 0)},
+            "client_report": {"win": bool(win), "stars": int(stars or 0), "duration_ms": int(duration_ms or 0), "ticks": int(replay_ticks or 0)},
             "settled_at": now,
         }
         cur.execute(
             "UPDATE baas_battles SET status=?, result_json=?, settled_at=?, replay_hash=? WHERE battle_id=?",
             ("settled", _json_dump(result), now, str(replay_hash or ""), bid),
         )
-        if win:
+        if server_win:
             prev = cur.execute(
-                """
-                SELECT stars, best_time_ms FROM baas_chapter_progress
-                WHERE service_id=? AND player_id=? AND stage_id=?
-                """,
+                "SELECT stars, best_time_ms FROM baas_chapter_progress WHERE service_id=? AND player_id=? AND stage_id=?",
                 (service_id, player_id, stage_id),
             ).fetchone()
-            best_stars = max(stars, int(prev["stars"] or 0) if prev else 0)
-            best_time = int(duration_ms or 0)
-            if prev and int(prev["best_time_ms"] or 0) > 0 and best_time > 0:
+            best_stars = max(server_stars, int(prev["stars"] or 0) if prev else 0)
+            best_time = int(authority.get("duration_ms") or 0)
+            if prev and int(prev["best_time_ms"] or 0) > 0:
                 best_time = min(int(prev["best_time_ms"]), best_time)
             cur.execute(
-                """
-                INSERT INTO baas_chapter_progress (service_id, player_id, stage_id, stars, best_time_ms, cleared, updated_at)
-                VALUES (?,?,?,?,?,?,?)
-                ON CONFLICT(service_id, player_id, stage_id) DO UPDATE SET
-                    stars=excluded.stars, best_time_ms=excluded.best_time_ms,
-                    cleared=1, updated_at=excluded.updated_at
-                """,
+                """INSERT INTO baas_chapter_progress (service_id, player_id, stage_id, stars, best_time_ms, cleared, updated_at)
+                   VALUES (?,?,?,?,?,?,?) ON CONFLICT(service_id, player_id, stage_id) DO UPDATE SET
+                   stars=excluded.stars, best_time_ms=excluded.best_time_ms, cleared=1, updated_at=excluded.updated_at""",
                 (service_id, player_id, stage_id, best_stars, best_time, 1, now),
             )
-        if rewards:
-            for currency, amount in rewards.items():
-                _credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
-    if win:
+        for currency, amount in rewards.items():
+            _credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
+    if server_win:
         try:
             from services.baas.afk_retention_hooks import on_pve_win
             on_pve_win(service_id, player_id, stage_id=stage_id)
@@ -332,7 +374,6 @@ def settle_battle(
             pass
     result["progress"] = get_progress(service_id, player_id)
     return result
-
 
 def _credit_wallet(cur, service_id: str, player_id: str, currency_id: str, amount: int) -> None:
     from services.baas.retention_services import _wallet_row

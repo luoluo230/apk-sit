@@ -140,7 +140,7 @@ class BaasAfkPackTests(unittest.TestCase):
         self.assertEqual(prog["current_floor"], 1)
 
     def test_iap_dev_verify(self):
-        order = iap_service.create_order(self.service_id, self.player_id, "com.game.diamond60", platform="dev")
+        order = iap_service.create_order(self.service_id, self.player_id, "iap_diamond_60", platform="dev")
         receipt = f"dev-receipt-{order['order_id']}"
         delivered = iap_service.verify_and_deliver(
             self.service_id, self.player_id, order["order_id"], receipt=receipt

@@ -141,6 +141,24 @@ class BaasPveArenaTests(unittest.TestCase):
         progress = settle_body["data"].get("progress") or {}
         self.assertGreaterEqual(progress.get("total_cleared", 0), 1)
 
+    def test_pve_settlement_ignores_forged_client_victory(self):
+        base, headers, _pid = self._login("PveAuthority")
+        team = {"heroes": [1, 2, 3]}
+        start = self.client.post(f"{base}/pve/battle/start", headers=headers, data=json.dumps({"stage_id": "1-1", "team": team}))
+        self.assertEqual(start.status_code, 200)
+        battle_id = start.get_json()["data"]["battle_id"]
+        # A forged loss must not discard a server-approved reward and a forged
+        # win must not manufacture a reward; both settle to the frozen plan.
+        settle = self.client.post(
+            f"{base}/pve/battle/settle", headers=headers,
+            data=json.dumps({"battle_id": battle_id, "win": False, "stars": 0, "duration_ms": 1, "checksum": "forged", "replay_hash": "forged", "replay_ticks": 0}),
+        )
+        self.assertEqual(settle.status_code, 200)
+        result = settle.get_json()["data"]
+        self.assertTrue(result["win"])
+        self.assertGreater(result.get("experience", 0), 0)
+        self.assertEqual(False, result["client_report"]["win"])
+
     def test_arena_offline_battle_flow(self):
         base, headers, pid = self._login("ArenaAtk")
         base2, headers2, pid2 = self._login("ArenaDef")
