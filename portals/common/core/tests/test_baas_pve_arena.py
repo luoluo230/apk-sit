@@ -206,7 +206,9 @@ class BaasPveArenaTests(unittest.TestCase):
         )
         self.assertEqual(settle.status_code, 200)
         result = settle.get_json()["data"]
-        self.assertTrue(result.get("win"))
+        from services.baas.pve_service import _authoritative_outcome
+        expected = _authoritative_outcome(seed, start_data["team_power"], start_data["defender"]["power"])
+        self.assertEqual(expected["win"], result.get("win"))
         self.assertFalse(result.get("client_report", {}).get("win"))
         self.assertIn("rating", result)
         self.assertIn("arena_state", result)

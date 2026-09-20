@@ -315,6 +315,10 @@ def start_battle(service_id: str, player_id: str, defender_id: str, *, team: Opt
         battle_id = new_id("arena_")
         seed = random.randint(1, 2_000_000_000)
         now = _now_iso()
+        # Freeze every input that controls the outcome before the client begins
+        # rendering.  A later roster/defense change must never rewrite an
+        # in-flight match's result.
+        authority = _authoritative_outcome(seed, attacker_power, defender_power)
         rating["daily_attempts_used"] = int(rating.get("daily_attempts_used") or 0) + 1
         _save_rating(cur, service_id, player_id, rating)
         cur.execute(
@@ -326,7 +330,7 @@ def start_battle(service_id: str, player_id: str, defender_id: str, *, team: Opt
             """,
             (
                 battle_id, service_id, player_id, "arena", "", did,
-                "pending", seed, _json_dump(team or {}), "{}", now, "", "",
+                "pending", seed, _json_dump(team or {}), _json_dump({"authority": authority}), now, "", "",
             ),
         )
     return {
@@ -375,6 +379,10 @@ def settle_battle(
         defender_id = str(row["defender_id"] or "")
         plan = dict((_json_load(row["result_json"], {}) or {}).get("authority") or {})
         if not plan:
+            # Rows created before authority plans were introduced are retained
+            # for backwards-compatible settlement.  New rows always have the
+            # start-time plan above; never recompute a new match from mutable
+            # roster or defense state here.
             team = _json_load(row["team_json"], {})
             defense = get_defense(service_id, defender_id)
             plan = _authoritative_outcome(int(row["seed"] or 0), _owned_team_power(service_id, player_id, team), int(defense.get("power") or 0))
