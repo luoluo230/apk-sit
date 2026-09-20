@@ -272,8 +272,11 @@ def settle_battle(
         floor_def = _floor_def(tower, floor)
         plan = dict((_json_load(row["result_json"], {}) or {}).get("authority") or {})
         if not plan:
-            team = _json_load(row["team_json"], {})
-            plan = _authoritative_outcome(int(row["seed"] or 0), _owned_team_power(service_id, player_id, team), int(floor_def.get("power_required") or 1))
+            # Do not retrofit old pending rows from mutable hero data. A tower
+            # outcome without a start-time plan is expired and retried.
+            cur.execute("UPDATE baas_battles SET status=? WHERE battle_id=?", ("expired", bid))
+            cur.connection.commit()
+            raise ValueError("战斗版本已更新，请重新发起挑战")
         server_win = bool(plan.get("win"))
         server_stars = int(plan.get("stars") or 0) if server_win else 0
         rewards = dict(floor_def.get("rewards") or {}) if server_win else {}

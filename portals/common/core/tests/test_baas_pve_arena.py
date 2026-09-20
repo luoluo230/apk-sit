@@ -159,6 +159,29 @@ class BaasPveArenaTests(unittest.TestCase):
         self.assertGreater(result.get("experience", 0), 0)
         self.assertEqual(False, result["client_report"]["win"])
 
+    def test_pre_authority_pending_battle_expires_instead_of_recomputing(self):
+        base, headers, _pid = self._login("LegacyPending")
+        team = {"heroes": [1, 2, 3]}
+        start = self.client.post(
+            f"{base}/pve/battle/start", headers=headers,
+            data=json.dumps({"stage_id": "1-1", "team": team}),
+        )
+        self.assertEqual(start.status_code, 200)
+        battle_id = start.get_json()["data"]["battle_id"]
+        # Simulate a pending row created before the frozen-plan rollout.
+        from models.db import get_cursor
+        with get_cursor() as cur:
+            cur.execute("UPDATE baas_battles SET result_json=? WHERE battle_id=?", ("{}", battle_id))
+        settle = self.client.post(
+            f"{base}/pve/battle/settle", headers=headers,
+            data=json.dumps({"battle_id": battle_id, "win": True, "stars": 3}),
+        )
+        self.assertNotEqual(settle.status_code, 200)
+        self.assertIn("重新发起挑战", settle.get_json().get("error", ""))
+        with get_cursor() as cur:
+            row = cur.execute("SELECT status FROM baas_battles WHERE battle_id=?", (battle_id,)).fetchone()
+        self.assertEqual("expired", row["status"])
+
     def test_arena_offline_battle_flow(self):
         base, headers, pid = self._login("ArenaAtk")
         base2, headers2, pid2 = self._login("ArenaDef")

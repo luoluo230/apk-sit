@@ -379,13 +379,12 @@ def settle_battle(
         defender_id = str(row["defender_id"] or "")
         plan = dict((_json_load(row["result_json"], {}) or {}).get("authority") or {})
         if not plan:
-            # Rows created before authority plans were introduced are retained
-            # for backwards-compatible settlement.  New rows always have the
-            # start-time plan above; never recompute a new match from mutable
-            # roster or defense state here.
-            team = _json_load(row["team_json"], {})
-            defense = get_defense(service_id, defender_id)
-            plan = _authoritative_outcome(int(row["seed"] or 0), _owned_team_power(service_id, player_id, team), int(defense.get("power") or 0))
+            # Rows from before frozen plans cannot be settled safely: roster
+            # and defense snapshots may already have changed. Expire rather
+            # than recomputing an economic/rating result from mutable state.
+            cur.execute("UPDATE baas_battles SET status=? WHERE battle_id=?", ("expired", bid))
+            cur.connection.commit()
+            raise ValueError("战斗版本已更新，请重新发起挑战")
         server_win = bool(plan.get("win"))
         att = _rating_row(cur, service_id, player_id)
         delta = int(cfg.get("win_rating_delta") or 15) if server_win else int(cfg.get("lose_rating_delta") or -10)

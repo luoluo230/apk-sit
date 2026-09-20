@@ -318,14 +318,15 @@ def settle_battle(
         plan_doc = _json_load(row["result_json"], {})
         authority = dict(plan_doc.get("authority") or {})
         if not authority:
-            # Compatibility for a battle started before the authority plan rollout.
-            hero_cfg = get_feature_config(service_id, "hero")
-            power_info = team_power_unified(service_id, player_id, team_ids=team_hero_ids(team), hero_cfg=hero_cfg)
-            authority = _authoritative_outcome(
-                int(row["seed"] or 0),
-                int(power_info.get("team_power") or 0),
-                stage_power_required(stage_id, stage_row=stage, formulas=afk_formulas()),
-            )
+            # A pre-authority pending row has no immutable result inputs.
+            # Recomputing from the player's current roster would make an old
+            # client report control a new economic decision. Expire it safely
+            # and make the client create a fully frozen replacement battle.
+            cur.execute("UPDATE baas_battles SET status=? WHERE battle_id=?", ("expired", bid))
+            # get_cursor rolls back on an escaping exception. Persist the
+            # one-way invalidation before returning the retry error.
+            cur.connection.commit()
+            raise ValueError("战斗版本已更新，请重新发起挑战")
         server_win = bool(authority.get("win"))
         server_stars = max(0, min(3, int(authority.get("stars") or 0))) if server_win else 0
         rewards = dict(stage.get("rewards") or {}) if server_win else {}
