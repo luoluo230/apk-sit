@@ -23,7 +23,7 @@ load_dotenv()
 from app_new import app  # noqa: F401
 
 from models.db import get_cursor
-from services.baas import auth_service, gacha_service, hero_service, idle_service, iap_service, pve_service, tower_service
+from services.baas import auth_service, gacha_service, hero_service, idle_service, iap_service, pve_service, tower_service, afk_friend_service
 from services.baas import afk_growth_service, inventory_service
 from services.baas.battle_antifraud import compute_replay_hash
 from services.baas.registry import default_feature_configs
@@ -119,23 +119,19 @@ class BaasAfkPackTests(unittest.TestCase):
         start = tower_service.start_battle(self.service_id, self.player_id, "main", 1, team=team)
         stage_key = "main:1"
         seed = int(start["seed"])
-        win = True
-        stars = 1
-        ticks = 20
-        checksum = hashlib.sha256(f"{seed}:{stage_key}:{int(win)}:{stars}".encode()).hexdigest()[:16]
-        replay_hash = compute_replay_hash(seed=seed, battle_type="tower", team=team, win=win, ticks=ticks)
         result = tower_service.settle_battle(
             self.service_id,
             self.player_id,
             start["battle_id"],
-            win=win,
-            stars=stars,
-            duration_ms=5000,
-            checksum=checksum,
-            replay_hash=replay_hash,
-            replay_ticks=ticks,
+            win=False,
+            stars=0,
+            duration_ms=1,
+            checksum="forged",
+            replay_hash="forged",
+            replay_ticks=0,
         )
         self.assertTrue(result.get("win"))
+        self.assertFalse(result.get("client_report", {}).get("win"))
         prog = tower_service.get_progress(self.service_id, self.player_id, "main")
         self.assertEqual(prog["current_floor"], 1)
 
@@ -167,6 +163,27 @@ class BaasAfkPackTests(unittest.TestCase):
         self.assertGreaterEqual(enh.get("enhance_level", 0), 1)
         star = afk_growth_service.star_up_hero(self.service_id, self.player_id, hid, use_crystal=True)
         self.assertGreaterEqual(star.get("star", 1), 2)
+
+    def test_tower_assist_uses_friend_owned_hero_only(self):
+        friend = auth_service.guest_login(self.service_id, display_name="assist_friend")
+        friend_id = friend["player_id"]
+        friend_roster = hero_service.get_roster(self.service_id, friend_id)
+        friend_hero = int(friend_roster["heroes"][0]["hero_id"])
+        afk_friend_service.add_friend(self.service_id, self.player_id, friend_id)
+        own_roster = hero_service.get_roster(self.service_id, self.player_id)
+        team = {"heroes": [int(h["hero_id"]) for h in own_roster["heroes"][:3]]}
+        floor = tower_service.get_progress(self.service_id, self.player_id, "main")["next_floor"]
+        result = tower_service.start_battle_with_assist(
+            self.service_id, self.player_id, "main", floor, team=team,
+            assist_friend_id=friend_id, assist_hero_id=friend_hero,
+        )
+        self.assertTrue(result.get("assist_used"))
+        self.assertGreater(result.get("assist_power", 0), 0)
+        with self.assertRaises(ValueError):
+            tower_service.start_battle_with_assist(
+                self.service_id, self.player_id, "main", floor, team=team,
+                assist_friend_id=friend_id, assist_hero_id=999999,
+            )
 
     def test_dungeon_run_after_pve_unlock(self):
         for _ in range(5):

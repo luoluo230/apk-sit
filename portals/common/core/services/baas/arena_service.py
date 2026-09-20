@@ -21,8 +21,9 @@ from services.baas.battle_antifraud import (
     verify_replay_hash,
 )
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
-from services.baas.pve_service import _utc_today
+from services.baas.pve_service import _utc_today, _authoritative_outcome
 from services.baas.service_crud import feature_enabled, get_feature_config
+from services.baas.afk_power_service import team_power_unified
 
 
 def _arena_cfg(service_id: str) -> Dict[str, Any]:
@@ -46,6 +47,14 @@ def _derived_power(defense: Optional[Dict[str, Any]], service_id: str) -> int:
         except (TypeError, ValueError):
             power = 0
     return max(0, power)
+
+
+def _owned_team_power(service_id: str, player_id: str, team: Optional[Dict[str, Any]]) -> int:
+    requested = [int(x) for x in (team or {}).get("heroes") or []]
+    info = team_power_unified(service_id, player_id, team_ids=requested, hero_cfg=get_feature_config(service_id, "hero"))
+    if len(info.get("heroes") or []) != len(requested):
+        raise ValueError("阵容包含未拥有英雄")
+    return max(0, int(info.get("team_power") or 0))
 
 
 def _rating_row(cur, service_id: str, player_id: str) -> Dict[str, Any]:
@@ -137,7 +146,7 @@ def update_defense(
     ok, msg = validate_team(defense, heroes)
     if not ok:
         raise ValueError(msg)
-    derived = _derived_power(defense, service_id)
+    derived = _owned_team_power(service_id, player_id, defense)
     if derived <= 0:
         raise ValueError("防守阵容战力无效")
     if int(power or 0) > 0 and derived > 0:
@@ -292,7 +301,7 @@ def start_battle(service_id: str, player_id: str, defender_id: str, *, team: Opt
     ok, msg = validate_team(team, heroes)
     if not ok:
         raise ValueError(msg)
-    attacker_power = team_power(team, heroes)
+    attacker_power = _owned_team_power(service_id, player_id, team)
     defense = get_defense(service_id, did)
     defender_power = int(defense.get("power") or 0)
     ac = anti_cheat_cfg(_pve_cfg(service_id))
@@ -339,25 +348,22 @@ def settle_battle(
     player_id: str,
     battle_id: str,
     *,
-    win: bool,
+    win: bool = False,
     duration_ms: int = 0,
     checksum: str = "",
     replay_hash: str = "",
     replay_ticks: int = 0,
 ) -> Dict[str, Any]:
+    """Apply the server-frozen async-arena outcome; client reports are audit-only."""
     if not feature_enabled(service_id, "arena"):
         raise ValueError("竞技场功能未启用")
     cfg = _arena_cfg(service_id)
-    ac = anti_cheat_cfg(_pve_cfg(service_id))
     bid = str(battle_id or "").strip()
     if not bid:
         raise ValueError("battle_id 必填")
     init_db()
     with get_cursor() as cur:
-        row = cur.execute(
-            "SELECT * FROM baas_battles WHERE battle_id=? AND service_id=? AND player_id=?",
-            (bid, service_id, player_id),
-        ).fetchone()
+        row = cur.execute("SELECT * FROM baas_battles WHERE battle_id=? AND service_id=? AND player_id=?", (bid, service_id, player_id)).fetchone()
         if not row:
             raise ValueError("战斗不存在")
         if str(row["battle_type"] or "") != "arena":
@@ -367,62 +373,32 @@ def settle_battle(
         if str(row["status"] or "") != "pending":
             raise ValueError("战斗已结束或已过期")
         defender_id = str(row["defender_id"] or "")
-        seed = int(row["seed"] or 0)
-        team = _json_load(row["team_json"], {})
-        expected = hashlib.sha256(f"{seed}:{defender_id}:{int(win)}".encode()).hexdigest()[:16]
-        expected_replay = compute_replay_hash(
-            seed=seed,
-            battle_type="arena",
-            team=team,
-            defender_id=defender_id,
-            win=win,
-            ticks=int(replay_ticks or 0),
-        )
-        try:
-            verify_checksum(expected, checksum, required=ac["require_checksum"])
-            verify_replay_hash(expected_replay, replay_hash, required=ac["require_replay_hash"])
-            verify_duration(int(duration_ms or 0), ac)
-        except ValueError as exc:
-            audit_battle_anomaly(service_id, player_id, bid, str(exc), {"battle_type": "arena", "defender_id": defender_id})
-            raise
+        plan = dict((_json_load(row["result_json"], {}) or {}).get("authority") or {})
+        if not plan:
+            team = _json_load(row["team_json"], {})
+            defense = get_defense(service_id, defender_id)
+            plan = _authoritative_outcome(int(row["seed"] or 0), _owned_team_power(service_id, player_id, team), int(defense.get("power") or 0))
+        server_win = bool(plan.get("win"))
         att = _rating_row(cur, service_id, player_id)
-        win_delta = int(cfg.get("win_rating_delta") or 15)
-        lose_delta = int(cfg.get("lose_rating_delta") or -10)
-        delta = win_delta if win else lose_delta
+        delta = int(cfg.get("win_rating_delta") or 15) if server_win else int(cfg.get("lose_rating_delta") or -10)
         att["rating"] = max(0, int(att.get("rating") or 1000) + delta)
-        if win:
+        if server_win:
             att["wins"] = int(att.get("wins") or 0) + 1
         else:
             att["losses"] = int(att.get("losses") or 0) + 1
         _save_rating(cur, service_id, player_id, att)
         now = _now_iso()
-        rewards = dict(cfg.get("win_rewards") or {"gold": 50}) if win else dict(cfg.get("lose_rewards") or {"gold": 10})
-        result = {
-            "battle_id": bid,
-            "win": bool(win),
-            "defender_id": defender_id,
-            "rating_delta": delta,
-            "rating": att["rating"],
-            "rewards": rewards,
-            "duration_ms": int(duration_ms or 0),
-            "replay_hash": str(replay_hash or ""),
-            "season_id": str(cfg.get("season_id") or "arena_s1"),
-            "settled_at": now,
-        }
-        cur.execute(
-            "UPDATE baas_battles SET status=?, result_json=?, settled_at=?, replay_hash=? WHERE battle_id=?",
-            ("settled", _json_dump(result), now, str(replay_hash or ""), bid),
-        )
-        if rewards:
-            from services.baas.pve_service import _credit_wallet
-
-            for currency, amount in rewards.items():
-                _credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
+        rewards = dict(cfg.get("win_rewards") or {"gold": 50}) if server_win else dict(cfg.get("lose_rewards") or {"gold": 10})
+        result = {"battle_id": bid, "win": server_win, "defender_id": defender_id, "rating_delta": delta, "rating": att["rating"], "rewards": rewards, "duration_ms": int(plan.get("duration_ms") or 0), "authority": {"team_power": int(plan.get("team_power") or 0), "power_required": int(plan.get("power_required") or 0)}, "client_report": {"win": bool(win), "duration_ms": int(duration_ms or 0), "ticks": int(replay_ticks or 0)}, "season_id": str(cfg.get("season_id") or "arena_s1"), "settled_at": now}
+        cur.execute("UPDATE baas_battles SET status=?, result_json=?, settled_at=?, replay_hash=? WHERE battle_id=?", ("settled", _json_dump(result), now, str(replay_hash or ""), bid))
+        from services.baas.pve_service import _credit_wallet
+        for currency, amount in rewards.items():
+            _credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
         final_rating = float(att["rating"])
     board_id = str(cfg.get("rating_board_id") or "arena")
-    from services.baas import retention_services
-
-    retention_services.submit_score(service_id, player_id, board_id, final_rating)
+    if feature_enabled(service_id, "leaderboard"):
+        from services.baas import retention_services
+        retention_services.submit_score(service_id, player_id, board_id, final_rating)
     result["arena_state"] = get_state(service_id, player_id)
     try:
         from services.baas.afk_retention_hooks import on_arena_settled
@@ -430,3 +406,4 @@ def settle_battle(
     except Exception:
         pass
     return result
+

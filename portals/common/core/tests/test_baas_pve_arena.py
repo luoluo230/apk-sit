@@ -188,25 +188,26 @@ class BaasPveArenaTests(unittest.TestCase):
         start_data = start.get_json()["data"]
         battle_id = start_data["battle_id"]
         seed = start_data["seed"]
-        win = True
-        ticks = 18
-        checksum = hashlib.sha256(f"{seed}:{defender_id}:1".encode()).hexdigest()[:16]
-        replay_hash = self._replay_hash(seed, "arena", team, win, ticks, defender_id)
+        # The client deliberately reports a loss with invalid legacy proof.
+        # Server-owned battle plan must still decide the result and ranking.
+        win = False
+        ticks = 0
         settle = self.client.post(
             f"{base}/arena/battle/settle",
             headers=headers,
             data=json.dumps({
                 "battle_id": battle_id,
                 "win": win,
-                "duration_ms": 8000,
-                "checksum": checksum,
-                "replay_hash": replay_hash,
+                "duration_ms": 1,
+                "checksum": "forged",
+                "replay_hash": "forged",
                 "replay_ticks": ticks,
             }),
         )
         self.assertEqual(settle.status_code, 200)
         result = settle.get_json()["data"]
         self.assertTrue(result.get("win"))
+        self.assertFalse(result.get("client_report", {}).get("win"))
         self.assertIn("rating", result)
         self.assertIn("arena_state", result)
 
