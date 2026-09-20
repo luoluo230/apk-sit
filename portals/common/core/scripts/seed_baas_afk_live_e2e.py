@@ -106,7 +106,16 @@ def main() -> int:
     out = Path(os.environ.get("BAAS_E2E_CREDENTIALS") or ROOT / "docs/evidence/baas-afk-live-e2e-credentials.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    # Keep the actual key only in the explicitly ignored credentials file.
+    # Console logs are frequently retained by CI and must be safe to publish.
+    print(json.dumps({
+        "project_id": _PROJECT,
+        "game_id": _GAME_ID,
+        "service_id": service_id,
+        "api_key_written": bool(secret),
+        "portal": portal,
+        "gift_code": _GIFT_CODE,
+    }, ensure_ascii=False, indent=2))
     print(f"[seed-afk-live] wrote {out}")
     return 0
 

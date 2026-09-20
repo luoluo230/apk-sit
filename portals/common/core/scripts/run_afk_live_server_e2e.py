@@ -136,6 +136,21 @@ def seed_credentials(portal: str) -> dict:
     return {"ok": True, "credentials": json.loads(CREDS.read_text(encoding="utf-8"))}
 
 
+def seed_report_detail(seed: dict) -> dict:
+    """Return credential metadata suitable for committed CI evidence."""
+    if not seed.get("ok"):
+        return {"ok": False, "error": str(seed.get("error") or "credential seed failed")}
+    creds = dict(seed.get("credentials") or {})
+    return {
+        "ok": True,
+        "project_id": creds.get("project_id", ""),
+        "game_id": creds.get("game_id", ""),
+        "service_id": creds.get("service_id", ""),
+        "portal": creds.get("portal", ""),
+        "api_key_written": bool(creds.get("api_key")),
+    }
+
+
 def http_smoke(portal: str, creds: dict) -> dict:
     import hashlib
     from services.baas.battle_antifraud import compute_replay_hash
@@ -307,7 +322,7 @@ def main() -> int:
     }
 
     seed = seed_credentials(args.portal)
-    report["checks"].append({"name": "seed_afk_project", "ok": seed.get("ok"), "detail": seed})
+    report["checks"].append({"name": "seed_afk_project", "ok": seed.get("ok"), "detail": seed_report_detail(seed)})
     if not seed.get("ok"):
         report["overall_pass"] = False
         _write(report)

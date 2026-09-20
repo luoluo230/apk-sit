@@ -114,7 +114,14 @@ def main() -> int:
     out = Path(os.environ.get("BAAS_E2E_CREDENTIALS") or ROOT.parents[2] / "docs/evidence/baas-production-e2e-credentials.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps({
+        "project_id": _PROJECT,
+        "game_id": _GAME_ID,
+        "service_id": service_id,
+        "api_key_written": bool(secret),
+        "portal": portal,
+        "env_key": "development",
+    }, ensure_ascii=False, indent=2))
     print(f"[seed-production] wrote {out}")
     return 0
 
