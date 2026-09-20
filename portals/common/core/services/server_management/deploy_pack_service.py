@@ -6,7 +6,7 @@ from __future__ import annotations
 import io
 import os
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
 _CORE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -132,7 +132,7 @@ def _readme_text(kind: str) -> str:
     lines = [
         f"# {meta['label']} — 部署包",
         "",
-        f"生成时间: {datetime.utcnow().replace(microsecond=0).isoformat()}Z",
+        f"生成时间: {datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")}Z",
         "",
         "## 快速开始",
         "",

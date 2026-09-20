@@ -6,7 +6,7 @@ Uses JSON config by default, SQLite when OPS_USE_SQLITE is enabled.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from flask import session
@@ -23,7 +23,7 @@ from services.ops.constants import (
 
 
 def _now_iso() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _use_sqlite() -> bool:

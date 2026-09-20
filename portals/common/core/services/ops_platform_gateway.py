@@ -7,7 +7,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -301,7 +301,7 @@ class OpsPlatformGateway:
             "cpu": (None if cpu < 0 else cpu),
             "memory_mb": (None if mem < 0 else mem),
             "disk_percent": (None if disk < 0 else disk),
-            "last_heartbeat": datetime.utcnow().isoformat() + "Z",
+            "last_heartbeat": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "recent_change": "-",
             "raw": {
                 "health": health,

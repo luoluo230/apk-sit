@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from threading import Lock
 from typing import Any, Deque, Dict, List
 
@@ -52,9 +52,9 @@ def _persist() -> None:
 
 def ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
     _ensure_loaded()
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     row = {
-        "id": f"tel-{int(datetime.utcnow().timestamp() * 1000)}",
+        "id": f"tel-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
         "received_at": now,
         "kind": str(payload.get("kind") or payload.get("type") or payload.get("event_type") or "performance").strip(),
         "project_id": str(payload.get("project_id") or "").strip(),
@@ -87,7 +87,7 @@ def record_gate_pass(gate_name: str, passed: bool = True, **extra: Any) -> None:
 
     increment_gate_pass(gate_name, passed=passed)
     _ensure_loaded()
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     row = {
         "gate": str(gate_name or "unknown").strip() or "unknown",
         "passed": bool(passed),

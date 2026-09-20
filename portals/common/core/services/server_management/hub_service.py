@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from models.data import get_channels_for_project, projects_db
@@ -38,7 +38,7 @@ def _uptime_seconds(started_at: str) -> int:
     if not dt:
         return 0
     try:
-        delta = datetime.utcnow() - dt.replace(tzinfo=None)
+        delta = datetime.now(timezone.utc) - (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc))
         return max(0, int(delta.total_seconds()))
     except Exception:
         return 0
