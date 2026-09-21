@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import unittest
+import uuid
 
 _CORE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _CORE not in sys.path:
@@ -109,6 +110,30 @@ class BaasPublicApiTests(unittest.TestCase):
             self.assertEqual(429, blocked.status_code)
             self.assertEqual("BAAS_AUTH_RATE_LIMITED", blocked.get_json()["error"]["code"])
             self.assertTrue(blocked.headers.get("Retry-After"))
+        finally:
+            rate_limit._store.clear()
+
+    def test_password_login_does_not_enumerate_accounts(self):
+        from services.baas import auth_service
+        from services import rate_limit
+
+        base = f"/api/baas/v1/{self.service_id}"
+        username = "enum_" + uuid.uuid4().hex[:12]
+        password = "secure-password"
+        auth_service.register_password(self.service_id, username=username, password=password)
+        rate_limit._store.clear()
+        try:
+            missing = self.client.post(
+                f"{base}/auth/login", headers=self._headers(),
+                data=json.dumps({"username": "missing-account", "password": password}),
+            )
+            wrong = self.client.post(
+                f"{base}/auth/login", headers=self._headers(),
+                data=json.dumps({"username": username, "password": "wrong-password"}),
+            )
+            self.assertEqual(missing.status_code, wrong.status_code)
+            self.assertEqual(missing.get_json().get("error_code"), wrong.get_json().get("error_code"))
+            self.assertEqual(missing.get_json()["error"], wrong.get_json()["error"])
         finally:
             rate_limit._store.clear()
 

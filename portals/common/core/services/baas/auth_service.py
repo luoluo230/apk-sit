@@ -107,10 +107,11 @@ def password_login(service_id: str, *, username: str, password: str) -> Dict[str
             (service_id, uname),
         ).fetchone()
         if not row:
-            raise ValueError("账号不存在")
+            # Do not reveal whether a password account has been registered.
+            raise ValueError("账号或密码错误")
         profile = _json_load(row["profile_json"], {})
         if not _verify_password(pwd, profile.get("password_salt") or "", profile.get("password_hash") or ""):
-            raise ValueError("密码错误")
+            raise ValueError("账号或密码错误")
         # Upgrade historical single-round SHA-256 records only after a successful
         # login.  The old digest remains readable during a rolling deployment,
         # while every active account converges to the stronger representation.
