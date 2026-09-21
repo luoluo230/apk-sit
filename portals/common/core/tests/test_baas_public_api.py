@@ -88,6 +88,30 @@ class BaasPublicApiTests(unittest.TestCase):
         self.assertEqual(payload.get("service_id"), self.service_id)
         self.assertIn("endpoints", payload)
 
+    def test_password_auth_is_rate_limited_with_retry_header(self):
+        from services import rate_limit
+
+        base = f"/api/baas/v1/{self.service_id}"
+        rate_limit._store.clear()
+        try:
+            for _ in range(rate_limit.LOGIN_LIMIT):
+                response = self.client.post(
+                    f"{base}/auth/login",
+                    headers=self._headers(),
+                    data=json.dumps({"username": "missing-account", "password": "bad-password"}),
+                )
+                self.assertNotEqual(429, response.status_code)
+            blocked = self.client.post(
+                f"{base}/auth/login",
+                headers=self._headers(),
+                data=json.dumps({"username": "missing-account", "password": "bad-password"}),
+            )
+            self.assertEqual(429, blocked.status_code)
+            self.assertEqual("BAAS_AUTH_RATE_LIMITED", blocked.get_json()["error"]["code"])
+            self.assertTrue(blocked.headers.get("Retry-After"))
+        finally:
+            rate_limit._store.clear()
+
     def test_guest_login_announce_mail_cloudsave_flow(self):
         base = f"/api/baas/v1/{self.service_id}"
         login_resp = self.client.post(

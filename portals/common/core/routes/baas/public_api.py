@@ -12,6 +12,7 @@ from services.baas import room_service, pve_service, arena_service
 from services.baas import gacha_service, hero_service, idle_service, tower_service, iap_service
 from services.baas import inventory_service, guild_war_service, afk_growth_service, afk_economy_service
 from services.baas.errors import baas_fail_exc, baas_success
+from services.rate_limit import rate_limit_login
 
 baas_public_bp = Blueprint("baas_public", __name__)
 
@@ -22,6 +23,17 @@ def _service_auth(expected_service_id: str):
 
 def _player_auth(service_id: str):
     return baas_player_auth(service_id, auth_service)
+
+
+def _password_auth_rate_limit():
+    """Apply the portal-wide login throttle before expensive password work."""
+    allowed, retry_after = rate_limit_login()
+    if allowed:
+        return None
+    response = jsonify({"ok": False, "error": {"code": "BAAS_AUTH_RATE_LIMITED", "message": "请求过于频繁，请稍后再试"}})
+    response.status_code = 429
+    response.headers["Retry-After"] = str(retry_after)
+    return response
 
 
 def register_baas_public_routes(bp=None) -> None:
@@ -49,6 +61,9 @@ def register_baas_public_routes(bp=None) -> None:
         sid, err = _service_auth(service_id)
         if err:
             return err
+        limited = _password_auth_rate_limit()
+        if limited:
+            return limited
         body = request.get_json(silent=True) or {}
         try:
             data = auth_service.register_password(service_id, username=body.get("username"), password=body.get("password"), display_name=body.get("display_name"))
@@ -61,6 +76,9 @@ def register_baas_public_routes(bp=None) -> None:
         sid, err = _service_auth(service_id)
         if err:
             return err
+        limited = _password_auth_rate_limit()
+        if limited:
+            return limited
         player, perr = _player_auth(service_id)
         if perr:
             return perr
@@ -82,6 +100,9 @@ def register_baas_public_routes(bp=None) -> None:
         sid, err = _service_auth(service_id)
         if err:
             return err
+        limited = _password_auth_rate_limit()
+        if limited:
+            return limited
         body = request.get_json(silent=True) or {}
         try:
             data = auth_service.password_login(service_id, username=body.get("username"), password=body.get("password"))
