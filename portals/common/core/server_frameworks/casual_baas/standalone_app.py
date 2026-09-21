@@ -27,6 +27,7 @@ def create_baas_app() -> Flask:
     )
     app.secret_key = Config.get_secret_key()
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+    app.config["BAAS_PUBLIC_MAX_BODY_BYTES"] = int(os.getenv("BAAS_PUBLIC_MAX_BODY_BYTES") or str(1024 * 1024))
 
     csrf = None
     try:
@@ -40,6 +41,18 @@ def create_baas_app() -> Flask:
     from services.security import apply_security_headers, configure_session_cookies
 
     configure_session_cookies(app)
+
+    @app.before_request
+    def _reject_oversized_public_payload():
+        """Keep gameplay REST payloads bounded before JSON parsing/allocation."""
+        if not request.path.startswith("/api/baas/v1/"):
+            return None
+        content_length = request.content_length
+        if content_length is not None and content_length > app.config["BAAS_PUBLIC_MAX_BODY_BYTES"]:
+            response = jsonify({"ok": False, "error_code": "BAAS_REQUEST_TOO_LARGE", "error": "请求体过大"})
+            response.status_code = 413
+            return response
+        return None
 
     @app.before_request
     def _monitor_start():

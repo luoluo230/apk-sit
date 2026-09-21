@@ -54,6 +54,16 @@ class BaasStandaloneTests(unittest.TestCase):
         self.client = self.app.test_client()
         self.app.config["WTF_CSRF_ENABLED"] = False
 
+    def test_public_api_rejects_oversized_payload_with_baas_error(self):
+        self.app.config["BAAS_PUBLIC_MAX_BODY_BYTES"] = 32
+        response = self.client.post(
+            "/api/baas/v1/test-service/auth/guest",
+            headers={"Content-Type": "application/json"},
+            data='{"padding":"' + ("x" * 64) + '"}',
+        )
+        self.assertEqual(413, response.status_code)
+        self.assertEqual("BAAS_REQUEST_TOO_LARGE", response.get_json()["error_code"])
+
     def test_health_standalone(self):
         resp = self.client.get("/health")
         self.assertEqual(resp.status_code, 200)
