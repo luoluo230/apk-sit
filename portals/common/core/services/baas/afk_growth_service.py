@@ -328,6 +328,10 @@ def socket_gem(service_id: str, player_id: str, slot: str, gem_item_id: str = "g
         raise ValueError("宝石类型无效")
     init_db()
     with get_cursor() as cur:
+        # Socketing may be the first equipment-growth action for a player.
+        # Keep its initialization contract identical to enhancement instead of
+        # requiring an unrelated action to create the equipment rows first.
+        _ensure_equipment(cur, service_id, player_id)
         row = cur.execute(
             "SELECT * FROM baas_player_equipment WHERE service_id=? AND player_id=? AND slot=?",
             (service_id, player_id, slot_name),

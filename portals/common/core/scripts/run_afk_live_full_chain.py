@@ -125,7 +125,7 @@ class LiveClient:
         self.post("/idle/claim")
 
     def growth_pass(self) -> Dict[str, int]:
-        stats = {"enhance": 0, "refine": 0, "awaken": 0, "star": 0, "talent": 0, "dungeon": 0}
+        stats = {"enhance": 0, "refine": 0, "socket": 0, "awaken": 0, "star": 0, "talent": 0, "dungeon": 0}
         slots = ["weapon", "helmet", "chest", "legs"]
         for slot in slots:
             for _ in range(3):
@@ -137,6 +137,9 @@ class LiveClient:
             r = self.post(f"/growth/equipment/{slot}/refine")
             if r.get("ok"):
                 stats["refine"] += 1
+            r = self.post(f"/growth/equipment/{slot}/socket", {"gem_item_id": "gem_ruby"})
+            if r.get("ok"):
+                stats["socket"] += 1
         stats["star"] = self.star_team(self.ensure_roster(3)[:3])
         for hid in self.ensure_roster(3)[:2]:
             r = self.post(f"/heroes/{hid}/talent")
@@ -262,10 +265,11 @@ def main() -> int:
         "final_cleared": final_cleared,
         "target_stage": 100,
         "stage100_reached": final_cleared >= 100,
+        "socket_success": growth0.get("socket", 0) > 0,
         "days_used": len(daily),
         "elapsed_sec": round(time.time() - t0, 2),
         "steps": client.log[-40:],
-        "overall_pass": final_cleared >= 100 and len(daily) <= 30,
+        "overall_pass": final_cleared >= 100 and len(daily) <= 30 and growth0.get("socket", 0) > 0,
         "skillkit_note": "SkillKit 100关请在 Unity Test Runner 运行 AfkLiveServerStage100PlayModeTests（Editor 打开时勿 batchmode）",
     }
     out.parent.mkdir(parents=True, exist_ok=True)
