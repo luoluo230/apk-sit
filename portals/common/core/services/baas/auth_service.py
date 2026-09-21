@@ -51,6 +51,14 @@ def guest_login(service_id: str, *, display_name: str = "", guest_id: str = "") 
             "SELECT * FROM baas_players WHERE service_id=? AND auth_provider='guest' AND external_id=?",
             (service_id, external_id),
         ).fetchone()
+        # A guest upgraded in place keeps this opaque installation alias so an
+        # app's automatic guest bootstrap can still resume the same player.
+        if not existing and guest_id:
+            for candidate in cur.execute("SELECT * FROM baas_players WHERE service_id=?", (service_id,)).fetchall():
+                profile = _json_load(candidate["profile_json"], {})
+                if str(profile.get("guest_installation_id") or "") == external_id:
+                    existing = candidate
+                    break
         if existing:
             _assert_not_banned(service_id, existing["player_id"])
             return _refresh_token(cur, existing, cfg)
@@ -91,6 +99,8 @@ def password_login(service_id: str, *, username: str, password: str) -> Dict[str
         if not row:
             raise ValueError("账号不存在")
         profile = _json_load(row["profile_json"], {})
+        if str(row["auth_provider"] or "") == "guest":
+            profile["guest_installation_id"] = str(row["external_id"] or "")
         if str(profile.get("password_hash") or "") != _hash_password(pwd, profile.get("password_salt") or ""):
             raise ValueError("密码错误")
         _assert_not_banned(service_id, row["player_id"])

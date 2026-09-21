@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+import uuid
 
 _CORE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _CORE not in sys.path:
@@ -68,16 +69,19 @@ class BaasAuthServiceTests(unittest.TestCase):
         svc, _ = ensure_service(_TEST_PROJECT, "guest-bind", actor="admin")
         service_id = svc["service_id"]
         guest = auth_service.guest_login(service_id, guest_id="guest-bind-test-0a7e3c4f9d21")
+        username = "bound_guest_" + uuid.uuid4().hex[:12]
         bound = auth_service.bind_password(
             service_id,
             player_id=guest["player_id"],
-            username="bound_guest_account",
+            username=username,
             password="secure-password",
             display_name="Bound Guest",
         )
         self.assertEqual(guest["player_id"], bound["player_id"])
-        resumed = auth_service.password_login(service_id, username="bound_guest_account", password="secure-password")
+        resumed = auth_service.password_login(service_id, username=username, password="secure-password")
         self.assertEqual(guest["player_id"], resumed["player_id"])
+        automatic_resume = auth_service.guest_login(service_id, guest_id="guest-bind-test-0a7e3c4f9d21")
+        self.assertEqual(guest["player_id"], automatic_resume["player_id"])
 
     def test_invalid_token_rejected(self):
         svc, _ = ensure_service(_TEST_PROJECT, "testing", actor="admin")
