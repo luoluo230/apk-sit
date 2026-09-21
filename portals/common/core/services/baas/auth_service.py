@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, Optional, Tuple
 
 from models.db import get_cursor, init_db
@@ -39,12 +40,35 @@ def _ensure_login_enabled(service_id: str) -> Dict[str, Any]:
     return get_feature_config(service_id, "login")
 
 
-def guest_login(service_id: str, *, display_name: str = "") -> Dict[str, Any]:
+def guest_login(service_id: str, *, display_name: str = "", guest_id: str = "") -> Dict[str, Any]:
     cfg = _ensure_login_enabled(service_id)
     if not cfg.get("guest_login_enabled", True):
         raise ValueError("游客登录未启用")
-    external_id = new_id("guest_")
+    external_id = _guest_external_id(guest_id)
+    init_db()
+    with get_cursor() as cur:
+        existing = cur.execute(
+            "SELECT * FROM baas_players WHERE service_id=? AND auth_provider='guest' AND external_id=?",
+            (service_id, external_id),
+        ).fetchone()
+        if existing:
+            _assert_not_banned(service_id, existing["player_id"])
+            return _refresh_token(cur, existing, cfg)
     return _create_session(service_id, "guest", external_id, display_name or f"游客{external_id[-6:]}", cfg)
+
+
+def _guest_external_id(value: str) -> str:
+    """Accept only an opaque, client-generated installation identifier.
+
+    The identifier is deliberately not derived from a hardware ID.  It has no
+    account-recovery value and is scoped by service_id when looked up above.
+    """
+    candidate = str(value or "").strip()
+    if not candidate:
+        return new_id("guest_")
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{16,128}", candidate):
+        raise ValueError("游客设备标识格式无效")
+    return candidate
 
 
 def password_login(service_id: str, *, username: str, password: str) -> Dict[str, Any]:

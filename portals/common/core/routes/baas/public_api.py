@@ -33,8 +33,13 @@ def register_baas_public_routes(bp=None) -> None:
         sid, err = _service_auth(service_id)
         if err:
             return err
+        body = request.get_json(silent=True) or {}
         try:
-            data = auth_service.guest_login(service_id, display_name=str((request.get_json(silent=True) or {}).get("display_name") or ""))
+            data = auth_service.guest_login(
+                service_id,
+                display_name=str(body.get("display_name") or ""),
+                guest_id=str(body.get("guest_id") or ""),
+            )
             return jsonify({"ok": True, "data": data})
         except ValueError as exc:
             return baas_fail_exc(exc)

@@ -51,6 +51,19 @@ class BaasAuthServiceTests(unittest.TestCase):
         player = auth_service.resolve_player(service_id, session["player_id"], session["token"])
         self.assertEqual(player["player_id"], session["player_id"])
 
+    def test_guest_installation_id_resumes_same_player(self):
+        svc, _ = ensure_service(_TEST_PROJECT, "guest-resume", actor="admin")
+        guest_id = "guest-test-installation-3f5d8c91"
+        first = auth_service.guest_login(svc["service_id"], display_name="First", guest_id=guest_id)
+        second = auth_service.guest_login(svc["service_id"], display_name="Second", guest_id=guest_id)
+        self.assertEqual(first["player_id"], second["player_id"])
+        self.assertNotEqual(first["token"], second["token"])
+
+    def test_malformed_guest_installation_id_is_rejected(self):
+        svc, _ = ensure_service(_TEST_PROJECT, "guest-invalid", actor="admin")
+        with self.assertRaises(ValueError):
+            auth_service.guest_login(svc["service_id"], guest_id="not valid")
+
     def test_invalid_token_rejected(self):
         svc, _ = ensure_service(_TEST_PROJECT, "testing", actor="admin")
         with self.assertRaises(ValueError):
