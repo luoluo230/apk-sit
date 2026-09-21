@@ -99,8 +99,6 @@ def password_login(service_id: str, *, username: str, password: str) -> Dict[str
         if not row:
             raise ValueError("账号不存在")
         profile = _json_load(row["profile_json"], {})
-        if str(row["auth_provider"] or "") == "guest":
-            profile["guest_installation_id"] = str(row["external_id"] or "")
         if str(profile.get("password_hash") or "") != _hash_password(pwd, profile.get("password_salt") or ""):
             raise ValueError("密码错误")
         _assert_not_banned(service_id, row["player_id"])
@@ -178,6 +176,8 @@ def bind_password(
             raise ValueError("账号已存在")
 
         profile = _json_load(row["profile_json"], {})
+        if str(row["auth_provider"] or "") == "guest":
+            profile["guest_installation_id"] = str(row["external_id"] or "")
         salt = new_id("s_")
         profile["password_salt"] = salt
         profile["password_hash"] = _hash_password(pwd, salt)
