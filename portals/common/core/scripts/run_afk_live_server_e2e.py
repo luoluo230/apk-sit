@@ -373,7 +373,11 @@ def main() -> int:
     else:
         report["checks"].append({
             "name": "unity_skillkit_smoke_1stage",
-            "ok": True,
+            # A skipped Unity run is informative but is never evidence that the
+            # Unity/SkillKit leg passed.  It is optional because a foreground
+            # Unity editor owns the project lock and must not be disrupted.
+            "ok": False,
+            "required": False,
             "detail": {"skipped": True, "reason": "默认跳过 batchmode，避免 Unity 编辑器崩溃；加 --unity-smoke 且先关闭编辑器"},
         })
 
