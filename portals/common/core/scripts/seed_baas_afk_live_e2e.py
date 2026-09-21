@@ -34,6 +34,11 @@ _FLAGS = {
 }
 
 
+def _dev_iap_requested() -> bool:
+    """Keep fake receipts confined to an explicitly started local E2E stack."""
+    return os.environ.get("BAAS_ALLOW_DEV_IAP", "").strip().lower() in {"1", "true", "yes"}
+
+
 def main() -> int:
     from models.db import init_db
     from models.data import projects_db
@@ -64,6 +69,11 @@ def main() -> int:
     for k, v in afk_extra.items():
         if not str(k).startswith("_"):
             configs[k] = v
+    # The packaged AFK config intentionally has this disabled.  A disposable local
+    # E2E stack may opt in, but it still also needs BAAS_ALLOW_DEV_IAP at runtime.
+    iap = dict(configs.get("iap") or {})
+    iap["dev_verify_always_ok"] = _dev_iap_requested()
+    configs["iap"] = iap
     pve = dict(configs.get("pve") or {})
     pve["stamina_max"] = 5000
     pve["stamina_recover_seconds"] = 60
