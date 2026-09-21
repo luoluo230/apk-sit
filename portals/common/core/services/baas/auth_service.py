@@ -51,14 +51,18 @@ def guest_login(service_id: str, *, display_name: str = "", guest_id: str = "") 
             "SELECT * FROM baas_players WHERE service_id=? AND auth_provider='guest' AND external_id=?",
             (service_id, external_id),
         ).fetchone()
-        # A guest upgraded in place keeps this opaque installation alias so an
-        # app's automatic guest bootstrap can still resume the same player.
+        # A guest upgraded in place keeps its opaque installation identity in
+        # a normalized, indexed alias table.  This avoids an O(player-count)
+        # profile_json scan on normal application startup.
         if not existing and guest_id:
-            for candidate in cur.execute("SELECT * FROM baas_players WHERE service_id=?", (service_id,)).fetchall():
-                profile = _json_load(candidate["profile_json"], {})
-                if str(profile.get("guest_installation_id") or "") == external_id:
-                    existing = candidate
-                    break
+            existing = cur.execute(
+                """
+                SELECT p.* FROM baas_player_identity_aliases a
+                JOIN baas_players p ON p.service_id=a.service_id AND p.player_id=a.player_id
+                WHERE a.service_id=? AND a.alias_type='guest_installation' AND a.alias_value=?
+                """,
+                (service_id, external_id),
+            ).fetchone()
         if existing:
             _assert_not_banned(service_id, existing["player_id"])
             return _refresh_token(cur, existing, cfg)
@@ -176,8 +180,10 @@ def bind_password(
             raise ValueError("账号已存在")
 
         profile = _json_load(row["profile_json"], {})
+        guest_external_id = ""
         if str(row["auth_provider"] or "") == "guest":
-            profile["guest_installation_id"] = str(row["external_id"] or "")
+            guest_external_id = str(row["external_id"] or "")
+            profile["guest_installation_id"] = guest_external_id
         salt = new_id("s_")
         profile["password_salt"] = salt
         profile["password_hash"] = _hash_password(pwd, salt)
@@ -190,6 +196,18 @@ def bind_password(
             """,
             (uname, name, _json_dump(profile), _now_iso(), service_id, player_id),
         )
+        if guest_external_id:
+            now = _now_iso()
+            cur.execute(
+                """
+                INSERT INTO baas_player_identity_aliases (
+                    service_id, alias_type, alias_value, player_id, created_at, updated_at
+                ) VALUES (?, 'guest_installation', ?, ?, ?, ?)
+                ON CONFLICT(service_id, alias_type, alias_value) DO UPDATE SET
+                    player_id=excluded.player_id, updated_at=excluded.updated_at
+                """,
+                (service_id, guest_external_id, player_id, now, now),
+            )
         bound = cur.execute(
             "SELECT * FROM baas_players WHERE service_id=? AND player_id=?",
             (service_id, player_id),

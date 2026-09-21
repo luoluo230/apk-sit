@@ -991,6 +991,15 @@ def init_db():
             if "disabled" not in cols:
                 conn.execute("ALTER TABLE baas_services ADD COLUMN disabled INTEGER DEFAULT 0")
             _mark_migration(conn, "baas_services_v2")
+        if not _migration_applied(conn, "baas_player_identity_aliases_v1"):
+            from models.baas_migrations import (
+                BAAS_PLAYER_IDENTITY_ALIASES_V1_SQL,
+                backfill_guest_installation_aliases,
+            )
+
+            conn.executescript(BAAS_PLAYER_IDENTITY_ALIASES_V1_SQL)
+            backfill_guest_installation_aliases(conn)
+            _mark_migration(conn, "baas_player_identity_aliases_v1")
         if not _migration_applied(conn, "baas_rooms_v1"):
             conn.executescript(
                 """

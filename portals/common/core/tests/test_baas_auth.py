@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import unittest
 import uuid
@@ -21,6 +22,8 @@ load_dotenv()
 
 from services.baas import auth_service
 from services.baas.service_crud import ensure_service, get_service
+from models.db import get_cursor
+from models.baas_migrations import BAAS_PLAYER_IDENTITY_ALIASES_V1_SQL, backfill_guest_installation_aliases
 
 
 _TEST_PROJECT = "test_baas_auth_proj"
@@ -65,6 +68,28 @@ class BaasAuthServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             auth_service.guest_login(svc["service_id"], guest_id="not valid")
 
+    def test_legacy_bound_guest_profile_is_backfilled_once(self):
+        """An upgrade preserves accounts made before the normalized alias table."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute(
+                "CREATE TABLE baas_players (service_id TEXT, player_id TEXT, auth_provider TEXT, profile_json TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO baas_players VALUES (?, ?, 'password', ?)",
+                ("svc", "player", '{"guest_installation_id":"guest-legacy-0a7e3c4f9d21"}'),
+            )
+            conn.executescript(BAAS_PLAYER_IDENTITY_ALIASES_V1_SQL)
+            backfill_guest_installation_aliases(conn)
+            alias = conn.execute(
+                "SELECT player_id FROM baas_player_identity_aliases WHERE service_id='svc' AND alias_value=?",
+                ("guest-legacy-0a7e3c4f9d21",),
+            ).fetchone()
+            self.assertEqual("player", alias["player_id"])
+        finally:
+            conn.close()
+
     def test_guest_bind_password_preserves_player_and_allows_password_login(self):
         svc, _ = ensure_service(_TEST_PROJECT, "guest-bind", actor="admin")
         service_id = svc["service_id"]
@@ -80,6 +105,16 @@ class BaasAuthServiceTests(unittest.TestCase):
         self.assertEqual(guest["player_id"], bound["player_id"])
         resumed = auth_service.password_login(service_id, username=username, password="secure-password")
         self.assertEqual(guest["player_id"], resumed["player_id"])
+        with get_cursor() as cur:
+            alias = cur.execute(
+                """
+                SELECT player_id FROM baas_player_identity_aliases
+                WHERE service_id=? AND alias_type='guest_installation' AND alias_value=?
+                """,
+                (service_id, "guest-bind-test-0a7e3c4f9d21"),
+            ).fetchone()
+        self.assertIsNotNone(alias)
+        self.assertEqual(guest["player_id"], alias["player_id"])
         automatic_resume = auth_service.guest_login(service_id, guest_id="guest-bind-test-0a7e3c4f9d21")
         self.assertEqual(guest["player_id"], automatic_resume["player_id"])
 

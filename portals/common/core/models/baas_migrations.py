@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Shared BaaS DDL for SQLite and PostgreSQL backends."""
+"""Shared BaaS DDL and data migrations for SQLite and PostgreSQL backends."""
+
+import json
+from datetime import datetime, timezone
 
 BAAS_SERVICES_V1_SQL = """
 CREATE TABLE IF NOT EXISTS baas_services (
@@ -217,3 +220,52 @@ ALTER TABLE baas_services ADD COLUMN description TEXT DEFAULT '';
 ALTER TABLE baas_services ADD COLUMN icon_url TEXT DEFAULT '';
 ALTER TABLE baas_services ADD COLUMN disabled INTEGER DEFAULT 0;
 """
+
+# A player may upgrade a guest session to a password account without losing the
+# anonymous installation identity that is used for automatic resume.  Keep that
+# secondary identity normalized and indexed instead of searching profile_json.
+BAAS_PLAYER_IDENTITY_ALIASES_V1_SQL = """
+CREATE TABLE IF NOT EXISTS baas_player_identity_aliases (
+    service_id TEXT NOT NULL,
+    alias_type TEXT NOT NULL,
+    alias_value TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (service_id, alias_type, alias_value)
+);
+CREATE INDEX IF NOT EXISTS idx_baas_player_identity_aliases_player
+    ON baas_player_identity_aliases(service_id, player_id);
+"""
+
+
+def backfill_guest_installation_aliases(conn) -> None:
+    """Import aliases created by pre-alias account-binding releases once.
+
+    This is a schema-migration operation, never part of the login request.  A
+    malformed historical profile is skipped so it cannot block database upgrade.
+    """
+    rows = conn.execute(
+        "SELECT service_id, player_id, profile_json FROM baas_players "
+        "WHERE auth_provider='password'"
+    ).fetchall()
+    now = datetime.now(timezone.utc).isoformat()
+    aliases = []
+    for row in rows:
+        try:
+            profile = json.loads(str(row["profile_json"] or "{}"))
+        except (TypeError, ValueError):
+            continue
+        alias = str(profile.get("guest_installation_id") or "").strip()
+        if alias:
+            aliases.append((str(row["service_id"]), alias, str(row["player_id"]), now, now))
+    if aliases:
+        conn.executemany(
+            """
+            INSERT INTO baas_player_identity_aliases (
+                service_id, alias_type, alias_value, player_id, created_at, updated_at
+            ) VALUES (?, 'guest_installation', ?, ?, ?, ?)
+            ON CONFLICT(service_id, alias_type, alias_value) DO NOTHING
+            """,
+            aliases,
+        )
