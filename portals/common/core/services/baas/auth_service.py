@@ -128,6 +128,65 @@ def register_password(service_id: str, *, username: str, password: str, display_
         )
 
 
+def bind_password(
+    service_id: str,
+    *,
+    player_id: str,
+    username: str,
+    password: str,
+    display_name: str = "",
+) -> Dict[str, Any]:
+    """Upgrade an authenticated guest in place without moving game state.
+
+    The player row is the parent of AFK inventory/progression records, so changing
+    its identity provider preserves every server-owned child record atomically.
+    """
+    cfg = _ensure_login_enabled(service_id)
+    if not cfg.get("password_login_enabled", True):
+        raise ValueError("账号密码登录未启用")
+    uname = str(username or "").strip()
+    pwd = str(password or "").strip()
+    if len(uname) < 3:
+        raise ValueError("用户名至少 3 个字符")
+    if len(pwd) < 6:
+        raise ValueError("密码至少 6 个字符")
+
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            "SELECT * FROM baas_players WHERE service_id=? AND player_id=?",
+            (service_id, player_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("玩家不存在")
+        _assert_not_banned(service_id, player_id)
+        existing = cur.execute(
+            "SELECT player_id FROM baas_players WHERE service_id=? AND auth_provider='password' AND external_id=?",
+            (service_id, uname),
+        ).fetchone()
+        if existing and str(existing["player_id"]) != str(player_id):
+            raise ValueError("账号已存在")
+
+        profile = _json_load(row["profile_json"], {})
+        salt = new_id("s_")
+        profile["password_salt"] = salt
+        profile["password_hash"] = _hash_password(pwd, salt)
+        name = str(display_name or "").strip() or str(row["display_name"] or uname)
+        cur.execute(
+            """
+            UPDATE baas_players
+            SET auth_provider='password', external_id=?, display_name=?, profile_json=?, updated_at=?
+            WHERE service_id=? AND player_id=?
+            """,
+            (uname, name, _json_dump(profile), _now_iso(), service_id, player_id),
+        )
+        bound = cur.execute(
+            "SELECT * FROM baas_players WHERE service_id=? AND player_id=?",
+            (service_id, player_id),
+        ).fetchone()
+        return _refresh_token(cur, bound, cfg)
+
+
 def refresh_token(service_id: str, player_id: str, token: str) -> Dict[str, Any]:
     cfg = _ensure_login_enabled(service_id)
     init_db()

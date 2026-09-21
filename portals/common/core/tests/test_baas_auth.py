@@ -64,6 +64,21 @@ class BaasAuthServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             auth_service.guest_login(svc["service_id"], guest_id="not valid")
 
+    def test_guest_bind_password_preserves_player_and_allows_password_login(self):
+        svc, _ = ensure_service(_TEST_PROJECT, "guest-bind", actor="admin")
+        service_id = svc["service_id"]
+        guest = auth_service.guest_login(service_id, guest_id="guest-bind-test-0a7e3c4f9d21")
+        bound = auth_service.bind_password(
+            service_id,
+            player_id=guest["player_id"],
+            username="bound_guest_account",
+            password="secure-password",
+            display_name="Bound Guest",
+        )
+        self.assertEqual(guest["player_id"], bound["player_id"])
+        resumed = auth_service.password_login(service_id, username="bound_guest_account", password="secure-password")
+        self.assertEqual(guest["player_id"], resumed["player_id"])
+
     def test_invalid_token_rejected(self):
         svc, _ = ensure_service(_TEST_PROJECT, "testing", actor="admin")
         with self.assertRaises(ValueError):

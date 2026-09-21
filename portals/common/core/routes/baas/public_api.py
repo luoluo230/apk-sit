@@ -56,6 +56,27 @@ def register_baas_public_routes(bp=None) -> None:
         except ValueError as exc:
             return baas_fail_exc(exc)
 
+    @target.route(f"{prefix}/auth/bind-password", methods=["POST"])
+    def baas_auth_bind_password(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            data = auth_service.bind_password(
+                service_id,
+                player_id=str(player.get("player_id") or ""),
+                username=body.get("username"),
+                password=body.get("password"),
+                display_name=body.get("display_name"),
+            )
+            return jsonify({"ok": True, "data": data})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
     @target.route(f"{prefix}/auth/login", methods=["POST"])
     def baas_auth_login(service_id: str):
         sid, err = _service_auth(service_id)
