@@ -5,11 +5,17 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
+import hmac
 from typing import Any, Dict, Optional, Tuple
 
 from models.db import get_cursor, init_db
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id, new_player_token, token_expiry
 from services.baas.service_crud import feature_enabled, get_feature_config
+
+
+_PASSWORD_PBKDF2_ITERATIONS = 310_000
+_PASSWORD_PBKDF2_PREFIX = "pbkdf2_sha256"
 
 
 def _assert_not_banned(service_id: str, player_id: str) -> None:
@@ -103,8 +109,17 @@ def password_login(service_id: str, *, username: str, password: str) -> Dict[str
         if not row:
             raise ValueError("账号不存在")
         profile = _json_load(row["profile_json"], {})
-        if str(profile.get("password_hash") or "") != _hash_password(pwd, profile.get("password_salt") or ""):
+        if not _verify_password(pwd, profile.get("password_salt") or "", profile.get("password_hash") or ""):
             raise ValueError("密码错误")
+        # Upgrade historical single-round SHA-256 records only after a successful
+        # login.  The old digest remains readable during a rolling deployment,
+        # while every active account converges to the stronger representation.
+        if not str(profile.get("password_hash") or "").startswith(_PASSWORD_PBKDF2_PREFIX + "$"):
+            profile["password_hash"] = _hash_password(pwd, profile.get("password_salt") or "")
+            cur.execute(
+                "UPDATE baas_players SET profile_json=?, updated_at=? WHERE service_id=? AND player_id=?",
+                (_json_dump(profile), _now_iso(), service_id, row["player_id"]),
+            )
         _assert_not_banned(service_id, row["player_id"])
         return _refresh_token(cur, row, cfg)
 
@@ -245,9 +260,35 @@ def resolve_player(service_id: str, player_id: str, token: str) -> Dict[str, Any
 
 
 def _hash_password(password: str, salt: str) -> str:
-    import hashlib
+    """Return a self-describing PBKDF2 digest for password-account storage."""
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        str(password).encode("utf-8"),
+        str(salt).encode("utf-8"),
+        _PASSWORD_PBKDF2_ITERATIONS,
+    ).hex()
+    return f"{_PASSWORD_PBKDF2_PREFIX}${_PASSWORD_PBKDF2_ITERATIONS}${digest}"
 
-    return hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+
+def _verify_password(password: str, salt: str, stored: str) -> bool:
+    """Verify PBKDF2 records and the prior digest during the rolling upgrade."""
+    value = str(stored or "")
+    if value.startswith(_PASSWORD_PBKDF2_PREFIX + "$"):
+        parts = value.split("$", 2)
+        if len(parts) != 3:
+            return False
+        try:
+            iterations = int(parts[1])
+        except ValueError:
+            return False
+        if iterations < 100_000 or iterations > 2_000_000:
+            return False
+        expected = hashlib.pbkdf2_hmac(
+            "sha256", str(password).encode("utf-8"), str(salt).encode("utf-8"), iterations
+        ).hex()
+        return hmac.compare_digest(parts[2], expected)
+    legacy = hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+    return hmac.compare_digest(value, legacy)
 
 
 def _create_session(

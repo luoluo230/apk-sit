@@ -8,6 +8,7 @@ import sqlite3
 import sys
 import unittest
 import uuid
+import hashlib
 
 _CORE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _CORE not in sys.path:
@@ -122,6 +123,38 @@ class BaasAuthServiceTests(unittest.TestCase):
         svc, _ = ensure_service(_TEST_PROJECT, "testing", actor="admin")
         with self.assertRaises(ValueError):
             auth_service.resolve_player(svc["service_id"], "missing", "bad-token")
+
+    def test_password_hash_is_pbkdf2_and_legacy_login_is_upgraded(self):
+        svc, _ = ensure_service(_TEST_PROJECT, "password-hash", actor="admin")
+        service_id = svc["service_id"]
+        username = "hash_user_" + uuid.uuid4().hex[:12]
+        password = "secure-password"
+        registered = auth_service.register_password(service_id, username=username, password=password)
+        with get_cursor() as cur:
+            row = cur.execute(
+                "SELECT profile_json FROM baas_players WHERE service_id=? AND player_id=?",
+                (service_id, registered["player_id"]),
+            ).fetchone()
+        profile = auth_service._json_load(row["profile_json"], {})
+        self.assertTrue(profile["password_hash"].startswith("pbkdf2_sha256$"))
+
+        # Simulate a pre-upgrade account and prove one successful login rewrites it.
+        legacy_salt = profile["password_salt"]
+        profile["password_hash"] = hashlib.sha256(f"{legacy_salt}:{password}".encode("utf-8")).hexdigest()
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE baas_players SET profile_json=? WHERE service_id=? AND player_id=?",
+                (auth_service._json_dump(profile), service_id, registered["player_id"]),
+            )
+        resumed = auth_service.password_login(service_id, username=username, password=password)
+        self.assertEqual(registered["player_id"], resumed["player_id"])
+        with get_cursor() as cur:
+            upgraded = cur.execute(
+                "SELECT profile_json FROM baas_players WHERE service_id=? AND player_id=?",
+                (service_id, registered["player_id"]),
+            ).fetchone()
+        upgraded_profile = auth_service._json_load(upgraded["profile_json"], {})
+        self.assertTrue(upgraded_profile["password_hash"].startswith("pbkdf2_sha256$"))
 
 
 if __name__ == "__main__":
