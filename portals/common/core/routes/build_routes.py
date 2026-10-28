@@ -952,155 +952,28 @@ def _version_workflow_page_html():
 @bp.route('/admin/build')
 @admin_required_any('projects', 'build')
 def build_page():
-    """构建管理（通用入口；?project=xxx 时重定向至项目构建页）"""
+    """旧构建入口。进入项目工作区的构建与产物。"""
     from flask import request, redirect
     project_id = (request.args.get('project') or '').strip()
     if project_id:
         from models.data import projects_db, can_view_project
         from flask import session
         if project_id in projects_db and can_view_project(project_id, session.get('user') or ''):
-            return redirect('/admin/projects/%s/build' % project_id)
-    return render_template('admin_build.html', apk_dir=Config.APK_DIR, default_app_name='RecycleTycoon', default_version_name='1.0.15', default_version_code='1015', csrf_token_value=_get_csrf_token())
+            return redirect('/admin/projects/%s/build-history' % project_id)
+    return redirect('/admin/projects')
 
 
 @bp.route('/admin/projects/<project_id>/build')
 @admin_required_any('projects', 'build')
 def project_build_page(project_id):
-    """项目内统一构建页：?type=general 通用APK构建 / ?type=commercial 商业级热更发布"""
+    """旧项目构建页。进入项目工作区的构建与产物。"""
     from models.data import projects_db, can_view_project
-    from flask import session, request
-    if project_id not in projects_db:
-        from flask import abort
-        abort(404)
-    if not can_view_project(project_id, session.get('user') or ''):
-        from flask import abort
-        abort(403)
-    build_type = (request.args.get('type') or 'general').strip()
-    if build_type not in ('general', 'commercial'):
-        build_type = 'general'
-    from models.data import project_versions_db
-    versions = (project_versions_db.get(project_id) or [])
-    if not isinstance(versions, list):
-        versions = []
-    # 从最新版本取默认值
-    default_ver_name, default_ver_code, default_branch = '1.0.0', '100', 'main'
-    if versions:
-        v = versions[-1]
-        params = v.get('jenkins_params') or {}
-        default_ver_name = params.get('VERSION_NAME') or v.get('version_name') or default_ver_name
-        default_ver_code = params.get('VERSION_CODE') or v.get('version_code') or default_ver_code
-        default_branch = params.get('GIT_BRANCH') or default_branch
-    return _unified_project_build_html(
-        project_id=project_id,
-        default_app_name=project_id,
-        default_version_name=default_ver_name,
-        default_version_code=default_ver_code,
-        default_git_branch=default_branch,
-        build_type=build_type,
-    )
-
-
-def _get_version_downloads(project_id, version, scan_dir=None):
-    """根据约定规则获取某版本的 APK 下载列表。scan_dir 指定扫描目录（渠道+阶段子目录），否则扫描 APK 根目录。"""
-    from models.data import download_stats
-    files = []
-    root = (scan_dir or Config.APK_DIR).rstrip(os.sep)
-    if not os.path.isdir(root):
-        return files
-    rel_prefix = (scan_dir[len(Config.APK_DIR):].lstrip(os.sep) + '/') if scan_dir and scan_dir != Config.APK_DIR else ''
-    names_hint = set(version.get('downloads') or [])
-    ver_name = (version.get('version_name') or '').lower()
-    proj_id = (project_id or '').lower()
-    for fname in os.listdir(root):
-        if not fname.lower().endswith(('.apk', '.ipa')):
-            continue
-        match = False
-        if names_hint and fname in names_hint:
-            match = True
-        else:
-            fn_lower = fname.lower()
-            if proj_id and proj_id in fn_lower and ver_name and ver_name in fn_lower:
-                match = True
-        if not match:
-            continue
-        path = os.path.join(root, fname)
-        if not os.path.isfile(path):
-            continue
-        try:
-            size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
-        except OSError:
-            size_mb = '-'
-        dl_key = (rel_prefix + fname) if rel_prefix else fname
-        dl = download_stats.get(dl_key, download_stats.get(fname, 0))
-        url_path = (rel_prefix + fname).replace('\\', '/') if rel_prefix else fname
-        files.append({
-            'name': fname,
-            'size_mb': size_mb,
-            'downloads': dl,
-            'url': f"/pub/download/{url_path}",
-        })
-    files.sort(key=lambda x: x['name'])
-    return files
-
-
-def _get_stage_downloads(project_id, channel_id, stage_id):
-    """获取某渠道+阶段的 APK 下载列表（扫描该阶段输出目录下所有 APK）。"""
-    from models.data import download_stats
-    files = []
-    scan_dir = _compute_stage_output_base(Config.APK_DIR, channel_id, stage_id)
-    if not os.path.isdir(scan_dir):
-        return files
-    rel_prefix = (os.path.relpath(scan_dir, Config.APK_DIR) + os.sep).replace('\\', '/')
-    if rel_prefix.startswith('..'):
-        rel_prefix = ''
-    for fname in os.listdir(scan_dir):
-        if not fname.lower().endswith(('.apk', '.ipa')):
-            continue
-        path = os.path.join(scan_dir, fname)
-        if not os.path.isfile(path):
-            continue
-        try:
-            size_mb = round(os.path.getsize(path) / (1024 * 1024), 1)
-        except OSError:
-            size_mb = '-'
-        dl_key = (rel_prefix + fname) if rel_prefix else fname
-        dl = download_stats.get(dl_key, download_stats.get(fname, 0))
-        url_path = (rel_prefix + fname) if rel_prefix else fname
-        files.append({'name': fname, 'size_mb': size_mb, 'downloads': dl, 'url': f"/pub/download/{url_path}"})
-    files.sort(key=lambda x: x['name'])
-    return files
-
-
-@bp.route('/admin/projects/<project_id>/versions/<version_id>/workflow')
-@admin_required_any('projects', 'build')
-def project_version_workflow(project_id, version_id):
-    """Legacy workflow page — redirect to unified release-order build path."""
-    from urllib.parse import urlencode
-    from models.data import projects_db, project_versions_db, can_view_project
-    from flask import session, abort
-    from services.release.env_registry import normalize_release_env_key
-    from services.release.scope_ids import resolve_channel_id
-
+    from flask import session, redirect, abort
     if project_id not in projects_db:
         abort(404)
     if not can_view_project(project_id, session.get('user') or ''):
         abort(403)
-    versions = (project_versions_db.get(project_id) or [])
-    if not isinstance(versions, list):
-        versions = []
-    v = next((x for x in versions if (x.get('id') or '') == version_id), None)
-    if not v:
-        abort(404)
-    ch_raw = str(v.get('channel_id') or v.get('channel') or '').strip()
-    channel_id = resolve_channel_id(project_id, ch_raw) or ch_raw
-    env_key = normalize_release_env_key(v.get('env_key') or v.get('stage') or 'development', project_id=project_id)
-    qs = urlencode({
-        'version_id': version_id,
-        'env_key': env_key,
-        'channel_id': channel_id,
-        'platform': str(v.get('platform') or 'android').strip().lower(),
-    })
-    return redirect(f'/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/build?{qs}')
+    return redirect('/admin/projects/%s/build-history' % project_id)
 
 
 @bp.route('/admin/projects/<project_id>/channels/<channel_id>/stages/<stage_id>/build')
@@ -1113,57 +986,7 @@ def project_stage_build(project_id, channel_id, stage_id):
         abort(404)
     if not can_view_project(project_id, session.get('user') or ''):
         abort(403)
-    from models.data import projects_db
-    output_base = _compute_stage_output_base(Config.APK_DIR, channel_id, stage_id)
-    downloads = _get_stage_downloads(project_id, channel_id, stage_id)
-    versions = (project_versions_db.get(project_id) or [])
-    if not isinstance(versions, list):
-        versions = []
-    vers_in_stage = [x for x in versions if ((x.get('channel') or '').strip().lower() == (channel_id or '').lower()) and ((x.get('stage') or 'dev') == (stage_id or 'dev'))]
-    v = vers_in_stage[-1] if vers_in_stage else {}
-    params_saved = v.get('jenkins_params') or {}
-    sbp = (projects_db.get(project_id) or {}).get('stage_build_params') or {}
-    stage_key = '%s:%s' % (channel_id, stage_id)
-    if stage_key in sbp:
-        params_saved = dict(params_saved, **sbp[stage_key])
-    default_app = params_saved.get('APP_NAME') or project_id
-    default_ver_name = params_saved.get('VERSION_NAME') or v.get('version_name') or '1.0.0'
-    default_ver_code = params_saved.get('VERSION_CODE') or v.get('version_code') or '100'
-    default_git_branch = params_saved.get('GIT_BRANCH') or 'main'
-    from models.data import get_channels_for_project, get_channel_by_id
-    channel_obj = get_channel_by_id(channel_id)
-    channel_name = (channel_obj.get('name') or channel_id) if channel_obj else channel_id
-    stage_labels = {'dev': '开发', 'test': '测试', 'production': '线上'}
-    stage_name = stage_labels.get((stage_id or 'dev').strip(), '开发')
-    version_info = {
-        'project_id': project_id,
-        'version_name': None,
-        'version_code': None,
-        'channel': channel_id,
-        'channel_name': channel_name,
-        'stage': stage_id,
-        'stage_name': stage_name,
-    }
-    channel_opts = get_channels_for_project(project_id)
-    channel_options = [(c.get('id', '').strip(), (c.get('name') or c.get('id', '')).strip()) for c in channel_opts if (c.get('id') or '').strip()]
-    return render_template(
-        'admin_build.html',
-        apk_dir=output_base,
-        default_app_name=default_app,
-        default_version_name=default_ver_name,
-        default_version_code=default_ver_code,
-        default_git_branch=default_git_branch,
-        project_id=project_id,
-        version_id='',
-        channel_id=channel_id,
-        stage_id=stage_id,
-        version_info=version_info,
-        version_downloads=downloads,
-        back_href='/admin/projects/%s#tab=channels' % project_id,
-        channel_options=channel_options,
-        default_channel=channel_id or '',
-        csrf_token_value=_get_csrf_token(),
-    )
+    return redirect('/admin/projects/%s/build-history' % project_id)
 
 
 @bp.route('/admin/build/trigger', methods=['POST'])

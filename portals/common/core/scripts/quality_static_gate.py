@@ -39,6 +39,7 @@ LEGACY_PATTERNS = [
 
 ALLOWED_RAW_JENKINS_HOME = {
     os.path.join(ROOT, "services", "jenkins_manager.py"),
+    os.path.join(ROOT, "services", "jenkins"),
 }
 
 
@@ -71,7 +72,10 @@ def main() -> int:
                 failures.append("%s: mojibake (%s)" % (rel, msg))
                 break
         for pat, msg in LEGACY_PATTERNS:
-            if "raw jenkins_home" in msg and path in ALLOWED_RAW_JENKINS_HOME:
+            if "raw jenkins_home" in msg and (
+                path in ALLOWED_RAW_JENKINS_HOME
+                or path.startswith(os.path.join(ROOT, "services", "jenkins"))
+            ):
                 continue
             if "raw jenkins_home" in msg and "resolve_jenkins_home" in text:
                 continue

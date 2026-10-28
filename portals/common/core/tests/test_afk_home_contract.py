@@ -11,7 +11,8 @@ from contextlib import contextmanager, ExitStack
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from flask import Flask
-from services.baas import afk_home_service as home, idle_service as idle, pve_service as pve, cloudsave_service as cloud
+from services.baas import cloudsave_service as cloud, idle_service as idle, pve_service as pve
+from services.baas.afk import afk_home_service as home
 
 
 class AfkHomeContractTests(unittest.TestCase):
@@ -35,12 +36,12 @@ class AfkHomeContractTests(unittest.TestCase):
         self.stack.enter_context(patch.object(idle,"_estimate_team_power", lambda *_: 100))
         self.stack.enter_context(patch.object(pve,"_vip_stamina_bonus",lambda *_: 0))
         self.stack.enter_context(patch.object(pve,"_group_stamina_add",lambda *_: 0))
-        self.stack.enter_context(patch("services.baas.afk_config_group.group_factors",lambda *_: {}))
-        self.stack.enter_context(patch("services.baas.afk_config_group.scale_rewards",lambda s,p,k,rewards: rewards))
-        self.stack.enter_context(patch("services.baas.afk_vip_service.idle_bonus_mul",lambda *_: 1))
-        self.stack.enter_context(patch("services.baas.afk_formula_engine.idle_item_rewards",lambda *_: {}))
-        self.stack.enter_context(patch("services.baas.afk_retention_hooks.on_idle_claim",lambda *_: None))
-        self.stack.enter_context(patch("services.baas.afk_retention_hooks.on_pve_win",lambda *a,**kw: None))
+        self.stack.enter_context(patch("services.baas.afk.afk_config_group.group_factors",lambda *_: {}))
+        self.stack.enter_context(patch("services.baas.afk.afk_config_group.scale_rewards",lambda s,p,k,rewards: rewards))
+        self.stack.enter_context(patch("services.baas.afk.afk_vip_service.idle_bonus_mul",lambda *_: 1))
+        self.stack.enter_context(patch("services.baas.afk.afk_formula_engine.idle_item_rewards",lambda *_: {}))
+        self.stack.enter_context(patch("services.baas.afk.afk_retention_hooks.on_idle_claim",lambda *_: None))
+        self.stack.enter_context(patch("services.baas.afk.afk_retention_hooks.on_pve_win",lambda *a,**kw: None))
 
     def tearDown(self):
         self.stack.close()

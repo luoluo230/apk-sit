@@ -24,7 +24,8 @@ from app_new import app  # noqa: F401
 
 from models.db import get_cursor
 from services.baas import auth_service, gacha_service, hero_service, idle_service, iap_service, pve_service, tower_service, afk_friend_service
-from services.baas import afk_growth_service, inventory_service
+from services.baas import inventory_service
+from services.baas.afk import afk_growth_service
 from services.baas.battle_antifraud import compute_replay_hash
 from services.baas.registry import default_feature_configs
 from services.baas.wallet_helpers import credit_wallet

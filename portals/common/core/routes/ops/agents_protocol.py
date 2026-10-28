@@ -323,16 +323,23 @@ def ops_platform_agent_report():
     hit["status"] = status
     hit["updated_at"] = ops_helpers._now_iso()
     hit["lease"] = {"agent_id": agent_id, "updated_at": ops_helpers._now_iso()}
-    hit["result"] = payload.get("result") if isinstance(payload.get("result"), dict) else {"message": str(payload.get("message") or "")}
+    reported_result = payload.get("result") if isinstance(payload.get("result"), dict) else {"message": str(payload.get("message") or "")}
+    hit["result"] = reported_result
+    will_retry = False
     if status in ("FAILED", "TIMEOUT"):
         attempts = int(hit.get("attempt") or 0)
         max_retries = int(hit.get("max_retries") or ops_helpers._load_agent_policy().get("max_retries") or 2)
         if attempts < max_retries:
+            will_retry = True
             hit["status"] = "PENDING"
             hit["attempt"] = attempts + 1
             hit["lease"] = {}
             hit["updated_at"] = ops_helpers._now_iso()
-            hit["result"] = {"message": "scheduled retry after failure", "last_status": status}
+            hit["result"] = {
+                "message": "scheduled retry after failure",
+                "last_status": status,
+                "last_result": reported_result,
+            }
     ops_helpers._save_agent_jobs(jobs)
     reg_v2 = ops_helpers._load_agent_registry_v2()
     cur_agent = reg_v2.get(agent_id) if isinstance(reg_v2.get(agent_id), dict) else {}
@@ -367,10 +374,15 @@ def ops_platform_agent_report():
 
     server_release = None
     server_release_error = ""
-    if str(hit.get("action_type") or "").strip().lower() == "deploy_server_artifact" and status in ("SUCCESS", "FAILED"):
+    if (
+        str(hit.get("action_type") or "").strip().lower() == "deploy_server_artifact"
+        and status in ("SUCCESS", "FAILED")
+        and not will_retry
+    ):
         from services.ops.server_deploy_dispatch import apply_deploy_job_report
 
         try:
+            hit["result"] = reported_result
             server_release = apply_deploy_job_report(
                 hit,
                 status,

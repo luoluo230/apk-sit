@@ -62,7 +62,7 @@ def claim_mail(service_id: str, player_id: str, mail_id: str) -> Dict[str, Any]:
             elif att.get("diamond"):
                 reward_map["diamond"] = reward_map.get("diamond", 0) + int(att["diamond"])
         if reward_map:
-            from services.baas.afk_reward_grants import grant_rewards
+            from services.baas.afk.afk_reward_grants import grant_rewards
             grant_rewards(cur, service_id, player_id, reward_map)
         cur.execute(
             "UPDATE baas_mail_messages SET status='claimed', claimed_at=?, updated_at=? WHERE mail_id=?",

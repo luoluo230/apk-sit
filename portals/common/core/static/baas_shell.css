@@ -1,4 +1,5 @@
-/* BaaS standalone shell — aligns with Dev Portal ops shell */
+/* BaaS standalone shell — same tokens and top bar, no second app sidebar. */
+.baas-shell-content-only{grid-template-columns:minmax(0,1fr)}
 .baas-shell-app .ops-shell-content{padding:24px 24px 32px}
 .baas-shell-context{height:38px;padding:0 12px;display:flex;align-items:center;gap:8px;border:1px solid #dce4f2;border-radius:7px;background:#fff;color:#344054;font-size:13px;font-weight:500}
 .baas-shell-context img{width:17px;height:17px}

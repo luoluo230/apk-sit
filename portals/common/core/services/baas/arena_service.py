@@ -23,7 +23,7 @@ from services.baas.battle_antifraud import (
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
 from services.baas.pve_service import _utc_today, _authoritative_outcome
 from services.baas.service_crud import feature_enabled, get_feature_config
-from services.baas.afk_power_service import team_power_unified
+from services.baas.afk.afk_power_service import team_power_unified
 
 
 def _arena_cfg(service_id: str) -> Dict[str, Any]:
@@ -408,7 +408,7 @@ def settle_battle(
         retention_services.submit_score(service_id, player_id, board_id, final_rating)
     result["arena_state"] = get_state(service_id, player_id)
     try:
-        from services.baas.afk_retention_hooks import on_arena_settled
+        from services.baas.afk.afk_retention_hooks import on_arena_settled
         on_arena_settled(service_id, player_id)
     except Exception:
         pass

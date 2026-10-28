@@ -1,0 +1,11 @@
+{
+  "gap_id": "GAP-P2-03-E2E-02",
+  "status": "DONE",
+  "timestamp": "2026-10-28T16:25:15.425297+08:00",
+  "command": "staging_incident_notify_e2e.py real rollback",
+  "exit_code": 0,
+  "artifact_paths": [
+    "docs/evidence/2026-10-28/GAP-P2-03-E2E-02.json"
+  ],
+  "notes": "{\"pair\": {\"scope_id\": \"e2e-incident:162b0b65be\", \"prev_id\": \"ro-e2e-prev-162b0b65be\", \"fail_id\": \"ro-e2e-fail-162b0b65be\", \"prev_bundle\": \"bun-e2e-prev-162b0b65be\", \"fail_bundle\": \"bun-e2e-fail-162b0b65be\"}, \"events\": [\"auto_rollback_executed\", \"bootstrap_smoke_failed\", \"verify_failed\"], \"rollback\": {\"attempted\": true, \"ok\": true, \"target_order_id\": \"ro-e2e-prev-162b0b65be\", \"target_bundle_id\": \"bun-e2e-prev-162b0b65be\"}}"
+}

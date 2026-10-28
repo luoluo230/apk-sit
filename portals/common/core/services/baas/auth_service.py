@@ -335,7 +335,7 @@ def _create_session(
 
             bootstrap_new_player(inner, service_id, player_id)
             try:
-                from services.baas.afk_player_bootstrap import bootstrap_new_player as afk_bootstrap
+                from services.baas.afk.afk_player_bootstrap import bootstrap_new_player as afk_bootstrap
                 afk_bootstrap(inner, service_id, player_id)
             except Exception:
                 pass
@@ -364,12 +364,12 @@ def _create_session(
 
         bootstrap_new_player(cur, service_id, player_id)
         try:
-            from services.baas.afk_player_bootstrap import bootstrap_new_player as afk_bootstrap
+            from services.baas.afk.afk_player_bootstrap import bootstrap_new_player as afk_bootstrap
             afk_bootstrap(cur, service_id, player_id)
         except Exception:
             pass
     try:
-        from services.baas.afk_retention_hooks import on_player_login
+        from services.baas.afk.afk_retention_hooks import on_player_login
         on_player_login(service_id, player_id)
     except Exception:
         pass
@@ -395,7 +395,7 @@ def _refresh_token(cur, row, cfg: Dict[str, Any]) -> Dict[str, Any]:
     data["token"] = token
     data["token_expires_at"] = expires
     try:
-        from services.baas.afk_retention_hooks import on_player_login
+        from services.baas.afk.afk_retention_hooks import on_player_login
         on_player_login(str(row["service_id"]), str(row["player_id"]))
     except Exception:
         pass

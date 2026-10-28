@@ -71,3 +71,26 @@ portals/common/tmp/
 # Optional user-generated local work directories
 # data/workspaces/
 # data/doc_attachments/
+
+# Local scratch: screenshots, one-off probes, cookies
+/tmp/
+/cookie.txt
+/login_page.html
+/login_result.html
+/ops_test.html
+/ops_test2.html
+/tmp_overview.html
+.DS_Store
+._.DS_Store
+
+# Bytecode trees and generated bundles accidentally left at the repo root.
+# The running app lives under portals/common/core.
+/models/
+/repositories/
+/routes/
+/services/
+/utils/
+/runtime/
+/release_bundles/
+/release_bundles_*/
+/jenkins-clone-overlay/

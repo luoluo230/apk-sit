@@ -792,7 +792,7 @@ def gm_set_equipment(
     gem_count: Optional[int] = None,
     actor: str = "",
 ) -> Dict[str, Any]:
-    from services.baas.afk_growth_service import EQUIP_SLOTS
+    from services.baas.afk.afk_growth_service import EQUIP_SLOTS
 
     slot_name = str(slot or "").strip()
     if slot_name not in EQUIP_SLOTS:
@@ -868,7 +868,7 @@ def update_player_profile(service_id: str, player_id: str, payload: Dict[str, An
         )
         if "vip_level" in payload or "vip_exp" in payload:
             try:
-                from services.baas.afk_vip_service import add_vip_exp
+                from services.baas.afk.afk_vip_service import add_vip_exp
                 exp = int(prof.get("vip_exp") or payload.get("vip_exp") or 0)
                 add_vip_exp(service_id, pid, max(0, exp - int(prof.get("vip_exp") or 0)))
             except Exception:
@@ -903,7 +903,7 @@ def gm_set_tower_floor(service_id: str, player_id: str, floor: int, *, tower_id:
 
 
 def gm_set_vip(service_id: str, player_id: str, vip_level: int, vip_exp: int = 0, *, actor: str = "") -> Dict[str, Any]:
-    from services.baas.afk_vip_service import add_vip_exp, get_state
+    from services.baas.afk.afk_vip_service import add_vip_exp, get_state
 
     init_db()
     with get_cursor() as cur:

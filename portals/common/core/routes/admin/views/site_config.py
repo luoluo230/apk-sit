@@ -589,7 +589,7 @@ def render_site_config_page():
     }});
     </script>
     """
-    return _admin_layout(content, '\u5b98\u7f51\u4e0e\u5916\u90e8\u6a21\u5757\u914d\u7f6e', back_href='/admin')
+    return content
 
 
 def _visual_editor_default_modules(portal_kind):
@@ -704,7 +704,7 @@ def _visual_editor_preview_data():
 
 def render_site_config_visual_editor(portal_kind, get_csrf_token):
     if portal_kind not in ('player', 'dev'):
-        return _admin_layout('<div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-rose-700">未知官网类型</div>', '可视化官网编辑器')
+        return '<div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-rose-700">未知官网类型</div>'
 
     company = get_company_profile()
     portal = get_player_portal_content() if portal_kind == 'player' else get_dev_portal_content()

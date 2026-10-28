@@ -41,7 +41,7 @@ def team_power(
     formulas: Optional[Dict[str, str]] = None,
 ) -> int:
     try:
-        from services.baas.afk_formula_engine import team_power_from_defs
+        from services.baas.afk.afk_formula_engine import team_power_from_defs
 
         defs = hero_defs or heroes
         ids = team_hero_ids(team)

@@ -206,7 +206,7 @@ def run_background_scheduler():
                 except Exception as exc:
                     logger.warning("gray rollout tick failed: %s", exc)
                 try:
-                    from services.baas.afk_retention_scheduler import run_retention_tick
+                    from services.baas.afk.afk_retention_scheduler import run_retention_tick
                     retention_stat = run_retention_tick()
                     if retention_stat.get("actions"):
                         logger.info("retention season tick: %s", retention_stat)

@@ -4,7 +4,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from routes.ops.common import *  # noqa: F403
-from flask import jsonify, redirect, render_template_string, request, session
+from flask import Response, jsonify, redirect, render_template_string, request, session
 
 from models.data import log_audit
 from services.authz import admin_required
@@ -21,6 +21,13 @@ def _page_scope(project_id_override: str = ""):
     project_id = ops_helpers._resolve_ops_project_id(project_id_override or request.args.get("project_id") or "")
     env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
     return project_id, env_key, None, None
+
+@bp.route("/ops-assets/workbench.js")
+def ops_platform_workbench_js():
+    from services.ops.workbench_script import workbench_javascript
+
+    return Response(workbench_javascript(), mimetype="application/javascript")
+
 
 @bp.route("/admin/projects/<project_id>/ops")
 @admin_required("gm_ops")
@@ -112,7 +119,7 @@ def ops_platform_topology_canvas_page(project_id: str = ""):
         env_key=env_key,
         topology_id=topology_id,
         extra_css='<link rel="stylesheet" href="/static/ops_platform_topology_workbench.css?v=20260612-project-canvas-v1">',
-        extra_js='<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>\n<script src="/static/ops_platform_workbench.js?v=20260609-unified-v1"></script>',
+        extra_js='<script src="/static/ops_platform_api.js?v=20260609-unified-v1"></script>\n<script src="/ops-assets/workbench.js?v=20261028-split-v1"></script>',
     )
 
 

@@ -23,7 +23,7 @@ from services.baas.battle_antifraud import (
     verify_replay_hash,
 )
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
-from services.baas.afk_config_loader import afk_formulas, hero_def_map
+from services.baas.afk.afk_config_loader import afk_formulas, hero_def_map
 from services.baas.service_crud import feature_enabled, get_feature_config
 
 
@@ -33,7 +33,7 @@ def _utc_today() -> str:
 
 def _bundle_stage_row(stage_id: str) -> Dict[str, Any]:
     """关卡金币、体力和推荐战力以共享 bundle 为准，避免库里的旧快照把产出留在改表之前。"""
-    from services.baas.afk_config_loader import bundle_generation, load_afk_bundle
+    from services.baas.afk.afk_config_loader import bundle_generation, load_afk_bundle
 
     generation = bundle_generation()
     table = getattr(_bundle_stage_row, "_table", None)
@@ -94,7 +94,7 @@ def _vip_stamina_bonus(cur, service_id: str, player_id: str) -> int:
     level = int(row["vip_level"] or 0) if row else 0
     if level < 1:
         return 0
-    from services.baas.afk_vip_service import _privileges, _vip_cfg
+    from services.baas.afk.afk_vip_service import _privileges, _vip_cfg
 
     try:
         return max(0, int(_privileges(_vip_cfg(), level).get("stamina_bonus") or 0))
@@ -104,7 +104,7 @@ def _vip_stamina_bonus(cur, service_id: str, player_id: str) -> int:
 
 def _group_stamina_add(service_id: str, player_id: str) -> int:
     try:
-        from services.baas.afk_config_group import group_factors
+        from services.baas.afk.afk_config_group import group_factors
 
         return max(0, int(group_factors(service_id, player_id).get("stamina_max_add") or 0))
     except Exception:
@@ -231,12 +231,12 @@ def start_battle(
     with get_cursor() as cur:
         hero_cfg = get_feature_config(service_id, "hero")
         team_ids = team_hero_ids(team)
-        from services.baas.afk_power_service import stage_power_required, team_power_unified
+        from services.baas.afk.afk_power_service import stage_power_required, team_power_unified
 
         power_info = team_power_unified(service_id, player_id, team_ids=team_ids, hero_cfg=hero_cfg)
         power = int(power_info.get("team_power") or 0)
         required = stage_power_required(stage_id, stage_row=stage, formulas=afk_formulas())
-        from services.baas.afk_config_group import scale_int
+        from services.baas.afk.afk_config_group import scale_int
 
         required = scale_int(service_id, player_id, "stage_power_mul", required)
         if required > 0 and power < required:
@@ -245,7 +245,7 @@ def start_battle(
         if prev and not _stage_cleared(cur, service_id, player_id, prev):
             raise ValueError("请先通关前置关卡")
         cost = int(stage.get("stamina_cost") or 6)
-        from services.baas.afk_power_service import stage_index
+        from services.baas.afk.afk_power_service import stage_index
         if stage_index(str(stage.get("id") or stage_id)) <= 30:
             cost = min(cost, 3)
         stamina = _stamina_state(cur, service_id, player_id, cfg)
@@ -399,13 +399,13 @@ def settle_battle(
         server_stars = max(0, min(3, int(authority.get("stars") or 0))) if server_win else 0
         rewards = dict(stage.get("rewards") or {}) if server_win else {}
         if server_win:
-            from services.baas.afk_config_group import scale_rewards
+            from services.baas.afk.afk_config_group import scale_rewards
 
             rewards = scale_rewards(service_id, player_id, "stage_reward_mul", rewards)
         exp_gain = int(rewards.pop("exp", 0) or 0) if server_win else 0
         hero_cfg = get_feature_config(service_id, "hero")
         hero_updates = _grant_team_exp(cur, service_id, player_id, team, exp_gain, hero_cfg) if server_win else []
-        from services.baas.afk_home_service import grant_account_exp, ensure_idle_started
+        from services.baas.afk.afk_home_service import grant_account_exp, ensure_idle_started
         account = grant_account_exp(cur, service_id, player_id, exp_gain) if server_win else None
         if server_win: ensure_idle_started(cur, service_id, player_id)
         now = _now_iso()
@@ -446,7 +446,7 @@ def settle_battle(
             _credit_wallet(cur, service_id, player_id, str(currency), int(amount or 0))
     if server_win:
         try:
-            from services.baas.afk_retention_hooks import on_pve_win
+            from services.baas.afk.afk_retention_hooks import on_pve_win
             on_pve_win(service_id, player_id, stage_id=stage_id)
         except Exception:
             pass

@@ -5,13 +5,11 @@ from __future__ import annotations
 import os
 import re
 import secrets
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from config import DATA_DIR
 from models.data import (
     can_view_project,
-    get_project_apk_count,
-    get_project_download_count,
     normalize_public_url,
     project_tasks_db,
     projects_db,
@@ -147,7 +145,72 @@ def _release_status_label(status: str) -> str:
     return raw.replace("_", " ") if raw else "--"
 
 
-def _project_card_summary(project_id: str, item: Dict[str, Any]) -> Dict[str, Any]:
+def _published_scope_versions() -> Dict[str, str]:
+    """Published bundle version by scope. One table read for the whole list."""
+    from services.release.storage import load_bundles
+
+    versions: Dict[str, str] = {}
+    gate: Dict[str, str] = {}
+    for row in load_bundles():
+        if str(row.get("publish_status") or "").strip() != "published":
+            continue
+        scope_id = str(row.get("scope_id") or "").strip()
+        if not scope_id:
+            continue
+        client = row.get("client") if isinstance(row.get("client"), dict) else {}
+        version = str(client.get("version_name") or row.get("version_name") or "").strip()
+        bundle_id = str(row.get("bundle_id") or "")
+        order_id = str(row.get("release_order_id") or "")
+        is_gate = bundle_id.startswith("rb-gate-") or order_id.startswith("ro-gate-") or bool(row.get("is_gate_fixture"))
+        if is_gate:
+            gate.setdefault(scope_id, version)
+            continue
+        versions.setdefault(scope_id, version)
+    for scope_id, version in gate.items():
+        versions.setdefault(scope_id, version)
+    return versions
+
+
+def _package_totals() -> Tuple[Dict[str, int], Dict[str, int]]:
+    from data.downloads import download_stats
+    from data.packages import extract_project_name, iter_package_files
+
+    apk: Dict[str, int] = {}
+    downloads: Dict[str, int] = {}
+    for filename, _ in iter_package_files():
+        project_id = extract_project_name(filename)
+        apk[project_id] = apk.get(project_id, 0) + 1
+        downloads[project_id] = downloads.get(project_id, 0) + int(
+            download_stats.get(filename, download_stats.get(os.path.basename(filename), 0)) or 0
+        )
+    return apk, downloads
+
+
+def _list_card_indexes() -> Dict[str, Any]:
+    from services.release.order_crud import list_release_order_heads
+
+    orders: Dict[str, List[Dict[str, str]]] = {}
+    for row in list_release_order_heads():
+        orders.setdefault(row["project_id"], []).append(row)
+    apk, downloads = _package_totals()
+    return {"orders": orders, "versions": _published_scope_versions(), "apk": apk, "downloads": downloads}
+
+
+def _scope_version(versions: Dict[str, str], project_id: str, env_key: str, channel_id: str, platform: str) -> Optional[str]:
+    from services.release.scope_ids import build_scope_id, project_slug
+
+    slug = project_slug(project_id)
+    scope_id = build_scope_id(slug, env_key, channel_id, platform)
+    if scope_id in versions:
+        return versions[scope_id]
+    if str(platform or "").strip().lower() in {"android", "ios"}:
+        legacy = build_scope_id(slug, env_key, channel_id)
+        if legacy in versions:
+            return versions[legacy]
+    return None
+
+
+def _project_card_summary(project_id: str, item: Dict[str, Any], indexes: Dict[str, Any]) -> Dict[str, Any]:
     """Aggregate delivery metrics for the project list card grid."""
     status = str(item.get("status") or "active").strip().lower()
     editors = item.get("editors") or []
@@ -167,34 +230,38 @@ def _project_card_summary(project_id: str, item: Dict[str, Any]) -> Dict[str, An
             "health_state": "archived",
         }
 
+    from data.delivery_scope import get_channels_for_env, get_platform_defs_for_env
     from services.release.env_registry import list_project_env_keys, normalize_release_env_key
-    from services.release.release_order_service import _delivery_lines_for_env, list_release_orders
 
     env_keys = list_project_env_keys(project_id)
     primary_env = next(
         (key for key in env_keys if normalize_release_env_key(key, project_id=project_id) == "production"),
         env_keys[0] if env_keys else "production",
     )
-    orders = list_release_orders(project_id, {})
+    orders = indexes["orders"].get(project_id) or []
     pending = sum(1 for row in orders if row.get("status") == "awaiting_approval")
     failed = sum(1 for row in orders if row.get("status") in {"precheck_failed", "publish_failed", "verify_failed"})
     latest_order = orders[0] if orders else None
+    versions = indexes["versions"]
 
     total_lines = 0
     configured_lines = 0
-    blockers = 0
     prod_version = ""
     for env_key in env_keys:
-        lines = _delivery_lines_for_env(project_id, env_key)
-        total_lines += len(lines)
-        configured_lines += sum(1 for line in lines if line.get("configured"))
-        blockers += sum(1 for line in lines if not line.get("configured"))
-    prod_lines = _delivery_lines_for_env(project_id, primary_env)
-    for line in prod_lines:
-        version_name = str(line.get("version_name") or "").strip()
-        if version_name:
-            prod_version = version_name
+        channels = get_channels_for_env(project_id, env_key)
+        platforms = get_platform_defs_for_env(project_id, env_key)
+        for channel in channels:
+            channel_id = str(channel.get("id") or "").strip()
+            for platform in platforms:
+                total_lines += 1
+                version = _scope_version(versions, project_id, env_key, channel_id, str(platform.get("value") or ""))
+                if version is None:
+                    continue
+                configured_lines += 1
+                if env_key == primary_env and version:
+                    prod_version = version
 
+    blockers = total_lines - configured_lines
     health_pct = round(100.0 * configured_lines / total_lines, 1) if total_lines else 0.0
     if failed or blockers > 0:
         card_status = "blocked"
@@ -237,6 +304,7 @@ def _project_card_summary(project_id: str, item: Dict[str, Any]) -> Dict[str, An
 def list_projects_for_user(username: str, status_filter: str = "active") -> Dict[str, Any]:
     projects = []
     phase_map = dict(PROJECT_PHASES)
+    indexes = _list_card_indexes()
     for project_id, item in projects_db.items():
         if not can_view_project(project_id, username):
             continue
@@ -259,8 +327,8 @@ def list_projects_for_user(username: str, status_filter: str = "active") -> Dict
                 "created_by": item.get("created_by", ""),
                 "created_at": item.get("created_at", ""),
                 "task_count": len(tasks),
-                "apk_count": get_project_apk_count(project_id),
-                "download_count": get_project_download_count(project_id),
+                "apk_count": indexes["apk"].get(project_id, 0),
+                "download_count": indexes["downloads"].get(project_id, 0),
                 "status": status,
                 "is_template": bool(item.get("is_template")),
                 "player_public_url": normalize_public_url(item.get("player_public_url")),
@@ -268,7 +336,7 @@ def list_projects_for_user(username: str, status_filter: str = "active") -> Dict
                 "admin_public_url": normalize_public_url(item.get("admin_public_url")),
                 "server_mode": str(item.get("server_mode") or "topology"),
                 "baas_service_id": str(item.get("baas_service_id") or ""),
-                **_project_card_summary(project_id, item),
+                **_project_card_summary(project_id, item, indexes),
             }
         )
     projects.sort(key=lambda row: (projects_db.get(row["id"]) or {}).get("order", 9999))

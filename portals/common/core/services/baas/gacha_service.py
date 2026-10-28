@@ -119,7 +119,7 @@ def pull(service_id: str, player_id: str, pool_id: str, *, count: int = 1) -> Di
             (service_id, player_id, pid, pity, total, now),
         )
     try:
-        from services.baas.afk_retention_hooks import on_gacha_pull
+        from services.baas.afk.afk_retention_hooks import on_gacha_pull
         on_gacha_pull(service_id, player_id, count=pulls)
     except Exception:
         pass

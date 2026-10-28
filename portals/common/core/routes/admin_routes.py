@@ -118,101 +118,21 @@ def _get_csrf_token():
 
 
 def _admin_layout(content, title, back_href='/admin'):
-    username = session.get("user") or ""
-    is_ops_app = 'class="ops-app"' in (content or "")
-    content_wrap_class = (
-        "w-full px-0 py-0"
-        if is_ops_app
-        else "max-w-6xl mx-auto px-4 py-6 md:py-8"
+    from services.ops.helpers import _render_ops_page
+
+    extra_css = (
+        '<link rel="stylesheet" href="/static/tailwind.css">'
+        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">'
     )
-    header_html = f'''
-        <header class="admin-nav shadow-lg">
-            <div class="max-w-6xl mx-auto px-4">
-                <div class="flex items-center justify-between h-14 md:h-16 gap-2">
-                    <div class="flex items-center gap-2">
-                        <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-white/10 text-white">
-                            <i class="fas fa-sliders-h text-lg"></i>
-                        </span>
-                        <div>
-                            <h1 class="text-lg md:text-xl font-semibold text-white tracking-tight">{title}</h1>
-                            <p class="hidden md:block text-[11px] text-slate-200/80">管理 APK 项目、版本、构建与权限</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <a href="/download-center" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
-                            <i class="fas fa-box-open"></i><span>下载中心</span>
-                        </a>
-                        <div class="hidden md:flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-slate-100">
-                            <i class="fas fa-user-circle text-slate-200"></i>
-                            <span class="font-semibold">{html.escape(username or '未登录')}</span>
-                        </div>
-                        <a href="/profile" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
-                            <i class="fas fa-id-badge"></i><span>个人中心</span>
-                        </a>
-                        <a href="/logout" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-slate-100 hover:text-white transition">
-                            <i class="fas fa-right-from-bracket"></i><span>退出</span>
-                        </a>
-                        <form method="get" action="/admin/search" class="hidden sm:flex items-center bg-slate-900/20 rounded-lg px-2 py-1.5">
-                            <i class="fas fa-search text-slate-300 text-xs mr-1.5"></i>
-                            <input type="text" name="q" placeholder="搜索项目、文档、任务、版本、发布单…" class="bg-transparent outline-none border-0 text-xs text-slate-50 placeholder:text-slate-400 w-40 focus:ring-0">
-                        </form>
-                        <a href="{back_href}" class="inline-flex items-center gap-1.5 text-xs md:text-sm font-medium text-slate-100 hover:text-white hover:underline">
-                            <i class="fas fa-arrow-left text-slate-200"></i><span>返回</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </header>
-        '''
-    return f'''<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{html.escape(_get_csrf_token())}">
-    <title>{title} - APK 下载中心</title>
-    <link rel="stylesheet" href="/static/tailwind.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        .admin-nav {{ background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #4f46e5 100%); }}
-        .admin-card {{ transition: box-shadow 0.18s ease, transform 0.18s ease, background-color 0.18s ease; }}
-        .admin-card:hover {{ box-shadow: 0 18px 45px -20px rgba(15,23,42,0.35); transform: translateY(-2px); }}
-        .stat-card {{ background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%); }}
-    </style>
-</head>
-<body class="bg-slate-50 min-h-screen text-slate-800 antialiased">
-    <div class="min-h-screen flex flex-col">
-        {header_html}
-        <main class="flex-1">
-            <div class="{content_wrap_class}">
-                {content}
-            </div>
-        </main>
-    </div>
-    <script>
-        (function() {{
-            var tokenEl = document.querySelector('meta[name="csrf-token"]');
-            var csrfToken = tokenEl && tokenEl.content ? tokenEl.content : '';
-            if (!csrfToken || !window.fetch || window.__adminFetchCsrfPatched) return;
-            var originalFetch = window.fetch.bind(window);
-            window.fetch = function(resource, init) {{
-                init = init || {{}};
-                var method = String(init.method || 'GET').toUpperCase();
-                var target = typeof resource === 'string' ? resource : ((resource && resource.url) || '');
-                var isRelative = target && !/^https?:\\/\\//i.test(target);
-                if (isRelative && ['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(method) >= 0) {{
-                    var headers = new Headers(init.headers || (resource && resource.headers) || undefined);
-                    if (!headers.has('X-CSRFToken')) headers.set('X-CSRFToken', csrfToken);
-                    init.headers = headers;
-                }}
-                return originalFetch(resource, init);
-            }};
-            window.__adminFetchCsrfPatched = true;
-        }})();
-    </script>
-</body>
-</html>
-'''
+    return _render_ops_page(
+        content,
+        title,
+        active_page="admin",
+        breadcrumb_module="管理",
+        extra_css=extra_css,
+    )
+
+
 # 页面主入口：admin 面板首页（项目优先导航）。数据来源：projects_db / 审批与通知聚合。
 @bp.route('/admin')
 @admin_required()

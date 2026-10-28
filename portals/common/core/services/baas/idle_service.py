@@ -11,9 +11,9 @@ from services.baas.helpers import _now_iso
 from services.baas.pve_service import get_progress
 from services.baas.service_crud import feature_enabled, get_feature_config
 from services.baas.wallet_helpers import credit_wallet
-from services.baas.afk_config_loader import afk_formulas
-from services.baas.afk_formula_engine import eval_formula, team_power_from_defs
-from services.baas.afk_config_loader import hero_def_map
+from services.baas.afk.afk_config_loader import afk_formulas
+from services.baas.afk.afk_formula_engine import eval_formula, team_power_from_defs
+from services.baas.afk.afk_config_loader import hero_def_map
 
 
 def _parse_iso(ts: str) -> datetime:
@@ -44,7 +44,7 @@ def _max_cleared_stage(progress: Dict[str, Any]) -> int:
 
 
 def _estimate_team_power(service_id: str, player_id: str) -> int:
-    from services.baas.afk_power_service import team_power_unified
+    from services.baas.afk.afk_power_service import team_power_unified
 
     info = team_power_unified(service_id, player_id)
     return int(info.get("team_power") or 0)
@@ -73,26 +73,26 @@ def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
             (service_id, player_id),
         ).fetchone()
         if row is None:
-            from services.baas.afk_home_service import ensure_idle_started
+            from services.baas.afk.afk_home_service import ensure_idle_started
             ensure_idle_started(cur, service_id, player_id)
             row = cur.execute("SELECT last_claim_at FROM baas_idle_state WHERE service_id=? AND player_id=?", (service_id, player_id)).fetchone()
     last = _parse_iso(row["last_claim_at"])
     now = datetime.now(timezone.utc)
     raw_minutes = max(0, int((now - last).total_seconds() // 60))
     team_pwr = _estimate_team_power(service_id, player_id)
-    from services.baas.afk_formula_engine import idle_gold_per_hour_value, idle_item_rewards
+    from services.baas.afk.afk_formula_engine import idle_gold_per_hour_value, idle_item_rewards
 
     gold_per_hour = idle_gold_per_hour_value(max_cleared, team_pwr)
     vip_mul = 1.0
     try:
-        from services.baas.afk_vip_service import idle_bonus_mul
+        from services.baas.afk.afk_vip_service import idle_bonus_mul
 
         vip_mul = idle_bonus_mul(service_id, player_id)
     except Exception:
         pass
     idle_mul = 1.0
     try:
-        from services.baas.afk_config_group import group_factors
+        from services.baas.afk.afk_config_group import group_factors
 
         idle_mul = float(group_factors(service_id, player_id).get("idle_gold_mul") or 1)
     except Exception:
@@ -106,7 +106,7 @@ def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
     minutes = min(raw_minutes, cap_minutes)
     est_gold = int(minutes / 60 * gold_per_hour)
     items = idle_item_rewards(max_cleared, minutes)
-    from services.baas.afk_home_service import rules
+    from services.baas.afk.afk_home_service import rules
     home_cfg = rules()
     exp_rate = max(int(home_cfg["idle_exp_min_per_hour"]), max_cleared * int(home_cfg["idle_exp_stage_multiplier"])) if max_cleared > 0 else 0
     diamond_rate = int(home_cfg["idle_diamond_per_hour"]) if max_cleared >= int(home_cfg["idle_diamond_unlock_stage"]) else 0
@@ -149,7 +149,7 @@ def claim(service_id: str, player_id: str) -> Dict[str, Any]:
             (now,now,service_id,player_id,status["last_claim_at"])).fetchone()
         if consumed is None:
             raise ValueError("收益已领取，请刷新后重试")
-        from services.baas.afk_home_service import grant_account_exp
+        from services.baas.afk.afk_home_service import grant_account_exp
         account = grant_account_exp(cur, service_id, player_id, exp) if exp > 0 else None
         if diamonds > 0: credit_wallet(cur, service_id, player_id, "diamond", diamonds)
         if gold > 0:
@@ -173,7 +173,7 @@ def claim(service_id: str, player_id: str) -> Dict[str, Any]:
             (service_id, player_id, now, now),
         )
     try:
-        from services.baas.afk_retention_hooks import on_idle_claim
+        from services.baas.afk.afk_retention_hooks import on_idle_claim
         on_idle_claim(service_id, player_id)
     except Exception:
         pass

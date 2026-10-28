@@ -141,6 +141,28 @@ def list_release_orders(project_id: str, filters: Optional[Dict[str, str]] = Non
     return [_order_from_row(row) for row in rows]
 
 
+def list_release_order_heads() -> List[Dict[str, str]]:
+    """Newest-first order fields for every project. Does not poll Jenkins."""
+    init_db()
+    sql = (
+        "SELECT project_id, release_order_id, version_name, status, updated_at, created_at "
+        "FROM release_orders ORDER BY updated_at DESC"
+    )
+    with _db_lock:
+        rows = _get_conn().execute(sql).fetchall()
+    return [
+        {
+            "project_id": str(row["project_id"] or ""),
+            "release_order_id": str(row["release_order_id"] or ""),
+            "version_name": str(row["version_name"] or ""),
+            "status": str(row["status"] or ""),
+            "updated_at": str(row["updated_at"] or ""),
+            "created_at": str(row["created_at"] or ""),
+        }
+        for row in rows
+    ]
+
+
 def get_release_order(project_id: str, order_id: str, *, include_details: bool = True) -> Dict[str, Any]:
     init_db()
     with _db_lock:

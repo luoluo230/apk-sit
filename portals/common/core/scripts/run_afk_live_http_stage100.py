@@ -48,8 +48,8 @@ def stage_ids(limit: int = 100) -> list[str]:
 
 def main() -> int:
     from services.baas.battle_antifraud import compute_replay_hash
-    from services.baas.afk_formula_engine import team_power_from_defs, level_up_cost
-    from services.baas.afk_config_loader import load_afk_bundle, hero_def_map
+    from services.baas.afk.afk_formula_engine import team_power_from_defs, level_up_cost
+    from services.baas.afk.afk_config_loader import load_afk_bundle, hero_def_map
 
     portal = os.environ.get("BAAS_E2E_PORTAL", "http://127.0.0.1:5004").rstrip("/")
     creds = json.loads(CREDS.read_text(encoding="utf-8"))

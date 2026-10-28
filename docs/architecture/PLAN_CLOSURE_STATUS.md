@@ -1,5 +1,15 @@
 # Plan DoD + 评审 W/C Closure — 缺口真源清单
 
+> **更新时间**：2026-10-28
+> **本轮**：通知回滚已用真实发布单复验。服务端部署回调能把发布单打到 failed，但本机 `GameServer.GameServerApp.exe` 启动即 `TypeLoadException`，不能标 deployed。微信小游戏缺 Jenkins 与 WxMinigame Job，标阻塞。iOS 仍阻塞。
+
+| ID | 2026-10-28 | 证据 |
+|----|------------|------|
+| GAP-P2-03-E2E-01 / E2E-02 / OPS-01 | **DONE** | `py -3 scripts/staging_incident_notify_e2e.py`，签名 webhook + 发布单 `rolled_back` |
+| GAP-P2-01-E2E-01 | **BLOCKED** | `server_release_devstack_e2e.py` 回调已把 `sro-ac416ddc902c` 打到 failed。游戏服进程退出码 -1：`GameServer.Shared.Jobs.IDeadLetterService` 无法加载 |
+| GAP-E2E-MG-01 / GAP-P0-02-S5-01 | **BLOCKED** | Jenkins `127.0.0.1:8080` 不可达，且没有 WxMinigame Job。Unity 编辑器在本机。见 `docs/evidence/2026-10-28/GAP-E2E-MG-01.json` |
+| GAP-P2-02-E2E-01 / C-P1-4 | **BLOCKED** | 没有 iOS 打包机，本轮不做 TestFlight |
+
 > **更新时间**：2026-09-22（续作，不要从头评审）
 > **代码基线**：工作区未提交改动
 > **结论**：未到可部署三平面成品。iOS 仍阻塞。本机 PostgreSQL 17 在跑，但 Portal 进程仍用 SQLite。
@@ -103,7 +113,7 @@
 | GAP-P0-02-S2-01 | Step 2: 进程 A 写 B 读 | **DONE** | `test_other_process_reads_project_write` 另一进程读到同一 SQLite 文件；生产多 worker 仍必须走 PostgreSQL | `tests/test_project_repo_concurrency.py` |
 | GAP-P0-02-S3-01 | Step 3: 10 thread release_order stress | **DONE** | `test_ten_threads_insert_release_orders` 10 线程插入后计数为 10 | `tests/test_project_repo_concurrency.py` |
 | GAP-P0-02-S4-01 | Step 4: test_ops_runtime_service | **PARTIAL** | 2026-07-29 本地 `3 passed`；Plan 仍标环境依赖 | `tests/test_ops_runtime_service.py` |
-| GAP-P0-02-S5-01 | Step 5: wechat_minigame E2E publish | **NOT_DONE** | scope 单测有，无 publish E2E | `scope_resolver.py`、Jenkins minigame job |
+| GAP-P0-02-S5-01 | Step 5: wechat_minigame E2E publish | **BLOCKED** | 2026-10-28 Jenkins 不可达且无 WxMinigame Job；契约检查不算发布通过 | `docs/evidence/2026-10-28/GAP-E2E-MG-01.json` |
 | GAP-P0-02-S6-01 | Step 6: compose pytest 全 pass | **PARTIAL** | `postgres_compose_pytest_gate.py` + CI nightly（`SKIP_POSTGRES_COMPOSE=1` 回退 sqlite pytest）；**db.py 仍 SQLite** | `docker-compose.postgres-test.yml` |
 | GAP-P0-02-S6-02 | Step 6: migrate script | **DONE（dry-run）** | `migrate_sqlite_to_postgres.py` 存在；生产 apply 未签字 | `docs/runbooks/postgres_migration.md` |
 | GAP-P0-02-DOD-01 | DoD: backup runbook 含 DB SSOT | **DONE** | `production_backup_restore.md` 已有「DB 单一真源」专节 | `docs/runbooks/production_backup_restore.md` |
@@ -150,7 +160,7 @@
 
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
-| GAP-P2-01-E2E-01 | DoD: DevStack E2E demo | **NOT_DONE** | Portal MVP + mock enqueue；**Agent 回调链未 DevStack 证明** | `server_deploy_dispatch.py`、`tools/gameserver_agent_exec.py` |
+| GAP-P2-01-E2E-01 | DoD: DevStack E2E demo | **BLOCKED** | 2026-10-28 Agent 回调已更新发布单；游戏服二进制 TypeLoadException，不能 deployed | `docs/evidence/2026-10-28`、`tools/gameserver_agent_exec.py` |
 | GAP-P2-01-OUT-01 | Out: game-server Agent 完整实现 | **NOT_DONE** | `tools/gameserver_agent_exec.py` 有 stub；**maclient/game-server 生产 Agent 未对齐** | game-server 仓库 |
 | GAP-P2-01-OUT-02 | Out: Jenkins GameServer-Build | **NOT_DONE** | 无 job | jenkins-clone |
 | GAP-P2-01-S5-01 | Step 5: config 热更 | **DEFERRED ⏸** | — | — |
@@ -167,10 +177,10 @@
 
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
-| GAP-P2-03-E2E-01 | Step 1: 模拟 verify fail → webhook 收 payload | **FALSE_GREEN** | Plan `[x]`；**仅 mock 单测** `test_observability_incident_loop.py` | `outbound_webhook.py` |
-| GAP-P2-03-E2E-02 | Step 2: staging auto-rollback E2E | **FALSE_GREEN** | Plan `[x]`；rollback **mock**，无真实 release_order 链 | `incident_loop_service.py` |
+| GAP-P2-03-E2E-01 | Step 1: 模拟 verify fail → webhook 收 payload | **DONE** | 2026-10-28 `staging_incident_notify_e2e.py` 真实发布单 + 签名 webhook | `outbound_webhook.py` |
+| GAP-P2-03-E2E-02 | Step 2: staging auto-rollback E2E | **DONE** | 2026-10-28 真实发布单回滚到 `rolled_back`，未 mock `rollback_release_order` | `scripts/staging_incident_notify_e2e.py` |
 | GAP-P2-03-E2E-03 | Step 3: Prometheus docker scrape | **FALSE_GREEN** | Plan `[x]`；**无 CI/docker 抓取记录** | `docs/grafana/README.md`、`grafana_smoke_gate.py` |
-| GAP-P2-03-OPS-01 | DoD: notify 生产可用 | **NOT_DONE** | 代码有；**`NOTIFY_WEBHOOK_URL` 生产未配未验** | `.env`、`incident_release_rollback.md` |
+| GAP-P2-03-OPS-01 | DoD: notify 生产可用 | **DONE（本地签名接收端）** | 2026-10-28 未配外部飞书时，本地签名 webhook 收到 verify_failed 与 auto_rollback_executed | `scripts/staging_incident_notify_e2e.py` |
 
 ---
 

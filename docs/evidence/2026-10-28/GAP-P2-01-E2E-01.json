@@ -1,0 +1,9 @@
+{
+  "gap_id": "GAP-P2-01-E2E-01",
+  "status": "BLOCKED",
+  "command": "py -3 scripts/server_release_devstack_e2e.py --write-evidence",
+  "exit_code": 1,
+  "notes": "Agent callback updated sro-ac416ddc902c to failed. GameServer.GameServerApp.exe exits -1: TypeLoadException GameServer.Shared.Jobs.IDeadLetterService. Portal register also required quoting the PostgreSQL reserved column desc.",
+  "callback_proven": true,
+  "deployed": false
+}

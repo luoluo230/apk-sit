@@ -183,7 +183,7 @@ def default_feature_configs() -> Dict[str, Dict[str, Any]]:
 
 def _merge_afk_shared_configs(configs: Dict[str, Dict[str, Any]]) -> None:
     try:
-        from services.baas.afk_config_loader import afk_feature_configs
+        from services.baas.afk.afk_config_loader import afk_feature_configs
 
         for key, val in afk_feature_configs().items():
             configs[key] = val

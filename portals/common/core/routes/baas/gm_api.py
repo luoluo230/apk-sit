@@ -453,7 +453,7 @@ def register_baas_gm_routes(bp) -> None:
     def baas_gm_arena_settle(project_id: str, service_id: str):
         if not can_edit_project(project_id, _actor()):
             return baas_fail_exc(Exception("无权限"))
-        from services.baas import afk_season_service
+        from services.baas.afk import afk_season_service
         try:
             return jsonify({"ok": True, "data": afk_season_service.settle_arena_season(service_id, actor=_actor())})
         except ValueError as exc:
@@ -464,7 +464,7 @@ def register_baas_gm_routes(bp) -> None:
     def baas_gm_bp_rollover(project_id: str, service_id: str):
         if not can_edit_project(project_id, _actor()):
             return baas_fail_exc(Exception("无权限"))
-        from services.baas import afk_season_service
+        from services.baas.afk import afk_season_service
         try:
             return jsonify({"ok": True, "data": afk_season_service.rollover_battlepass_season(service_id, actor=_actor())})
         except ValueError as exc:

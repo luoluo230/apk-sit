@@ -150,7 +150,7 @@
 
 - `shared_bootstrap.py` — 模块级常量/探活缓存
 - `cross_bind.py` — 子模块私有符号互绑
-- `helpers.py.bak` — 拆分前完整备份（回滚用）
+- `portals/common/archives/source_backups/helpers.py.bak` — 拆分前完整备份（回滚用）
 
 ---
 

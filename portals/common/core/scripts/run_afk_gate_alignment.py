@@ -17,9 +17,9 @@ CHECK_STAGES = (20, 50, 80)
 
 
 def main() -> int:
-    from services.baas.afk_config_loader import load_afk_bundle, hero_def_map
-    from services.baas.afk_power_service import growth_gate_for_stage, hero_power_unified, stage_power_required
-    from services.baas.afk_formula_engine import merge_formulas
+    from services.baas.afk.afk_config_loader import load_afk_bundle, hero_def_map
+    from services.baas.afk.afk_power_service import growth_gate_for_stage, hero_power_unified, stage_power_required
+    from services.baas.afk.afk_formula_engine import merge_formulas
 
     bundle = load_afk_bundle() or {}
     formulas = merge_formulas(bundle.get("formulas"))

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from flask import render_template
+from flask import redirect, url_for
 
 from services.authz import admin_required
 
@@ -12,7 +12,4 @@ def register_routes(bp):
     @bp.route("/admin/build-nodes")
     @admin_required("jenkins")
     def build_nodes_page():
-        return render_template(
-            "build_nodes_page.html",
-            page_title="构建节点",
-        )
+        return redirect(url_for("admin_routes.infra_nodes_page"))

@@ -1,0 +1,634 @@
+{
+  "get_count": 83,
+  "gets": [
+    {
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/forum",
+      "status": 404,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/community",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/community/portal/player",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/community/portal/dev",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/site-config",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/my-tasks",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/tasks",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/tasks/stats",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/audit-log",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/notifications",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/approval",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reports",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/settings",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/api-docs",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/new/wizard",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users/list",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users/export",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/user-options",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/validate-username",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/list",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/project",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/fs/browse",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/get/GomeKu",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/channel-bindings",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/infra-nodes",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/build-nodes",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/search",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/versions",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/version-groups/build-config",
+      "status": 404,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/build-history",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/channels",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/audit-log/export",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/versions/list",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/version-groups",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/tasks/list",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reports/dashboard",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/baas-gm",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/server-management",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/server-management",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/products",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/products/new",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/build",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/build",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/versions",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/jenkins",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/unity-versions",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/jenkins/edit",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/jenkins/instance-log",
+      "status": 400,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/build/commercial-release",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/overview/runtime",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/environments/development/runtime",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/environments/development",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/release-hub",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/release",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/activities",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/overview",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/release-orders",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/release-orders/start",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/release-orders/new",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/download-center",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/test-devices",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/docs",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/settings",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/audit-log",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/casual-services",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/ops-assets/workbench.js",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/ops",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/actions",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/topologies",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/topology-bindings",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/topologies/canvas",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/diagnostics",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/agents",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/agent-device-local",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/agent-detail",
+      "status": 200,
+      "bad": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/change-governance",
+      "status": 200,
+      "bad": false
+    }
+  ],
+  "get_bad": [
+    {
+      "method": "GET",
+      "path": "/admin/my-tasks",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/infra-nodes",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/build-nodes",
+      "status": 500,
+      "bad": true
+    },
+    {
+      "method": "GET",
+      "path": "/admin/projects/GomeKu/tasks/list",
+      "status": 500,
+      "bad": true
+    }
+  ],
+  "post_probed": [
+    {
+      "path": "/admin/community/news",
+      "status": 400
+    },
+    {
+      "path": "/admin/community/welfare",
+      "status": 400
+    },
+    {
+      "path": "/admin/community/forum-post",
+      "status": 400
+    },
+    {
+      "path": "/admin/community/portal/player",
+      "status": 400
+    },
+    {
+      "path": "/admin/community/portal/dev",
+      "status": 400
+    },
+    {
+      "path": "/login",
+      "status": 400
+    },
+    {
+      "path": "/admin/site-config/company",
+      "status": 400
+    },
+    {
+      "path": "/admin/site-config/portal/player",
+      "status": 400
+    },
+    {
+      "path": "/admin/site-config/portal/dev",
+      "status": 400
+    },
+    {
+      "path": "/admin/fs/native-pick",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/generate-credentials",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/channels/add",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/channels/disable",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/channels/enable",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/platforms/add",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/platforms/disable",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/platforms/enable",
+      "status": 400
+    },
+    {
+      "path": "/admin/projects/GomeKu/channels/assign",
+      "status": 400
+    },
+    {
+      "path": "/admin/notifications/read-all",
+      "status": 400
+    },
+    {
+      "path": "/admin/my-tasks/set-plan",
+      "status": 400
+    },
+    {
+      "path": "/admin/reports/templates",
+      "status": 400
+    },
+    {
+      "path": "/admin/products",
+      "status": 400
+    },
+    {
+      "path": "/admin/build/commercial-release/activate",
+      "status": 400
+    },
+    {
+      "path": "/admin/build/commercial-release/plan-preview",
+      "status": 400
+    }
+  ],
+  "post_probed_bad": [],
+  "status_counts": {
+    "200": 76,
+    "404": 2,
+    "500": 4,
+    "400": 1
+  }
+}

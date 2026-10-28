@@ -64,6 +64,18 @@ def render_baas_shell_page(
     if project_id:
         row = projects_db.get(project_id) or {}
         project_name = str(row.get("name") or project_id).strip() or project_id
+    if not is_baas_standalone():
+        from services.ops.helpers import _render_ops_page
+
+        return _render_ops_page(
+            content,
+            title,
+            active_page=active_page or "baas",
+            project_id=project_id,
+            breadcrumb_module="BaaS",
+            extra_css=extra_css,
+            extra_js=extra_js,
+        )
     user_name = str(session.get("user") or session.get("username") or "管理员").strip() or "管理员"
     return render_template(
         "baas_shell.html",
@@ -92,30 +104,26 @@ def render_baas_page(
         return "项目不存在", 404
     env_key = str(context.pop("env_key", None) or request.args.get("env_key") or "development")
     service_id = str(context.get("service_id") or "").strip()
-    if is_baas_standalone():
-        ctx = dict(context)
-        ctx.setdefault("env_key", env_key)
-        content = render_template(
-            template_name,
-            project_id=project_id,
-            project=projects_db.get(project_id) or {},
-            page_title=title,
-            active_page=active_page,
-            **ctx,
-        )
-        extra_css = _baas_console_css("baas_gm_console.css") if template_name == "baas_gm_console.html" else _baas_console_css()
-        return render_baas_shell_page(
-            content,
-            title,
-            active_page=active_page,
-            project_id=project_id,
-            service_id=service_id,
-            extra_css=extra_css,
-            extra_js=_baas_console_js(template_name),
-        )
-    from routes.delivery.helpers import render_delivery_page as _page
-
-    return _page(template_name, title, project_id, active_page, **context)
+    ctx = dict(context)
+    ctx.setdefault("env_key", env_key)
+    content = render_template(
+        template_name,
+        project_id=project_id,
+        project=projects_db.get(project_id) or {},
+        page_title=title,
+        active_page=active_page,
+        **ctx,
+    )
+    extra_css = _baas_console_css("baas_gm_console.css") if template_name == "baas_gm_console.html" else _baas_console_css()
+    return render_baas_shell_page(
+        content,
+        title,
+        active_page=active_page,
+        project_id=project_id,
+        service_id=service_id,
+        extra_css=extra_css,
+        extra_js=_baas_console_js(template_name),
+    )
 
 
 def render_baas_home_page(content: str, *, active_page: str = "baas-home", extra_js: str = ""):

@@ -271,14 +271,14 @@ def _sqlite_save_agent_registry_v2(data: Dict[str, Any]) -> None:
             meta = {k: v for k, v in a.items() if k not in known_cols and k not in ("created_at", "updated_at", "meta")}
             cur.execute(
                 """INSERT INTO ops_agents (agent_id, project_id, device_id, display_name,
-                   host_ip, port, status, capabilities, desc, region,
+                   host_ip, port, status, capabilities, "desc", region,
                    last_heartbeat, probe_status, probe_ts, meta, created_at, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(agent_id) DO UPDATE SET
                      project_id=excluded.project_id, device_id=excluded.device_id,
                      display_name=excluded.display_name, host_ip=excluded.host_ip,
                      port=excluded.port, status=excluded.status,
-                     capabilities=excluded.capabilities, desc=excluded.desc,
+                     capabilities=excluded.capabilities, "desc"=excluded."desc",
                      region=excluded.region, last_heartbeat=excluded.last_heartbeat,
                      probe_status=excluded.probe_status, probe_ts=excluded.probe_ts,
                      meta=excluded.meta, updated_at=excluded.updated_at""",

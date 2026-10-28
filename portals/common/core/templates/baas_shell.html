@@ -15,8 +15,7 @@
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
 </head>
 <body>
-<div class="ops-shell-app baas-shell-app" data-page="{{ active_page }}" data-project-id="{{ project_id or '' }}" data-service-id="{{ service_id or '' }}">
-  {% include '_baas_sidebar.html' %}
+<div class="ops-shell-app baas-shell-app baas-shell-content-only" data-page="{{ active_page }}" data-project-id="{{ project_id or '' }}" data-service-id="{{ service_id or '' }}">
   <main class="ops-shell-main">
     <header class="ops-shell-topbar">
       <div class="ops-shell-breadcrumb">

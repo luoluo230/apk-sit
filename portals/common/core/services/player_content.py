@@ -292,7 +292,7 @@ def get_active_welfare(product_id=None, project_id=None, limit=8):
     return rows[:limit]
 
 
-def get_forum_posts(product_id=None, project_id=None, category_id=None, limit=30):
+def get_forum_posts(product_id=None, project_id=None, category_id=None, limit=30, topic=None, sort='latest'):
     rows = [
         item for item in forum_posts_db
         if (
@@ -308,7 +308,20 @@ def get_forum_posts(product_id=None, project_id=None, category_id=None, limit=30
         rows = [item for item in rows if item.get('product_id') == product_id]
     if category_id:
         rows = [item for item in rows if (item.get('category_id') or '') == category_id]
-    rows.sort(key=lambda item: (bool(item.get('pinned')), item.get('updated_at') or item.get('created_at') or ''), reverse=True)
+    if topic:
+        needle = topic.strip()
+        rows = [item for item in rows if needle and (item.get('topic') or item.get('category_id') or '') == needle]
+    if sort == 'recommended':
+        rows.sort(
+            key=lambda item: (
+                bool(item.get('pinned')),
+                int(item.get('like_count') or len(item.get('likes') or [])),
+                item.get('updated_at') or item.get('created_at') or '',
+            ),
+            reverse=True,
+        )
+    else:
+        rows.sort(key=lambda item: (bool(item.get('pinned')), item.get('updated_at') or item.get('created_at') or ''), reverse=True)
     return rows[:limit]
 
 
@@ -317,6 +330,27 @@ def get_forum_post(post_id):
         if isinstance(post, dict) and post.get('id') == post_id:
             return post
     return None
+
+
+def toggle_forum_like(post_id, author_key):
+    post = get_forum_post(post_id)
+    if not post or post.get('deleted') or not post.get('visible', True):
+        return None
+    if _publish_status(post.get('publish_status')) != 'published':
+        return None
+    key = (author_key or '').strip()
+    if not key:
+        return None
+    likes = [item for item in (post.get('likes') or []) if isinstance(item, str)]
+    if key in likes:
+        likes = [item for item in likes if item != key]
+    else:
+        likes.append(key)
+    post['likes'] = likes
+    post['like_count'] = len(likes)
+    post['updated_at'] = _now()
+    save_forum_posts()
+    return post
 
 
 def create_forum_post(data, username=None):
@@ -331,8 +365,8 @@ def create_forum_post(data, username=None):
     project_id = _resolve_content_project_id(data, product_id)
     category_id = (data.get('category_id') or 'general').strip()[:40] or 'general'
     raw_media_urls = data.get('media_urls') or []
-    if not isinstance(raw_media_urls, list):
-        raw_media_urls = []
+    media_urls = normalize_local_media_urls(raw_media_urls, max_count=6)
+    topic = (data.get('topic') or '').strip()[:24]
     display_name = (data.get('display_name') or '').strip()[:30]
     if author['author_type'] == 'guest':
         author['display_name'] = display_name or author['display_name']
@@ -360,7 +394,10 @@ def create_forum_post(data, username=None):
         'approval_id': (data.get('approval_id') or '').strip()[:40],
         'publish_status': _publish_status(data.get('publish_status')),
         'video_url': normalize_local_media_url((data.get('video_url') or '').strip()[:300]) if is_internal_creator(username) else '',
-        'media_urls': normalize_local_media_urls(raw_media_urls, max_count=6) if is_internal_creator(username) else [],
+        'media_urls': media_urls,
+        'topic': topic,
+        'likes': [],
+        'like_count': 0,
         'comments': [],
     }
     profile = get_player_moderation(author_key)

@@ -323,7 +323,7 @@ def _merge_exported_feature(feature_key: str, cfg: Dict[str, Any]) -> Dict[str, 
     if not bundle_key:
         return cfg
     try:
-        from services.baas.afk_config_loader import load_afk_bundle
+        from services.baas.afk.afk_config_loader import load_afk_bundle
 
         exported = (load_afk_bundle() or {}).get(bundle_key)
     except Exception:

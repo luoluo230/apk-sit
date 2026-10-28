@@ -90,7 +90,7 @@ def get_wallet(service_id: str, player_id: str) -> Dict[str, Any]:
 
 def shop_catalog(service_id: str) -> List[Dict[str, Any]]:
     try:
-        from services.baas.afk_shop_service import shop_catalog as afk_catalog
+        from services.baas.afk.afk_shop_service import shop_catalog as afk_catalog
         rows = afk_catalog(service_id)
         if rows:
             return rows
@@ -102,7 +102,7 @@ def shop_catalog(service_id: str) -> List[Dict[str, Any]]:
 
 def purchase(service_id: str, player_id: str, product_id: str) -> Dict[str, Any]:
     try:
-        from services.baas.afk_shop_service import purchase as afk_purchase
+        from services.baas.afk.afk_shop_service import purchase as afk_purchase
         return afk_purchase(service_id, player_id, product_id)
     except ValueError:
         raise
@@ -193,7 +193,7 @@ def claim_achievement(service_id: str, player_id: str, achievement_id: str) -> D
         cfg = get_feature_config(service_id, "achievement")
         defn = next((d for d in (cfg.get("definitions") or []) if str(d.get("id")) == aid), None)
         if defn and defn.get("rewards"):
-            from services.baas.afk_reward_grants import grant_rewards
+            from services.baas.afk.afk_reward_grants import grant_rewards
             grant_rewards(cur, service_id, player_id, dict(defn["rewards"]))
     return {"achievement_id": aid, "status": "claimed", "claimed_at": now}
 

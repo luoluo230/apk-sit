@@ -1,0 +1,15 @@
+{
+  "gap_id": "GAP-E2E-MG-01",
+  "status": "BLOCKED",
+  "command": "wechat_minigame_publish_e2e.py",
+  "exit_code": 2,
+  "notes": "Jenkins 不可达: http://127.0.0.1:8080；没有 WxMinigame Job；未配置 WX_APP_ID，微信导出不会开始",
+  "required": [
+    "Jenkins reachable",
+    "WxMinigame job",
+    "Windows Unity editor",
+    "development release order build callback",
+    "artifact type wxgame_bundle",
+    "runtime-bootstrap package url"
+  ]
+}

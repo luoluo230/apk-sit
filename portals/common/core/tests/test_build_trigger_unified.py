@@ -60,6 +60,7 @@ class BuildTriggerUnifiedTests(unittest.TestCase):
 
         with mock.patch.object(oc, "get_release_order", return_value=fake_order), \
              mock.patch.object(obs, "_find_version", return_value=fake_version), \
+             mock.patch("services.build.build_node_service.assert_build_ready"), \
              mock.patch("services.admin.version_service.resolve_effective_pipeline", return_value=effective_pipeline) as eff_p, \
              mock.patch("services.admin.version_service.resolve_effective_jenkins", return_value=jenkins_binding) as eff_j, \
              mock.patch("services.commercial_release_plan.plan_defaults_from_pipeline", return_value={"appName": "X"}) as defaults, \
@@ -99,6 +100,7 @@ class BuildTriggerUnifiedTests(unittest.TestCase):
         fake_version = {"id": "v1", "version_name": "1.0.0", "version_code": "100"}
         with mock.patch.object(oc, "get_release_order", return_value=fake_order), \
              mock.patch.object(obs, "_find_version", return_value=fake_version), \
+             mock.patch("services.build.build_node_service.assert_build_ready"), \
              mock.patch("services.admin.version_service.resolve_effective_pipeline", return_value={}):
             with self.assertRaises(ValueError) as ctx:
                 ros.request_build("p1", "ro-test-2", "tester")

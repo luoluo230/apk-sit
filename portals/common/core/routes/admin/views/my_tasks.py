@@ -307,7 +307,6 @@ if(myTaskFileInput) myTaskFileInput.onchange=function(){ var files=this.files, p
 
 def build_my_tasks_page_content(request, username, role_to_first_assignee):
     """跨项目汇总：当前用户作为当前负责人的任务。"""
-    username = _current_username()
     my_tasks = []
     for pid, proj in projects_db.items():
         if not can_view_project(pid, username):

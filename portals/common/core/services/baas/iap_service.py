@@ -127,7 +127,7 @@ def verify_and_deliver(
             for key, value in dict(product.get("first_bonus") or {}).items():
                 reward_map[str(key)] = int(reward_map.get(str(key)) or 0) + int(value or 0)
         if reward_map:
-            from services.baas.afk_reward_grants import grant_rewards
+            from services.baas.afk.afk_reward_grants import grant_rewards
             granted = grant_rewards(cur, service_id, player_id, reward_map)
             item_grants = []
             for grant in granted:
@@ -140,7 +140,7 @@ def verify_and_deliver(
             if item_grants:
                 rewards["items"] = item_grants
         try:
-            from services.baas.afk_vip_service import add_vip_exp
+            from services.baas.afk.afk_vip_service import add_vip_exp
             vip_exp = int(product.get("vip_exp") or 0)
             unlock_bp = bool(product.get("unlock_battlepass_premium"))
             if vip_exp > 0 or unlock_bp:

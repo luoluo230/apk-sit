@@ -276,6 +276,10 @@ def _register_blueprints():
 
 _register_blueprints()
 
+from services.ops.shell_nav import register_shell_nav
+
+register_shell_nav(app)
+
 from routes.telemetry import bp as _telemetry_bp
 
 app.register_blueprint(_telemetry_bp)

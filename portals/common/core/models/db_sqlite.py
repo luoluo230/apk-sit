@@ -1231,42 +1231,14 @@ def init_db():
             )
             _mark_migration(conn, "baas_afk_growth_v1")
         if not _migration_applied(conn, "baas_afk_relic_v1"):
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS baas_afk_artifacts (
-                    service_id TEXT NOT NULL,
-                    player_id TEXT NOT NULL,
-                    artifact_id TEXT NOT NULL,
-                    level INTEGER NOT NULL DEFAULT 0,
-                    updated_at TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (service_id, player_id, artifact_id)
-                );
-                CREATE TABLE IF NOT EXISTS baas_afk_rune_inscriptions (
-                    service_id TEXT NOT NULL,
-                    player_id TEXT NOT NULL,
-                    slot TEXT NOT NULL,
-                    socket_index INTEGER NOT NULL,
-                    rune_id TEXT NOT NULL,
-                    rune_quality INTEGER NOT NULL DEFAULT 3,
-                    updated_at TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (service_id, player_id, slot, socket_index)
-                );
-                """
-            )
+            from models.baas_migrations import BAAS_AFK_RELIC_V1_SQL
+
+            conn.executescript(BAAS_AFK_RELIC_V1_SQL)
             _mark_migration(conn, "baas_afk_relic_v1")
         if not _migration_applied(conn, "baas_dungeon_tier_v1"):
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS baas_dungeon_tier (
-                    service_id TEXT NOT NULL,
-                    player_id TEXT NOT NULL,
-                    dungeon_id TEXT NOT NULL,
-                    tier INTEGER NOT NULL DEFAULT 1,
-                    updated_at TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (service_id, player_id, dungeon_id)
-                );
-                """
-            )
+            from models.baas_migrations import BAAS_DUNGEON_TIER_V1_SQL
+
+            conn.executescript(BAAS_DUNGEON_TIER_V1_SQL)
             _mark_migration(conn, "baas_dungeon_tier_v1")
         conn.commit()
         _schema_initialized = True

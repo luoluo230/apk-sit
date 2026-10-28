@@ -172,13 +172,13 @@ def battlepass_claim(service_id: str, player_id: str, level: int) -> Dict[str, A
                 continue
             free_rewards = dict(row.get("free_rewards") or {})
             if grant_free and free_rewards:
-                from services.baas.afk_reward_grants import grant_rewards
+                from services.baas.afk.afk_reward_grants import grant_rewards
                 rewards_granted.extend(grant_rewards(cur, service_id, player_id, free_rewards))
                 claimed.append(int(level))
             if grant_prem:
                 prem = dict(row.get("premium_rewards") or {})
                 if prem:
-                    from services.baas.afk_reward_grants import grant_rewards
+                    from services.baas.afk.afk_reward_grants import grant_rewards
                     rewards_granted.extend(grant_rewards(cur, service_id, player_id, prem))
                 claimed_premium.append(int(level))
             break
@@ -272,7 +272,7 @@ def claim_periodic_task(service_id: str, player_id: str, task_id: str) -> Dict[s
                 task_def = bucket
                 break
         if task_def and task_def.get("rewards"):
-            from services.baas.afk_reward_grants import grant_rewards
+            from services.baas.afk.afk_reward_grants import grant_rewards
             grant_rewards(cur, service_id, player_id, dict(task_def["rewards"]))
     return {"task_id": tid, "status": "claimed"}
 

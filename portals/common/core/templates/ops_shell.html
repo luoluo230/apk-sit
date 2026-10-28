@@ -12,6 +12,7 @@
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
 </head>
 <body>
+{% set nav_project = (request.view_args.get('project_id') if request.view_args else '') or request.args.get('project_id') or '' %}
 <div class="ops-shell-app" data-page="{{ active_page }}" data-project-id="{{ project_id }}" data-env-key="{{ env_key or 'production' }}" {% if topology_id %}data-topology-id="{{ topology_id }}"{% endif %}>
   {% include '_ops_sidebar.html' %}
   <main class="ops-shell-main">
@@ -32,6 +33,14 @@
             <div class="ops-context-projects" data-context-projects></div>
           </div>
         </div>
+        {% if nav_project %}
+        <label class="ops-env-switch">
+          <span>环境</span>
+          <select data-env-switch data-env-project="{{ nav_project }}" aria-label="环境">
+            <option value="{{ env_key or 'development' }}">{{ env_key or 'development' }}</option>
+          </select>
+        </label>
+        {% endif %}
         <div class="ops-shell-search-wrap">
         <label class="ops-shell-search">
           <img src="/static/project_ui/svg/global_search.svg" alt="">

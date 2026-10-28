@@ -125,6 +125,36 @@
     });
   }
 
+  const envSelect = document.querySelector("[data-env-switch]");
+  const fillEnvSelect = (rows, current) => {
+    const list = rows.length ? rows : [{ env_key: current, label: current }];
+    envSelect.replaceChildren();
+    list.forEach((row) => {
+      const option = document.createElement("option");
+      option.value = row.env_key || "";
+      option.textContent = row.label || row.env_key || "";
+      if (option.value === current) option.selected = true;
+      envSelect.appendChild(option);
+    });
+  };
+  if (envSelect && envSelect.dataset.envProject) {
+    const envProject = envSelect.dataset.envProject;
+    const currentEnv = app.dataset.envKey || "development";
+    fetch("/api/projects/" + encodeURIComponent(envProject) + "/environments")
+      .then((response) => response.json())
+      .then((payload) => {
+        const rows = (payload.data && payload.data.environments) || [];
+        fillEnvSelect(rows, currentEnv);
+      })
+      .catch(() => fillEnvSelect([], currentEnv));
+    envSelect.addEventListener("change", () => {
+      const params = new URLSearchParams(location.search);
+      params.set("env_key", envSelect.value);
+      const query = params.toString();
+      location.href = location.pathname + (query ? "?" + query : "") + location.hash;
+    });
+  }
+
   const fav = window.PmUserFavorites;
   document.querySelectorAll(".pm-page-star").forEach((button) => {
     const key = button.dataset.favoriteKey || favoriteKey;

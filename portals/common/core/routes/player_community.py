@@ -29,6 +29,8 @@ from services.player_content import (
     create_forum_post,
     create_news_item,
     create_welfare_item,
+    current_author_key,
+    current_public_author,
     forum_categories_db,
     forum_posts_db,
     get_active_welfare,
@@ -47,6 +49,7 @@ from services.player_content import (
     set_forum_post_publish_state,
     set_news_publish_state,
     set_welfare_publish_state,
+    toggle_forum_like,
     update_forum_post_item,
     update_news_item,
     update_welfare_item,
@@ -620,161 +623,61 @@ def welfare_detail(item_id):
 def forum_index():
     product_id = (request.args.get("product_id") or "").strip()
     category_id = (request.args.get("category") or "").strip()
+    topic = (request.args.get("topic") or "").strip()
+    sort = (request.args.get("sort") or "latest").strip()
+    if sort not in ("latest", "recommended"):
+        sort = "latest"
     current_project_id = _request_project_scope(product_id)
     rows = get_forum_posts(
         product_id=product_id or None,
         project_id=current_project_id or None,
         category_id=category_id or None,
+        topic=topic or None,
+        sort=sort,
         limit=40,
     )
     products = _products(current_project_id or None)
-    detail_suffix = f"?project_id={quote(current_project_id, safe='')}" if current_project_id else ""
-    categories_html = "".join(
-        f'<a href="/forum?category={html.escape(item.get("id", ""))}'
-        + (f'&product_id={quote(product_id, safe="")}' if product_id else "")
-        + (f'&project_id={quote(current_project_id, safe="")}' if current_project_id else "")
-        + f'" class="px-4 py-2 rounded-full {"bg-violet-600 text-white" if category_id == item.get("id") else "bg-white text-slate-700 border border-slate-200"} text-sm font-semibold">{html.escape(item.get("name") or "")}</a>'
-        for item in forum_categories_db
+    game = products[0] if products else {}
+    welfare_rows = get_active_welfare(product_id=product_id or None, project_id=current_project_id or None, limit=1)
+    topics = []
+    seen = set()
+    for item in list(forum_categories_db) + list(rows):
+        label = str(item.get("topic") or item.get("name") or item.get("id") or "").strip()
+        if label and label not in seen:
+            seen.add(label)
+            topics.append(label)
+    return render_template(
+        "forum_circle.html",
+        posts=rows,
+        products=products,
+        categories=list(forum_categories_db),
+        topics=topics[:12],
+        welfare=welfare_rows[0] if welfare_rows else None,
+        game_name=(game.get("name") or "游戏圈"),
+        sort=sort,
+        topic=topic,
+        product_id=product_id,
+        project_id=current_project_id or "",
+        csrf_token=_get_csrf_token(),
     )
-    posts_html = "".join(
-        f"""
-        <a href="/forum/{html.escape(post.get('id', ''))}{detail_suffix}" class="glass block rounded-[28px] p-6 hover:-translate-y-1 transition">
-            <div class="flex items-center justify-between gap-4">
-                <span class="text-xs font-extrabold tracking-[0.2em] uppercase text-violet-600">{html.escape(post.get('category_id') or 'general')}</span>
-                {"<span class='px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold'>官方</span>" if post.get("is_official") else ""}
-            </div>
-            <h2 class="font-display text-3xl text-slate-900 mt-3">{html.escape(post.get('title') or '未命名帖子')}</h2>
-            <p class="mt-3 text-slate-600 leading-7">{html.escape((post.get('content') or '')[:150])}</p>
-            <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-                <span>{html.escape(post.get('display_name') or '匿名玩家')}</span>
-                <span>{len(post.get('comments') or [])} 条评论</span>
-            </div>
-        </a>
-        """
-        for post in rows
-    ) or '<div class="glass rounded-[28px] p-10 text-center text-slate-500">这个分区暂时还没有内容。</div>'
-    product_options = "".join(
-        f'<option value="{html.escape(str(item.get("id") or ""))}" {"selected" if product_id == str(item.get("id") or "") else ""}>{html.escape(item.get("name") or str(item.get("id") or ""))}</option>'
-        for item in products
-    )
-    content = f"""
-    <section class="mb-8">
-        <div class="text-xs font-extrabold tracking-[0.22em] uppercase text-violet-600">Community</div>
-        <h1 class="font-display text-5xl text-slate-900 mt-3">玩家论坛</h1>
-        <p class="mt-3 text-slate-600 text-lg leading-8">官方帖子与玩家讨论共存，支持按项目分区和按主题浏览。</p>
-    </section>
-    <section class="glass rounded-[28px] p-6 mb-6">
-        <div class="flex flex-wrap gap-3">{categories_html}</div>
-        <form id="forumCreateForm" class="mt-6 grid gap-4">
-            <div class="grid md:grid-cols-2 gap-4">
-                <input type="text" name="display_name" placeholder="昵称（游客可填写）" class="px-4 py-3 rounded-2xl border border-slate-200">
-                <input type="text" name="title" placeholder="帖子标题" class="px-4 py-3 rounded-2xl border border-slate-200" required>
-            </div>
-            <div class="grid md:grid-cols-2 gap-4">
-                <select name="category_id" class="px-4 py-3 rounded-2xl border border-slate-200">
-                    {''.join(f'<option value="{html.escape(item.get("id",""))}">{html.escape(item.get("name",""))}</option>' for item in forum_categories_db)}
-                </select>
-                <select name="product_id" class="px-4 py-3 rounded-2xl border border-slate-200">
-                    <option value="">全站社区</option>
-                    {product_options}
-                </select>
-            </div>
-            <textarea name="content" rows="5" placeholder="分享你的问题、心得、建议或截图故事" class="px-4 py-3 rounded-2xl border border-slate-200" required></textarea>
-            <div class="flex items-center gap-3">
-                <button class="px-6 py-3 rounded-full bg-violet-600 text-white font-bold" type="submit">发布帖子</button>
-                <span id="forumCreateResult" class="text-sm text-slate-500"></span>
-            </div>
-        </form>
-    </section>
-    <section class="grid gap-6">{posts_html}</section>
-    <script>
-    document.getElementById('forumCreateForm').addEventListener('submit', function(e) {{
-        e.preventDefault();
-        var fd = new FormData(this);
-        fetch('/forum/create', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json', 'X-CSRFToken': window.portalCsrfToken || '' }},
-            credentials: 'same-origin',
-            body: JSON.stringify({{
-                display_name: fd.get('display_name') || '',
-                title: fd.get('title') || '',
-                category_id: fd.get('category_id') || 'general',
-                product_id: fd.get('product_id') || '',
-                content: fd.get('content') || ''
-            }})
-        }}).then(function(r){{ return r.json(); }}).then(function(d){{
-            document.getElementById('forumCreateResult').textContent = d.error || '发布成功，正在跳转…';
-            if(!d.error) setTimeout(function(){{ location.href = '/forum/' + d.post.id + '{detail_suffix}'; }}, 400);
-        }});
-    }});
-    </script>
-    """
-    return _portal_layout("玩家论坛", content, active="forum")
 
 
 @bp.route("/forum/<post_id>")
 def forum_detail(post_id):
-    scope_project_id = _request_project_scope()
     post = get_forum_post(post_id)
     if not post or post.get("deleted") or not post.get("visible", True) or not _ensure_published(post):
-        return _portal_layout("帖子不存在", '<div class="glass rounded-[28px] p-10 text-center text-slate-500">帖子不存在或尚未发布。</div>', active="forum"), 404
-    scope_project_id = scope_project_id or resolve_project_id(post.get("project_id")) or _project_id_from_product_id(post.get("product_id"))
-    media_html = _render_media_block(post.get("video_url"), post.get("media_urls"))
-    comments_html = "".join(
-        f"""
-        <div class="rounded-2xl bg-white p-4 border border-slate-200">
-            <div class="flex items-center justify-between gap-3">
-                <div class="font-semibold text-slate-900">{html.escape(item.get('display_name') or '匿名玩家')}</div>
-                <div class="text-xs text-slate-500">{html.escape(_fmt_time(item.get('created_at')))}</div>
-            </div>
-            <div class="mt-2 text-slate-700 leading-7">{html.escape(item.get('content') or '')}</div>
-        </div>
-        """
-        for item in (post.get("comments") or [])
-    ) or '<div class="rounded-2xl bg-white p-6 border border-slate-200 text-slate-500">还没有评论，来做第一个发言的人吧。</div>'
-    content = f"""
-    <article class="glass rounded-[32px] p-8">
-        <div class="flex flex-wrap items-center gap-3">
-            <span class="text-xs font-extrabold tracking-[0.2em] uppercase text-violet-600">{html.escape(post.get('category_id') or 'general')}</span>
-            {"<span class='px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold'>官方帖子</span>" if post.get("is_official") else ""}
-        </div>
-        <h1 class="font-display text-5xl text-slate-900 mt-4">{html.escape(post.get('title') or '帖子详情')}</h1>
-        <p class="mt-4 text-sm text-slate-500">作者：{html.escape(post.get('display_name') or '匿名玩家')} · {html.escape(_fmt_time(post.get('created_at')))} · 项目：{html.escape(_product_name(post.get('product_id')))}</p>
-        {media_html}
-        <div class="mt-6 text-slate-700 leading-8 whitespace-pre-wrap">{html.escape(post.get('content') or '')}</div>
-    </article>
-    <section class="glass rounded-[32px] p-8 mt-8">
-        <h2 class="font-display text-4xl text-slate-900">评论区</h2>
-        <form id="commentForm" class="mt-6 grid gap-4">
-            <input type="text" name="display_name" placeholder="昵称（游客可填写）" class="px-4 py-3 rounded-2xl border border-slate-200">
-            <textarea name="content" rows="4" class="px-4 py-3 rounded-2xl border border-slate-200" placeholder="说点什么…" required></textarea>
-            <div class="flex items-center gap-3">
-                <button class="px-6 py-3 rounded-full bg-violet-600 text-white font-bold" type="submit">发表评论</button>
-                <span id="commentResult" class="text-sm text-slate-500"></span>
-            </div>
-        </form>
-        <div class="mt-8 grid gap-4">{comments_html}</div>
-    </section>
-    <script>
-    document.getElementById('commentForm').addEventListener('submit', function(e) {{
-        e.preventDefault();
-        var fd = new FormData(this);
-        fetch('/forum/{html.escape(post_id)}/comment', {{
-            method: 'POST',
-            headers: {{ 'Content-Type': 'application/json', 'X-CSRFToken': window.portalCsrfToken || '' }},
-            credentials: 'same-origin',
-            body: JSON.stringify({{
-                display_name: fd.get('display_name') || '',
-                content: fd.get('content') || ''
-            }})
-        }}).then(function(r){{ return r.json(); }}).then(function(d){{
-            document.getElementById('commentResult').textContent = d.error || '评论成功，正在刷新…';
-            if(!d.error) setTimeout(function(){{ location.reload(); }}, 300);
-        }});
-    }});
-    </script>
-    """
-    return _portal_layout(post.get("title") or "帖子详情", content, active="forum")
+        return render_template("forum_post.html", post={"id": "", "title": "帖子不存在", "content": "帖子不存在或尚未发布。", "comments": []}, csrf_token=_get_csrf_token()), 404
+    return render_template("forum_post.html", post=post, csrf_token=_get_csrf_token())
+
+
+@bp.route("/forum/<post_id>/like", methods=["POST"])
+def forum_like(post_id):
+    author = current_public_author()
+    key = current_author_key(session.get("user") or "", author.get("display_name") or "")
+    post = toggle_forum_like(post_id, key)
+    if not post:
+        return jsonify({"error": "点赞失败"}), 400
+    return jsonify({"ok": True, "like_count": post.get("like_count", 0), "liked": key in (post.get("likes") or [])})
 
 
 @bp.route("/forum/create", methods=["POST"])

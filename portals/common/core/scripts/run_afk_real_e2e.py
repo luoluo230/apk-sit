@@ -31,8 +31,8 @@ load_dotenv()
 
 from app_new import app  # noqa: E402
 from models.db import get_cursor, init_db  # noqa: E402
-from services.baas.afk_config_loader import load_afk_bundle, afk_formulas  # noqa: E402
-from services.baas.afk_formula_engine import team_power_from_defs  # noqa: E402
+from services.baas.afk.afk_config_loader import load_afk_bundle, afk_formulas  # noqa: E402
+from services.baas.afk.afk_formula_engine import team_power_from_defs  # noqa: E402
 from services.baas.battle_antifraud import compute_replay_hash, team_power  # noqa: E402
 from services.baas.registry import default_feature_configs  # noqa: E402
 from services.baas.service_crud import ensure_service, update_service  # noqa: E402

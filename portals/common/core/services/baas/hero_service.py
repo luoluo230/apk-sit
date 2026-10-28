@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional
 
 from models.db import get_cursor, init_db
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
-from services.baas.afk_config_loader import afk_formulas
-from services.baas.afk_formula_engine import hero_stats, level_up_cost
+from services.baas.afk.afk_config_loader import afk_formulas
+from services.baas.afk.afk_formula_engine import hero_stats, level_up_cost
 from services.baas.service_crud import feature_enabled, get_feature_config
 from services.baas.wallet_helpers import debit_wallet
 from services.baas import inventory_service

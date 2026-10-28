@@ -44,7 +44,7 @@ def main() -> int:
     from models.data import projects_db
     from repositories.admin import projects_repo
     from services.baas.registry import default_feature_configs
-    from services.baas.afk_config_loader import afk_feature_configs
+    from services.baas.afk.afk_config_loader import afk_feature_configs
     from services.baas.service_crud import ensure_service, rotate_api_secret, update_service
     from services.baas.gm_service import upsert_gift_code
 

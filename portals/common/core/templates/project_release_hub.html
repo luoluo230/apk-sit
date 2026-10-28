@@ -12,6 +12,12 @@
       <button type="button" class="rh-btn rh-btn--ghost" id="rhRefreshBtn">刷新</button>
     </div>
   </header>
+  <nav class="rh-flow" aria-label="发版步骤">
+    <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'development' }}">版本与管线</a>
+    <a href="/admin/projects/{{ project_id }}/build-history?scoped=1&env_key={{ env_key or 'development' }}">构建与产物</a>
+    <a href="/admin/projects/{{ project_id }}/release?env_key={{ env_key or 'development' }}">去发版</a>
+    <a href="/admin/projects/{{ project_id }}/release-orders?env_key={{ env_key or 'development' }}">发布历史</a>
+  </nav>
 
   <div class="rh-grid">
     <section class="rh-panel rh-panel--runtime" aria-label="线上现状">

@@ -21,10 +21,10 @@ from services.baas.battle_antifraud import (
 )
 from services.baas.helpers import _json_dump, _json_load, _now_iso, new_id
 from services.baas.service_crud import feature_enabled, get_feature_config
-from services.baas.afk_power_service import team_power_unified
+from services.baas.afk.afk_power_service import team_power_unified
 from services.baas.pve_service import _authoritative_outcome
 from services.baas.wallet_helpers import credit_wallet
-from services.baas.afk_tower_scaling import max_floor as tower_max_floor, daily_passive_rewards
+from services.baas.afk.afk_tower_scaling import max_floor as tower_max_floor, daily_passive_rewards
 
 
 def _tower_cfg(cfg: Dict[str, Any], tower_id: str) -> Dict[str, Any]:
@@ -36,7 +36,7 @@ def _tower_cfg(cfg: Dict[str, Any], tower_id: str) -> Dict[str, Any]:
 
 
 def _floor_def(tower: Dict[str, Any], floor: int) -> Dict[str, Any]:
-    from services.baas.afk_tower_scaling import floor_def as scaled_floor
+    from services.baas.afk.afk_tower_scaling import floor_def as scaled_floor
 
     if tower.get("scaling") or int(tower.get("max_floor") or 0) >= 999:
         return scaled_floor(tower, floor)
@@ -76,7 +76,7 @@ def claim_daily_rewards(service_id: str, player_id: str, tower_id: str = "main")
     best = int(progress.get("current_floor") or 0)
     if best < 1:
         raise ValueError("尚未通关任何层")
-    from services.baas.afk_tower_scaling import daily_passive_rewards as _daily_passive
+    from services.baas.afk.afk_tower_scaling import daily_passive_rewards as _daily_passive
 
     rewards = _daily_passive(best, tower)
     if not rewards:
@@ -299,7 +299,7 @@ def settle_battle(
         settled_floor = floor
     if server_win:
         try:
-            from services.baas.afk_retention_hooks import on_tower_win
+            from services.baas.afk.afk_retention_hooks import on_tower_win
             on_tower_win(service_id, player_id, floor=settled_floor)
         except Exception:
             pass
