@@ -274,6 +274,9 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
     for key in EDITABLE_PLAN_FIELDS:
         if key in payload:
             record_payload[key] = payload.get(key)
+    from services.release.completed_task_catalog import stamp_selected_build
+
+    stamp_selected_build(record_payload)
     init_db()
     with get_cursor() as cur:
         cur.execute(
@@ -342,6 +345,9 @@ def update_release_order(project_id: str, order_id: str, payload: Dict[str, Any]
     for key in EDITABLE_PLAN_FIELDS:
         if key in payload:
             record_payload[key] = payload.get(key)
+    from services.release.completed_task_catalog import stamp_selected_build
+
+    stamp_selected_build(record_payload)
     now = _now_iso()
     with get_cursor() as cur:
         cur.execute(

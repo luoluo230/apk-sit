@@ -85,7 +85,11 @@ def normalize_release_platform(value: str) -> str:
         return "ios"
     if p in ("windows", "win", "standalonewindows64"):
         return "windows"
-    return "android"
+    if p in ("wechat_minigame", "wxminigame", "minigame", "webgl_minigame", "webgl"):
+        return "wechat_minigame"
+    if p in ("android",):
+        return "android"
+    return p or "android"
 
 
 def build_version_relative_path(
@@ -162,17 +166,32 @@ def apply_release_mode(
         params["RELEASE_UPLOAD"] = "false"
         params["RELEASE_ACTIVATE"] = "false"
     elif mode == "upload":
-        params["CONFIG_EXPORT_ENABLED"] = "true" if plan.get("configEnabled", False) else "false"
         params["RESOURCE_BUILD_ENABLED"] = "false"
+        params["APK_BUILD_ENABLED"] = "false"
         params["RELEASE_UPLOAD"] = "true"
         params["RELEASE_ACTIVATE"] = "true" if plan.get("releaseActivate") else "false"
     else:
-        # build-upload (default full pipeline): Step1/2 构建，Step3 shell 将 CLI 映射为 upload
+        # build-upload keeps the version-group step switches already written above.
         params["RELEASE_UPLOAD"] = "true" if plan.get("releaseUpload", True) else "false"
         if plan.get("releaseActivate"):
             params["RELEASE_ACTIVATE"] = "true"
 
     return params
+
+
+def narrowed_step_notes(params: dict[str, str], release_mode: str) -> list[str]:
+    """Human notes when a release mode turns pipeline steps off. Default mode stays silent."""
+    mode = (release_mode or "build-upload").strip().lower()
+    if mode not in ("activate", "rollback", "upload"):
+        return []
+    notes: list[str] = []
+    if str(params.get("APK_BUILD_ENABLED") or "").lower() == "false":
+        notes.append("本次不打安装包")
+    if str(params.get("CONFIG_EXPORT_ENABLED") or "").lower() == "false":
+        notes.append("本次不导出配置")
+    if str(params.get("RESOURCE_BUILD_ENABLED") or "").lower() == "false":
+        notes.append("本次不构建资源")
+    return notes
 
 
 def resolve_step3_cli_mode(release_mode: str) -> str:
@@ -304,6 +323,17 @@ def plan_to_jenkins_params(
     apply_release_mode(params, plan, release_mode, release_targets)
 
     plat_norm = normalize_release_platform(release_platform).lower()
+    if plat_norm == "wechat_minigame" and pid and isinstance(version_obj, dict):
+        try:
+            from services.admin.version_service import resolve_effective_wx_minigame
+
+            wx_cfg = resolve_effective_wx_minigame(pid, version_obj)
+            if wx_cfg.get("wx_app_id"):
+                params["WX_APP_ID"] = str(wx_cfg["wx_app_id"])
+            if wx_cfg.get("wx_project_name"):
+                params["WX_PROJECT_NAME"] = str(wx_cfg["wx_project_name"])
+        except Exception:
+            pass
     if plat_norm == "ios" and pid and isinstance(version_obj, dict):
         try:
             from services.admin.version_service import resolve_effective_ios_signing

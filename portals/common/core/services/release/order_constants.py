@@ -31,6 +31,8 @@ EDITABLE_PLAN_FIELDS = (
     "rollback_condition",
     "rollback_method",
     "rollback_timeout_minutes",
+    "selected_build_number",
+    "selected_build_instance_id",
     "server_release_id",
     "linked_server_release_id",
     "server_artifact_id",

@@ -3,6 +3,12 @@
   "use strict";
   async function setupOrderForm(ctx) {
     const { page, projectId, api, toast } = ctx;
+    const esc = window.DeliveryCommon.esc;
+    const scopeApi = window.DeliveryScope || {};
+    const buildScopeQuery = (scope = {}, extra = {}) => (scopeApi.buildQuery ? scopeApi.buildQuery(scope, extra) : "");
+    const renderJourneyProgress = (window.JourneyCommon && window.JourneyCommon.renderJourneyProgress)
+      ? window.JourneyCommon.renderJourneyProgress
+      : () => {};
     const form=document.getElementById("releaseOrderForm"), orderId=page.dataset.orderId;
     const search=new URLSearchParams(location.search);
     const envFromUrl=search.get("env_key")||"";
@@ -567,6 +573,14 @@
         setSummaryField(instCell,jenkinsInstance||"未配置",!jenkinsInstance?jenkinsConfigHref:"");
         setSummaryField(jobCell,jenkinsJob||"未配置",!jenkinsJob?jenkinsConfigHref:"");
         setSummaryField(pipelineCell,pipelineSummary,isMissingConfigValue(pipelineSummary)?pipelineConfigHref:"");
+        const channelCell=summaryCard.querySelector("[data-field='channel_identity']");
+        const releaseCell=summaryCard.querySelector("[data-field='release_identity']");
+        const suppressedCell=summaryCard.querySelector("[data-field='suppressed_steps']");
+        const channelId=String(version.channel_id||version.channel||"").trim();
+        const channelKey=String(version.channel_key||version.channel_name||"").trim();
+        setSummaryField(channelCell,[channelId,channelKey].filter(Boolean).join(" / ")||"未指定","");
+        setSummaryField(releaseCell,[version.platform,version.version_name,version.version_code].filter(Boolean).join(" / ")||"未指定","");
+        setSummaryField(suppressedCell,"构建后显示","");
         refreshPipelineSourcePill(null,lastPipelineConfigHref);
         const cta=document.getElementById("orderGoConfigurePipelineBtn");
         if(cta){
@@ -670,7 +684,73 @@
       const readinessPanel=document.getElementById("orderReadinessPanel");
       if(readinessPanel)readinessPanel.classList.toggle("is-hidden",!form.version_id.value);
     };
-    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());updateRiskPanel();const prod=document.getElementById("orderProductionBanner");if(prod)prod.classList.toggle("is-hidden",form.env_key.value!=="production");}));
+    const buildSelect=document.getElementById("orderCompletedBuild");
+    const buildFilter=document.getElementById("orderBuildReleaseFilter");
+    const serverSelect=document.getElementById("orderServerRelease");
+    const buildHint=document.getElementById("orderCompletedBuildHint");
+    let shipTasks=[];
+    let serverChoices=[];
+    const taskKey=(row)=>`${row.instance_id||""}:${row.build_number||""}`;
+    const syncServerFlag=()=>{
+      if(form.deploy_server_with_client)form.deploy_server_with_client.value=form.server_release_id?.value?"1":"";
+    };
+    const renderShipTasks=()=>{
+      if(!buildSelect)return;
+      const state=buildFilter?.value||"";
+      const rows=shipTasks.filter((row)=>!state||row.release_mark===state);
+      const current=taskKey({instance_id:form.selected_build_instance_id?.value,build_number:form.selected_build_number?.value});
+      buildSelect.innerHTML=rows.length
+        ?`<option value="">请选择已完成的打包任务</option>`+rows.map((row)=>`<option value="${esc(taskKey(row))}">#${esc(row.build_number)} · ${esc(row.version_name)} / ${esc(row.version_code)} · ${esc(row.release_label)} · ${esc(row.triggered_by||"未知")}</option>`).join("")
+        :`<option value="">当前条件下没有已完成的打包任务</option>`;
+      if(rows.some((row)=>taskKey(row)===current))buildSelect.value=current;
+      if(buildHint){
+        buildHint.textContent=rows.length
+          ?"只列出 Jenkins 已成功的打包任务。选中后填写发版参数，用这一包进入发版，不再重新打包。已发版和未发版会分开标记。"
+          :"当前环境、渠道、平台下还没有成功完成的打包任务。";
+      }
+    };
+    const renderServerChoices=()=>{
+      if(!serverSelect)return;
+      const current=serverSelect.value;
+      serverSelect.innerHTML=`<option value="">不同步服务端</option>`+serverChoices.map((row)=>`<option value="${esc(row.server_release_id)}">${esc(row.version_label)} · ${esc(row.status_label)}</option>`).join("");
+      if([...serverSelect.options].some((opt)=>opt.value===current))serverSelect.value=current;
+      syncServerFlag();
+    };
+    const loadShipChoices=async()=>{
+      if(!buildSelect)return;
+      const params=new URLSearchParams({
+        env_key:form.env_key.value||"",
+        channel_id:form.channel_id.value||"",
+        platform:form.platform.value||"",
+      });
+      try{
+        const data=await api(`/api/projects/${projectId}/ship-choices?${params.toString()}`);
+        shipTasks=data.tasks||[];
+        serverChoices=data.server_releases||[];
+      }catch(_err){
+        shipTasks=[];
+        serverChoices=[];
+      }
+      renderShipTasks();
+      renderServerChoices();
+    };
+    buildFilter?.addEventListener("change",renderShipTasks);
+    buildSelect?.addEventListener("change",()=>{
+      const task=shipTasks.find((row)=>taskKey(row)===buildSelect.value);
+      if(!task){
+        if(form.selected_build_number)form.selected_build_number.value="";
+        if(form.selected_build_instance_id)form.selected_build_instance_id.value="";
+        return;
+      }
+      if(form.version_id)form.version_id.value=task.version_id;
+      if(form.selected_build_number)form.selected_build_number.value=String(task.build_number||"");
+      if(form.selected_build_instance_id)form.selected_build_instance_id.value=task.instance_id||"";
+      renderPlanPreview();
+      loadFormContext(selectedVersion());
+      updateRiskPanel();
+    });
+    serverSelect?.addEventListener("change",syncServerFlag);
+    [form.env_key,form.channel_id,form.platform].forEach(x=>x.addEventListener("change",()=>{renderVersions();loadFormContext(selectedVersion());updateRiskPanel();loadShipChoices();const prod=document.getElementById("orderProductionBanner");if(prod)prod.classList.toggle("is-hidden",form.env_key.value!=="production");}));
     const prodBanner=document.getElementById("orderProductionBanner");if(prodBanner&&form.env_key.value==="production")prodBanner.classList.remove("is-hidden");
     form.version_id.addEventListener("change",()=>{renderPlanPreview();loadFormContext(selectedVersion());updateRiskPanel();});
     form.release_strategy?.addEventListener("change",()=>{syncGrayFieldVisibility();updateRiskPanel();});
@@ -695,6 +775,9 @@
       lockTargetFields();
       renderPlanPreview();
       loadFormContext(selectedVersion());
+      await loadShipChoices();
+      if(form.selected_build_number?.value)renderShipTasks();
+      if(form.server_release_id?.value)renderServerChoices();
     }else if(!applyTargetFromUrl()){
       ["env_key","channel_id","platform"].forEach((key)=>{if(search.get(key))form[key].value=search.get(key);});
       renderVersions();
@@ -712,6 +795,7 @@
         }catch(_e){/* ignore bad draft */}
       }
     }
+    if(!orderId)loadShipChoices();
     updateRiskPanel();
     updateCompleteness();
     const payload=()=>{

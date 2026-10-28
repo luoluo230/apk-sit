@@ -5,10 +5,6 @@
       <p>先看当前环境线上版本，再按 构建 → 预检 → 发布 推进。这里负责定向，发版负责执行。</p>
     </div>
     <div class="rh-header-actions">
-      <label class="rh-env-select">
-        <span>当前环境</span>
-        <select id="rhEnvSelect" aria-label="环境"></select>
-      </label>
       <button type="button" class="rh-btn rh-btn--ghost" id="rhRefreshBtn">刷新</button>
     </div>
   </header>
@@ -19,13 +15,8 @@
     <a href="/admin/projects/{{ project_id }}/release-orders?env_key={{ env_key or 'development' }}">发布历史</a>
   </nav>
 
-  <div class="rh-grid">
-    <section class="rh-panel rh-panel--runtime" aria-label="线上现状">
-      <h2>线上现状 <small>客户端实际加载的 Bundle，不是待发布草稿</small></h2>
-      <p class="rh-hint" id="rhRuntimeSummary">加载中…</p>
-      <div class="rh-runtime-list" id="rhRuntimeLines"><div class="rh-empty">加载中…</div></div>
-    </section>
-
+  <div class="rh-layout">
+    <div class="rh-main">
     <section class="rh-panel rh-panel--storyline" aria-label="当前发版进度">
       <div class="rh-storyline-head">
         <div>
@@ -41,7 +32,27 @@
       <h2>待处理</h2>
       <div class="rh-pending-list" id="rhPendingList"><div class="rh-empty">加载中…</div></div>
     </section>
-
+    </div>
+    <aside class="rh-side">
+    <section class="rh-panel rh-panel--runtime" aria-label="线上现状">
+      <h2>线上现状 <small>本环境正在生效的版本</small></h2>
+      <p class="rh-hint" id="rhRuntimeSummary">加载中…</p>
+      <div class="rh-runtime-list" id="rhRuntimeLines"><div class="rh-empty">加载中…</div></div>
+    </section>
+    <section class="rh-panel rh-panel--health" aria-label="发布健康度">
+      <h2>发布健康度 <small>近 7 天</small></h2>
+      <div class="rh-kpi-grid" id="rhHealthKpis">
+        <article><span>客户端成功率</span><strong id="rhSuccessRate">—</strong></article>
+        <article><span>服务端成功率</span><strong id="rhServerSuccessRate">—</strong></article>
+        <article><span>MTTR</span><strong id="rhMttr">—</strong></article>
+        <article><span>已验证</span><strong id="rhVerified">—</strong></article>
+      </div>
+      <div class="rh-health-breakdown" id="rhHealthBreakdown"></div>
+      <div class="rh-health-trend" id="rhHealthTrend"></div>
+    </section>
+    </aside>
+  </div>
+  <div class="rh-secondary">
     <section class="rh-panel rh-panel--promotion" aria-label="客户端跨环境晋级">
       <h2>客户端制品晋级</h2>
       <p class="rh-hint">同一制品跨环境晋级，不重新构建（Build Once, Promote Many）</p>
@@ -52,20 +63,6 @@
       <h2>服务端制品晋级</h2>
       <p class="rh-hint">将低环境已部署的服务端制品晋级到更高环境，创建就绪发布单</p>
       <div class="rh-promotion-list" id="rhServerPromotionList"><div class="rh-empty">加载中…</div></div>
-    </section>
-
-    <section class="rh-panel rh-panel--health" aria-label="发布健康度">
-      <h2>发布健康度 <small>近 7 天</small></h2>
-      <div class="rh-kpi-grid" id="rhHealthKpis">
-        <article><span>客户端成功率</span><strong id="rhSuccessRate">—</strong></article>
-        <article><span>服务端成功率</span><strong id="rhServerSuccessRate">—</strong></article>
-        <article><span>MTTR</span><strong id="rhMttr">—</strong></article>
-        <article><span>已验证</span><strong id="rhVerified">—</strong></article>
-        <article><span>验证失败</span><strong id="rhVerifyFailed">—</strong></article>
-        <article><span>发布失败</span><strong id="rhPublishFailed">—</strong></article>
-      </div>
-      <div class="rh-health-breakdown" id="rhHealthBreakdown"></div>
-      <div class="rh-health-trend" id="rhHealthTrend"></div>
     </section>
 
     <section class="rh-panel rh-panel--coordinated" aria-label="协同发布反馈">

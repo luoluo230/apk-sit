@@ -118,6 +118,10 @@ update_version(payload):
 
 运行时 OSS 相对路径由 `commercial_release_plan.build_runtime_resolve_paths` 按环境/渠道/平台/版本推导。
 
+## 页面布局
+
+页顶一条只读身份：环境、渠道、平台、将触发的 Job。左侧六步只用中文：Jenkins、配置导出、资源、热更、安装包、客户端策略。安装包步骤按平台切换：Android 显示出包开关和路径，iOS 展开签名，微信小游戏只填 AppId 和项目名称。压缩和加密留在热更步骤的折叠区。
+
 ## URL section 参数
 
 | section | Tab |

@@ -155,7 +155,12 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     if order.get("status") in TERMINAL_STATUSES:
         raise ValueError("当前发布单不可重新构建")
     version = _find_version(project_id, order["version_id"], order["version_code"])
-    platform = str(order.get("platform") or version.get("platform") or "android").strip().lower()
+    from services.build.build_grid import PLATFORM_ALIASES, PLATFORM_TO_JOB, resolve_jenkins_job_for_platform
+
+    raw_platform = str(order.get("platform") or version.get("platform") or "").strip().lower()
+    if raw_platform not in PLATFORM_ALIASES and raw_platform not in PLATFORM_TO_JOB:
+        raise ValueError("不支持的构建平台：%s。仅支持 Android、iOS、微信小游戏。" % (raw_platform or "未填写"))
+    platform = PLATFORM_ALIASES.get(raw_platform, raw_platform)
     from services.build.build_node_service import assert_build_ready
 
     assert_build_ready(platform)
@@ -174,6 +179,12 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
             err = validate_ios_signing_for_build(signing)
             guide = "请前往版本组「配置管线 → 安装包 → iOS 签名」完成引导步骤并校验通过。"
             raise ValueError(f"{err or 'iOS 签名配置未就绪'}。{guide}")
+    if platform == "wechat_minigame":
+        from services.admin.version_service import resolve_effective_wx_minigame
+
+        wx_cfg = resolve_effective_wx_minigame(project_id, version)
+        if not str(wx_cfg.get("wx_app_id") or "").strip():
+            raise ValueError("微信小游戏构建需要 AppId。请前往版本组「配置管线 → 安装包」填写。")
     plan = dict(order.get("payload") or {})
     from services.admin.version_service import (
         resolve_effective_pipeline,
@@ -196,10 +207,23 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     instance_id = jenkins_binding.get("jenkins_instance_id") or ""
     if not instance_id:
         raise ValueError("当前版本组未配置 Jenkins 实例。请在「配置管线」选择 Jenkins 实例后再触发构建。")
-    resolved_job = jenkins_binding.get("jenkins_job_id") or ""
-    params["VERSION_NAME"] = str(order["version_name"])
+    resolved_job = str(jenkins_binding.get("jenkins_job_id") or "").strip()
+    if not resolved_job:
+        resolved_job = resolve_jenkins_job_for_platform(platform)
+    from services.commercial_release_plan import narrowed_step_notes, normalize_release_channel
+
+    channel_id = resolve_channel_id(project_id, str(order.get("channel_id") or "")) or str(order.get("channel_id") or "")
+    channel_key = normalize_release_channel(channel_id)
+    version_name = str(order.get("version_name") or "")
+    params["CHANNEL"] = channel_id
+    params["VERSION_CHANNEL_ID"] = channel_id
+    params["RELEASE_CHANNEL"] = channel_key
+    params["VERSION_NAME"] = version_name
+    params["RELEASE_VERSION"] = version_name
+    params["CONFIG_CLIENT_VERSION"] = version_name
     params["VERSION_CODE"] = str(order["version_code"])
-    params["CHANNEL"] = str(order["channel_name"])
+    release_mode = str(plan.get("releaseMode") or params.get("RELEASE_MODE") or "build-upload")
+    step_notes = narrowed_step_notes(params, release_mode)
     from services import jenkins as jenkins_svc
     from services import jenkins_manager as jm
     ok, prep_error = jm.prepare_instance_for_project_build(
@@ -216,6 +240,7 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
         base_url=base_url,
         builds_dir=builds_dir,
         instance_id=instance_id,
+        job_name=resolved_job,
     )
     if not success:
         raise ValueError(error or "触发 Jenkins 构建失败")
@@ -228,6 +253,15 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
         "jenkins_job": resolved_job,
         "jenkins_params": params,
         "pipeline_source": "version_group",
+        "build_identity": {
+            "channel_id": channel_id,
+            "channel_key": channel_key,
+            "platform": platform,
+            "version_name": version_name,
+            "version_code": str(order["version_code"]),
+            "jenkins_job": resolved_job,
+            "suppressed_steps": step_notes,
+        },
     })
     now = _now_iso()
     from services.release.order_state_machine import assert_transition

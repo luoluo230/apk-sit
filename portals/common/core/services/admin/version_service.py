@@ -15,6 +15,7 @@ from services.admin.version_pipeline_resolver import (  # noqa: F401
     enrich_version_client_urls,
     resolve_effective_bootstrap_fields,
     resolve_effective_ios_signing,
+    resolve_effective_wx_minigame,
     resolve_effective_jenkins,
     resolve_effective_pipeline,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "enrich_version_client_urls",
     "resolve_effective_bootstrap_fields",
     "resolve_effective_ios_signing",
+    "resolve_effective_wx_minigame",
     "resolve_effective_jenkins",
     "resolve_effective_pipeline",
     "get_version_group_meta",

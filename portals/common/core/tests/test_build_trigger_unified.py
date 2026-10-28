@@ -64,11 +64,12 @@ class BuildTriggerUnifiedTests(unittest.TestCase):
              mock.patch("services.admin.version_service.resolve_effective_pipeline", return_value=effective_pipeline) as eff_p, \
              mock.patch("services.admin.version_service.resolve_effective_jenkins", return_value=jenkins_binding) as eff_j, \
              mock.patch("services.commercial_release_plan.plan_defaults_from_pipeline", return_value={"appName": "X"}) as defaults, \
-             mock.patch("services.commercial_release_plan.plan_to_jenkins_params", return_value=({"VERSION_NAME": "1.0.0"}, "/tmp")) as params, \
+             mock.patch("services.commercial_release_plan.plan_to_jenkins_params", return_value=({"VERSION_NAME": "0", "APK_BUILD_ENABLED": "true"}, "/tmp")) as params, \
+             mock.patch("services.commercial_release_plan.normalize_release_channel", return_value="wechat"), \
              mock.patch("services.jenkins_manager.prepare_instance_for_project_build", return_value=(True, None)), \
              mock.patch("services.jenkins_manager.get_jenkins_url_for_instance", return_value="http://j"), \
              mock.patch("services.jenkins_manager.get_builds_dir_for_instance", return_value="/tmp/builds"), \
-             mock.patch("services.jenkins.trigger_build", return_value=(True, 42, None)), \
+             mock.patch("services.jenkins.trigger_build", return_value=(True, 42, None)) as trigger, \
              mock.patch("models.data.record_build_version"), \
              mock.patch.object(obs, "get_cursor") as cursor_cm:
             cursor_cm.return_value.__enter__.return_value = mock.MagicMock()
@@ -82,6 +83,14 @@ class BuildTriggerUnifiedTests(unittest.TestCase):
         passed_version = defaults.call_args.args[0]
         self.assertEqual(passed_version.get("pipeline"), effective_pipeline)
         params.assert_called_once()
+        built = params.return_value[0]
+        self.assertEqual(built["CHANNEL"], "wechat")
+        self.assertEqual(built["VERSION_CHANNEL_ID"], "wechat")
+        self.assertEqual(built["RELEASE_CHANNEL"], "wechat")
+        self.assertEqual(built["VERSION_NAME"], "1.0.0")
+        self.assertEqual(built["RELEASE_VERSION"], "1.0.0")
+        self.assertEqual(built["APK_BUILD_ENABLED"], "true")
+        self.assertEqual(trigger.call_args.kwargs.get("job_name"), "Android")
 
     def test_request_build_fails_when_group_pipeline_missing(self):
         fake_order = {

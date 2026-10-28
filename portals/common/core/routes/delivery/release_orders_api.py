@@ -29,6 +29,31 @@ from routes.delivery.helpers import actor as _actor, filters as _filters
 
 
 def register_release_order_routes(bp) -> None:
+    @bp.route("/api/projects/<project_id>/ship-choices")
+    @admin_required("projects")
+    def ship_choices_api(project_id: str):
+        if project_id not in projects_db:
+            return jsonify({"ok": False, "error": "项目不存在"}), 404
+        from services.release.completed_task_catalog import list_ship_choices
+
+        data = list_ship_choices(
+            project_id,
+            env_key=request.args.get("env_key") or "",
+            channel_id=request.args.get("channel_id") or "",
+            platform=request.args.get("platform") or "",
+            release_state=request.args.get("release_state") or "",
+        )
+        return jsonify({"ok": True, "data": data})
+
+    @bp.route("/api/projects/<project_id>/download-catalog")
+    @admin_required("projects")
+    def download_catalog_api(project_id: str):
+        if project_id not in projects_db:
+            return jsonify({"ok": False, "error": "项目不存在"}), 404
+        from services.release.project_download_catalog import list_download_entries
+
+        return jsonify({"ok": True, "data": list_download_entries(project_id)})
+
     @bp.route("/api/projects/<project_id>/release-orders", methods=["GET", "POST"])
     @admin_required("projects")
     def release_orders_api(project_id: str):

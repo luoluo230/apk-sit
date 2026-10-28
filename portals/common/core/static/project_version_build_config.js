@@ -37,11 +37,20 @@
     if (iosPathCredFields) iosPathCredFields.hidden = mode !== "path";
   };
 
-  const toggleIosSigningPanel = (version) => {
-    const show = normalizePlatform(version?.platform || groupPlatform) === "ios";
-    if (iosSigningPanel) iosSigningPanel.hidden = !show;
-    if (!show) return;
-    syncIosSecretModeFields();
+  const togglePlatformPanels = (version) => {
+    const plat = normalizePlatform(version?.platform || groupPlatform);
+    if (iosSigningPanel) iosSigningPanel.hidden = plat !== "ios";
+    const wxPanel = document.getElementById("wxMinigamePanel");
+    if (wxPanel) wxPanel.hidden = plat !== "wechat_minigame";
+    const androidOnly = plat === "android";
+    const formatWrap = document.getElementById("packageFormatWrap");
+    const pathWrap = document.getElementById("apkPathWrap");
+    const toggleWrap = document.getElementById("apkBuildToggleWrap");
+    if (formatWrap) formatWrap.hidden = !androidOnly;
+    if (pathWrap) pathWrap.hidden = !androidOnly;
+    if (toggleWrap) toggleWrap.hidden = plat === "wechat_minigame";
+    if (plat === "ios") syncIosSecretModeFields();
+    renderBuildIdentity(version);
   };
 
   const renderIosSigningGuide = (steps) => {
@@ -167,6 +176,59 @@
     fillIosSigningForm(data.ios_signing || collectIosSigningFromForm());
   };
 
+  const fillWxForm = (cfg) => {
+    const wx = cfg && typeof cfg === "object" ? cfg : {};
+    const appId = document.getElementById("wxAppIdInput");
+    const name = document.getElementById("wxProjectNameInput");
+    if (appId) appId.value = wx.wx_app_id || "";
+    if (name) name.value = wx.wx_project_name || "";
+  };
+
+  const loadWxConfig = async (version) => {
+    if (normalizePlatform(version?.platform || groupPlatform) !== "wechat_minigame") return;
+    const scope = iosSigningScope(version);
+    if (!scope.version_name) return;
+    const params = new URLSearchParams({
+      version_name: scope.version_name,
+      env_key: scope.env_key,
+      platform: scope.platform,
+    });
+    try {
+      const response = await fetch(
+        `/api/admin/projects/${projectId}/version-groups/platform-config?${params.toString()}`,
+        { credentials: "same-origin" },
+      );
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || "加载微信配置失败");
+      fillWxForm(data.wx_minigame || {});
+    } catch (error) {
+      toast(error.message || "加载微信配置失败", "error");
+    }
+  };
+
+  const saveWxConfig = async (version) => {
+    if (normalizePlatform(version?.platform || groupPlatform) !== "wechat_minigame") return;
+    const scope = iosSigningScope(version);
+    if (!scope.version_name) return;
+    const response = await fetch(`/api/admin/projects/${projectId}/version-groups/platform-config`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        version_name: scope.version_name,
+        env_key: scope.env_key,
+        platform: scope.platform,
+        wx_minigame: {
+          wx_app_id: document.getElementById("wxAppIdInput")?.value.trim() || "",
+          wx_project_name: document.getElementById("wxProjectNameInput")?.value.trim() || "",
+        },
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "保存微信配置失败");
+    fillWxForm((data.meta && data.meta.wx_minigame) || {});
+  };
+
   const validateIosSigning = async (version) => {
     if (normalizePlatform(version?.platform || groupPlatform) !== "ios") return null;
     const scope = iosSigningScope(version);
@@ -226,7 +288,28 @@
   const normalizePlatform = (platform) => {
     const p = String(platform || "android").trim().toLowerCase();
     if (p === "ios" || p === "iphone" || p === "iphoneos") return "ios";
+    if (p === "wechat_minigame" || p === "wxminigame" || p === "minigame" || p === "webgl_minigame") return "wechat_minigame";
     return "android";
+  };
+
+  const defaultJobForPlatform = (platform) => {
+    const plat = normalizePlatform(platform);
+    if (plat === "ios") return "iOS";
+    if (plat === "wechat_minigame") return "WxMinigame";
+    return "Android";
+  };
+
+  const renderBuildIdentity = (version) => {
+    const ctx = deriveVersionContext(version || {});
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value || "—";
+    };
+    const job = String(form?.jenkins_job_id?.value || version?.jenkins_job_id || version?.jenkins_job || "").trim();
+    setText("bcIdentityEnv", ctx.releaseEnv || groupEnvKey);
+    setText("bcIdentityChannel", ctx.channelDisplay || ctx.channelKey);
+    setText("bcIdentityPlatform", ctx.platformLabel);
+    setText("bcIdentityJob", job || defaultJobForPlatform(ctx.platformSeg));
   };
 
   const safeAppSegment = (value, fallback = "GameKu") => {
@@ -241,8 +324,11 @@
     const releaseEnv = ENV_KEY_TO_JENKINS[envKey] || STAGE_TO_RELEASE_ENV[stage] || "Development";
     const channelKey = String(version?.channel || "common").trim() || "common";
     const channelDisplay = String(version?.channel_name || channelKey).trim() || channelKey;
-    const platformSeg = normalizePlatform(version?.platform);
-    const platformLabel = String(version?.platform_label || (platformSeg === "ios" ? "iOS" : "Android"));
+    const platformSeg = normalizePlatform(version?.platform || groupPlatform);
+    const platformLabel = String(
+      version?.platform_label
+      || (platformSeg === "ios" ? "iOS" : platformSeg === "wechat_minigame" ? "微信小游戏" : "Android"),
+    );
     const versionName = String(version?.version_name || "").trim();
     const versionCode = String(version?.version_code || "").trim();
     const versionFolder = versionName ? `Version_${versionName}` : "";
@@ -638,11 +724,12 @@
     applyDerivedFields(version);
     syncHotPresetHighlight();
     loadUnityVersions(apkBuild.unity_version || "");
-    toggleIosSigningPanel(version);
+    togglePlatformPanels(version);
     if (normalizePlatform(version.platform) === "ios") {
       const fromMeta = currentGroupMeta?.ios_signing;
       if (fromMeta && typeof fromMeta === "object") fillIosSigningForm(fromMeta);
       loadIosSigningConfig(version);
+      loadWxConfig(version);
     }
   };
 
@@ -1076,6 +1163,7 @@
     const data = await response.json();
     if (!response.ok || data.error) throw new Error(data.error || "保存失败");
     await saveIosSigningConfig(currentVersion || { version_name: groupVersionName, platform: groupPlatform, env_key: groupEnvKey });
+    await saveWxConfig(currentVersion || { version_name: groupVersionName, platform: groupPlatform, env_key: groupEnvKey });
   };
 
   const save = async (version) => {
@@ -1100,6 +1188,7 @@
       const data = await response.json();
       if (!response.ok || data.error) throw new Error(data.error || "保存失败");
       await saveIosSigningConfig(version);
+      await saveWxConfig(version);
       if (isGroupMode) {
         const channelKey = String(version?.channel || version?.channel_id || "").trim();
         const overrideJob = form.channel_jenkins_job_override?.value.trim() || "";

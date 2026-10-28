@@ -557,8 +557,11 @@
       renderServerPromotions(data.server_promotion_candidates);
       renderCoordinatedFeed(data.coordinated_deploy_feed);
       renderPending(data.pending_actions);
-      if (prodStartBtn && data.quick_actions) {
-        prodStartBtn.href = data.quick_actions.prod_release || prodStartBtn.href;
+      if (prodStartBtn) {
+        prodStartBtn.hidden = selectedEnv() !== "production";
+        if (data.quick_actions && data.quick_actions.prod_release) {
+          prodStartBtn.href = data.quick_actions.prod_release;
+        }
       }
     });
   }

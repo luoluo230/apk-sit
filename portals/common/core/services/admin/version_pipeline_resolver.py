@@ -56,6 +56,21 @@ GROUP_TEMPLATE_JENKINS_KEYS = (
 )
 
 
+def resolve_effective_wx_minigame(project_id: str, version_row: Dict[str, Any]) -> dict:
+    from services.build.platform_signing_service import normalize_wx_minigame_config
+
+    if not isinstance(version_row, dict):
+        return normalize_wx_minigame_config({})
+    version_name = str(version_row.get("version_name") or "").strip()
+    if not version_name:
+        return normalize_wx_minigame_config({})
+    env_key = _version_row_env_key(version_row, project_id)
+    platform = _version_row_platform(version_row)
+    meta = _get_group_meta(project_id, version_name, env_key, platform)
+    raw = meta.get("wx_minigame") if isinstance(meta, dict) else {}
+    return normalize_wx_minigame_config(raw if isinstance(raw, dict) else {})
+
+
 def resolve_effective_ios_signing(project_id: str, version_row: Dict[str, Any]) -> dict:
     from services.build.platform_signing_service import normalize_ios_signing
 

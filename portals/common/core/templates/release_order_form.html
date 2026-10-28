@@ -42,6 +42,19 @@
             <label>渠道<select name="channel_id" required></select></label>
             <label>平台<select name="platform" required></select></label>
             <label class="span-2">版本组 / VersionCode<select name="version_id" required></select></label>
+            <label>任务筛选<select id="orderBuildReleaseFilter">
+              <option value="">全部完成任务</option>
+              <option value="unreleased">未发版</option>
+              <option value="released">已发版</option>
+              <option value="rolled_back">已回滚</option>
+            </select></label>
+            <label class="span-2">已完成的打包任务<select id="orderCompletedBuild"><option value="">先选择环境、渠道和平台</option></select></label>
+            <p class="span-4 ro-hint" id="orderCompletedBuildHint">只列出 Jenkins 已成功的打包任务。选中后填写发版参数，用这一包进入发版，不再重新打包。已发版和未发版会分开标记。</p>
+            <label class="span-2">同步发版的服务器版本<select name="server_release_id" id="orderServerRelease"><option value="">不同步服务端</option></select></label>
+            <p class="span-4 ro-hint">选中同环境已就绪的服务器版本后，客户端发布成功时会一起部署，保证两边同时生效。</p>
+            <input type="hidden" name="selected_build_number">
+            <input type="hidden" name="selected_build_instance_id">
+            <input type="hidden" name="deploy_server_with_client" value="">
             <label>发布原因<select name="release_reason_type" id="orderReleaseReasonType">
               <option value="feature">功能迭代发布</option>
               <option value="hotfix">紧急修复</option>
@@ -79,6 +92,9 @@
             <ul class="pipeline-readonly-rows" id="orderPipelineSummaryRows">
               <li><code>Jenkins 实例</code><span data-field="jenkins_instance_id">-</span></li>
               <li><code>Job / 任务</code><span data-field="jenkins_job">-</span></li>
+              <li><code>渠道</code><span data-field="channel_identity">-</span></li>
+              <li><code>平台 / 版本</code><span data-field="release_identity">-</span></li>
+              <li><code>本次关闭的步骤</code><span data-field="suppressed_steps">无</span></li>
               <li><code>管线摘要</code><span data-field="pipeline_summary">-</span></li>
             </ul>
             <input type="hidden" name="jenkins_instance_id">

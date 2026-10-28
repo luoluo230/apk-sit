@@ -1,11 +1,13 @@
 <link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">
-<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260729-ios-signing-v1">
+<link rel="stylesheet" href="/static/project_version_build_config.css?v=20261028-platform-panels">
 <style>
   .build-config-app .workflow-section:not(.active) { display: none !important; }
   .build-config-app .workflow-section.active { display: block; }
   .build-config-banner{margin:10px 0 16px;padding:12px 16px;border:1px solid #c7d6f3;border-radius:10px;background:#f0f5ff;color:#17243d;display:flex;align-items:center;gap:12px;font-size:13px}
   .build-config-banner strong{font-weight:600}
   .build-config-banner span{color:#476291;font-size:12px}
+  .bc-identity{display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 16px;padding:12px 16px;background:#fff;border:1px solid #e5eaf3;border-radius:12px;color:#6b7280;font-size:13px}
+  .bc-identity strong{color:#1f2a37;font-weight:600;margin-left:6px}
 </style>
 <section class="delivery-app build-config-app" data-page="version-build-config" data-project-id="{{ project_id }}" data-version-id="{{ version_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-entry-from="{{ entry_from or 'version-group' }}" data-edit-scope="{{ edit_scope_mode or 'version_group' }}" data-version-name="{{ version_name or '' }}" data-platform="{{ platform or '' }}" data-env-key="{{ env_key or '' }}" data-default-resource-server-url="{{ default_resource_server_url or '' }}">
   <div class="workflow-heading">
@@ -29,14 +31,21 @@
   </div>
   {% endif %}
 
+  <div class="bc-identity" id="buildIdentityBar" aria-label="本次构建身份">
+    <span>环境 <strong id="bcIdentityEnv">—</strong></span>
+    <span>渠道 <strong id="bcIdentityChannel">—</strong></span>
+    <span>平台 <strong id="bcIdentityPlatform">—</strong></span>
+    <span>将触发 Job <strong id="bcIdentityJob">—</strong></span>
+  </div>
+
   <div class="workflow-layout build-config-layout">
     <aside class="workflow-steps build-config-steps" aria-label="配置步骤">
-      <button type="button" class="active" data-section-tab="jenkins"><b>1</b><span>构建环境<em>Jenkins 与 Unity</em></span></button>
-      <button type="button" data-section-tab="config_export"><b>2</b><span>配置导出<em>Step1 ConfigRemotePublish</em></span></button>
-      <button type="button" data-section-tab="resource_build"><b>3</b><span>资源打包<em>Step2 Addressables</em></span></button>
-      <button type="button" data-section-tab="hot_release"><b>4</b><span>热更发布<em>Step3 代码与资源</em></span></button>
-      <button type="button" data-section-tab="artifact"><b>5</b><span>安装包<em>Step4 APK/IPA</em></span></button>
-      <button type="button" data-section-tab="client_policy"><b>6</b><span>客户端策略<em>runtime-bootstrap</em></span></button>
+      <button type="button" class="active" data-section-tab="jenkins"><b>1</b><span>Jenkins<em>实例与任务</em></span></button>
+      <button type="button" data-section-tab="config_export"><b>2</b><span>配置导出<em>客户端配置</em></span></button>
+      <button type="button" data-section-tab="resource_build"><b>3</b><span>资源<em>资源包</em></span></button>
+      <button type="button" data-section-tab="hot_release"><b>4</b><span>热更<em>代码与资源</em></span></button>
+      <button type="button" data-section-tab="artifact"><b>5</b><span>安装包<em>按平台填写</em></span></button>
+      <button type="button" data-section-tab="client_policy"><b>6</b><span>客户端策略<em>最低版本与灰度</em></span></button>
     </aside>
 
     <main class="workflow-main">
@@ -172,9 +181,19 @@
             <div><span>STEP 04</span><h2>安装包</h2></div>
           </div>
           <div class="form-grid">
-            <label class="span-4 checkbox-row"><input type="checkbox" name="apk_build_enabled" id="apkBuildEnabled"><span>启用安装包打包上传</span></label>
+            <label class="span-4 checkbox-row" id="apkBuildToggleWrap"><input type="checkbox" name="apk_build_enabled" id="apkBuildEnabled"><span>启用安装包打包上传</span></label>
             <label id="packageFormatWrap"><span>出包格式</span><select name="package_format" id="packageFormatSelect"></select></label>
-            <label class="span-4"><span>安装包路径</span><input name="apk_path" class="is-locked" readonly title="按环境 / 渠道 / 版本组 / VersionCode 与出包格式自动生成"></label>
+            <label class="span-4" id="apkPathWrap"><span>安装包路径</span><input name="apk_path" class="is-locked" readonly title="按环境 / 渠道 / 版本组 / VersionCode 与出包格式自动生成"></label>
+            <div id="wxMinigamePanel" class="ios-signing-panel span-4" hidden>
+              <div class="ios-signing-guide-head">
+                <strong>微信小游戏</strong>
+                <span>AppId 写入本次构建的 WX_APP_ID，不在发布单里再填一遍</span>
+              </div>
+              <div class="form-grid">
+                <label class="span-2"><span>微信 AppId</span><input name="wx_app_id" id="wxAppIdInput" placeholder="wx 开头的 AppId"></label>
+                <label class="span-2"><span>项目名称</span><input name="wx_project_name" id="wxProjectNameInput" placeholder="与小游戏项目名一致"></label>
+              </div>
+            </div>
             <div class="span-4">
               <a class="ui-secondary" id="buildHistoryLink" href="/admin/projects/{{ project_id }}/build-history?scoped=1&amp;env_key={{ env_key }}">查看构建历史与产物</a>
             </div>

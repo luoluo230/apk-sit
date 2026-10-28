@@ -40,6 +40,10 @@
   height: 28px;
 }
 
+.build-config-layout [hidden] {
+  display: none !important;
+}
+
 .build-config-layout .form-grid label.checkbox-row {
   flex-direction: row;
   align-items: center;

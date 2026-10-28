@@ -516,7 +516,13 @@
       (eff.apk_build||{}).enabled?"安装包":"",
     ].filter(Boolean).join(" · ")||"未配置";
     const pipelineTone=readiness.status==="ready"?"success":readiness.status==="partial"?"warning":"danger";
+    const identity=payloadData.build_identity||{};
+    const suppressed=(identity.suppressed_steps||[]).filter(Boolean).join("；");
     document.getElementById("orderPipeline").innerHTML=[
+      detailRow("渠道", [identity.channel_id||item.channel_id, identity.channel_key].filter(Boolean).join(" / ") || item.channel_name || "-", identity.channel_key?"id / 目录名":"渠道 id", { tone: "success" }),
+      detailRow("平台 / 版本", [identity.platform||item.platform, identity.version_name||item.version_name, identity.version_code||item.version_code].filter(Boolean).join(" / "), "", { tone: "success" }),
+      detailRow("将触发 Job", identity.jenkins_job || jenkins.jenkins_job_id || "-", identity.jenkins_job?"已写入本次构建":"按平台默认", { tone: (identity.jenkins_job||jenkins.jenkins_job_id)?"success":"warning" }),
+      detailRow("本次关闭的步骤", suppressed || "无", suppressed?"发布模式收窄":"沿用版本组开关", { tone: suppressed?"warning":"muted" }),
       detailRow("Jenkins 实例", jenkins.jenkins_instance_id || "-", readiness.checks?.jenkins_instance?"已配置":"缺失", { tone: readiness.checks?.jenkins_instance?"success":"danger", href: !jenkins.jenkins_instance_id ? (pipelineInfo?.build_config_href || links.buildConfig) : "", linkLabel: "去配置" }),
       detailRow("Job / 任务", jenkins.jenkins_job_id || "-", readiness.checks?.jenkins_job?"已配置":"缺失", { tone: readiness.checks?.jenkins_job?"success":"danger", href: !jenkins.jenkins_job_id ? (pipelineInfo?.build_config_href || links.buildConfig) : "", linkLabel: "去配置" }),
       detailRow("管线四步", pipelineSummary, readiness.blocker_hint || (readiness.ready?"就绪":"待完善"), { tone: pipelineTone, href: links.buildConfig, linkLabel: "配置管线" }),
