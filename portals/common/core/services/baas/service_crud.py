@@ -306,12 +306,43 @@ def rotate_api_secret(project_id: str, service_id: str) -> Tuple[str, Dict[str, 
     return secret, svc
 
 
+_EXPORTED_FEATURE_BUNDLE_KEYS = {
+    "arena": "arena",
+    "guild": "guild",
+    "tower": "tower",
+    "battlepass": "battlepass",
+    "periodic_task": "periodic_task",
+    "achievement": "achievement",
+    "iap": "iap",
+}
+
+
+def _merge_exported_feature(feature_key: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Excel 导出写进 bundle 的数值覆盖库里的旧快照，关卡大表除外。"""
+    bundle_key = _EXPORTED_FEATURE_BUNDLE_KEYS.get(str(feature_key or ""))
+    if not bundle_key:
+        return cfg
+    try:
+        from services.baas.afk_config_loader import load_afk_bundle
+
+        exported = (load_afk_bundle() or {}).get(bundle_key)
+    except Exception:
+        return cfg
+    if not isinstance(exported, dict) or not exported:
+        return cfg
+    merged = dict(cfg)
+    for key, value in exported.items():
+        merged[key] = value
+    return merged
+
+
 def get_feature_config(service_id: str, feature_key: str) -> Dict[str, Any]:
     svc = get_service(service_id)
     if not svc:
         return {}
     configs = svc.get("feature_configs") or {}
-    return dict(configs.get(feature_key) or default_feature_configs().get(feature_key, {}))
+    cfg = dict(configs.get(feature_key) or default_feature_configs().get(feature_key, {}))
+    return _merge_exported_feature(feature_key, cfg)
 
 
 def patch_feature_config(service_id: str, feature_key: str, patch: Dict[str, Any]) -> Dict[str, Any]:

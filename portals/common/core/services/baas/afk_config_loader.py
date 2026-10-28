@@ -4,23 +4,49 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[5]
 _BUNDLE_PATH = _REPO_ROOT / "data" / "afk_shared" / "baas_bundle.json"
+_BUNDLE_CACHE: Dict[str, Any] = {"mtime_ns": None, "data": None, "generation": 0}
 
 
-@lru_cache(maxsize=1)
+def bundle_generation() -> int:
+    load_afk_bundle()
+    return int(_BUNDLE_CACHE.get("generation") or 0)
+
+
+def balance_number(key: str, default: float) -> float:
+    """Excel ServerBalance 导出的标量。缺表时用已验证的默认值。"""
+    bundle = load_afk_bundle() or {}
+    table = bundle.get("balance_const") if isinstance(bundle, dict) else None
+    raw = default if not isinstance(table, dict) else table.get(key, default)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def load_afk_bundle() -> Optional[Dict[str, Any]]:
+    """Excel 导出写入 baas_bundle.json 后，按文件时间重新加载，不必重启进程。"""
     if not _BUNDLE_PATH.is_file():
         return None
     try:
+        mtime_ns = _BUNDLE_PATH.stat().st_mtime_ns
+    except OSError:
+        return None
+    if _BUNDLE_CACHE.get("mtime_ns") == mtime_ns and _BUNDLE_CACHE.get("data") is not None:
+        return _BUNDLE_CACHE["data"]
+    try:
         with _BUNDLE_PATH.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return None
+    _BUNDLE_CACHE["mtime_ns"] = mtime_ns
+    _BUNDLE_CACHE["data"] = data
+    _BUNDLE_CACHE["generation"] = int(_BUNDLE_CACHE.get("generation") or 0) + 1
+    return data
 
 
 def _inventory_defs_from_economy(bundle: Dict[str, Any]) -> list:

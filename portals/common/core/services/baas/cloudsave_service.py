@@ -42,6 +42,8 @@ def put_key(service_id: str, player_id: str, key: str, value: Any, *, expected_v
     k = str(key or "").strip()
     if not k:
         raise ValueError("key 必填")
+    if k in {"_afk_account_progress", "_pve_stamina"}:
+        raise ValueError("此状态由服务器管理，不能通过云存档写入")
     payload = _json_dump(value)
     if len(payload.encode("utf-8")) > int(cfg.get("max_value_bytes") or 65536):
         raise ValueError("存档数据过大")

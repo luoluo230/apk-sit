@@ -69,6 +69,11 @@ def main() -> int:
     for k, v in afk_extra.items():
         if not str(k).startswith("_"):
             configs[k] = v
+    paced = ((configs.get("economy_system") or {}).get("dungeons")) or []
+    if paced:
+        economy = dict(configs.get("economy") or {})
+        economy["dungeons"] = paced
+        configs["economy"] = economy
     # The packaged AFK config intentionally has this disabled.  A disposable local
     # E2E stack may opt in, but it still also needs BAAS_ALLOW_DEV_IAP at runtime.
     iap = dict(configs.get("iap") or {})

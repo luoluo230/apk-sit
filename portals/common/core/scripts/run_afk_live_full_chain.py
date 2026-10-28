@@ -193,6 +193,71 @@ class LiveClient:
                 break
         return len([x for x in stage_ids(target) if x in cleared_ids])
 
+    def probe_systems(self, team: List[int]) -> Dict[str, Any]:
+        """Real HTTP coverage of the live catalog after the stage chain. Locked dungeons must stay locked."""
+        checks: List[Dict[str, Any]] = []
+
+        def add(name: str, resp: dict, *, expect_ok: bool = True) -> None:
+            ok = bool(resp.get("ok"))
+            err = str(resp.get("error") or resp.get("message") or "")[:160]
+            checks.append({"name": name, "ok": ok, "expect_ok": expect_ok, "pass": ok == expect_ok, "error": err})
+
+        dgs = self.get("/dungeons")
+        rows = (dgs.get("data") or {}).get("dungeons") or []
+        checks.append({
+            "name": "dungeons_list",
+            "ok": bool(dgs.get("ok")) and len(rows) == 13,
+            "expect_ok": True,
+            "pass": bool(dgs.get("ok")) and len(rows) == 13,
+            "error": "" if len(rows) == 13 else f"count={len(rows)}",
+            "unlocked": [d.get("id") for d in rows if d.get("unlocked")],
+            "locked": [d.get("id") for d in rows if not d.get("unlocked")],
+        })
+        for dg in rows:
+            did = str(dg.get("id") or "")
+            if did == "solo_tower":
+                continue
+            run = self.post(f"/dungeons/{did}/run", {"team": {"heroes": team}})
+            if dg.get("unlocked"):
+                add(f"dungeon_run:{did}", run, expect_ok=True)
+            else:
+                err = str(run.get("error") or "")
+                locked_ok = (not run.get("ok")) and ("未解锁" in err)
+                checks.append({"name": f"dungeon_locked:{did}", "ok": bool(run.get("ok")), "expect_ok": False, "pass": locked_ok, "error": err[:160]})
+
+        for name, path, method in (
+            ("shop_catalog", "/shop/catalog", "GET"),
+            ("shop_wallet", "/shop/wallet", "GET"),
+            ("mail_inbox", "/mail/inbox", "GET"),
+            ("tasks", "/tasks/periodic", "GET"),
+            ("arena_state", "/arena/state", "GET"),
+            ("guild_status", "/guild/status", "GET"),
+            ("artifacts", "/artifacts", "GET"),
+            ("runes", "/runes", "GET"),
+            ("tower_progress", "/tower/main/progress", "GET"),
+            ("team_power", "/growth/team-power", "GET"),
+        ):
+            add(name, self.get(path) if method == "GET" else self.post(path))
+        add("idle_claim", self.post("/idle/claim"))
+
+        start = self.post("/tower/main/battle/start", {"floor": 1, "team": {"heroes": team}})
+        add("tower_floor1_start", start)
+        if start.get("ok"):
+            sd = start.get("data") or {}
+            settle = self.post("/tower/battle/settle", {
+                "battle_id": sd.get("battle_id"),
+                "win": True,
+                "stars": 3,
+                "duration_ms": 3500,
+                "checksum": "live",
+                "replay_hash": "live",
+                "replay_ticks": 20,
+            })
+            add("tower_floor1_settle", settle)
+
+        passed = sum(1 for row in checks if row.get("pass"))
+        return {"passed": passed, "total": len(checks), "checks": checks}
+
     def simulate_days(self, team: List[int], days: int = 30, target_stage: int = 100) -> List[Dict[str, Any]]:
         daily: List[Dict[str, Any]] = []
         for day in range(1, days + 1):
@@ -255,6 +320,7 @@ def main() -> int:
     growth0 = client.growth_pass()
     daily = client.simulate_days(team, days=int(os.environ.get("AFK_LIVE_CHAIN_MAX_DAYS", "30")), target_stage=100)
     final_cleared = daily[-1]["cleared"] if daily else 0
+    systems = client.probe_systems(team)
     report = {
         "test_suite": "afk_live_full_chain",
         "portal": portal,
@@ -269,6 +335,8 @@ def main() -> int:
         "days_used": len(daily),
         "elapsed_sec": round(time.time() - t0, 2),
         "steps": client.log[-40:],
+        "systems": systems,
+        "systems_pass": int(systems.get("passed") or 0) == int(systems.get("total") or 0) and int(systems.get("total") or 0) > 0,
         "overall_pass": final_cleared >= 100 and len(daily) <= 30 and growth0.get("socket", 0) > 0,
         "skillkit_note": "SkillKit 100关请在 Unity Test Runner 运行 AfkLiveServerStage100PlayModeTests（Editor 打开时勿 batchmode）",
     }

@@ -10,7 +10,7 @@ from services.baas import announce_service, auth_service, cloudsave_service, com
 from services.baas import activity_service, pvp_service, retention_services, social_services
 from services.baas import room_service, pve_service, arena_service
 from services.baas import gacha_service, hero_service, idle_service, tower_service, iap_service
-from services.baas import inventory_service, guild_war_service, afk_growth_service, afk_economy_service
+from services.baas import inventory_service, guild_war_service, afk_growth_service, afk_economy_service, afk_relic_service
 from services.baas.errors import baas_fail_exc, baas_success
 from services.rate_limit import rate_limit_login
 
@@ -39,6 +39,15 @@ def _password_auth_rate_limit():
 def register_baas_public_routes(bp=None) -> None:
     target = bp or baas_public_bp
     prefix = "/api/baas/v1/<service_id>"
+
+    @target.route(f"{prefix}/afk/home", methods=["GET"])
+    def baas_afk_home(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err: return err
+        player, perr = _player_auth(service_id)
+        if perr: return perr
+        from services.baas.afk_home_service import get_home
+        return run_baas(lambda: get_home(service_id, player["player_id"]))
 
     @target.route(f"{prefix}/auth/guest", methods=["POST"])
     def baas_auth_guest(service_id: str):
@@ -924,6 +933,81 @@ def register_baas_public_routes(bp=None) -> None:
         except Exception as exc:
             return baas_fail_exc(exc)
 
+    @target.route(f"{prefix}/progression/unlocks", methods=["GET"])
+    def baas_progression_unlocks(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_relic_service.list_systems(service_id, player["player_id"])})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/artifacts", methods=["GET"])
+    def baas_artifacts_list(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_relic_service.list_artifacts(service_id, player["player_id"])})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/artifacts/<artifact_id>/upgrade", methods=["POST"])
+    def baas_artifact_upgrade(service_id: str, artifact_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_relic_service.upgrade_artifact(service_id, player["player_id"], artifact_id)})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/runes", methods=["GET"])
+    def baas_runes_list(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        try:
+            return jsonify({"ok": True, "data": afk_relic_service.list_runes(service_id, player["player_id"])})
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/runes/inscribe", methods=["POST"])
+    def baas_rune_inscribe(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        try:
+            return jsonify({
+                "ok": True,
+                "data": afk_relic_service.inscribe_rune(
+                    service_id, player["player_id"],
+                    str(body.get("slot") or ""),
+                    int(body.get("socket_index") or 0),
+                    str(body.get("rune_id") or ""),
+                    int(body.get("rune_quality") or 3),
+                ),
+            })
+        except Exception as exc:
+            return baas_fail_exc(exc)
+
     @target.route(f"{prefix}/economy/items", methods=["GET"])
     def baas_economy_items(service_id: str):
         sid, err = _service_auth(service_id)
@@ -1144,6 +1228,38 @@ def register_baas_public_routes(bp=None) -> None:
         from services.baas import afk_vip_service
         try:
             return jsonify({"ok": True, "data": afk_vip_service.claim_daily(service_id, player["player_id"])})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @target.route(f"{prefix}/config-group", methods=["GET"])
+    def baas_config_group(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        player, perr = _player_auth(service_id)
+        if perr:
+            return perr
+        from services.baas.afk_config_group import group_factors, list_groups
+
+        return jsonify({
+            "ok": True,
+            "data": {**group_factors(service_id, player["player_id"]), **list_groups()},
+        })
+
+    @target.route(f"{prefix}/config-group/assign", methods=["POST"])
+    def baas_config_group_assign(service_id: str):
+        sid, err = _service_auth(service_id)
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        player_id = str(body.get("player_id") or "").strip()
+        group_id = str(body.get("group_id") or "").strip()
+        if not player_id or not group_id:
+            return baas_fail_exc(ValueError("player_id 和 group_id 必填"))
+        from services.baas.afk_config_group import set_player_group
+
+        try:
+            return jsonify({"ok": True, "data": set_player_group(service_id, player_id, group_id)})
         except ValueError as exc:
             return baas_fail_exc(exc)
 

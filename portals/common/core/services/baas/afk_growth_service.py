@@ -55,6 +55,71 @@ def _max_cleared_stage(progress: Dict[str, Any]) -> int:
     return best
 
 
+def _scaled_dungeon_rewards(rewards: Dict[str, Any], max_cleared: int, tier: int = 1) -> Dict[str, Any]:
+    """产出跟主线进度和副本自身等级走。每打过一次，下一档奖励更高。"""
+    cleared = max(0, int(max_cleared))
+    rank = max(1, int(tier))
+    from services.baas.afk_config_loader import balance_number
+
+    grown = max(0, rank - 1)
+    gain = balance_number("dungeon_reward_tier_gain", 7.2)
+    soft = balance_number("dungeon_reward_tier_soft", 110.0)
+    cleared_div = balance_number("dungeon_reward_cleared_div", 500.0)
+    tier_mul = 1.0 + gain * grown / (grown + soft)
+    mul = (1.0 + cleared / cleared_div) * tier_mul
+    out: Dict[str, Any] = {}
+    for key, value in (rewards or {}).items():
+        try:
+            amount = int(value)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        out[str(key)] = max(1, int(round(amount * mul)))
+    return out
+
+
+def dungeon_tier_requirement(dg: Dict[str, Any], tier: int, max_cleared: int) -> int:
+    """难度跟已通关主线和这个副本自己的等级走。主线推荐战力读导出表。"""
+    from services.baas.afk_power_service import stage_power_required
+
+    rank = max(1, int(tier))
+    unlock = max(1, int(dg.get("unlock_stage") or 1))
+    chapter_stage = max(unlock, int(max_cleared or 0))
+    chapter_stage = max(1, min(2000, chapter_stage))
+    stage_id = "AFK_%02d_%02d" % ((chapter_stage - 1) // 10 + 1, (chapter_stage - 1) % 10 + 1)
+    from services.baas.afk_config_loader import balance_number
+
+    scale = float(dg.get("power_scale") or 1.0)
+    ease = balance_number("dungeon_power_ease", 0.72)
+    tier_base = balance_number("dungeon_tier_power_base", 1.006)
+    tier_mul = tier_base ** (rank - 1)
+    return max(1, int(stage_power_required(stage_id) * scale * ease * tier_mul))
+
+
+def _dungeon_tier(cur, service_id: str, player_id: str, dungeon_id: str) -> int:
+    row = cur.execute(
+        "SELECT tier FROM baas_dungeon_tier WHERE service_id=? AND player_id=? AND dungeon_id=?",
+        (service_id, player_id, dungeon_id),
+    ).fetchone()
+    return max(1, int(row["tier"] or 1)) if row else 1
+
+
+def _advance_dungeon_tier(cur, service_id: str, player_id: str, dungeon_id: str, tier: int) -> int:
+    nxt = max(1, int(tier)) + 1
+    now = _now_iso()
+    cur.execute(
+        """
+        INSERT INTO baas_dungeon_tier (service_id, player_id, dungeon_id, tier, updated_at)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(service_id, player_id, dungeon_id) DO UPDATE SET
+            tier=excluded.tier, updated_at=excluded.updated_at
+        """,
+        (service_id, player_id, dungeon_id, nxt, now),
+    )
+    return nxt
+
+
 def _dungeon_def(service_id: str, dungeon_id: str) -> Dict[str, Any]:
     for dg in _economy_cfg(service_id).get("dungeons") or []:
         if str(dg.get("id") or "") == str(dungeon_id):
@@ -171,6 +236,12 @@ def _grant_rewards(cur, service_id: str, player_id: str, rewards: Dict[str, Any]
     return out
 
 
+def _visible_team_power(service_id: str, player_id: str) -> int:
+    from services.baas.afk_power_service import team_power_unified
+
+    return int(team_power_unified(service_id, player_id).get("team_power") or 0)
+
+
 def enhance_equipment(service_id: str, player_id: str, slot: str, *, use_luck: bool = False) -> Dict[str, Any]:
     if not feature_enabled(service_id, "economy"):
         raise ValueError("经济/成长系统未启用")
@@ -179,6 +250,7 @@ def enhance_equipment(service_id: str, player_id: str, slot: str, *, use_luck: b
         raise ValueError("装备槽位无效")
     cfg = equip_growth_config(service_id).get("enhance") or {}
     formulas = _formulas()
+    before = _visible_team_power(service_id, player_id)
     init_db()
     with get_cursor() as cur:
         _ensure_equipment(cur, service_id, player_id)
@@ -227,7 +299,16 @@ def enhance_equipment(service_id: str, player_id: str, slot: str, *, use_luck: b
             on_enhance(service_id, player_id, count=1)
         except Exception:
             pass
-    return {"slot": slot_name, "enhance_level": new_level, "failed": failed, "spent_gold": cost_g}
+    after = _visible_team_power(service_id, player_id)
+    return {
+        "slot": slot_name,
+        "enhance_level": new_level,
+        "failed": failed,
+        "spent_gold": cost_g,
+        "power_before": before,
+        "power_after": after,
+        "power_delta": after - before,
+    }
 
 
 def refine_equipment(service_id: str, player_id: str, slot: str) -> Dict[str, Any]:
@@ -362,6 +443,7 @@ def star_up_hero(service_id: str, player_id: str, hero_id: int, *, use_crystal: 
     meta = defs.get(hid) or {}
     quality = int(meta.get("quality") or 3)
     formulas = _formulas()
+    before = _visible_team_power(service_id, player_id)
     init_db()
     with get_cursor() as cur:
         row = cur.execute(
@@ -388,13 +470,18 @@ def star_up_hero(service_id: str, player_id: str, hero_id: int, *, use_crystal: 
             "UPDATE baas_player_heroes SET star=?, shards=?, updated_at=? WHERE service_id=? AND player_id=? AND hero_id=?",
             (star, shards, now, service_id, player_id, hid),
         )
-    return {"hero_id": hid, "star": star, "shards": shards, "spent_shards": need}
+    after = _visible_team_power(service_id, player_id)
+    return {
+        "hero_id": hid, "star": star, "shards": shards, "spent_shards": need,
+        "power_before": before, "power_after": after, "power_delta": after - before,
+    }
 
 
 def add_talent_point(service_id: str, player_id: str, hero_id: int) -> Dict[str, Any]:
     if not feature_enabled(service_id, "hero"):
         raise ValueError("英雄系统未启用")
     hid = int(hero_id or 0)
+    before = _visible_team_power(service_id, player_id)
     init_db()
     with get_cursor() as cur:
         row = cur.execute(
@@ -413,7 +500,11 @@ def add_talent_point(service_id: str, player_id: str, hero_id: int) -> Dict[str,
             "UPDATE baas_player_heroes SET talent_points=?, updated_at=? WHERE service_id=? AND player_id=? AND hero_id=?",
             (tp, now, service_id, player_id, hid),
         )
-    return {"hero_id": hid, "talent_points": tp}
+    after = _visible_team_power(service_id, player_id)
+    return {
+        "hero_id": hid, "talent_points": tp,
+        "power_before": before, "power_after": after, "power_delta": after - before,
+    }
 
 
 def _dungeon_daily_limit(service_id: str, player_id: str, dg: Dict[str, Any]) -> int:
@@ -458,11 +549,17 @@ def list_dungeons_status(service_id: str, player_id: str) -> Dict[str, Any]:
         did = str(dg.get("id") or "")
         with get_cursor() as cur:
             done, limit = _dungeon_run_count(cur, service_id, player_id, did, dg)
+            tier = solo_floor + 1 if did == "solo_tower" else _dungeon_tier(cur, service_id, player_id, did)
+        unlocked = max_cleared >= int(dg.get("unlock_stage") or 0)
+        required = dungeon_tier_requirement(dg, tier, max_cleared) if unlocked and did != "solo_tower" else 0
         out.append({
             **dg,
-            "unlocked": max_cleared >= int(dg.get("unlock_stage") or 0),
+            "unlocked": unlocked,
             "runs_today": done,
             "daily_limit": limit,
+            "tier": tier,
+            "power_required": required,
+            "reward_preview": _scaled_dungeon_rewards(dg.get("rewards") or {}, max_cleared, tier),
             "max_cleared_stage": max_cleared,
             "solo_tower_floor": solo_floor if did == "solo_tower" else None,
         })
@@ -499,29 +596,54 @@ def run_dungeon(
         team_ids = [int(x) for x in team["heroes"]]
     power_info = estimate_team_power(service_id, player_id, team_ids=team_ids)
     tp = int(power_info.get("team_power") or 0)
-    formulas = _formulas()
     mode = str(dg.get("mode") or "solo")
     init_db()
     with get_cursor() as cur:
         done, limit = _dungeon_run_count(cur, service_id, player_id, did, dg)
         if done >= limit:
             raise ValueError("今日次数已用完")
+        cooldown = int(dg.get("cooldown_seconds") or 0)
+        if cooldown > 0 and done > 0:
+            stamp = cur.execute(
+                """
+                SELECT updated_at FROM baas_dungeon_daily
+                WHERE service_id=? AND player_id=? AND dungeon_id=? AND run_date=?
+                """,
+                (service_id, player_id, did, _utc_today()),
+            ).fetchone()
+            if stamp and stamp["updated_at"]:
+                try:
+                    elapsed = (
+                        datetime.fromisoformat(_now_iso().replace("Z", "+00:00"))
+                        - datetime.fromisoformat(str(stamp["updated_at"]).replace("Z", "+00:00"))
+                    ).total_seconds()
+                except ValueError:
+                    elapsed = cooldown
+                if elapsed < cooldown:
+                    raise ValueError(f"副本冷却中，还需 {int(cooldown - elapsed)} 秒")
         entry = str(dg.get("entry_item") or "").strip()
         if entry:
             _consume_item_key(cur, service_id, player_id, entry, 1)
         rewards: Dict[str, Any] = {}
+        tier = 1
+        next_tier = 2
+        floor = 1
+        req = 0
         if mode == "solo_infinite" or did == "solo_tower":
+            from services.baas.afk_tower_scaling import floor_def as tower_floor_def
+
             floor_row = cur.execute(
                 "SELECT floor FROM baas_afk_solo_tower WHERE service_id=? AND player_id=?",
                 (service_id, player_id),
             ).fetchone()
             floor = int(floor_row["floor"] or 0) + 1 if floor_row else 1
-            req = int(500 * eval_formula("tower_power_scale", {"tower_floor": floor}, formulas=formulas))
+            spec = tower_floor_def({"max_floor": 9999, "scaling": {"max_floor": 9999}}, floor)
+            req = int(spec["power_required"])
+            tier = floor
+            next_tier = floor + 1
             if tp < req:
                 raise ValueError("战力不足")
-            gold = eval_formula("tower_floor_reward", {"tower_floor": floor}, formulas=formulas)
-            credit_wallet(cur, service_id, player_id, "gold", gold)
-            rewards["gold"] = gold
+            rewards = _grant_rewards(cur, service_id, player_id, spec.get("rewards") or {})
             now = _now_iso()
             cur.execute(
                 """
@@ -532,15 +654,27 @@ def run_dungeon(
                 (service_id, player_id, floor, now),
             )
         else:
+            tier = _dungeon_tier(cur, service_id, player_id, did)
+            req = dungeon_tier_requirement(dg, tier, max_cleared)
+            from services.baas.afk_config_group import scale_int
+
+            req = scale_int(service_id, player_id, "dungeon_power_mul", req)
+            if tp < req:
+                raise ValueError("战力不足")
             need_stamina = int(dg.get("stamina") or 12)
             if feature_enabled(service_id, "pve"):
                 pve_cfg = get_feature_config(service_id, "pve")
                 _debit_stamina(cur, service_id, player_id, need_stamina, pve_cfg)
-            scale = float(dg.get("power_scale") or 1.0)
-            req = int(max_cleared * 8 * scale)
-            if tp < int(req * 0.85):
-                raise ValueError("战力不足")
-            rewards = _grant_rewards(cur, service_id, player_id, dg.get("rewards") or {})
+            from services.baas.afk_config_group import scale_rewards
+
+            rewards = _grant_rewards(
+                cur, service_id, player_id,
+                scale_rewards(
+                    service_id, player_id, "dungeon_reward_mul",
+                    _scaled_dungeon_rewards(dg.get("rewards") or {}, max_cleared, tier),
+                ),
+            )
+            next_tier = _advance_dungeon_tier(cur, service_id, player_id, did, tier)
         today = _utc_today()
         now = _now_iso()
         cur.execute(
@@ -562,6 +696,9 @@ def run_dungeon(
         "dungeon_id": did,
         "rewards": rewards,
         "team_power": tp,
+        "power_required": req,
+        "tier": tier,
+        "next_tier": next_tier,
         "runs_today": done + 1,
         "daily_limit": limit,
     }

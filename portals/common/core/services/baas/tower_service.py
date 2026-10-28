@@ -38,10 +38,12 @@ def _tower_cfg(cfg: Dict[str, Any], tower_id: str) -> Dict[str, Any]:
 def _floor_def(tower: Dict[str, Any], floor: int) -> Dict[str, Any]:
     from services.baas.afk_tower_scaling import floor_def as scaled_floor
 
+    if tower.get("scaling") or int(tower.get("max_floor") or 0) >= 999:
+        return scaled_floor(tower, floor)
     for row in tower.get("floors") or []:
         if int(row.get("floor") or 0) == int(floor):
             return dict(row)
-    if tower.get("scaling") or tower.get("max_floor"):
+    if tower.get("max_floor"):
         return scaled_floor(tower, floor)
     raise ValueError("层数不存在")
 

@@ -17,8 +17,54 @@ def _economy_cfg(service_id: str) -> Dict[str, Any]:
     if feat.get("items"):
         merged["items"] = feat["items"]
     if feat.get("dungeons"):
-        merged["dungeons"] = feat["dungeons"]
+        merged["dungeons"] = _overlay_exported_dungeons(feat["dungeons"])
+    elif eco.get("dungeons"):
+        merged["dungeons"] = list(eco["dungeons"])
     return merged
+
+
+_DUNGEON_EXPORT_KEYS = (
+    "daily_limit",
+    "weekly_limit",
+    "stamina",
+    "unlock_stage",
+    "entry_item",
+    "power_scale",
+    "scales_with_tier",
+    "rewards",
+    "cooldown_seconds",
+    "name",
+    "name_key",
+    "mode",
+)
+
+
+def _overlay_exported_dungeons(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """副本次数、体力、解锁、产出以 Excel 导出的 bundle 为准。"""
+    bundle = load_afk_bundle() or {}
+    exported = {
+        str(row.get("id") or ""): row
+        for row in ((bundle.get("economy_system") or {}).get("dungeons") or [])
+        if row.get("id")
+    }
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for row in rows or []:
+        did = str(row.get("id") or "")
+        fresh = exported.get(did)
+        if not fresh:
+            out.append(dict(row))
+            continue
+        merged = dict(row)
+        for key in _DUNGEON_EXPORT_KEYS:
+            if key in fresh:
+                merged[key] = fresh[key]
+        out.append(merged)
+        seen.add(did)
+    for did, fresh in exported.items():
+        if did not in seen:
+            out.append(dict(fresh))
+    return out
 
 
 def list_items(service_id: str) -> List[Dict[str, Any]]:

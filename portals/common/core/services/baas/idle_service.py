@@ -21,7 +21,8 @@ def _parse_iso(ts: str) -> datetime:
     if not raw:
         return datetime.now(timezone.utc)
     try:
-        return datetime.fromisoformat(raw)
+        parsed = datetime.fromisoformat(raw)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         return datetime.now(timezone.utc)
 
@@ -61,25 +62,27 @@ def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
         cleared = {s.get("stage_id") for s in (progress.get("stages") or []) if int(s.get("cleared") or 0)}
         if required_stage not in cleared:
             return {"eligible": False, "reason": "需先通关 " + required_stage, "accumulated_minutes": 0, "estimated_gold": 0}
+    progress = get_progress(service_id, player_id)
+    max_cleared = _max_cleared_stage(progress)
+    if max_cleared < 1:
+        return {"eligible": False, "reason": "通关第 1 关后解锁", "max_cleared_stage": 0, "accumulated_minutes": 0, "estimated_gold": 0}
     init_db()
     with get_cursor() as cur:
         row = cur.execute(
             "SELECT last_claim_at FROM baas_idle_state WHERE service_id=? AND player_id=?",
             (service_id, player_id),
         ).fetchone()
-    last = _parse_iso(row["last_claim_at"] if row else "")
+        if row is None:
+            from services.baas.afk_home_service import ensure_idle_started
+            ensure_idle_started(cur, service_id, player_id)
+            row = cur.execute("SELECT last_claim_at FROM baas_idle_state WHERE service_id=? AND player_id=?", (service_id, player_id)).fetchone()
+    last = _parse_iso(row["last_claim_at"])
     now = datetime.now(timezone.utc)
-    minutes = max(0, int((now - last).total_seconds() // 60))
-    cap_minutes = int(max_hours * 60)
-    minutes = min(minutes, cap_minutes)
-    progress = get_progress(service_id, player_id)
-    max_cleared = _max_cleared_stage(progress)
+    raw_minutes = max(0, int((now - last).total_seconds() // 60))
     team_pwr = _estimate_team_power(service_id, player_id)
-    gold_per_hour = eval_formula(
-        "idle_gold_per_hour",
-        {"max_cleared_stage": max_cleared, "team_power": team_pwr},
-        formulas=formulas,
-    )
+    from services.baas.afk_formula_engine import idle_gold_per_hour_value, idle_item_rewards
+
+    gold_per_hour = idle_gold_per_hour_value(max_cleared, team_pwr)
     vip_mul = 1.0
     try:
         from services.baas.afk_vip_service import idle_bonus_mul
@@ -87,15 +90,37 @@ def get_status(service_id: str, player_id: str) -> Dict[str, Any]:
         vip_mul = idle_bonus_mul(service_id, player_id)
     except Exception:
         pass
-    gold_per_hour = int(gold_per_hour * vip_mul)
+    idle_mul = 1.0
+    try:
+        from services.baas.afk_config_group import group_factors
+
+        idle_mul = float(group_factors(service_id, player_id).get("idle_gold_mul") or 1)
+    except Exception:
+        idle_mul = 1.0
+    gold_per_hour = int(gold_per_hour * vip_mul * idle_mul)
+    cap_minutes = int(max_hours * 60)
+    if max_cleared >= 700:
+        cap_minutes = max(cap_minutes, 20 * 60)
+    elif max_cleared >= 80:
+        cap_minutes = max(cap_minutes, 16 * 60)
+    minutes = min(raw_minutes, cap_minutes)
     est_gold = int(minutes / 60 * gold_per_hour)
+    items = idle_item_rewards(max_cleared, minutes)
+    from services.baas.afk_home_service import rules
+    home_cfg = rules()
+    exp_rate = max(int(home_cfg["idle_exp_min_per_hour"]), max_cleared * int(home_cfg["idle_exp_stage_multiplier"])) if max_cleared > 0 else 0
+    diamond_rate = int(home_cfg["idle_diamond_per_hour"]) if max_cleared >= int(home_cfg["idle_diamond_unlock_stage"]) else 0
     return {
         "eligible": True,
         "accumulated_minutes": minutes,
         "max_minutes": cap_minutes,
         "gold_per_hour": gold_per_hour,
         "estimated_gold": est_gold,
+        "estimated_items": items,
+        "account_exp_per_hour": exp_rate, "diamond_per_hour": diamond_rate,
+        "estimated_account_exp": minutes * exp_rate // 60, "estimated_diamond": minutes * diamond_rate // 60,
         "vip_idle_bonus_mul": vip_mul,
+        "group_idle_mul": idle_mul,
         "team_power": team_pwr,
         "max_cleared_stage": max_cleared,
         "last_claim_at": row["last_claim_at"] if row else "",
@@ -109,12 +134,35 @@ def claim(service_id: str, player_id: str) -> Dict[str, Any]:
     if not status.get("eligible"):
         raise ValueError(str(status.get("reason") or "暂不可领取"))
     gold = int(status.get("estimated_gold") or 0)
-    if gold <= 0:
+    items = dict(status.get("estimated_items") or {})
+    exp = int(status.get("estimated_account_exp") or 0)
+    diamonds = int(status.get("estimated_diamond") or 0)
+    if gold <= 0 and exp <= 0 and diamonds <= 0 and not items:
         raise ValueError("暂无离线收益")
     now = _now_iso()
     init_db()
+    granted_items: Dict[str, int] = {}
     with get_cursor() as cur:
-        credit_wallet(cur, service_id, player_id, "gold", gold)
+        # Consume the exact preview anchor in the same transaction as every reward.
+        consumed = cur.execute("""UPDATE baas_idle_state SET last_claim_at=?,updated_at=?
+            WHERE service_id=? AND player_id=? AND last_claim_at=? RETURNING last_claim_at""",
+            (now,now,service_id,player_id,status["last_claim_at"])).fetchone()
+        if consumed is None:
+            raise ValueError("收益已领取，请刷新后重试")
+        from services.baas.afk_home_service import grant_account_exp
+        account = grant_account_exp(cur, service_id, player_id, exp) if exp > 0 else None
+        if diamonds > 0: credit_wallet(cur, service_id, player_id, "diamond", diamonds)
+        if gold > 0:
+            credit_wallet(cur, service_id, player_id, "gold", gold)
+        if items and feature_enabled(service_id, "inventory"):
+            from services.baas import inventory_service
+
+            for key, qty in items.items():
+                try:
+                    inventory_service.grant_item(cur, service_id, player_id, str(key), quantity=int(qty))
+                    granted_items[str(key)] = int(qty)
+                except ValueError:
+                    continue
         cur.execute(
             """
             INSERT INTO baas_idle_state (service_id, player_id, last_claim_at, updated_at)
@@ -129,4 +177,11 @@ def claim(service_id: str, player_id: str) -> Dict[str, Any]:
         on_idle_claim(service_id, player_id)
     except Exception:
         pass
-    return {"claimed_gold": gold, "accumulated_minutes": status.get("accumulated_minutes"), "claimed_at": now}
+    return {
+        "claimed_gold": gold,
+        "claimed_account_exp": exp, "claimed_diamond": diamonds, "account": account,
+        "claimed_items": granted_items,
+        "accumulated_minutes": status.get("accumulated_minutes"),
+        "max_cleared_stage": status.get("max_cleared_stage"),
+        "claimed_at": now,
+    }

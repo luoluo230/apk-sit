@@ -7,11 +7,11 @@
     "passed": true,
     "mode": "portal",
     "portal": "http://127.0.0.1:5004",
-    "service_id": "27362a8b-19bf-4f5e-9dd0-c054f337cf78",
-    "room_id": "room_d0a4dcaeb66943d6",
-    "battle_id": "battle_ed4f35741b054cf7",
-    "notifyLatencyMs": 70,
+    "service_id": "608e0df5-78f7-4a5b-b140-160b93bc3cb5",
+    "room_id": "room_5665caf450144478",
+    "battle_id": "battle_9a51c82c83dc4706",
+    "notifyLatencyMs": 54,
     "frame_count": 1
   },
-  "generatedUtc": "2026-08-19T08:36:54.210650+00:00"
+  "generatedUtc": "2026-09-13T08:52:30.646442+00:00"
 }

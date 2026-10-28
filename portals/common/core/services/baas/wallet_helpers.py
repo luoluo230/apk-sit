@@ -17,17 +17,17 @@ def credit_wallet(cur, service_id: str, player_id: str, currency_id: str, amount
     delta = int(amount or 0)
     if delta <= 0:
         return get_balance(cur, service_id, player_id, cid)
-    balance = get_balance(cur, service_id, player_id, cid) + delta
+    # Add the delta in SQL so concurrent PVE/idle transactions cannot overwrite a balance.
     cur.execute(
         """
         INSERT INTO baas_wallets (service_id, player_id, currency_id, balance, updated_at)
         VALUES (?,?,?,?,?)
         ON CONFLICT(service_id, player_id, currency_id) DO UPDATE SET
-            balance=excluded.balance, updated_at=excluded.updated_at
+            balance=baas_wallets.balance+excluded.balance, updated_at=excluded.updated_at
         """,
-        (service_id, player_id, cid, balance, _now_iso()),
+        (service_id, player_id, cid, delta, _now_iso()),
     )
-    return balance
+    return get_balance(cur, service_id, player_id, cid)
 
 
 def debit_wallet(cur, service_id: str, player_id: str, currency_id: str, amount: int) -> int:
