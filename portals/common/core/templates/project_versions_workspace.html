@@ -1,9 +1,9 @@
-<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260708-versions-v21">
+<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260921-flow-final">
 <section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-server-mode="{{ server_mode }}" data-env-scoped="true"{% if platform_filter %} data-platform-filter="{{ platform_filter }}"{% endif %}{% if channel_filter %} data-channel-filter="{{ channel_filter }}"{% endif %}>
   <header class="version-head pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""></span>
-      <div><h1>版本管理</h1><p class="version-head-sub">从项目卡片进入：创建版本、编辑发版信息，并在列表中执行构建/发布/回滚等操作</p></div>
+      <div><h1>版本与管线</h1><p class="version-head-sub">先选环境里的一条交付线，再看该平台的大版本（管线）和该渠道的构建。上线请去发版中心。</p></div>
     </div>
     <div class="version-head-actions pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
@@ -15,14 +15,26 @@
       {% endif %}
     </div>
   </header>
-  <div class="version-scope-actions version-scope-actions--inline" id="versionScopeBanner">
-    <a class="version-btn pm-btn neutral" href="/admin/projects">返回项目列表</a>
-  </div>
-  <div id="versionPlatformTabs" class="version-platform-tabs is-hidden" role="tablist" aria-label="平台"></div>
+  <section class="vw-matrix" aria-label="交付线矩阵">
+    <div class="vw-matrix-head">
+      <div>
+        <h2>交付线</h2>
+        <p class="vw-matrix-hint">环境 × 渠道 × 平台。点一格后，下方只显示该平台的版本组，并过滤到该渠道的 VersionCode。</p>
+      </div>
+      <button type="button" class="version-btn pm-btn" id="vwMatrixClear">查看本环境全部</button>
+    </div>
+    <div id="vwMatrixTable" class="vw-matrix-table"><div class="version-empty">正在加载交付线…</div></div>
+    <p class="vw-matrix-caption" id="vwLineCaption"></p>
+  </section>
   <section class="version-panel pm-table-panel">
     <div class="version-toolbar pm-filter-bar">
       <label class="version-search pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="versionSearch" type="search" placeholder="搜索版本号 / VersionCode"></label>
-      <select id="versionEnv" aria-label="环境"><option value="">全部环境</option><option value="development">开发环境</option><option value="testing">测试环境</option><option value="staging">预发环境</option><option value="production">生产环境</option></select>
+      <select id="versionEnv" aria-label="环境">
+        <option value="development"{% if env_key == 'development' %} selected{% endif %}>开发环境</option>
+        <option value="testing"{% if env_key == 'testing' %} selected{% endif %}>测试环境</option>
+        <option value="staging"{% if env_key == 'staging' %} selected{% endif %}>预发环境</option>
+        <option value="production"{% if env_key == 'production' %} selected{% endif %}>生产环境</option>
+      </select>
       <select id="versionChannel" aria-label="渠道"><option value="">全部渠道</option></select>
       <select id="versionStatus"><option value="">全部状态</option><option value="active">有效</option><option value="testing">测试中</option><option value="draft">草稿</option><option value="disabled">失效</option><option value="archived">归档</option></select>
       <select id="versionArtifactStatus"><option value="">全部产物</option><option value="ready">产物完整</option><option value="pending">产物缺失</option></select>
@@ -129,6 +141,7 @@
     </div>
   </form>
 </div>
-<script src="/static/delivery_scope.js?v=20260731-versions-hub-v1"></script>
-<script src="/static/project_version_release_editor.js?v=20260731-versions-hub-v1"></script>
-<script src="/static/project_versions_workspace.js?v=20260731-versions-hub-v1"></script>
+<script src="/static/delivery_scope.js?v=20260921-flow-final"></script>
+<script src="/static/project_version_release_editor.js?v=20260921-flow-final"></script>
+<script src="/static/project_versions_workspace.js?v=20260921-flow-final"></script>
+<script src="/static/project_version_delivery_matrix.js?v=20260921-flow-final"></script>

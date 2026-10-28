@@ -102,7 +102,7 @@ PROJECTS_PAGE = '''
         <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
             <div>
                 <h3 class="text-sm font-semibold text-slate-900">渠道管理</h3>
-                <p class="text-xs text-slate-500 mt-0.5">维护版本渠道（如开发版、测试版、线上版），用于版本管理与下载中心筛选。</p>
+                <p class="text-xs text-slate-500 mt-0.5">维护版本渠道（如开发版、测试版、线上版），用于版本与管线、下载中心筛选。</p>
             </div>
             <button type="button" onclick="closeChannelManageModal()" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
         </div>

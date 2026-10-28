@@ -92,7 +92,7 @@ MODULE_LINKS = {
     'build': ('/admin/build', 'fa-cogs', 'text-orange-500'),
     'commercial_release': ('/admin/projects', 'fa-rocket', 'text-violet-500'),
     'dashboard': ('/admin/dashboard', 'fa-chart-pie', 'text-purple-500'),
-    'versions': ('/admin/versions', 'fa-code-branch', 'text-teal-500'),
+    'versions': ('/admin/projects', 'fa-code-branch', 'text-teal-500'),
     'docs': ('/docs', 'fa-file-alt', 'text-cyan-500'),
     'jenkins': ('/admin/jenkins', 'fa-server', 'text-indigo-500'),
     'audit_log': ('/admin/audit-log', 'fa-history', 'text-gray-500'),

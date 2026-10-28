@@ -46,7 +46,7 @@ def resolve_scope(
     scope = find_scope(sid)
     if scope:
         return scope
-    if is_valid_platform_id(plat):
+    if plat in {"android", "ios"}:
         legacy_sid = build_scope_id(project_slug(pid), ek, cid)
         if legacy_sid != sid:
             legacy = find_scope(legacy_sid)

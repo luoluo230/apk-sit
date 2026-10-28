@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from repositories import server_release_repo
 from services.release.env_registry import normalize_release_env_key
@@ -15,13 +18,13 @@ TERMINAL_STATUSES = {"deployed", "failed", "rolled_back", "cancelled"}
 DEPLOYABLE_STATUSES = {"ready", "deployed"}
 
 _ALLOWED_TRANSITIONS: Dict[str, set] = {
-    "draft": {"ready", "cancelled", "awaiting_approval"},
+    "draft": {"ready", "cancelled", "awaiting_approval", "building"},
     "building": {"ready", "failed", "cancelled"},
     "ready": {"deploying", "cancelled"},
     "awaiting_approval": {"ready", "cancelled"},
     "deploying": {"deployed", "failed"},
     "deployed": {"deploying", "rolled_back"},
-    "failed": {"ready", "deploying", "cancelled"},
+    "failed": {"ready", "deploying", "cancelled", "building"},
     "rolled_back": {"ready", "deploying"},
     "cancelled": set(),
 }
@@ -163,8 +166,59 @@ def transition_server_release(
                 error=str((detail or {}).get("error") or "") if isinstance(detail, dict) else "",
             )
         except Exception:
-            pass
+            logger.exception("server deploy notify failed project=%s release=%s", project_id, server_release_id)
     return result
+
+
+def request_gameserver_build(project_id: str, server_release_id: str, actor: str) -> Dict[str, Any]:
+    """Queue the server-only Jenkins job. Client Android/iOS/WxMinigame jobs are not used."""
+    from services.build.build_grid import resolve_gameserver_job
+
+    row = get_server_release(project_id, server_release_id)
+    if not row:
+        raise ValueError("服务端发布单不存在")
+    if str(row.get("artifact_id") or "").strip():
+        raise ValueError("已有服务端制品，请直接部署")
+    job = resolve_gameserver_job()
+    if job["job_name"] in {"Android", "iOS", "WxMinigame"}:
+        raise ValueError("游戏服构建不能使用客户端 Job")
+    from services.release.gameserver_build_trigger import trigger_gameserver_job
+
+    triggered = trigger_gameserver_job(project_id, server_release_id, job["job_name"])
+    payload = dict(row.get("payload") or {})
+    payload["build_job"] = job
+    payload["jenkins_build_number"] = triggered.get("build_number")
+    server_release_repo.update_release_fields(
+        server_release_id, payload=payload, updated_at=_now_iso()
+    )
+    current = str(row.get("status") or "draft")
+    if current == "building":
+        latest = get_server_release(project_id, server_release_id)
+        return latest or row
+    return transition_server_release(
+        project_id, server_release_id, "building", actor, detail=job
+    )
+
+
+def finish_gameserver_build(
+    project_id: str,
+    server_release_id: str,
+    artifact_id: str,
+    actor: str,
+) -> Dict[str, Any]:
+    """Jenkins registered the server zip. Move the release from building to ready."""
+    row = get_server_release(project_id, server_release_id)
+    if not row:
+        raise ValueError("服务端发布单不存在")
+    aid = str(artifact_id or "").strip()
+    if not aid or not get_artifact(aid):
+        raise ValueError("服务端制品不存在")
+    if str(row.get("status") or "") != "building":
+        raise ValueError("只有构建中的服务端发布单可以接收制品")
+    server_release_repo.update_release_fields(
+        server_release_id, artifact_id=aid, updated_at=_now_iso()
+    )
+    return transition_server_release(project_id, server_release_id, "ready", actor)
 
 
 def deploy_server_release(project_id: str, server_release_id: str, actor: str) -> Dict[str, Any]:

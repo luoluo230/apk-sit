@@ -25,6 +25,7 @@ SCAN_PATHS = [
     os.path.join(ROOT, "static", "delivery_order_detail.js"),
     os.path.join(ROOT, "static", "delivery_common.js"),
     os.path.join(ROOT, "static", "project_delivery.js"),
+    os.path.join(ROOT, "static", "project_delivery_env.js"),
     os.path.join(ROOT, "static", "project_channel_build_journey.js"),
     os.path.join(ROOT, "static", "project_channel_release_journey.js"),
     os.path.join(ROOT, "static", "project_test_devices.js"),

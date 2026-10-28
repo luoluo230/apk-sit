@@ -8,7 +8,7 @@ from flask import render_template, request, session
 from models.data import projects_db
 from services.ops.helpers import _render_ops_page
 
-DELIVERY_ASSET_VER = "20260724-closure-e2e"
+DELIVERY_ASSET_VER = "20260922-delivery-env"
 
 BREADCRUMB_BY_PAGE = {
     "project-home": "总览",
@@ -46,6 +46,7 @@ def delivery_js_bundle(*extra: str) -> str:
     ]
     for name in extra:
         parts.append(f'<script src="/static/{name}?v={DELIVERY_ASSET_VER}"></script>')
+    parts.append(f'<script src="/static/project_delivery_env.js?v={DELIVERY_ASSET_VER}"></script>')
     parts.append(f'<script src="/static/project_delivery.js?v={DELIVERY_ASSET_VER}"></script>')
     return "".join(parts)
 

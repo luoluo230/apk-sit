@@ -9,6 +9,7 @@ BUILD_ROLE_CONTROL = "control"
 BUILD_ROLE_ANDROID = "build-android"
 BUILD_ROLE_IOS = "build-ios"
 BUILD_ROLE_WXMINIGAME = "build-wxminigame"
+BUILD_ROLE_GAMESERVER = "build-gameserver"
 BUILD_ROLE_RUNTIME = "runtime"
 
 BUILD_ROLES: Dict[str, Dict[str, Any]] = {
@@ -42,6 +43,15 @@ BUILD_ROLES: Dict[str, Dict[str, Any]] = {
         "display_name": "微信小游戏构建",
         "os_allowed": ["windows"],
         "install_script": "scripts/Install-ReleasePlatform.ps1 -Role build-wxminigame",
+    },
+    BUILD_ROLE_GAMESERVER: {
+        "label": "build-gameserver",
+        "job_name": "GameServer-Build",
+        "pipeline_script": "gameserver_build_pipeline.sh",
+        "display_name": "游戏服构建",
+        "os_allowed": ["windows", "linux"],
+        "install_script": "",
+        "plane": "server",
     },
 }
 
@@ -89,6 +99,16 @@ def resolve_jenkins_job_for_platform(platform: str, explicit_job: str = "") -> s
 
 def resolve_build_role_for_platform(platform: str) -> str:
     return PLATFORM_TO_ROLE.get(normalize_build_platform(platform), BUILD_ROLE_ANDROID)
+
+
+def resolve_gameserver_job() -> Dict[str, str]:
+    """Server build job. Not a client platform job."""
+    meta = BUILD_ROLES[BUILD_ROLE_GAMESERVER]
+    return {
+        "role": BUILD_ROLE_GAMESERVER,
+        "job_name": str(meta["job_name"]),
+        "pipeline_script": str(meta["pipeline_script"]),
+    }
 
 
 def resolve_pipeline_script(platform: str) -> str:

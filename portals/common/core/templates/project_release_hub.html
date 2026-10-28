@@ -1,18 +1,8 @@
-{% macro hub_card(card) -%}
-<a class="rh-card{% if card.primary %} rh-card--primary{% endif %}" href="{{ card.href }}">
-  <img src="/static/project_ui/svg/{{ card.icon }}.svg" alt="">
-  <div>
-    <strong>{{ card.title }}</strong>
-    <span>{{ card.desc }}</span>
-  </div>
-</a>
-{%- endmacro %}
-
 <section class="rh-app" data-release-hub data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
   <header class="rh-header">
     <div>
       <h1>发版中心</h1>
-      <p>交付发版统一入口 — 快捷操作、跨环境晋级、协同发布反馈</p>
+      <p>先看当前环境线上版本，再按 构建 → 预检 → 发布 推进。这里负责定向，发版负责执行。</p>
     </div>
     <div class="rh-header-actions">
       <label class="rh-env-select">
@@ -24,9 +14,38 @@
   </header>
 
   <div class="rh-grid">
-    <section class="rh-panel rh-panel--modules" aria-label="交付模块">
-      <h2>交付模块</h2>
-      <div class="rh-card-grid" id="rhModuleCards"></div>
+    <section class="rh-panel rh-panel--runtime" aria-label="线上现状">
+      <h2>线上现状 <small>客户端实际加载的 Bundle，不是待发布草稿</small></h2>
+      <p class="rh-hint" id="rhRuntimeSummary">加载中…</p>
+      <div class="rh-runtime-list" id="rhRuntimeLines"><div class="rh-empty">加载中…</div></div>
+    </section>
+
+    <section class="rh-panel rh-panel--storyline" aria-label="当前发版进度">
+      <div class="rh-storyline-head">
+        <div>
+          <h2>当前发版</h2>
+          <p class="rh-hint" id="rhStorylineDetail">加载中…</p>
+        </div>
+        <a class="rh-btn rh-btn--primary" id="rhStorylineCta" href="/admin/projects/{{ project_id }}/release?env_key={{ env_key or 'development' }}">去发版</a>
+      </div>
+      <ol class="rh-storyline" id="rhStoryline"></ol>
+    </section>
+
+    <section class="rh-panel rh-panel--pending" aria-label="待处理发布单">
+      <h2>待处理</h2>
+      <div class="rh-pending-list" id="rhPendingList"><div class="rh-empty">加载中…</div></div>
+    </section>
+
+    <section class="rh-panel rh-panel--promotion" aria-label="客户端跨环境晋级">
+      <h2>客户端制品晋级</h2>
+      <p class="rh-hint">同一制品跨环境晋级，不重新构建（Build Once, Promote Many）</p>
+      <div class="rh-promotion-list" id="rhPromotionList"><div class="rh-empty">加载中…</div></div>
+    </section>
+
+    <section class="rh-panel rh-panel--server-promotion" aria-label="服务端跨环境晋级">
+      <h2>服务端制品晋级</h2>
+      <p class="rh-hint">将低环境已部署的服务端制品晋级到更高环境，创建就绪发布单</p>
+      <div class="rh-promotion-list" id="rhServerPromotionList"><div class="rh-empty">加载中…</div></div>
     </section>
 
     <section class="rh-panel rh-panel--health" aria-label="发布健康度">
@@ -43,33 +62,12 @@
       <div class="rh-health-trend" id="rhHealthTrend"></div>
     </section>
 
-    <section class="rh-panel rh-panel--wizard" aria-label="生产发版向导">
-      <h2>生产发版向导</h2>
-      <ol class="rh-stepper" id="rhProdWizard"></ol>
-      <a class="rh-btn rh-btn--primary" id="rhProdStartBtn" href="/admin/projects/{{ project_id }}/release?env_key=production">进入生产发版</a>
-    </section>
-
-    <section class="rh-panel rh-panel--promotion" aria-label="客户端跨环境晋级">
-      <h2>客户端制品晋级</h2>
-      <p class="rh-hint">将低环境已发布 Bundle 晋级到更高环境，跳过重复构建</p>
-      <div class="rh-promotion-list" id="rhPromotionList"><div class="rh-empty">加载中…</div></div>
-    </section>
-
-    <section class="rh-panel rh-panel--server-promotion" aria-label="服务端跨环境晋级">
-      <h2>服务端制品晋级</h2>
-      <p class="rh-hint">将低环境已部署的服务端制品晋级到更高环境，创建就绪 SRO</p>
-      <div class="rh-promotion-list" id="rhServerPromotionList"><div class="rh-empty">加载中…</div></div>
-    </section>
-
     <section class="rh-panel rh-panel--coordinated" aria-label="协同发布反馈">
       <h2>协同发布 / 联合回滚</h2>
-      <p class="rh-hint">与客户端同批发布、联合回滚的服务端部署状态与审计留痕</p>
+      <p class="rh-hint">与客户端同批发布、联合回滚的服务端部署状态</p>
       <div class="rh-coordinated-list" id="rhCoordinatedList"><div class="rh-empty">加载中…</div></div>
     </section>
-
-    <section class="rh-panel rh-panel--pending" aria-label="待处理发布单">
-      <h2>待处理发布单</h2>
-      <div class="rh-pending-list" id="rhPendingList"><div class="rh-empty">加载中…</div></div>
-    </section>
   </div>
+  <ol class="rh-stepper" id="rhProdWizard" hidden></ol>
+  <a class="rh-btn rh-btn--primary" id="rhProdStartBtn" hidden href="/admin/projects/{{ project_id }}/release?env_key=production">进入生产发版</a>
 </section>

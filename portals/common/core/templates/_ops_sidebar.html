@@ -17,10 +17,10 @@
     {% if project_id %}
     <div class="ops-shell-nav-group"><b>交付发版</b>
       {{ nav_item('release-hub', '/admin/projects/' ~ project_id ~ '/release-hub', 'nav_release', '发版中心') }}
-      {{ nav_item('release-console', '/admin/projects/' ~ project_id ~ '/release', 'nav_release', '发版控制台') }}
-      {{ nav_item('versions', '/admin/projects/' ~ project_id ~ '/versions', 'nav_version', '版本管理') }}
-      {{ nav_item('release-orders', '/admin/projects/' ~ project_id ~ '/release-orders', 'nav_release_order', '发布单') }}
+      {{ nav_item('release-console', '/admin/projects/' ~ project_id ~ '/release', 'nav_release', '发版') }}
       {{ nav_item('builds', '/admin/projects/' ~ project_id ~ '/build-history?scoped=1&env_key=' ~ (env_key or 'development'), 'nav_build_artifact', '构建与产物') }}
+      {{ nav_item('versions', '/admin/projects/' ~ project_id ~ '/versions?env_key=' ~ (env_key or 'development'), 'nav_version', '版本与管线') }}
+      {{ nav_item('release-orders', '/admin/projects/' ~ project_id ~ '/release-orders', 'nav_release_order', '发布历史') }}
     </div>
     <div class="ops-shell-nav-group"><b>项目总览</b>
       {{ nav_item('project-home', '/admin/projects/' ~ project_id ~ '/overview', 'nav_project_overview', '项目总览') }}

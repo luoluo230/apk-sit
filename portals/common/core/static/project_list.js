@@ -231,7 +231,7 @@
     }
     var rel = p.latest_release || null;
     if (!rel || !rel.version_name) {
-      return "<span>版本管理</span><span class='p01-hint'>进入发版</span>";
+      return "<span>版本与管线</span><span class='p01-hint'>进入版本与管线</span>";
     }
     var relInfo = DL.releaseStatus
       ? DL.releaseStatus(rel.status, rel.status_label)
@@ -240,7 +240,7 @@
       ? DL.formatReleaseDateTime(rel.updated_at)
       : String(rel.updated_at || "").slice(0, 16);
     return (
-      "<span>版本管理</span><b>" +
+      "<span>版本与管线</span><b>" +
       escapeHtml(rel.version_name) +
       "</b><time>" +
       escapeHtml(when) +
@@ -715,7 +715,7 @@
             setAddFeedback(d.error || "添加失败（" + res.status + "）", true);
             return;
           }
-          setAddFeedback("添加成功。构建集成可在编辑项目或版本代码页配置。", false);
+          setAddFeedback("添加成功。构建集成可在编辑项目或版本与管线页配置。", false);
           closeModal("createProjectModal");
           loadProjects();
         })

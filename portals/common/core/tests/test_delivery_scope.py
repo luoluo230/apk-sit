@@ -205,21 +205,22 @@ class VersionsEnvGateTests(unittest.TestCase):
         app.config["WTF_CSRF_ENABLED"] = False
         self.client = app.test_client()
 
-    @patch("routes.admin_routes.can_edit_project", return_value=True)
-    @patch("routes.admin_routes.can_view_project", return_value=True)
-    @patch.dict("routes.admin_routes.projects_db", {"demo": {"name": "Demo"}}, clear=False)
-    def test_versions_without_env_key_redirects_to_env_picker(self, _mock_edit, _mock_view):
+    @patch("routes.admin.pages_project_workspace.can_edit_project", return_value=True)
+    @patch("routes.admin.pages_project_workspace.can_view_project", return_value=True)
+    @patch.dict("routes.admin.pages_project_workspace.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    def test_versions_without_env_key_defaults_to_development(self, _mock_view, _mock_edit):
         with self.client.session_transaction() as sess:
             sess["user"] = "admin"
         resp = self.client.get("/admin/projects/demo/versions")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("tab=environments", resp.headers.get("Location", ""))
-        self.assertIn("hint=pick_env", resp.headers.get("Location", ""))
+        location = resp.headers.get("Location", "")
+        self.assertIn("env_key=development", location)
+        self.assertNotIn("hint=pick_env", location)
 
     @patch("data.delivery_scope.get_channels_for_env", return_value=[{"id": "wechat", "name": "WeChat"}])
-    @patch("routes.admin_routes.can_edit_project", return_value=True)
-    @patch("routes.admin_routes.can_view_project", return_value=True)
-    @patch.dict("routes.admin_routes.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    @patch("routes.admin.pages_project_workspace.can_edit_project", return_value=True)
+    @patch("routes.admin.pages_project_workspace.can_view_project", return_value=True)
+    @patch.dict("routes.admin.pages_project_workspace.projects_db", {"demo": {"name": "Demo"}}, clear=False)
     def test_versions_with_env_key_renders(self, _mock_view, _mock_edit, _mock_channels):
         with self.client.session_transaction() as sess:
             sess["user"] = "admin"
@@ -227,6 +228,45 @@ class VersionsEnvGateTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"version-workspace", resp.data)
         self.assertIn(b"data-env-scoped", resp.data)
+        self.assertIn("交付线".encode("utf-8"), resp.data)
+        self.assertIn(b"vw-matrix", resp.data)
+        self.assertIn("版本与管线".encode("utf-8"), resp.data)
+        self.assertNotIn("返回项目列表".encode("utf-8"), resp.data)
+        self.assertNotIn("versionPlatformTabs".encode("utf-8"), resp.data)
+
+    def test_legacy_admin_versions_redirects_to_projects(self):
+        with self.client.session_transaction() as sess:
+            sess["user"] = "admin"
+        resp = self.client.get("/admin/versions", follow_redirects=False)
+        self.assertIn(resp.status_code, (301, 302, 303))
+        self.assertIn("/admin/projects", resp.headers.get("Location") or "")
+
+    @patch("services.admin.version_delivery_matrix_service.build_version_delivery_matrix")
+    @patch("routes.admin.pages_project_workspace.can_view_project", return_value=True)
+    @patch.dict("routes.admin.pages_project_workspace.projects_db", {"demo": {"name": "Demo"}}, clear=False)
+    def test_version_delivery_matrix_api(self, _mock_view, mock_matrix):
+        mock_matrix.return_value = {
+            "env_key": "development",
+            "env_label": "开发环境",
+            "channels": [{"channel_id": "wechat", "channel_name": "微信"}],
+            "platforms": [{"value": "android", "label": "Android"}],
+            "cells": [
+                {
+                    "channel_id": "wechat",
+                    "platform": "android",
+                    "status": "empty",
+                    "label": "未配管线",
+                }
+            ],
+        }
+        with self.client.session_transaction() as sess:
+            sess["user"] = "admin"
+        resp = self.client.get("/api/projects/demo/version-delivery-matrix?env_key=development")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json() or {}
+        self.assertTrue(body.get("ok"))
+        self.assertEqual((body.get("data") or {}).get("env_key"), "development")
+        self.assertEqual(len((body.get("data") or {}).get("cells") or []), 1)
 
 
 if __name__ == "__main__":

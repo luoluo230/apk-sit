@@ -70,6 +70,16 @@ def register_routes(bp):
         row = srs.update_server_release(project_id, server_release_id, body, actor)
         return jsonify({"ok": True, "data": row})
 
+    @bp.route("/api/admin/projects/<project_id>/server-releases/<server_release_id>/build", methods=["POST"])
+    @admin_required("projects")
+    def api_server_release_build(project_id: str, server_release_id: str):
+        actor = str(session.get("user") or "admin")
+        try:
+            row = srs.request_gameserver_build(project_id, server_release_id, actor)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "data": row})
+
     @bp.route("/api/admin/projects/<project_id>/server-releases/<server_release_id>/deploy", methods=["POST"])
     @admin_required("projects")
     def api_server_release_deploy(project_id: str, server_release_id: str):

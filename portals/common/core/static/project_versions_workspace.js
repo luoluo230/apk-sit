@@ -12,7 +12,6 @@
   const lockChannelId = urlParams.get("channel_id") || root.dataset.channelFilter || "";
   const lockPlatform = urlParams.get("platform") || root.dataset.platformFilter || "";
   const lockEnvKey = urlParams.get("env_key") || root.dataset.envKey || document.getElementById("versionEnvHidden")?.value || "";
-  const lockChannelScoped = Boolean(lockChannelId);
   const lockDeliveryLine = urlParams.get("action") === "create_vc" && lockChannelId && lockPlatform;
   const envScoped = Boolean(lockEnvKey);
   const createVcAction = urlParams.get("action") === "create_vc";
@@ -22,9 +21,12 @@
   let platforms = [];
   let filterVersionName = urlParams.get("version_name") || "";
   let activePlatformKey = lockPlatform || "";
+  let selectedChannelId = lockChannelId || "";
   const collapsedGroups = new Set();
   let listPage = 1;
   const listPageSize = 20;
+  let loadSeq = 0;
+  let suppressChannelChange = false;
   let releaseOrderByVersion = new Map();
   let deliveryActionsByVersion = new Map();
   const scopeApi = window.DeliveryScope || {};
@@ -103,6 +105,8 @@
     const hit = channels.find((item) => item.channel_id === channelId);
     return hit?.channel_name || channelId || "-";
   };
+  const channelFilterValue = () =>
+    document.getElementById("versionChannel")?.value || selectedChannelId || "";
   const platformLabelOf = (platformValue) => {
     const hit = platforms.find((item) => item.value === platformValue);
     return hit?.label || platformValue || "-";
@@ -124,7 +128,7 @@
     if (filterValue) return filterValue;
     return channels[0]?.channel_id || "";
   };
-  const platformTabsVisible = () => Boolean(activeEnvKey() && platforms.length > 0);
+  const platformTabsVisible = () => false;
   const scopeQueryString = () => {
     const parts = [];
     const env = activeEnvKey();
@@ -155,7 +159,7 @@
   const useAllEnvChannels = () => false;
   const currentScope = () => ({
     env_key: activeEnvKey() || envKey || "production",
-    channel_id: document.getElementById("versionChannel")?.value || lockChannelId || "",
+    channel_id: document.getElementById("versionChannel")?.value || "",
     platform: activePlatform(),
   });
 
@@ -512,9 +516,14 @@
          <button class="version-btn neutral compact" type="button" data-edit-group="${esc(groupName)}">编辑</button>
          <button class="version-btn warn compact" type="button" data-delete-group="${esc(groupName)}">删除</button>`
       : `${groupDownloadBtn}<a class="version-btn build compact" href="${buildConfigHref}">查看管线</a>`;
+    const channelGate = channelFilterValue();
     const emptyHint = children.length
       ? ""
-      : `<div class="version-empty-inline ${TABLE_COLS}">尚无 VersionCode · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button></div>`;
+      : `<div class="version-empty-inline ${TABLE_COLS}">${
+          channelGate
+            ? `该渠道尚无构建 · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">为 ${esc(channelNameOf(channelGate))} 添加 VC</button>`
+            : `尚无 VersionCode · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button>`
+        }</div>`;
     return `<section class="version-group-card${collapsed ? " is-collapsed" : ""}" data-group="${esc(groupName)}">
       <div class="version-row version-row-group ${TABLE_COLS}">
         <div class="version-group-title">
@@ -534,6 +543,16 @@
       </div>
       <div class="version-group-children">${emptyHint}${children.map((child) => childRowHtml(child, group)).join("")}</div>
     </section>`;
+  };
+
+  const emptyListHtml = (platformGate, channelGate) => {
+    if (channelGate && platformGate) {
+      return `<div class="version-empty">当前交付线（${esc(channelNameOf(channelGate))} · ${esc(platformLabelOf(platformGate))}）还没有版本组。请先「新建版本组」配置该平台管线，再「添加 VC」创建该渠道构建。</div>`;
+    }
+    if (envScoped) {
+      return `<div class="version-empty">本环境${platformGate ? ` · ${esc(platformLabelOf(platformGate))}` : ""}尚无版本组。请先「新建版本组」，再在版本组行点击「添加 VC」。</div>`;
+    }
+    return '<div class="version-empty">当前筛选条件下暂无版本数据。</div>';
   };
 
   const render = () => {
@@ -598,9 +617,7 @@
     });
     document.getElementById("versionGroups").innerHTML = groups.length
       ? groups.join("")
-      : (envScoped
-        ? `<div class="version-empty">本环境${platformGate ? ` · ${platformLabelOf(platformGate)}` : ""}尚无 VersionCode。请在版本组行点击「添加 VC」创建。</div>`
-        : '<div class="version-empty">当前筛选条件下暂无版本数据。</div>');
+      : emptyListHtml(platformGate, document.getElementById("versionChannel")?.value || "");
     document.querySelectorAll("[data-toggle-group]").forEach((button) => {
       button.onclick = () => {
         const name = button.dataset.toggleGroup;
@@ -656,7 +673,7 @@
         event.stopPropagation();
         const groupName = button.getAttribute("data-download-pick") || "";
         const platformGate = activePlatform();
-        const channelGate = document.getElementById("versionChannel")?.value || lockChannelId || "";
+        const channelGate = document.getElementById("versionChannel")?.value || "";
         const picks = rows.filter((row) => {
           if ((row.version_name || "") !== groupName) return false;
           if (row.apk_status !== "found") return false;
@@ -730,12 +747,14 @@
     }
     const filterChannel = document.getElementById("versionChannel");
     if (filterChannel && env) {
-      const current = lockChannelId || filterChannel.value;
+      const current = selectedChannelId || filterChannel.value;
+      suppressChannelChange = true;
       filterChannel.innerHTML = '<option value="">全部渠道</option>' + channels.map((x) => `<option value="${esc(x.channel_id)}">${esc(x.channel_name)}</option>`).join("");
-      if (current && (current === "" || channels.some((x) => x.channel_id === current))) filterChannel.value = current;
-      else if (lockChannelId && channels.some((x) => x.channel_id === lockChannelId)) filterChannel.value = lockChannelId;
-      if (lockChannelScoped) filterChannel.disabled = true;
-      else filterChannel.disabled = false;
+      if (current && channels.some((x) => String(x.channel_id) === String(current))) filterChannel.value = current;
+      else filterChannel.value = "";
+      selectedChannelId = filterChannel.value || "";
+      filterChannel.disabled = Boolean(lockDeliveryLine);
+      suppressChannelChange = false;
     }
   };
 
@@ -780,21 +799,30 @@
     });
   };
 
+  const applyLineSelection = ({ channel_id = "", platform = "" } = {}) => {
+    selectedChannelId = channel_id || "";
+    activePlatformKey = platform || "";
+    const channelSelect = document.getElementById("versionChannel");
+    if (channelSelect) channelSelect.value = selectedChannelId;
+    root.classList.toggle("is-channel-scoped", Boolean(selectedChannelId && activePlatformKey));
+  };
+
   const applyEnvScopedUi = () => {
     if (lockEnvKey) root.classList.add("is-env-scoped");
-    if (lockChannelId) {
+    const envSelect = document.getElementById("versionEnv");
+    if (envSelect && lockEnvKey) envSelect.value = lockEnvKey;
+    const channelSelect = document.getElementById("versionChannel");
+    if (lockDeliveryLine) {
       root.classList.add("is-channel-scoped");
-      const channelSelect = document.getElementById("versionChannel");
       if (channelSelect) {
+        channelSelect.value = lockChannelId;
         channelSelect.disabled = true;
         channelSelect.classList.add("is-locked");
       }
+      activePlatformKey = lockPlatform || activePlatformKey;
+      return;
     }
-    const envSelect = document.getElementById("versionEnv");
-    if (envSelect && lockEnvKey) {
-      envSelect.value = lockEnvKey;
-      envSelect.disabled = true;
-    }
+    applyLineSelection({ channel_id: lockChannelId, platform: lockPlatform });
   };
 
   const versionGroupsUrl = () => {
@@ -867,6 +895,7 @@
 
   const load = async () => {
     const host = document.getElementById("versionGroups");
+    const seq = ++loadSeq;
     try {
       const envFilterValue = lockEnvKey || document.getElementById("versionEnv")?.value || envKey || "";
       const [versionData, groupData, context, releaseOrdersRes] = await Promise.all([
@@ -875,6 +904,7 @@
         request(contextOptionsUrl(envFilterValue)),
         request(`/api/projects/${projectId}/release-orders`).catch(() => ({ data: [] })),
       ]);
+      if (seq !== loadSeq) return;
       rows = versionData.versions || [];
       versionGroups = groupData.version_groups || [];
       releaseOrderByVersion = new Map();
@@ -902,14 +932,12 @@
         const current = filterChannel.value;
         filterChannel.innerHTML = '<option value="">全部渠道</option>' + [...uniq.entries()].map(([cid, name]) => `<option value="${esc(cid)}">${esc(name)}</option>`).join("");
         if (current && (current === "" || uniq.has(current))) filterChannel.value = current;
-        filterChannel.disabled = Boolean(lockChannelId);
+        filterChannel.disabled = Boolean(lockDeliveryLine);
       }
-      if (!activePlatformKey && platforms.length) activePlatformKey = lockPlatform || platforms[0].value;
       renderPlatformTabs();
       refreshVersionNameSelect();
-      const channelFilter = document.getElementById("versionChannel");
-      if (channelFilter && lockChannelId && !channelFilter.value) channelFilter.value = lockChannelId;
       render();
+      syncScopeUrl();
     } catch (error) {
       if (host) host.innerHTML = `<div class="version-empty">${esc(error.message || "加载失败")}</div>`;
       toast(error.message || "加载失败", "error");
@@ -1066,7 +1094,10 @@
   document.getElementById("btnCancelVersionGroupDialog").onclick = closeGroupDialog;
   document.getElementById("btnCloseVersionDialog").onclick = closeVersionDialog;
   document.getElementById("btnCancelVersionDialog").onclick = closeVersionDialog;
-  document.getElementById("btnRefreshVersions").onclick = () => load().catch((error) => toast(error.message, "error"));
+  document.getElementById("btnRefreshVersions").onclick = () => {
+    root.dispatchEvent(new CustomEvent("vw-matrix-refresh"));
+    load().catch((error) => toast(error.message, "error"));
+  };
 
   groupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1132,9 +1163,9 @@
     banner.className = "version-hint-banner";
     const error = urlParams.get("error");
     if (hint === "pick_env") {
-      banner.textContent = "请先在「环境配置」中选择要操作的交付环境，再进入版本代码工作台。";
+      banner.textContent = "请先在「环境配置」中选择要操作的交付环境，再进入版本与管线。";
     } else if (hint === "use_versions_hub") {
-      banner.textContent = "下载与产物管理已并入版本代码页。请在本环境筛选 VersionCode，使用行内「下载」或顶部「构建与产物」。";
+      banner.textContent = "下载与产物管理已并入版本与管线。请在本环境筛选 VersionCode，使用行内「下载」或顶部「构建与产物」。";
     } else if (hint === "pick_vc") {
       banner.textContent = error
         ? `无法继续：${error}。请先配置版本组管线，再使用行内「触发构建」或「继续发版」。`
@@ -1161,12 +1192,34 @@
   const envFilter = document.getElementById("versionEnv");
   if (envFilter) {
     if (lockEnvKey) envFilter.value = lockEnvKey;
-    envFilter.addEventListener("change", async () => {
-      listPage = 1;
-      syncScopeUrl();
-      await load();
+    envFilter.addEventListener("change", () => {
+      const env = envFilter.value || "development";
+      location.href = `/admin/projects/${encodeURIComponent(projectId)}/versions?env_key=${encodeURIComponent(env)}`;
     });
   }
+
+  document.getElementById("versionChannel")?.addEventListener("change", () => {
+    if (lockDeliveryLine || suppressChannelChange) return;
+    selectedChannelId = document.getElementById("versionChannel")?.value || "";
+    listPage = 1;
+    syncScopeUrl();
+    render();
+  });
+
+  root.addEventListener("vw-select-line", async (event) => {
+    const detail = event.detail || {};
+    applyLineSelection({
+      channel_id: detail.channel_id || "",
+      platform: detail.platform || "",
+    });
+    listPage = 1;
+    syncScopeUrl();
+    try {
+      await load();
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1290,7 +1343,7 @@
     event.stopPropagation();
     const groupName = pickBtn.getAttribute("data-download-pick") || "";
     const platformGate = activePlatform();
-    const channelGate = document.getElementById("versionChannel")?.value || lockChannelId || "";
+    const channelGate = document.getElementById("versionChannel")?.value || "";
     const picks = rows.filter((row) => {
       if ((row.version_name || "") !== groupName) return false;
       if (row.apk_status !== "found") return false;

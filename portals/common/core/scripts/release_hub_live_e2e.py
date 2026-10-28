@@ -45,7 +45,7 @@ def main() -> int:
 
     console_page = s.get(f"{BASE}/admin/projects/{pid}/release?env_key=development", timeout=30)
     checks["release_console_page_200"] = console_page.status_code == 200
-    checks["release_console_title"] = "发版控制台" in console_page.text
+    checks["release_console_title"] = "发版" in console_page.text
 
     hub_api = s.get(f"{BASE}/api/projects/{pid}/release-hub?env_key=development", timeout=20)
     checks["release_hub_api_200"] = hub_api.status_code == 200 and hub_api.json().get("ok") is True

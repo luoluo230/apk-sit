@@ -1,5 +1,22 @@
 # Plan DoD + 评审 W/C Closure — 缺口真源清单
 
+> **更新时间**：2026-09-22（续作，不要从头评审）
+> **代码基线**：工作区未提交改动
+> **结论**：未到可部署三平面成品。iOS 仍阻塞。本机 PostgreSQL 17 在跑，但 Portal 进程仍用 SQLite。
+
+## 0.1 2026-09-22 已落地，禁止重做
+
+- 生产启动：缺密钥或 `DATABASE_URL` 不是 PostgreSQL 则拒绝启动。部署说明 `docs/runbooks/deployment_topology.md`。入口地图只保留发版中心、发版、版本与管线、构建与产物、发布历史。
+- `version_service.py` 保持薄入口。环境矩阵与交付范围在 `static/project_delivery_env.js`。
+- 游戏服构建：`request_gameserver_build` / `finish_gameserver_build`，Job 为 `GameServer-Build`，接口 `POST .../server-releases/<id>/build`。不调用客户端 `request_build`。
+- 自动回滚仅当 `incident_actions_ready()`（通知 URL + 显式签名密钥）为真。验证失败通知仍会发送。
+- Agent 回报 `deploy_server_artifact` 成功或失败时，会更新服务端发布单状态，不再只改任务记录。
+- 正在跑的 Portal `:5003` 已改用独立库 `apk_site`（用户 `apk_portal`）。连接写在仓库根目录 `.env` 的 `DATABASE_URL`，该文件不进 git。本地认证已恢复为 scram。五子棋版本页在切换后仍能打开。BaaS 原库 `apk_baas` 没有动。
+
+下一步：没有 Jenkins 时不要把构建标成功；没有超级用户口令时不要把 :5003 切到 `apk_baas`；iOS 保持阻塞。
+
+---
+
 > **标准（用户要求，不可降级）**：`P0-01`～`P2-03` 每个 Plan 的 DoD 与 Step 验收 **100% 勾完且可复验**；`full_stack_expert_review.md` 中 W/C 项 **有证据 closure**；**线上可用** — 不是「代码 merge 了就行」。
 >
 > **更新时间**：2026-07-29（strict pass #2）  
@@ -82,14 +99,14 @@
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
 | GAP-P0-02-PRE-01 | 前置：DB/JSON 备份 | **NOT_DONE** | 无运维签字备份记录 | `data/apk_site.db` |
-| GAP-P0-02-PRE-02 | 前置：部署模式决策 | **NOT_DONE** | 无 `docs/runbooks/deployment_topology.md` 类文档 | P0-02 §3 |
-| GAP-P0-02-S2-01 | Step 2: 进程 A 写 B 读 | **NOT_DONE** | 仅 `test_project_repo_concurrency.py` 双线程 | `repositories/registry/`、`models/db.py` |
-| GAP-P0-02-S3-01 | Step 3: 10 thread release_order stress | **NOT_DONE** | 无专项测试/script | `models/db.py` release_orders 表 |
+| GAP-P0-02-PRE-02 | 前置：部署模式决策 | **DONE** | `docs/runbooks/deployment_topology.md`：开发 SQLite 单进程，生产 PostgreSQL | P0-02 §3 |
+| GAP-P0-02-S2-01 | Step 2: 进程 A 写 B 读 | **DONE** | `test_other_process_reads_project_write` 另一进程读到同一 SQLite 文件；生产多 worker 仍必须走 PostgreSQL | `tests/test_project_repo_concurrency.py` |
+| GAP-P0-02-S3-01 | Step 3: 10 thread release_order stress | **DONE** | `test_ten_threads_insert_release_orders` 10 线程插入后计数为 10 | `tests/test_project_repo_concurrency.py` |
 | GAP-P0-02-S4-01 | Step 4: test_ops_runtime_service | **PARTIAL** | 2026-07-29 本地 `3 passed`；Plan 仍标环境依赖 | `tests/test_ops_runtime_service.py` |
 | GAP-P0-02-S5-01 | Step 5: wechat_minigame E2E publish | **NOT_DONE** | scope 单测有，无 publish E2E | `scope_resolver.py`、Jenkins minigame job |
 | GAP-P0-02-S6-01 | Step 6: compose pytest 全 pass | **PARTIAL** | `postgres_compose_pytest_gate.py` + CI nightly（`SKIP_POSTGRES_COMPOSE=1` 回退 sqlite pytest）；**db.py 仍 SQLite** | `docker-compose.postgres-test.yml` |
 | GAP-P0-02-S6-02 | Step 6: migrate script | **DONE（dry-run）** | `migrate_sqlite_to_postgres.py` 存在；生产 apply 未签字 | `docs/runbooks/postgres_migration.md` |
-| GAP-P0-02-DOD-01 | DoD: backup runbook 含 DB SSOT | **NOT_DONE** | `production_backup_restore.md` 有路径，**缺「DB 单一真源 / mirror 关系」专节** | `docs/runbooks/production_backup_restore.md` |
+| GAP-P0-02-DOD-01 | DoD: backup runbook 含 DB SSOT | **DONE** | `production_backup_restore.md` 已有「DB 单一真源」专节 | `docs/runbooks/production_backup_restore.md` |
 | GAP-P0-02-DOD-02 | DoD: P1-02/P1-05 可依赖 repo API | **PARTIAL** | API 存在，**无跨 Plan 集成 smoke 签字** | `repositories/registry/accessors.py` |
 
 ### P1-01 — Ops helpers 拆分
@@ -97,7 +114,7 @@
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
 | GAP-P1-01-DOD-01 | DoD: W-P1-1 关闭 | **NOT_DONE** | helpers 已拆（192 行），**无正式评审 closure** | `services/ops/helpers.py` + 6 子模块 |
-| GAP-P1-01-DOC-01 | Step 6: entrypoint_map 更新 | **NOT_DONE** | `entrypoint_map.md` 存在，Ops 模块图未对齐拆分后结构 | `docs/architecture/entrypoint_map.md` |
+| GAP-P1-01-DOC-01 | Step 6: entrypoint_map 更新 | **DONE** | 主路径改为发版中心 / 发版 / 版本与管线 / 构建与产物 / 发布历史；Journey 标为跳转 | `docs/architecture/entrypoint_map.md` |
 | GAP-P1-01-DUP | 文档重复 DoD §6/§7 | **DOC_DEBT** | 第二段 DoD 仍 `[ ]`，与第一段 `[x]` 矛盾 — **以第一段+代码为准** | Plan 文档本身 |
 
 > **注**：P1-01 代码拆分已完成（helpers 192 行）；缺口在 **评审 closure + 文档同步**，不是回退拆分。
@@ -267,14 +284,14 @@
 ```
 Phase A — 能上线不失控（1–2 周）
   1. GAP-P0-01-SEC-02 + GAP-P0-01-CI-01：清 settings.json 弱口令 + CI 接 secret gate
-  2. GAP-P0-02-PRE-02：写 deployment_topology.md（单 worker 直到 PG 完成）
-  3. GAP-P0-02-DOD-01：backup runbook 补 DB SSOT
+  2. GAP-P0-02-PRE-02：deployment_topology.md 已写（开发 SQLite 单进程，生产 PostgreSQL）
+  3. GAP-P0-02-DOD-01：backup runbook 已有 DB 单一真源专节
   4. GAP-P2-03-OPS-01 + E2E-01/02：staging 配 webhook + 故意 fail 验通知/回滚
   5. GAP-P1-02-E2E-02 + GAP-P1-04-E2E-01：DevStack 30min smoke 签字
 
 Phase B — 架构阻断（2–4 周）
   6. GAP-P0-02-S6-01/02：Postgres migrate + compose pytest
-  7. GAP-P0-02-S2-01 + S3-01：多 worker + stress
+  7. GAP-P0-02-S2-01 + S3-01：同文件跨进程读与 10 线程发布单插入已有测试；Postgres compose 仍在第 6 项
   8. GAP-P0-02-S5-01：wechat_minigame E2E
 
 Phase C — 三平面完整（4–8 周）

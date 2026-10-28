@@ -111,7 +111,7 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 - [x] `projects_db`/`channels_db`/`project_versions_db` 为 DB proxy，无 `load_document` import 缓存
 - [x] pytest `tests/test_project_registry.py`、`tests/test_project_repo_concurrency.py` pass
-- [ ] 进程 A 写项目，进程 B 立即可读（需多 worker 手工验证）
+- [x] 进程 A 写项目，进程 B 立即可读（`test_other_process_reads_project_write`）
 
 ---
 
@@ -131,7 +131,7 @@ CREATE INDEX idx_project_versions_project ON project_versions(project_id);
 
 - [x] thread-local 连接 + `reset_db_connection()`
 - [x] `tests/test_project_repo_concurrency.py` 双线程读写 pass
-- [ ] 10 thread release_order stress（后续专项）
+- [x] 10 thread release_order stress（`test_ten_threads_insert_release_orders`）
 
 ---
 
@@ -217,5 +217,6 @@ python portals/common/core/scripts/migrate_ops_json_to_sqlite.py --dry-run
 
 - [x] Step 1–5 核心实现（Step 6 skeleton；factory/migrate 待续）
 - [x] 无模块级可变 `projects_db` JSON 缓存（DB proxy + accessors）
-- [ ] backup runbook（P0-01 Step 6）已含 DB 单一真源说明
+- [x] backup runbook（P0-01 Step 6）已含 DB 单一真源说明
+- [x] 部署拓扑见 `docs/runbooks/deployment_topology.md`（开发 SQLite 单进程，生产 PostgreSQL）
 - [ ] P1-02 Onboarding / P1-05 Node Registry 可依赖本 Plan 的 repo API

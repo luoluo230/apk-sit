@@ -11,6 +11,7 @@ from services.notify.outbound_webhook import (
     EVENT_BOOTSTRAP_SMOKE_FAILED,
     EVENT_PUBLISH_FAILED,
     EVENT_VERIFY_FAILED,
+    incident_actions_ready,
     notify_release_event,
 )
 from services.release.release_policy_service import should_auto_rollback_on_verify_fail, should_auto_pause_gray_on_verify_fail
@@ -121,7 +122,10 @@ def handle_verify_failure(
 
     rollback_result = {"attempted": False}
     if should_auto_rollback_on_verify_fail(project_id, str(order.get("env_key") or "")):
-        rollback_result = {"attempted": True, **attempt_auto_rollback_after_verify_fail(project_id, order, actor)}
+        if incident_actions_ready():
+            rollback_result = {"attempted": True, **attempt_auto_rollback_after_verify_fail(project_id, order, actor)}
+        else:
+            rollback_result = {"attempted": False, "reason": "notify_not_configured"}
     return {
         "gray_pause": gray_pause,
         "rollback": rollback_result,

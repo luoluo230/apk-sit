@@ -339,18 +339,20 @@ def _startup_checks():
 
 
 def _on_start():
-    from config import require_production_secrets
+    from config import require_production_database, require_production_secrets
     from services import startup
 
     require_production_secrets()
+    require_production_database()
 
-    if getattr(Config, "USE_SQLITE", False):
-        try:
-            from models.db import init_db
+    try:
+        from models.db import init_db
 
-            init_db()
-        except Exception:
-            logger.warning("SQLite init failed", exc_info=True)
+        init_db()
+    except Exception:
+        if Config.is_production():
+            raise
+        logger.warning("database init failed", exc_info=True)
 
     _startup_checks()
     startup.purge_design_demo_topology_seeds()

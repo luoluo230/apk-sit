@@ -134,7 +134,7 @@ def list_bundles(
             continue
         if status and str(row.get("publish_status") or "").strip() != status:
             continue
-        if plat_filter in {"android", "ios"}:
+        if plat_filter:
             client = row.get("client") if isinstance(row.get("client"), dict) else {}
             row_plat = str(client.get("platform") or row.get("platform") or "").strip().lower()
             if row_plat != plat_filter:
@@ -380,7 +380,7 @@ def find_bootstrap_bundle(
     plat = str(platform or "").strip().lower()
     vn = str(version_name or "").strip()
     vc = str(version_code or "").strip()
-    rows = list_bundles(scope_id=sid, status="published", platform=plat if plat in {"android", "ios"} else "")
+    rows = list_bundles(scope_id=sid, status="published", platform=plat)
 
     def _matches_version(row: Dict[str, Any]) -> bool:
         client = row.get("client") if isinstance(row.get("client"), dict) else {}
@@ -505,11 +505,11 @@ def list_publishable_bundles(scope_id: str, *, platform: str = "") -> List[Dict[
     if not sid:
         return []
     plat = str(platform or "").strip().lower()
-    active = find_active_bundle(sid, platform=plat if plat in {"android", "ios"} else "")
+    active = find_active_bundle(sid, platform=plat)
     active_id = str(active.get("bundle_id") or "")
     out: List[Dict[str, Any]] = []
     seen: set[str] = set()
-    for row in list_bundles(scope_id=sid, platform=plat if plat in {"android", "ios"} else ""):
+    for row in list_bundles(scope_id=sid, platform=plat):
         bid = str(row.get("bundle_id") or "").strip()
         if not bid or bid in seen:
             continue

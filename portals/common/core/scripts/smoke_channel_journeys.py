@@ -27,10 +27,10 @@ def main() -> int:
     channel_id = str((lines[0] or {}).get("channel_id") or "wechat")
     entries = resolve_channel_journey_entries("GomeKu", "development", channel_id)
     checks = [
-        entries["build_entry"]["label"] == "进入构建流程",
-        entries["release_entry"]["label"] == "进入发版流程",
-        f"/channels/{channel_id}/build" in entries["build_entry"]["href"],
-        f"/channels/{channel_id}/release" in entries["release_entry"]["href"],
+        entries["build_entry"]["label"] == "版本与管线",
+        entries["release_entry"]["label"] == "发版",
+        "/versions?" in entries["build_entry"]["href"],
+        "/release?" in entries["release_entry"]["href"],
     ]
     print("smoke_channel_journeys:")
     print(f"  build.href = {entries['build_entry']['href']}")

@@ -1,0 +1,131 @@
+{
+  "feature": "gacha-pity-v2",
+  "project_id": "GomeKu",
+  "order_id": "ro-20260708170455-e1c40b",
+  "version_name": "1.0.1",
+  "version_code": "2",
+  "steps": [
+    {
+      "step": "seed_urls",
+      "ok": true,
+      "detail": {
+        "version_id": "909621cb"
+      }
+    },
+    {
+      "step": "gacha_code_alignment",
+      "ok": true,
+      "detail": {
+        "release_tag": "gacha-pity-v2"
+      }
+    },
+    {
+      "step": "game_server_build",
+      "ok": true,
+      "detail": {
+        "project": "E:\\maclient\\game-server\\game-server\\GameServerApp.csproj"
+      }
+    },
+    {
+      "step": "gameserver_preflight",
+      "ok": true,
+      "detail": {
+        "ws_port": 15050,
+        "mode": "restarted"
+      }
+    },
+    {
+      "step": "gacha_business_test",
+      "ok": true,
+      "detail": {
+        "exit_code": 0,
+        "output_dir": "E:\\maclient\\game-server\\tools\\SmokeTest\\artifacts\\gacha-pity-v2-release-e2e",
+        "passed": true,
+        "plan_id": null,
+        "release_tag_found_in": "DoGacha_c2s"
+      }
+    },
+    {
+      "step": "order_exists",
+      "ok": true,
+      "detail": {
+        "status": "published",
+        "build": "124"
+      }
+    },
+    {
+      "step": "order_artifacts",
+      "ok": true,
+      "detail": {
+        "status": "published"
+      }
+    },
+    {
+      "step": "runtime_active",
+      "ok": true,
+      "detail": {
+        "run_id": "run-5768438d1267",
+        "topology_id": "topology-design-gomeku-development"
+      }
+    },
+    {
+      "step": "precheck",
+      "ok": true,
+      "detail": {
+        "status": "ready"
+      }
+    },
+    {
+      "step": "publish",
+      "ok": true,
+      "detail": {
+        "bundle_id": "rb-20260722-gomeku-development-1001-android-33f1b2",
+        "status": "published"
+      }
+    },
+    {
+      "step": "runtime_bootstrap",
+      "ok": true,
+      "detail": {
+        "active_bundle_id": "rb-20260722-gomeku-development-1001-android-33f1b2"
+      }
+    },
+    {
+      "step": "active_bundle",
+      "ok": true,
+      "detail": {
+        "bundle_id": "rb-20260722-gomeku-development-1001-android-33f1b2"
+      }
+    },
+    {
+      "step": "apk_artifact",
+      "ok": true,
+      "detail": {
+        "path": "e:\\web\\apk-site\\data\\apk\\wechat\\dev\\GomeKu_1.0.1_vc2.apk",
+        "size": 38819953
+      }
+    },
+    {
+      "step": "bootstrap_gate",
+      "ok": true,
+      "detail": {
+        "exit_code": 0
+      }
+    },
+    {
+      "step": "unity_client_smoke",
+      "ok": true,
+      "detail": {
+        "tier": "entered_login",
+        "final_state": "LoginState",
+        "catalog_url": "https://wlhotupdate1.oss-cn-beijing.aliyuncs.com/MyGame1/Development/wechat/android/Version_1.0.1/2/catalog_1.0.1.bin"
+      }
+    }
+  ],
+  "started_at": "2026-07-22T17:04:02.573555",
+  "summary": {
+    "passed": 15,
+    "failed": 0,
+    "finished_at": "2026-07-22T17:36:21.912312"
+  }
+}

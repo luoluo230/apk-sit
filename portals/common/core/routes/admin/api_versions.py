@@ -60,6 +60,16 @@ def versions_delete_group_response(project_id: str, username: str):
     return jsonify(result), status
 
 
+def version_delivery_matrix_response(project_id: str, username: str):
+    env_key = str(request.args.get("env_key") or "").strip()
+    from services.admin.version_delivery_matrix_service import build_version_delivery_matrix
+
+    payload = build_version_delivery_matrix(project_id, username, env_key)
+    if payload.get("error"):
+        return jsonify(payload), 403
+    return jsonify({"ok": True, "data": payload})
+
+
 def version_groups_list_response(project_id: str, username: str):
     env_key = str(request.args.get("env_key") or "").strip()
     platform = str(request.args.get("platform") or "").strip()
@@ -153,6 +163,10 @@ def register_routes(bp, current_username_getter):
         return versions_delete_group_response(project_id, current_username_getter())
 
     @admin_required("projects")
+    def _version_delivery_matrix(project_id: str):
+        return version_delivery_matrix_response(project_id, current_username_getter())
+
+    @admin_required("projects")
     def _version_groups_list(project_id: str):
         return version_groups_list_response(project_id, current_username_getter())
 
@@ -207,6 +221,11 @@ def register_routes(bp, current_username_getter):
         endpoint="project_versions_delete_group",
         view_func=_versions_delete_group,
         methods=["POST", "DELETE"],
+    )
+    bp.add_url_rule(
+        "/api/projects/<project_id>/version-delivery-matrix",
+        endpoint="api_version_delivery_matrix",
+        view_func=_version_delivery_matrix,
     )
     bp.add_url_rule(
         "/admin/projects/<project_id>/version-groups",

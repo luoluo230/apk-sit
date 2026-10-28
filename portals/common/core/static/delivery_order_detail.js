@@ -150,7 +150,7 @@
       network: buildReleaseFocusUrl(`/admin/projects/${projectId}/environments/${encodeURIComponent(item.env_key || "development")}${ctx}`, { releaseOrderId: item.release_order_id, highlightFields: ["gateway_ws", "login_http", "game_ws", "ops_http"], focusReason: "请补充环境网络接入配置" }),
     };
   };
-  const FIX_LINK_LABELS = { buildHistory: "查看构建历史", buildConfig: "配置管线", trigger_build: "触发 Jenkins 构建", network: "配置网络", topology: "配置拓扑", runtime: "启动运行态", edit: "编辑计划", versions: "版本代码" };
+  const FIX_LINK_LABELS = { buildHistory: "查看构建历史", buildConfig: "配置管线", trigger_build: "触发 Jenkins 构建", network: "配置网络", topology: "配置拓扑", runtime: "启动运行态", edit: "编辑计划", versions: "版本与管线" };
   const appendBuildConfigSection = (href, section, extra = {}) => buildReleaseFocusUrl(href, { section, ...extra });
   const issueFocusParams = (issue, item) => ({
     section: issue.fix_section || issue.fixSection || "",

@@ -101,13 +101,13 @@
       }
     });
     if (downloadHref) moreItems.push(`<a class="matrix-menu-item" href="${esc(downloadHref)}">下载</a>`);
-    moreItems.push(`<a class="matrix-menu-item" href="${esc(versionsHref)}">版本代码</a>`);
+    moreItems.push(`<a class="matrix-menu-item" href="${esc(versionsHref)}">版本与管线</a>`);
     moreItems.push(`<a class="matrix-menu-item" href="${esc(topologyHref)}">拓扑</a>`);
     const moreId = `matrix-more-${esc(scope.version_id || scope.channel_id || "")}-${esc(scope.platform || "")}`;
     const moreHtml = moreItems.length
       ? `<div class="matrix-more-wrap"><button class="matrix-btn" type="button" data-toggle-matrix-more="${esc(moreId)}" aria-expanded="false">更多 ▾</button><div class="matrix-more-menu" id="${esc(moreId)}" hidden>${moreItems.join("")}</div></div>`
       : "";
-    return `${renderPrimaryAction(primary, { variant: "matrix" })}<a class="matrix-btn" href="${esc(buildHistory)}">构建产物</a>${moreHtml}`;
+    return `${renderPrimaryAction(primary, { variant: "matrix" })}<a class="matrix-btn" href="${esc(buildHistory)}">构建与产物</a>${moreHtml}`;
   };
 
   const renderRowActions = (actions = {}, links = {}, scope = {}, projectId = "") => {
@@ -216,7 +216,7 @@
 
   const renderCardVersionEntry = (projectId, envKey, channelId, platform = "") => {
     const url = versionsPageHref(projectId, { env_key: envKey, channel_id: channelId, platform });
-    return `<a class="matrix-btn version" href="${esc(url)}">版本</a>`;
+    return `<a class="matrix-btn version" href="${esc(url)}">版本与管线</a>`;
   };
 
   const renderChannelVersionsEntry = (projectId, envKey, channelId, platform = "") =>
@@ -226,11 +226,17 @@
     renderCardVersionEntry(projectId, envKey, channelId);
 
   const channelJourneyHref = (projectId, envKey, channelId, kind = "build", platform = "", versionId = "") => {
+    if (kind === "release") {
+      const params = new URLSearchParams({ env_key: envKey || "development" });
+      if (channelId) params.set("channel_id", channelId);
+      if (platform) params.set("platform", platform);
+      return `/admin/projects/${encodeURIComponent(projectId)}/release?${params.toString()}`;
+    }
     const params = new URLSearchParams({
       env_key: envKey,
       channel_id: channelId,
       platform: platform || "",
-      action: kind === "release" ? "edit_release" : "create_vc",
+      action: "create_vc",
     });
     if (versionId) params.set("version_id", versionId);
     return `/admin/projects/${encodeURIComponent(projectId)}/versions?${params.toString()}`;

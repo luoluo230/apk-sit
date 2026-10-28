@@ -58,7 +58,7 @@ def quick_build_version(project_id: str, version_id: str, actor: str, *, force: 
     if status == "building":
         return _order_crud().get_release_order(project_id, order_id) or draft
     if status in TERMINAL_STATUSES:
-        raise ValueError("当前发布单已结束，请从版本代码发起新的交付尝试")
+        raise ValueError("当前发布单已结束，请从版本与管线发起新的交付尝试")
     if status == "artifacts_ready" and not force:
         return draft
     if status == "artifacts_ready" and force:
@@ -506,7 +506,7 @@ def resolve_release_order_next_action(project_id: str, order_id: str) -> Dict[st
     if status == "draft":
         primary = _primary(
             "build_journey",
-            "下一步：打开版本管理",
+            "下一步：打开版本与管线",
             href=_channel_journey_href(project_id, order, phase="build"),
         )
         more.extend([
@@ -697,11 +697,11 @@ def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]
     elif not pipeline_ready:
         primary = _action("configure_pipeline", "配置管线", href=pipeline_config_href)
         status_hint = "管线未配置 · 先配置管线"
-        secondary = [_action("versions", "版本代码", href=versions_href)]
+        secondary = [_action("versions", "版本与管线", href=versions_href)]
     elif form_depth == FORM_DEPTH_FULL:
         primary = _action("edit_plan", "填写计划", href=edit_href)
         status_hint = "生产环境 · 请先填写发布计划"
-        secondary = [_action("build_history", "构建产物", href=build_history_href)]
+        secondary = [_action("build_history", "构建与产物", href=build_history_href)]
     elif form_depth == FORM_DEPTH_MINIMAL or pipeline_ready:
         if can_build(platform):
             primary = _action("trigger_build", "触发构建", api_action="quick_build", version_id=version_id)
@@ -716,13 +716,13 @@ def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]
             )
             status_hint = primary.get("reason") or "平台未接入构建网格"
         secondary = [
-            _action("build_history", "构建产物", href=build_history_href),
-            _action("versions", "版本代码", href=versions_href),
+            _action("build_history", "构建与产物", href=build_history_href),
+            _action("versions", "版本与管线", href=versions_href),
         ]
     else:
         primary = _action("edit_plan", "填写计划", href=edit_href)
         status_hint = "请先填写发布计划"
-        secondary = [_action("build_history", "构建产物", href=build_history_href)]
+        secondary = [_action("build_history", "构建与产物", href=build_history_href)]
 
     return {
         "version_id": version_id,
@@ -735,13 +735,13 @@ def resolve_delivery_actions(project_id: str, version_id: str) -> Dict[str, Any]
         "primary": primary,
         "secondary": secondary,
         "build_entry": {
-            "label": "版本管理",
-            "href": f"/admin/projects/{project_id}/versions?{urlencode({'env_key': env_key, 'channel_id': channel_id, 'platform': platform, 'version_id': version_id, 'action': 'edit_release'})}",
+            "label": "版本与管线",
+            "href": f"/admin/projects/{project_id}/versions?{urlencode({'env_key': env_key, 'channel_id': channel_id, 'platform': platform})}",
             "enabled": True,
         },
         "release_entry": {
-            "label": "版本管理",
-            "href": f"/admin/projects/{project_id}/versions?{urlencode({'env_key': env_key, 'channel_id': channel_id, 'platform': platform, 'version_id': version_id, 'action': 'edit_release'})}",
+            "label": "发版",
+            "href": f"/admin/projects/{project_id}/release?{urlencode({'env_key': env_key})}",
             "enabled": bool(artifact_ready or order_status in release_continue_statuses or order_id),
         },
         "scope": scope_params,

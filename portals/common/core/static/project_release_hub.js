@@ -7,12 +7,16 @@
   var projectId = root.getAttribute("data-project-id") || "";
   var envSelect = document.getElementById("rhEnvSelect");
   var refreshBtn = document.getElementById("rhRefreshBtn");
-  var moduleCards = document.getElementById("rhModuleCards");
   var prodWizard = document.getElementById("rhProdWizard");
   var promotionList = document.getElementById("rhPromotionList");
   var serverPromotionList = document.getElementById("rhServerPromotionList");
   var coordinatedList = document.getElementById("rhCoordinatedList");
   var pendingList = document.getElementById("rhPendingList");
+  var runtimeLines = document.getElementById("rhRuntimeLines");
+  var runtimeSummary = document.getElementById("rhRuntimeSummary");
+  var storylineEl = document.getElementById("rhStoryline");
+  var storylineDetail = document.getElementById("rhStorylineDetail");
+  var storylineCta = document.getElementById("rhStorylineCta");
   var successRate = document.getElementById("rhSuccessRate");
   var serverSuccessRate = document.getElementById("rhServerSuccessRate");
   var mttrEl = document.getElementById("rhMttr");
@@ -88,23 +92,62 @@
       .join("");
   }
 
-  function renderModules(cards) {
-    if (!moduleCards) return;
-    moduleCards.innerHTML = (cards || [])
-      .map(function (card) {
-        var cls = card.primary ? " rh-card--primary" : "";
+  function renderRuntime(snapshot) {
+    snapshot = snapshot || {};
+    if (runtimeSummary) runtimeSummary.textContent = snapshot.summary || "";
+    if (!runtimeLines) return;
+    var rows = snapshot.lines || [];
+    if (!rows.length) {
+      runtimeLines.innerHTML = '<div class="rh-empty">当前环境没有交付线</div>';
+      return;
+    }
+    runtimeLines.innerHTML = rows
+      .map(function (row) {
+        var live = row.bundle_id
+          ? esc(row.version_name || "未命名") + " / " + esc(row.version_code || "—")
+          : "尚未激活线上 Bundle";
+        var meta = esc(row.channel_name || "") + " · " + esc(row.platform_label || row.platform || "");
+        if (row.bundle_id) meta += " · " + esc(row.bundle_id);
+        var badge = row.bundle_id
+          ? '<span class="rh-status rh-status--ok">线上</span>'
+          : '<span class="rh-status rh-status--warn">空</span>';
         return (
-          '<a class="rh-card' +
-          cls +
-          '" href="' +
-          esc(card.href) +
-          '"><img src="/static/project_ui/svg/' +
-          esc(card.icon) +
-          '.svg" alt=""><div><strong>' +
-          esc(card.title) +
+          '<a class="rh-runtime-row" href="' +
+          esc(row.href || "#") +
+          '"><div class="rh-runtime-main"><strong>' +
+          live +
+          "</strong><small>" +
+          meta +
+          "</small></div>" +
+          badge +
+          "</a>"
+        );
+      })
+      .join("");
+  }
+
+  function renderStoryline(story) {
+    story = story || {};
+    if (storylineDetail) {
+      var title = story.title || "";
+      var detail = story.detail || "";
+      storylineDetail.textContent = title && detail ? title + " — " + detail : title || detail || "";
+    }
+    if (storylineCta && story.primary) {
+      storylineCta.textContent = story.primary.label || "去发版";
+      storylineCta.href = story.primary.href || storylineCta.href;
+    }
+    if (!storylineEl) return;
+    storylineEl.innerHTML = (story.steps || [])
+      .map(function (step) {
+        return (
+          '<li class="rh-storyline__step rh-storyline__step--' +
+          esc(step.state || "todo") +
+          '"><strong>' +
+          esc(step.label) +
           "</strong><span>" +
-          esc(card.desc) +
-          "</span></div></a>"
+          esc(step.desc) +
+          "</span></li>"
         );
       })
       .join("");
@@ -493,7 +536,7 @@
           '<span class="rh-status' +
           statusCls +
           '">' +
-          esc(action.label || row.status) +
+          esc(action.label || row.status_label || row.status) +
           "</span></div></a>"
         );
       })
@@ -506,7 +549,8 @@
       "/api/projects/" + encodeURIComponent(projectId) + "/release-hub?env_key=" + encodeURIComponent(env)
     ).then(function (data) {
       renderEnvSelect(data.env_defs, data.selected_env);
-      renderModules(data.module_cards);
+      renderRuntime(data.runtime_snapshot);
+      renderStoryline(data.storyline);
       renderWizard(data.prod_wizard_steps);
       renderHealth(data.release_health);
       renderPromotions(data.promotion_candidates);

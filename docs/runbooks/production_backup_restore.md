@@ -39,7 +39,7 @@ powershell -File scripts/Backup-PortalData.ps1 -DatabaseUrl $env:DATABASE_URL -R
 3. 在维护窗口内，以 `-ConfirmRestore` 还原 SQLite 和（如存在）PostgreSQL dump。
 4. 确认 `.env` Secret 与备份环境一致。
 5. 启动 Portal，`GET /health` = ok。
-6. 抽样：登录 Admin、打开 Release Journey、Jenkins 实例列表。
+6. 抽样：登录 Admin、打开发版中心、Jenkins 实例列表。
 
 ## 验证清单
 

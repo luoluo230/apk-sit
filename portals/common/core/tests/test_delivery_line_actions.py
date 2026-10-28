@@ -73,9 +73,10 @@ class ResolveDeliveryActionsTests(unittest.TestCase):
              mock.patch("services.release.release_policy_service.assess_delivery_readiness", return_value={"pipeline_ready": True}), \
              mock.patch("services.release.release_policy_service.build_config_href", return_value="/build-config"):
             actions = ros.resolve_delivery_actions("p1", "vc-1")
-        self.assertEqual(actions["build_entry"]["label"], "版本管理")
-        self.assertEqual(actions["release_entry"]["label"], "版本管理")
+        self.assertEqual(actions["build_entry"]["label"], "版本与管线")
+        self.assertEqual(actions["release_entry"]["label"], "发版")
         self.assertIn("/versions?", actions["build_entry"]["href"])
+        self.assertIn("/release?", actions["release_entry"]["href"])
 
     def test_enrich_unconfigured_line_without_version_id(self):
         line = {

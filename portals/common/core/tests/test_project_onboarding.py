@@ -180,3 +180,16 @@ def test_assign_channels_adds_delivery_scope(onboarding_db):
     dev = next((row for row in env_rows if row.get("env_key") == "development"), None)
     assert dev is not None
     assert "1001" in (dev.get("channels") or [])
+
+
+def test_onboarding_next_step_uses_versions_and_release():
+    from services.admin.project_onboarding_service import _build_next_actions
+
+    actions = _build_next_actions("GomeKu", {"env_key": "development", "channel_id": "1001"}, "ver-1")
+    labels = [item["label"] for item in actions]
+    urls = [item["url"] for item in actions]
+    assert "打开版本与管线" in labels
+    assert "去发版" in labels
+    assert any("/versions?env_key=development" in url and "channel_id=1001" in url for url in urls)
+    assert any("/release?env_key=development" in url for url in urls)
+    assert not any("/channels/" in url for url in urls)

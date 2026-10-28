@@ -1,41 +1,26 @@
-# Portal 部署拓扑决策（GAP-P0-02-PRE-02）
+# 部署拓扑（P0-02）
 
-本文档记录 Dev Portal 推荐的进程拓扑与扩容前提，供运维与 Plan Closure 签字使用。
+开发可以单进程用 SQLite。生产必须多进程可读同一份数据，所以生产真源是 PostgreSQL。
 
-## 当前默认（Dev / 单实例）
+## 两种模式
 
-| 组件 | 默认形态 | 说明 |
-|------|----------|------|
-| Portal (Flask) | 单 worker / 单进程 | `Start-DevStack.ps1` 本地开发 |
-| 数据真源 | SQLite (`data/release_orders.db` 等) | 适合单机 DevStack |
-| 灰度调度 | 进程内后台线程 | `services/startup.py` 每 60s tick |
-| Jenkins | 可选 sidecar | 8082 实例，非 Portal 强依赖 |
+| 模式 | 何时用 | 数据真源 | 进程 |
+|------|--------|----------|------|
+| 开发 | 本机 Portal `:5003` | `data/apk_site.db`（SQLite，WAL，线程内连接） | 一个 Waitress 进程 |
+| 生产 | `APP_ENV=production` | `DATABASE_URL` 指向 PostgreSQL | 可以多个 worker |
 
-## 生产推荐（尚未全面 E2E 验证）
+生产启动时 [`require_production_secrets()`](../../portals/common/core/config.py) 缺密钥会退出，[`require_production_database()`](../../portals/common/core/config.py) 在 `DATABASE_URL` 不是 `postgres://` 或 `postgresql://` 时也会退出。SQLite 不能当生产真源。
 
-| 决策 | 推荐 | 阻塞项 |
-|------|------|--------|
-| DB 真源 | PostgreSQL 单主 | GAP-P0-DB-01 |
-| Portal worker | 1 worker 直到 PG 迁移完成 | GAP-P0-OPS-01 |
-| 多 worker | 仅在 PG + 会话外置后启用 | GAP-P0-DB-02 |
-| 文件上传/APK | 对象存储 + 无本地竞态 | 与 DB 决策绑定 |
+## 不要这样做
 
-## 读写一致性假设
+- 不要用多个 worker 同时写 `data/apk_site.db`。SQLite 的线程连接不能代替进程间的单一真源。
+- 不要把 `data/projects.json` 当主库。它只在 `SAVE_JSON_MIRROR=true` 时做镜像。
+- 不要把 `build_nodes.json` 当节点名单。节点真源是 `infra_nodes` 表。
 
-- **SQLite 单 worker**：A 进程写入对同进程读取立即可见；不支持多 worker 并发写。
-- **PostgreSQL（目标）**：所有 Portal worker 共享同一连接池；release_order 状态以 DB 为准。
-- **JSON 项目配置**（`data/projects.json` 等）：仍可能被多 worker 读到旧快照；生产应逐步迁入 repo API / DB。
+## 备份
 
-## 签字检查项
+见 [production_backup_restore.md](./production_backup_restore.md) 和 [postgres_migration.md](./postgres_migration.md)。
 
-1. 目标环境已选定上表「默认」或「生产推荐」列。
-2. 若启用多 worker，已完成 GAP-P0-02-S2/S3 并发验证。
-3. 备份策略见 `docs/runbooks/production_backup_restore.md`，且包含 DB 真源路径。
+## 入口
 
-## 相关门禁
-
-```bash
-cd portals/common/core
-py -3 scripts/plan_closure_gate.py
-py -3 scripts/production_secret_gate.py
-```
+人用的页面见 [entrypoint_map.md](../architecture/entrypoint_map.md)。渠道 Journey 的旧 URL 会跳转，不是主路径。

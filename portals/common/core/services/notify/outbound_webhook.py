@@ -90,6 +90,19 @@ def build_release_event_payload(event_type: str, fields: Optional[Dict[str, Any]
     }
 
 
+def incident_actions_ready() -> bool:
+    """Auto-rollback stays off until a webhook URL and an explicit signing secret exist."""
+    url = _resolve_notify_url()
+    if not str(url).startswith("http"):
+        return False
+    explicit = (
+        os.getenv("NOTIFY_SIGNING_SECRET")
+        or os.getenv("JENKINS_BUILD_WEBHOOK_SECRET")
+        or ""
+    ).strip()
+    return bool(explicit)
+
+
 def notify_release_event(
     event_type: str,
     fields: Optional[Dict[str, Any]] = None,

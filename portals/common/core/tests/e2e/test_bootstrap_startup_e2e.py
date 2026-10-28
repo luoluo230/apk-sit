@@ -46,7 +46,7 @@ class BootstrapStartupE2ETests(unittest.TestCase):
             with mock.patch("routes.delivery.public_api.resolve_channel_id", return_value="1001"):
                 with mock.patch("routes.delivery.public_api.get_channel_by_id", return_value={"apk_subdir": "wechat"}):
                     with mock.patch("routes.delivery.public_api.find_scope", return_value={"scope_id": "s1", "env_key": "development"}):
-                        with mock.patch("services.release.bundle_service.find_active_bundle", return_value=None):
+                        with mock.patch("services.release.bundle_service.find_bootstrap_bundle", return_value={}):
                             resp = self.client.get(
                                 "/api/public/runtime-bootstrap?"
                                 "game_id=g1&game_key=k1&env_key=development&channel=wechat&platform=android"
@@ -79,7 +79,7 @@ class BootstrapStartupE2ETests(unittest.TestCase):
             with mock.patch("routes.delivery.public_api.resolve_channel_id", return_value="1001"):
                 with mock.patch("routes.delivery.public_api.get_channel_by_id", return_value={"apk_subdir": "wechat"}):
                     with mock.patch("routes.delivery.public_api.find_scope", return_value={"scope_id": fixture["scope_id"]}):
-                        with mock.patch("services.release.bundle_service.find_active_bundle", return_value=bundle):
+                        with mock.patch("services.release.bundle_service.find_bootstrap_bundle", return_value=bundle):
                             with mock.patch("services.release.bundle_service.resolve_gray_rollout_bundle", return_value=rollout):
                                 resp = self.client.get(
                                     "/api/public/runtime-bootstrap?"
@@ -89,6 +89,36 @@ class BootstrapStartupE2ETests(unittest.TestCase):
         body = resp.get_json() or {}
         self.assertTrue(body.get("ok"))
         self.assertEqual(body.get("active_bundle_id"), fixture.get("active_bundle_id"))
+
+    def test_windows_does_not_use_legacy_mobile_scope(self):
+        legacy_scope = {"scope_id": "legacy-mobile", "env_key": "development"}
+        with mock.patch("routes.delivery.public_api.projects_db", {"GomeKu": {"game_id": "g1", "game_key": "k1"}}):
+            with mock.patch("routes.delivery.public_api.resolve_channel_id", return_value="1001"):
+                with mock.patch("routes.delivery.public_api.get_channel_by_id", return_value={"apk_subdir": "wechat"}):
+                    with mock.patch("routes.delivery.public_api.find_scope", side_effect=[{}, legacy_scope]) as find_scope:
+                        with mock.patch("services.release.bundle_service.find_bootstrap_bundle") as find_bundle:
+                            resp = self.client.get(
+                                "/api/public/runtime-bootstrap?"
+                                "game_id=g1&game_key=k1&env_key=development&channel=wechat&platform=windows"
+                            )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(find_scope.call_count, 1)
+        find_bundle.assert_not_called()
+
+    def test_windows_bootstrap_cannot_select_android_bundle(self):
+        from services.commercial_release_plan import normalize_release_platform
+        from services.release.bundle_service import find_bootstrap_bundle
+
+        android_bundle = {
+            "bundle_id": "android-only",
+            "scope_id": "scope-1",
+            "publish_status": "published",
+            "client": {"platform": "android", "version_name": "1.0.0"},
+        }
+        with mock.patch("services.release.bundle_service.load_bundles", return_value=[android_bundle]):
+            self.assertEqual(find_bootstrap_bundle("scope-1", platform="windows"), {})
+            self.assertEqual(find_bootstrap_bundle("scope-1", platform="android"), android_bundle)
+        self.assertEqual(normalize_release_platform("StandaloneWindows64"), "windows")
 
 
 if __name__ == "__main__":

@@ -194,7 +194,7 @@
           encodeURIComponent(projectId) +
           "/versions?env_key=" +
           encodeURIComponent(item.env_key) +
-          '">版本管理<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
+          '">版本与管线<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
           encodeURIComponent(projectId) +
           "/environments/" +
           encodeURIComponent(item.env_key) +

@@ -80,7 +80,7 @@ if ($Background) {
     $proc = Start-Process -FilePath "powershell.exe" -ArgumentList @(
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runner,
         "-Port", $Port, "-BindHost", $BindHost
-    ) -WorkingDirectory $core -PassThru -WindowStyle Minimized
+    ) -WorkingDirectory $core -PassThru -WindowStyle Hidden
     Write-Host "[baas] launcher pid=$($proc.Id)" -ForegroundColor DarkGray
     $deadline = (Get-Date).AddSeconds(90)
     $ok = $false

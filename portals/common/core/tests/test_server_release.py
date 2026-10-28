@@ -133,6 +133,54 @@ class ServerReleaseTransitionTests(unittest.TestCase):
         gate = srs.assess_server_release_for_precheck("GomeKu", draft["server_release_id"])
         self.assertFalse(gate.get("ok"))
 
+    def test_gameserver_build_is_not_a_client_job(self):
+        draft = srs.create_server_release(
+            "GomeKu",
+            {"topology_id": "topo-dev", "target_services": ["game-cn-1"], "env_key": "development"},
+            "tester",
+        )
+        rid = draft["server_release_id"]
+        with mock.patch("services.release.order_build_sync.request_build") as client_build, mock.patch(
+            "services.release.gameserver_build_trigger.trigger_gameserver_job",
+            return_value={"build_number": 1, "job_name": "GameServer-Build"},
+        ):
+            building = srs.request_gameserver_build("GomeKu", rid, "tester")
+        client_build.assert_not_called()
+        self.assertEqual(building.get("status"), "building")
+        job = (building.get("payload") or {}).get("build_job") or {}
+        self.assertEqual(job.get("job_name"), "GameServer-Build")
+        self.assertNotIn(job.get("job_name"), ("Android", "iOS", "WxMinigame"))
+        ready = srs.finish_gameserver_build("GomeKu", rid, self.artifact["artifact_id"], "jenkins-webhook")
+        self.assertEqual(ready.get("status"), "ready")
+        self.assertEqual(ready.get("artifact_id"), self.artifact["artifact_id"])
+
+    def test_agent_job_report_marks_release_deployed(self):
+        from services.ops.server_deploy_dispatch import apply_deploy_job_report
+
+        rid = self.release["server_release_id"]
+        with mock.patch("services.ops.server_deploy_dispatch.enqueue_deploy_server_artifact") as enqueue:
+            enqueue.return_value = [{"job_id": "job-1"}]
+            srs.deploy_server_release("GomeKu", rid, "tester")
+        out = apply_deploy_job_report(
+            {
+                "action_type": "deploy_server_artifact",
+                "target": "game-cn-1",
+                "payload": {
+                    "project_id": "GomeKu",
+                    "server_release_id": rid,
+                    "service_id": "game-cn-1",
+                },
+                "result": {"message": "local agent applied artifact"},
+            },
+            "SUCCESS",
+            actor="agent:game-cn-1",
+        )
+        self.assertEqual(out.get("status"), "deployed")
+
+    def test_gameserver_build_rejects_release_that_already_has_artifact(self):
+        with self.assertRaises(ValueError):
+            srs.request_gameserver_build("GomeKu", self.release["server_release_id"], "tester")
+
 
 class PrecheckIntegrationTests(unittest.TestCase):
     @mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"runtime_required": "block", "auto_ensure_runtime": False})

@@ -21,6 +21,7 @@
 | P1-03 | [P1-03_platform_capability_registry.md](./P1-03_platform_capability_registry.md) | P1 | 1–2 周 | 无 | W-P2-3, 18 vs 3 平台 |
 | P1-04 | [P1-04_dev_delivery_simplification.md](./P1-04_dev_delivery_simplification.md) | P1 | 1–2 周 | P1-01 部分 | W-P1-4, Dev 发版 5–8 步 |
 | P1-05 | [P1-05_node_registry_unification.md](./P1-05_node_registry_unification.md) | P1 | 2 周 | P0-02, build_grid | W-P1-3, W-P2-4 |
+| P1-06 | [P1-06_release_flow_clarity.md](./P1-06_release_flow_clarity.md) | P1 | 4–6 周 | 现有 release hub | 发版主线清晰化 |
 | P2-01 | [P2-01_server_release_plane.md](./P2-01_server_release_plane.md) | P2 | 4–8 周 | P1-01, P1-05 | 服务端发布 gap |
 | P2-02 | [P2-02_client_bootstrap_consolidation.md](./P2-02_client_bootstrap_consolidation.md) | P2 | 3–4 周 | P0-01 | C-P1-1, C-P1-2 |
 | P2-03 | [P2-03_observability_incident_loop.md](./P2-03_observability_incident_loop.md) | P2 | 2–4 周 | P2-01 可选 | Prod 事故、自动回滚 |

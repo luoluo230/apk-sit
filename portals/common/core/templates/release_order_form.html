@@ -1,6 +1,6 @@
 <section class="delivery-app order-form-app ro-form-app" data-delivery-page="order-form" data-project-id="{{ project_id }}" data-order-id="{{ order_id }}">
   <header class="ro-form-head">
-    <a class="ro-form-back" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}" aria-label="返回版本代码"><img src="/static/project_ui/svg/action_back.svg" alt=""></a>
+    <a class="ro-form-back" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}" aria-label="返回版本与管线"><img src="/static/project_ui/svg/action_back.svg" alt=""></a>
     <div class="ro-form-head-copy">
       <h1>{{ '编辑发布单' if order_id else '新建发布单' }}</h1>
     </div>
@@ -157,7 +157,7 @@
         <div class="ro-rail-head"><h2>快速入口</h2></div>
         <div class="ro-quick-grid ro-quick-grid--compact">
           <a href="/admin/projects/{{ project_id }}/release-orders?scoped=1&amp;env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_release_order.svg" alt="">环境发布单</a>
-          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本代码</a>
+          <a href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">版本与管线</a>
           <a href="/admin/projects/{{ project_id }}/build-history?scoped=1&amp;env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
         </div>
       </section>

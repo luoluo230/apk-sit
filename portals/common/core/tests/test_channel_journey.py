@@ -47,7 +47,7 @@ class ChannelBuildJourneyTests(unittest.TestCase):
         }):
             data = ros.resolve_channel_build_journey("p1", "development", "wechat", platform="android")
         self.assertEqual(len(data["steps"]), 6)
-        self.assertIn("/channels/wechat/build", data["links"]["build_journey"])
+        self.assertIn("/admin/projects/p1/versions?", data["links"]["build_journey"])
 
 
 class ChannelReleaseJourneyTests(unittest.TestCase):
@@ -71,7 +71,7 @@ class ChannelReleaseJourneyTests(unittest.TestCase):
              mock.patch("services.release.release_policy_service.get_env_release_policy", return_value={"form_depth": "minimal"}):
             data = ros.resolve_channel_release_journey("p1", "development", "wechat", platform="android")
         self.assertEqual(len(data["steps"]), 7)
-        self.assertIn("/channels/wechat/release", data["links"]["release_journey"])
+        self.assertIn("/admin/projects/p1/release?", data["links"]["release_journey"])
 
 
 class ChannelJourneyApiTests(unittest.TestCase):
@@ -113,7 +113,8 @@ class ReleaseOrderStartRedirectTests(unittest.TestCase):
         resp = self.client.get("/admin/projects/demo/release-orders/start?intent=build&version_id=vc-1", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
         loc = resp.headers.get("Location") or ""
-        self.assertIn("/environments/development/channels/wechat/build", loc)
+        self.assertIn("/admin/projects/demo/versions?", loc)
+        self.assertIn("channel_id=wechat", loc)
 
     @mock.patch.dict("routes.project_delivery.projects_db", {"demo": {"name": "Demo"}}, clear=False)
     @mock.patch.dict("models.data.project_versions_db", {
@@ -130,7 +131,7 @@ class ReleaseOrderStartRedirectTests(unittest.TestCase):
         resp = self.client.get("/admin/projects/demo/release-orders/start?intent=release&version_id=vc-1", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
         loc = resp.headers.get("Location") or ""
-        self.assertIn("/environments/development/channels/wechat/release", loc)
+        self.assertIn("/admin/projects/demo/versions?", loc)
 
 
 if __name__ == "__main__":

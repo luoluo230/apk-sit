@@ -51,6 +51,9 @@ class ReleaseHubE2ETests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
         self.assertIn("发版中心", html)
+        self.assertIn("线上现状", html)
+        self.assertIn("当前发版", html)
+        self.assertNotIn("其它入口", html)
         self.assertIn("project_release_hub.js", html)
         self.assertIn("交付发版", html)
 
@@ -60,7 +63,7 @@ class ReleaseHubE2ETests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("发版控制台", html)
+        self.assertIn("发版", html)
         self.assertIn("project_release_console.js", html)
         self.assertNotIn("project_versions_workspace", html)
 
@@ -74,6 +77,9 @@ class ReleaseHubE2ETests(unittest.TestCase):
         data = body.get("data") or {}
         self.assertTrue(data.get("module_cards"))
         self.assertIn("release_health", data)
+        self.assertIn("runtime_snapshot", data)
+        self.assertIn("storyline", data)
+        self.assertEqual(len((data.get("storyline") or {}).get("steps") or []), 7)
         self.assertIn("promotion_candidates", data)
         self.assertIn("server_promotion_candidates", data)
         self.assertIn("coordinated_deploy_feed", data)

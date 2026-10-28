@@ -180,25 +180,21 @@ def _build_next_actions(
 ) -> List[Dict[str, str]]:
     env_key = str(seed.get("env_key") or "development").strip()
     channel_id = str(seed.get("channel_id") or "").strip()
-    version_qs = f"?version_id={version_id}" if version_id else ""
-    actions = [
+    version_qs = f"env_key={env_key}"
+    if channel_id:
+        version_qs += f"&channel_id={channel_id}"
+    if version_id:
+        version_qs += f"&version_id={version_id}"
+    return [
         {
-            "label": "配置 Jenkins 管线",
-            "url": f"/admin/projects/{project_id}/versions{version_qs}",
+            "label": "打开版本与管线",
+            "url": f"/admin/projects/{project_id}/versions?{version_qs}",
         },
         {
-            "label": "启动 Dev Runtime",
-            "url": f"/admin/projects/{project_id}/ops?env_key={env_key}",
+            "label": "去发版",
+            "url": f"/admin/projects/{project_id}/release?env_key={env_key}",
         },
     ]
-    if channel_id:
-        actions.append(
-            {
-                "label": "打开 Build Journey",
-                "url": f"/admin/projects/{project_id}/environments/{env_key}/channels/{channel_id}/build",
-            }
-        )
-    return actions
 
 
 def onboard_project(payload: Dict[str, Any], actor: str, tenant_id: str = "default") -> Tuple[Dict[str, Any], int]:

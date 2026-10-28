@@ -212,7 +212,7 @@ def promote_bundle_to_env(
     if not version:
         raise ValueError(
             f"目标环境 {project_env_label(project_id, target_env)} 缺少匹配的 VersionCode "
-            f"({source['version_name']} / {source['version_code']})，请先在版本管理中创建"
+            f"({source['version_name']} / {source['version_code']})，请先在版本与管线中创建"
         )
     client = dict(source.get("client") or {})
     for field in ("apk_url", "resource_url", "config_url", "apk_version", "resource_version", "config_version"):

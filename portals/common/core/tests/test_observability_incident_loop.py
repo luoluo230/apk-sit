@@ -34,6 +34,57 @@ class TestOutboundWebhook(unittest.TestCase):
         time.sleep(0.05)
         self.assertTrue(post_mock.called)
 
+    def test_incident_actions_need_url_and_secret(self):
+        with mock.patch.dict(os.environ, {"NOTIFY_WEBHOOK_URL": "", "NOTIFY_SIGNING_SECRET": "", "JENKINS_BUILD_WEBHOOK_SECRET": ""}, clear=False):
+            self.assertFalse(ow.incident_actions_ready())
+        with mock.patch.dict(
+            os.environ,
+            {"NOTIFY_WEBHOOK_URL": "http://127.0.0.1/hook", "NOTIFY_SIGNING_SECRET": "local-secret"},
+            clear=False,
+        ):
+            self.assertTrue(ow.incident_actions_ready())
+
+    def test_verify_failed_reaches_local_webhook(self):
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        import threading
+
+        received = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length)
+                received.append(json.loads(raw.decode("utf-8")))
+                self.send_response(204)
+                self.end_headers()
+
+            def log_message(self, fmt, *args):
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        host, port = server.server_address
+        try:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "NOTIFY_WEBHOOK_URL": f"http://{host}:{port}/hook",
+                    "NOTIFY_SIGNING_SECRET": "local-secret",
+                },
+                clear=False,
+            ):
+                ow.notify_release_event("verify_failed", {"project_id": "p1", "release_order_id": "ro-1"})
+                for _ in range(50):
+                    if received:
+                        break
+                    threading.Event().wait(0.05)
+        finally:
+            server.shutdown()
+        self.assertTrue(received)
+        self.assertEqual(received[0]["event"], "verify_failed")
+        self.assertEqual(received[0]["payload"]["project_id"], "p1")
+
 
 class TestReleasePolicyAutoRollback(unittest.TestCase):
     def test_staging_defaults_auto_rollback_on(self):
@@ -71,17 +122,30 @@ class TestIncidentLoop(unittest.TestCase):
         self.assertIn(ow.EVENT_BOOTSTRAP_SMOKE_FAILED, events)
         self.assertIn(ow.EVENT_VERIFY_FAILED, events)
 
+    @mock.patch("services.release.incident_loop_service.incident_actions_ready", return_value=True)
     @mock.patch("services.release.order_publish_flow.rollback_release_order")
     @mock.patch("services.release.incident_loop_service.notify_release_event")
     @mock.patch("services.release.incident_loop_service.find_rollback_target_order")
     @mock.patch("services.release.incident_loop_service.should_auto_rollback_on_verify_fail", return_value=True)
-    def test_auto_rollback_when_policy_enabled(self, _policy, find_mock, notify_mock, rollback_mock):
+    def test_auto_rollback_when_policy_and_notify_ready(self, _policy, find_mock, notify_mock, rollback_mock, _ready):
         find_mock.return_value = {"release_order_id": "ro-prev", "bundle_id": "rb-prev"}
         order = {"release_order_id": "ro-new", "scope_id": "s1", "env_key": "staging"}
         result = ils.handle_verify_failure("p1", order, "tester", smoke_report={"ok": False})
         rollback_mock.assert_called_once_with("p1", "ro-prev", "tester")
         self.assertTrue(result.get("attempted"))
         self.assertTrue(result.get("ok"))
+
+    @mock.patch("services.release.incident_loop_service.incident_actions_ready", return_value=False)
+    @mock.patch("services.release.order_publish_flow.rollback_release_order")
+    @mock.patch("services.release.incident_loop_service.notify_release_event")
+    @mock.patch("services.release.incident_loop_service.should_auto_rollback_on_verify_fail", return_value=True)
+    def test_auto_rollback_waits_for_webhook_and_secret(self, _policy, notify_mock, rollback_mock, _ready):
+        order = {"release_order_id": "ro-new", "scope_id": "s1", "env_key": "staging"}
+        result = ils.handle_verify_failure("p1", order, "tester", smoke_report={"ok": False})
+        rollback_mock.assert_not_called()
+        self.assertFalse(result.get("attempted"))
+        self.assertEqual(result["rollback"].get("reason"), "notify_not_configured")
+        self.assertTrue(notify_mock.called)
 
 
 class TestReleaseMetrics(unittest.TestCase):

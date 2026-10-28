@@ -35,7 +35,7 @@ def enrich_delivery_line_actions(project_id: str, line: Dict[str, Any]) -> Dict[
             "pipeline_ready": False,
             "artifact_ready": False,
             "status_hint": "交付动作暂不可用",
-            "primary": {"action": "versions", "label": "去版本代码", "href": ""},
+            "primary": {"action": "versions", "label": "去版本与管线", "href": ""},
             "secondary": [],
         }
     out["release_order_id"] = actions.get("release_order_id") or ""

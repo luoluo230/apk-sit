@@ -242,7 +242,7 @@ def create_release_batch(project_id: str, payload: Dict[str, Any], actor: str) -
             "platform": platform,
             "version_id": version_id,
             "version_code": str(version.get("version_code") or ""),
-            "reason": str(shared_plan.get("release_description") or shared_plan.get("reason") or "发版控制台批量创建"),
+            "reason": str(shared_plan.get("release_description") or shared_plan.get("reason") or "发版批量创建"),
             "owner": str(shared_plan.get("owner") or actor),
             "batch_id": batch_id,
             **_merge_shared_into_order_payload(shared_plan, line.get("overrides") if isinstance(line.get("overrides"), dict) else None),

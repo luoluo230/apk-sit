@@ -1,0 +1,8 @@
+{
+  "check": "battle_pvp_fanout",
+  "ok": false,
+  "battleId": null,
+  "notifyLatencyMs": 0,
+  "error": "match_failed:no_battle_id",
+  "generatedUtc": "2026-08-19T03:49:07.391687+00:00"
+}

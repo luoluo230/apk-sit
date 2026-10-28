@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 from models.data import projects_db
 from services.release.bundle_promotion_service import list_promotion_candidates
+from services.release.flow_storyline_service import build_runtime_snapshot, build_storyline, status_label
 from services.release.server_artifact_promotion_service import list_server_promotion_candidates
 from services.release.env_registry import get_project_env_defs, normalize_release_env_key, project_env_label
 from services.release.overview_feed_service import build_release_health_summary
@@ -18,23 +19,23 @@ def _module_cards(project_id: str) -> List[Dict[str, Any]]:
     return [
         {
             "id": "release-console",
-            "title": "发版控制台",
-            "desc": "批量勾选交付线，一次会话完成构建/预检/发布",
+            "title": "发版",
+            "desc": "勾选交付线，按主线完成构建、预检与发布",
             "href": f"/admin/projects/{project_id}/release",
             "icon": "nav_release",
             "primary": True,
         },
         {
             "id": "versions",
-            "title": "版本管理",
-            "desc": "VersionCode、版本组与单线发版入口",
+            "title": "版本与管线",
+            "desc": "VersionCode、版本组与构建管线配置",
             "href": f"/admin/projects/{project_id}/versions",
             "icon": "nav_version",
         },
         {
             "id": "release-orders",
-            "title": "发布单",
-            "desc": "查看/编辑各环境发布单与审批状态",
+            "title": "发布历史",
+            "desc": "各环境发布单、审批与回滚记录",
             "href": f"/admin/projects/{project_id}/release-orders",
             "icon": "nav_release_order",
         },
@@ -197,6 +198,7 @@ def _pending_actions(project_id: str, *, limit: int = 8) -> List[Dict[str, Any]]
                 "version_name": order.get("version_name"),
                 "version_code": order.get("version_code"),
                 "status": status,
+                "status_label": status_label(status),
                 "next_action": nxt,
                 "coordinated_deploy": _coordinated_deploy_summary(order),
                 "href": f"/admin/projects/{project_id}/release-orders/{order.get('release_order_id')}",
@@ -222,20 +224,26 @@ def build_release_hub(project_id: str, *, env_key: str = "") -> Dict[str, Any]:
             }
         )
     health = build_release_health_summary(project_id, days=7)
+    pending = _pending_actions(project_id)
+    console_href = f"/admin/projects/{project_id}/release?env_key={selected_env}"
     return {
         "project_id": project_id,
         "selected_env": selected_env,
         "env_defs": env_defs,
         "module_cards": _module_cards(project_id),
         "prod_wizard_steps": _prod_wizard_steps(project_id),
+        "runtime_snapshot": build_runtime_snapshot(project_id, selected_env),
+        "storyline": build_storyline(
+            project_id, selected_env, pending, release_href=console_href
+        ),
         "promotion_candidates": list_promotion_candidates(project_id),
         "server_promotion_candidates": list_server_promotion_candidates(project_id),
         "coordinated_deploy_feed": _coordinated_deploy_feed(project_id),
-        "pending_actions": _pending_actions(project_id),
+        "pending_actions": pending,
         "release_health": health,
         "quick_actions": {
             "dev_quick_publish": f"/api/projects/{project_id}/delivery-attempts/quick-publish",
-            "release_console": f"/admin/projects/{project_id}/release?env_key={selected_env}",
+            "release_console": console_href,
             "prod_release": f"/admin/projects/{project_id}/release?env_key=production",
         },
     }

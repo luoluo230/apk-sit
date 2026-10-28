@@ -79,7 +79,7 @@ def register_routes(bp, *, current_username):
         env_key = str(request.args.get("env_key") or "").strip()
         if not env_key:
             return redirect(
-                f"/admin/projects/{project_id}/overview?{urlencode({'tab': 'environments', 'hint': 'pick_env'})}"
+                f"/admin/projects/{project_id}/versions?{urlencode({'env_key': 'development'})}"
             )
         channel_filter = str(request.args.get("channel_id") or "").strip()
         platform_filter = str(request.args.get("platform") or "").strip().lower()
@@ -99,7 +99,7 @@ def register_routes(bp, *, current_username):
         )
         return _render_ops_page(
             content,
-            "版本管理",
+            "版本与管线",
             active_page="versions",
             project_id=project_id,
             env_key=env_key or "development",

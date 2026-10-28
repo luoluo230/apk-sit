@@ -352,7 +352,7 @@
     };
     var missing = payload.line_targets.filter(function (t) { return !t.version_id; });
     if (missing.length) {
-      toast("部分交付线缺少 VersionCode，请先在版本代码中创建");
+      toast("部分交付线缺少 VersionCode，请先在版本与管线中创建");
       return;
     }
     api("/api/projects/" + projectId + "/release-batches", { method: "POST", body: payload })

@@ -83,6 +83,8 @@ def normalize_release_platform(value: str) -> str:
     p = (value or "").strip().lower()
     if p in ("ios", "iphone", "iphoneos"):
         return "ios"
+    if p in ("windows", "win", "standalonewindows64"):
+        return "windows"
     return "android"
 
 

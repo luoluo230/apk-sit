@@ -1,0 +1,19 @@
+{
+  "checks": [
+    {
+      "name": "startup_gate",
+      "ok": false,
+      "detail": {
+        "ok": false,
+        "error": "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>404</title><link rel=\"stylesheet\" href=\"/static/tailwind.css\"></head><body class=\"min-h-screen flex items-center justify-center bg-slate-50\"><div class=\"text-center\"><h1 class=\"text-2xl font-bold text-slate-800\">页面不存在</h1><p class=\"mt-2 text-slate-500\">请检查访问地址。</p><a href=\"/\" class=\"inline-flex mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white\">返回首页</a></div></body></html>",
+        "status": 404
+      }
+    },
+    {
+      "name": "baas_pvp_fanout",
+      "ok": true,
+      "exit_code": 0
+    }
+  ],
+  "verdict": "fail"
+}

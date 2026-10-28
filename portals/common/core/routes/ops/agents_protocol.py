@@ -365,6 +365,20 @@ def ops_platform_agent_report():
         reg_v2[agent_id] = ops_helpers._normalize_agent_descriptor_v2(cur_agent)
         ops_helpers._save_agent_registry_v2(reg_v2)
 
+    server_release = None
+    server_release_error = ""
+    if str(hit.get("action_type") or "").strip().lower() == "deploy_server_artifact" and status in ("SUCCESS", "FAILED"):
+        from services.ops.server_deploy_dispatch import apply_deploy_job_report
+
+        try:
+            server_release = apply_deploy_job_report(
+                hit,
+                status,
+                actor=f"agent:{agent_id or node_id}",
+            )
+        except ValueError as exc:
+            server_release_error = str(exc)
+
     ops_helpers._append_event(
         {
             "id": "evt-" + uuid.uuid4().hex[:12],
@@ -381,5 +395,13 @@ def ops_platform_agent_report():
             "job_id": job_id,
         }
     )
-    return jsonify({"ok": True, "job_id": job_id, "status": status})
+    body = {"ok": True, "job_id": job_id, "status": status}
+    if server_release is not None:
+        body["server_release"] = {
+            "server_release_id": server_release.get("server_release_id"),
+            "status": server_release.get("status"),
+        }
+    if server_release_error:
+        body["server_release_error"] = server_release_error
+    return jsonify(body)
 

@@ -146,7 +146,7 @@ def runtime_bootstrap():
     channel_name = str(channel_row.get("apk_subdir") or channel_row.get("name") or channel).strip()
     scope_id = build_scope_id(project_slug(project_id), env_key, resolved_channel_id, platform)
     scope = find_scope(scope_id)
-    if not scope:
+    if not scope and platform in {"android", "ios"}:
         legacy_scope_id = build_scope_id(project_slug(project_id), env_key, resolved_channel_id)
         if legacy_scope_id != scope_id:
             scope = find_scope(legacy_scope_id)

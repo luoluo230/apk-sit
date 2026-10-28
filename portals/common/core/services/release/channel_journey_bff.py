@@ -137,10 +137,10 @@ def _channel_entry_urls(project_id: str, env_key: str, channel_id: str) -> Dict[
     cid = str(channel_id or "").strip()
     base = f"/admin/projects/{project_id}/versions"
     qs = urlencode({"env_key": ek, "channel_id": cid})
-    qs_release = urlencode({"env_key": ek, "channel_id": cid, "action": "edit_release"})
+    qs_release = urlencode({"env_key": ek})
     return {
         "build": f"{base}?{qs}",
-        "release": f"{base}?{qs_release}",
+        "release": f"/admin/projects/{project_id}/release?{qs_release}",
     }
 
 
@@ -513,8 +513,8 @@ def resolve_channel_journey_entries(project_id: str, env_key: str, channel_id: s
         return {
             "channel_id": cid,
             "channel_name": cid,
-            "build_entry": {"label": "版本管理", "href": urls["build"], "enabled": False, "reason": "渠道未配置"},
-            "release_entry": {"label": "版本管理", "href": urls["release"], "enabled": False, "reason": "渠道未配置"},
+            "build_entry": {"label": "版本与管线", "href": urls["build"], "enabled": False, "reason": "渠道未配置"},
+            "release_entry": {"label": "发版", "href": urls["release"], "enabled": False, "reason": "渠道未配置"},
             "platform_lines": [],
         }
     channel_name = str(lines[0].get("channel_name") or cid)
@@ -530,13 +530,13 @@ def resolve_channel_journey_entries(project_id: str, env_key: str, channel_id: s
         "channel_id": cid,
         "channel_name": channel_name,
         "build_entry": {
-            "label": "版本管理",
+            "label": "版本与管线",
             "href": urls["build"],
             "enabled": True,
             "reason": "" if any_pipeline or platform_lines else "请先配置平台",
         },
         "release_entry": {
-            "label": "版本管理",
+            "label": "发版",
             "href": urls["release"],
             "enabled": True,
             "reason": "" if any_artifact or any(st.get("publishable_bundles") for st in platform_lines) else "暂无产物或线上版本",

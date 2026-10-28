@@ -275,3 +275,16 @@ def require_production_secrets() -> None:
         raise RuntimeError(
             'Production startup blocked: missing required secrets: ' + ', '.join(missing)
         )
+
+
+def require_production_database() -> None:
+    """Production must use PostgreSQL. SQLite stays the single-process dev source. Plan P0-02."""
+    if not Config.is_production():
+        return
+    url = (os.getenv('DATABASE_URL') or '').strip().lower()
+    if url.startswith('postgresql://') or url.startswith('postgres://'):
+        return
+    raise RuntimeError(
+        'Production startup blocked: DATABASE_URL must be a PostgreSQL URL. '
+        'SQLite is only the single-process development source of truth.'
+    )

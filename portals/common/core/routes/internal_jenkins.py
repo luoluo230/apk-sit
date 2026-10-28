@@ -175,6 +175,21 @@ def jenkins_server_artifact():
         )
 
     result: Dict[str, Any] = {"artifact": row}
+    server_release_id = str(payload.get("server_release_id") or "").strip()
+    if server_release_id:
+        from services.release import server_release_service as srs
+
+        try:
+            result["server_release"] = srs.finish_gameserver_build(
+                project_id,
+                server_release_id,
+                str(row.get("artifact_id") or ""),
+                "jenkins-webhook",
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc), "artifact": row}), 400
+        return jsonify({"ok": True, **result}), 201
+
     topology_id = str(payload.get("topology_id") or "").strip()
     target_services = payload.get("target_services")
     env_key = str(payload.get("env_key") or "development").strip()

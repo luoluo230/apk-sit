@@ -424,7 +424,7 @@ def _build_page_html(project_context=False, version_lock_params=False):
             }).join('')+
             '</tbody></table></div></details>');
         if(!ce.enabled && !rb.enabled && !hr.enabled && !ab.enabled){
-            body.innerHTML='<p class="text-xs text-amber-700">未配置商业流水线步骤。请返回项目「版本管理」编辑该版本的商业级流水线后刷新本页。</p>';
+            body.innerHTML='<p class="text-xs text-amber-700">未配置商业流水线步骤。请返回项目「版本与管线」编辑该版本的商业级流水线后刷新本页。</p>';
         } else {
             body.innerHTML=rows.join('');
         }

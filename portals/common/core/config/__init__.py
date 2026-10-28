@@ -13,6 +13,7 @@ if os.path.isfile(_config_py):
     load_dotenv = _mod.load_dotenv
     get_jenkins_credentials = _mod.get_jenkins_credentials
     require_production_secrets = _mod.require_production_secrets
+    require_production_database = _mod.require_production_database
     APK_SITE_ROOT = _mod.APK_SITE_ROOT
     JENKINS_CLONE_DIR = _mod.JENKINS_CLONE_DIR
     CONFIG_DIR = _mod.CONFIG_DIR

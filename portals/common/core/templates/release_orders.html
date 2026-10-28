@@ -2,11 +2,11 @@
   <div class="delivery-titlebar pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_release_order.svg" alt=""></span>
-      <div><h1>发布单</h1><p>管理从构建、预检、审批到发布验证和回滚的完整交付流程。</p></div>
+      <div><h1>发布历史</h1><p>查看已创建的发布单、审批与回滚记录。要发起新发版请去发版中心或发版。</p></div>
     </div>
     <div class="pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
-      <a class="ui-secondary pm-btn" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_version_code.svg" alt="">去版本代码开始发布</a>
+      <a class="ui-secondary pm-btn" href="/admin/projects/{{ project_id }}/release?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_release.svg" alt="">去发版</a>
     </div>
   </div>
   <div class="order-kpi-row pm-kpi-row" id="orderSummary"></div>

@@ -142,7 +142,7 @@ def render_admin_dashboard_v2(summary_cards, quick_actions, todo_html, risk_html
                 <div>
                     <h3 class="text-base font-semibold text-slate-900">最近安装包</h3>
                 </div>
-                <a href="/admin/versions" class="text-xs font-medium text-indigo-600 hover:underline">查看版本中心</a>
+                <a href="/admin/projects" class="text-xs font-medium text-indigo-600 hover:underline">查看项目</a>
             </div>
             <div class="overflow-x-auto"><table class="min-w-full"><thead><tr class="border-b border-slate-200 text-left text-xs text-slate-500"><th class="px-4 py-2">项目</th><th class="px-4 py-2">版本</th><th class="px-4 py-2">平台</th><th class="px-4 py-2">上传时间</th></tr></thead><tbody>''' + recent_package_rows + '''</tbody></table></div>
         </div>

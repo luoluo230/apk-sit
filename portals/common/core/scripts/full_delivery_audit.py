@@ -156,7 +156,7 @@ def _check_routes():
             ("/admin", 200),
             ("/download-center", 200),
             ("/admin/projects", 200),
-            ("/admin/versions", 200),
+            ("/admin/versions", 302),
             ("/admin/community", 200),
             ("/admin/approval", 200),
             ("/admin/reports", 200),

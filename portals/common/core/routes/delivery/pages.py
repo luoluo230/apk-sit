@@ -215,7 +215,7 @@ def register_page_routes(bp) -> None:
         env_key = str(request.args.get("env_key") or request.args.get("env") or "development").strip()
         return _page(
             "project_release_console.html",
-            "发版控制台",
+            "发版",
             project_id,
             "release-console",
             breadcrumb_module="交付发版",
