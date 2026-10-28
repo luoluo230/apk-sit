@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "account_level_cap": 200,
+  "account_exp_per_level": 100,
+  "stamina_max": 120,
+  "stamina_recover_seconds": 360,
+  "stage_stamina_cost": 6,
+  "idle_max_minutes": 720,
+  "idle_exp_min_per_hour": 60,
+  "idle_exp_stage_multiplier": 12,
+  "idle_diamond_unlock_stage": 10,
+  "idle_diamond_per_hour": 1
+}
