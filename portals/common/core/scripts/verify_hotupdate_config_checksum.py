@@ -107,7 +107,11 @@ def main() -> int:
     parser.add_argument("--asset", default=os.environ.get("HOTUPDATE_CONFIG_ASSET", ""))
     parser.add_argument("--manifest", default="", help="JSON file with expected fields")
     parser.add_argument("--project-id", default=os.environ.get("PROJECT_ID", "GomeKu"))
-    parser.add_argument("--maclient-root", default=os.environ.get("MACLIENT_ROOT", "E:/maclient"))
+    parser.add_argument(
+        "--maclient-root",
+        default=os.environ.get("MACLIENT_ROOT", "E:/maclient/Client"),
+        help="Unity project root (…/Client) or framework repo root containing Client/",
+    )
     parser.add_argument(
         "--contract-v2",
         action="store_true",
@@ -115,8 +119,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    unity_root = str(args.maclient_root or "").strip().rstrip("/\\")
+    if unity_root and not os.path.isdir(os.path.join(unity_root, "Assets")):
+        client = os.path.join(unity_root, "Client")
+        if os.path.isdir(os.path.join(client, "Assets")):
+            unity_root = client
     asset = args.asset.strip() or os.path.join(
-        args.maclient_root,
+        unity_root,
         "Assets",
         "Content",
         "Resources",

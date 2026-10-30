@@ -144,7 +144,7 @@ def main() -> int:
         raise SystemExit(f"missing code dir: {code_root}")
 
     # Prefer real Jenkins build outputs if static code tree lacks HotUpdate.dll
-    src_build = Path(r"E:\maclient\Builds\Development\wechat\android\Version_1.0.0\21\code")
+    src_build = Path(r"E:\maclient\Client\Builds\Development\wechat\android\Version_1.0.0\21\code")
     if src_build.is_dir() and not (code_root / "hotupdate" / "HotUpdate.dll").exists():
         import shutil
 

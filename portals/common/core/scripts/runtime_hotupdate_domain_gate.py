@@ -34,7 +34,7 @@ def _default_credentials() -> tuple[str, str]:
 
 def _maybe_run_unity_smoke(report: dict) -> dict:
     unity = str(os.environ.get("UNITY_EDITOR") or "").strip()
-    maclient = str(os.environ.get("MACLIENT_PATH") or r"E:\maclient").strip()
+    maclient = str(os.environ.get("MACLIENT_PATH") or r"E:\maclient\Client").strip()
     if str(os.environ.get("RUNTIME_DOMAIN_UNITY") or "").strip() not in {"1", "true", "yes"}:
         report["unity_smoke"] = {"skipped": True, "reason": "set RUNTIME_DOMAIN_UNITY=1 to enable"}
         return report
@@ -107,7 +107,7 @@ def main() -> int:
         gid, gkey = _default_credentials()
     asset = str(
         os.environ.get("HOTUPDATE_CONFIG_ASSET")
-        or r"E:\maclient\Assets\Content\Resources\HotUpdateConfig.asset"
+        or r"E:\maclient\Client\Assets\Content\Resources\HotUpdateConfig.asset"
     )
     if Path(asset).is_file():
         os.environ.setdefault("HOTUPDATE_CONFIG_ASSET", asset)

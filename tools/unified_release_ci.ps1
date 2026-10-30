@@ -6,8 +6,8 @@ param(
     [string]$UnityScenario = "smoke",
     [string]$BaseUrl = "http://127.0.0.1:5003",
     [string]$ScopeId = "gomeku:development:1001",
-    [string]$UnityProject = "E:\maclient",
-    [string]$GameServerRoot = "E:\maclient\game-server"
+    [string]$UnityProject = "E:\maclient\Client",
+    [string]$GameServerRoot = "E:\maclient\Server"
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +17,7 @@ if ($ClosureMode -or $env:CLOSURE_MODE -eq "1") {
 }
 $ApkCore = Join-Path $PSScriptRoot "..\portals\common\core" | Resolve-Path
 $ApkRoot = Split-Path $ApkCore -Parent | Split-Path -Parent | Split-Path -Parent | Resolve-Path
-$MaclientRoot = if ($env:MACLIENT_ROOT) { $env:MACLIENT_ROOT } else { "E:\maclient" }
+$MaclientRoot = if ($env:MACLIENT_ROOT) { $env:MACLIENT_ROOT } else { "E:\maclient\Client" }
 
 function Invoke-Step([string]$Name, [scriptblock]$Action) {
     Write-Host "`n=== $Name ===" -ForegroundColor Cyan
@@ -112,7 +112,7 @@ if (-not $SkipServer) {
         Set-Location $ApkCore
         $env:PORTAL_BASE_URL = $BaseUrl
         if (-not $env:HOTUPDATE_CONFIG_ASSET) {
-            $env:HOTUPDATE_CONFIG_ASSET = "E:\maclient\Assets\Content\Resources\HotUpdateConfig.asset"
+            $env:HOTUPDATE_CONFIG_ASSET = "E:\maclient\Client\Assets\Content\Resources\HotUpdateConfig.asset"
         }
         $env:RUNTIME_DOMAIN_UNITY = "0"
         py -3 scripts\runtime_hotupdate_domain_gate.py

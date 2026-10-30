@@ -31,7 +31,12 @@ def _resolve_game_server_repo() -> str:
         return env
     candidates: List[str] = [os.path.join(os.path.expanduser("~"), "game-server")]
     if os.name == "nt":
-        candidates.extend([r"E:\maclient\game-server", r"D:\maclient\game-server"])
+        candidates.extend([
+            r"E:\maclient\Server",
+            r"E:\maclient\Server\game-server",
+            r"D:\maclient\Server",
+            r"D:\maclient\Server\game-server",
+        ])
     else:
         candidates.append(os.path.join(os.path.expanduser("~"), "GameClient", "game-server"))
     seen: set = set()

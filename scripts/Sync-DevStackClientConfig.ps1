@@ -29,15 +29,21 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Resolve-MaclientRoot([string]$Candidate) {
-    if (-not [string]::IsNullOrWhiteSpace($Candidate) -and (Test-Path $Candidate)) {
-        return (Resolve-Path $Candidate).Path
+    # Prefer Unity project root (…/Client). Accept framework repo root and resolve Client/.
+    function Select-UnityProject([string]$Path) {
+        if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) { return $null }
+        $resolved = (Resolve-Path $Path).Path
+        if (Test-Path (Join-Path $resolved "Assets")) { return $resolved }
+        $client = Join-Path $resolved "Client"
+        if (Test-Path (Join-Path $client "Assets")) { return (Resolve-Path $client).Path }
+        return $null
     }
-    foreach ($path in @($env:MACLIENT_ROOT, $env:UNITY_PROJECT_PATH, "E:\maclient")) {
-        if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path $path)) {
-            return (Resolve-Path $path).Path
-        }
+
+    foreach ($path in @($Candidate, $env:UNITY_PROJECT_PATH, $env:MACLIENT_ROOT, "E:\maclient\Client", "E:\maclient")) {
+        $hit = Select-UnityProject $path
+        if ($hit) { return $hit }
     }
-    throw "maclient root not found. Set MACLIENT_ROOT or pass -MaclientRoot."
+    throw "Unity Client project not found. Set UNITY_PROJECT_PATH / MACLIENT_ROOT to …/maclient/Client (or framework root)."
 }
 
 function Resolve-UnityExecutable {

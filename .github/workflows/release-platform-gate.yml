@@ -73,8 +73,8 @@ jobs:
 
       - name: maclient bootstrap config gate
         env:
-          MACLIENT_ROOT: ${{ github.workspace }}/../maclient
-        run: py -3 scripts/verify_hotupdate_config_checksum.py --maclient-root E:/maclient --contract-v2
+          MACLIENT_ROOT: ${{ github.workspace }}/../maclient/Client
+        run: py -3 scripts/verify_hotupdate_config_checksum.py --maclient-root E:/maclient/Client --contract-v2
 
       - name: Protocol alignment gates
         env:
@@ -91,7 +91,7 @@ jobs:
       - name: runtime hotupdate domain gate
         env:
           PORTAL_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
-          HOTUPDATE_CONFIG_ASSET: E:/maclient/Assets/Content/Resources/HotUpdateConfig.asset
+          HOTUPDATE_CONFIG_ASSET: E:/maclient/Client/Assets/Content/Resources/HotUpdateConfig.asset
           # Fixture-active scopes may still PASS HTTP domain if files non-empty; Unity optional.
           RUNTIME_DOMAIN_UNITY: "0"
         run: py -3 portals/common/core/scripts/runtime_hotupdate_domain_gate.py
@@ -157,7 +157,7 @@ jobs:
           py -3 -c "
           from services.unity_client_hotupdate_runner import run_unity_client_startup_acceptance
           import os, sys
-          unity_project = os.environ.get('UNITY_PROJECT', r'E:\maclient')
+          unity_project = os.environ.get('UNITY_PROJECT', r'E:\maclient\Client')
           r = run_unity_client_startup_acceptance(
               unity_project=unity_project,
               scenario='session',
