@@ -118,8 +118,15 @@ def quick_publish_delivery(
             raise ValueError("构建已失败，请重新触发构建")
         order = request_build(project_id, order_id, actor)
         return {"phase": "building", "release_order_id": order_id, "order": order}
-    if status in {"draft", "precheck_failed"} and not skip_build:
+    if not skip_build and status in {"draft", "precheck_failed"}:
         order = quick_build_version(project_id, vid, actor, force=force_build)
+        status = str(order.get("status") or "")
+        order_id = str(order.get("release_order_id") or order_id)
+        if status == "building":
+            return {"phase": "building", "release_order_id": order_id, "order": order}
+    elif not skip_build and status == "artifacts_ready" and force_build:
+        # 产物路径已占位时仍允许强制重跑 Jenkins（Web「强制构建」）
+        order = quick_build_version(project_id, vid, actor, force=True)
         status = str(order.get("status") or "")
         order_id = str(order.get("release_order_id") or order_id)
         if status == "building":
@@ -348,10 +355,18 @@ def sync_release_order_build_status(project_id: str, order_id: str, *, actor: st
     result = str(st.get("status") or "").upper()
     if result != "SUCCESS":
         fail_status = "build_failed"
+        summary = str(st.get("error") or result or "BUILD_FAILED")
+        failure_class = "product"
+        low = summary.lower()
+        if any(token in low for token in ("403", "401", "unauthorized", "forbidden", "unreachable", "connection")):
+            failure_class = "env"
+        elif any(token in low for token in ("queued", "offline", "label", "no agent", "no nodes")):
+            failure_class = "env"
         fail_payload = {
             "build_number": build_number,
             "jenkins_result": result,
-            "failure_summary": str(st.get("error") or result or "BUILD_FAILED"),
+            "failure_summary": summary,
+            "failure_class": failure_class,
             "retry_hint": "检查 Jenkins 控制台与 commercial_android_pipeline 日志；OSS 上传失败可重试构建",
         }
         from services.release.order_state_machine import assert_transition

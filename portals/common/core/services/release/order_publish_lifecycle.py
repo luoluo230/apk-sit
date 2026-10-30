@@ -145,7 +145,7 @@ def expand_gray_rollout(
 
 
 def run_bootstrap_smoke_for_order(project_id: str, order_id: str) -> Dict[str, Any]:
-    """HTTP smoke against active bundle fields after publish (internal validation)."""
+    """HTTP smoke + patch manifest content after publish (rejects empty files[])."""
     order = _order_crud().get_release_order(project_id, order_id, include_details=False)
     if not order:
         raise ValueError("发布单不存在")
@@ -154,37 +154,64 @@ def run_bootstrap_smoke_for_order(project_id: str, order_id: str) -> Dict[str, A
     if not scope_id or not bundle_id:
         return {"ok": False, "error": "发布单缺少 scope 或 bundle", "checks": []}
     from services.release.bundle_service import _check_remote_artifact, find_active_bundle
+    from services.release.patch_manifest_probe import probe_catalog, probe_patch_manifest
 
     bundle = find_active_bundle(scope_id, platform=str(order.get("platform") or ""))
     if not bundle or str(bundle.get("bundle_id") or "") != bundle_id:
         return {"ok": False, "error": "active bundle 与发布单不一致", "checks": []}
     client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
+    is_gate_fixture = bool(bundle.get("is_gate_fixture")) or str(bundle_id).startswith("rb-gate-")
     checks: List[Dict[str, Any]] = []
-    probe_keys = ("catalog_url", "config_manifest_url", "code_manifest_url")
-    for key in probe_keys:
-        val = str(client.get(key) or "").strip()
-        probe = _check_remote_artifact(val) if val else {"ok": False, "status": 0, "error": "missing url"}
-        checks.append(
-            {
-                "key": key,
-                "ok": bool(probe.get("ok")),
-                "value": val[:120] if val else "",
-                "probe": probe,
-            }
+
+    catalog_url = str(client.get("catalog_url") or "").strip()
+    catalog_probe = probe_catalog(catalog_url) if catalog_url else {
+        "key": "catalog",
+        "ok": False,
+        "error": "missing url",
+    }
+    checks.append(catalog_probe)
+
+    config_url = str(client.get("config_manifest_url") or client.get("config_url") or "").strip()
+    code_url = str(client.get("code_manifest_url") or client.get("code_url") or "").strip()
+    checks.append(
+        probe_patch_manifest(
+            config_url,
+            label="config_manifest",
+            is_gate_fixture=is_gate_fixture,
         )
+        if config_url
+        else {"key": "config_manifest", "ok": False, "error": "missing url"}
+    )
+    checks.append(
+        probe_patch_manifest(
+            code_url,
+            label="code_manifest",
+            is_gate_fixture=is_gate_fixture,
+        )
+        if code_url
+        else {"key": "code_manifest", "ok": False, "error": "missing url"}
+    )
+
     if str(order.get("platform") or "").lower() == "android":
-        apk_url = str(client.get("apk_url") or client.get("catalog_url") or "").strip()
-        probe = _check_remote_artifact(apk_url) if apk_url else {"ok": False, "status": 0, "error": "missing url"}
-        checks.append(
-            {
-                "key": "apk_url",
-                "ok": bool(probe.get("ok")),
-                "value": apk_url[:120] if apk_url else "",
-                "probe": probe,
-            }
-        )
+        apk_url = str(client.get("apk_url") or "").strip()
+        if apk_url:
+            probe = _check_remote_artifact(apk_url)
+            checks.append(
+                {
+                    "key": "apk_url",
+                    "ok": bool(probe.get("ok")),
+                    "value": apk_url[:120],
+                    "probe": probe,
+                }
+            )
     ok = all(item.get("ok") for item in checks)
-    return {"ok": ok, "bundle_id": bundle_id, "scope_id": scope_id, "checks": checks}
+    return {
+        "ok": ok,
+        "bundle_id": bundle_id,
+        "scope_id": scope_id,
+        "is_gate_fixture": is_gate_fixture,
+        "checks": checks,
+    }
 
 
 def verify_release_order(project_id: str, order_id: str, actor: str, ok: bool = True) -> Dict[str, Any]:

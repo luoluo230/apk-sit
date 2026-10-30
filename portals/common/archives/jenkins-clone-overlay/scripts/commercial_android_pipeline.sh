@@ -337,8 +337,8 @@ _run_publish_only_mode() {
   echo "=== Step 4: 版本${mode}（跳过 Step1-3 构建） ==="
   HR_ARGS="-releaseVersion \"${RELEASE_VERSION:-0.0.1}\""
   HR_ARGS="$HR_ARGS -releaseEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
-  HR_ARGS="$HR_ARGS -releaseChannel \"${RELEASE_CHANNEL:-common}\""
-  HR_ARGS="$HR_ARGS -releasePlatform \"${RELEASE_PLATFORM:-Android}\""
+  HR_ARGS="$HR_ARGS -releaseChannel \"${RELEASE_CHANNEL:-wechat}\""
+  HR_ARGS="$HR_ARGS -releasePlatform \"${RELEASE_PLATFORM:-android}\""
   HR_ARGS="$HR_ARGS -commercialReleaseMode \"${mode}\""
   [ -n "${RELEASE_PLAN_FILE}" ] && [ -f "${RELEASE_PLAN_FILE}" ] && HR_ARGS="$HR_ARGS -releasePlanFile \"${RELEASE_PLAN_FILE}\""
   [ "$mode" = "activate" ] && HR_ARGS="$HR_ARGS -releaseActivate \"true\""
@@ -364,7 +364,7 @@ if [ "${CONFIG_EXPORT_ENABLED:-false}" = "true" ]; then
   echo "=== Step 1: 配置导出发布 (ConfigRemotePublish) ==="
   echo "上传: ConfigContent Excel 导表 + CloudUpload/OSS"
   _CFG_ENV="$(_map_config_cli_env "${CONFIG_ENVIRONMENT:-${RELEASE_ENVIRONMENT:-Development}}")"
-  _CFG_PLATFORM="${CONFIG_PLATFORM:-${RELEASE_PLATFORM:-Android}}"
+  _CFG_PLATFORM="${CONFIG_PLATFORM:-${RELEASE_PLATFORM:-android}}"
   _CFG_CHANNEL="${RELEASE_CHANNEL:-${CHANNEL:-wechat}}"
   _CFG_VERSION="${CONFIG_CLIENT_VERSION:-${RELEASE_VERSION:-1.0.0}}"
   _CFG_VERSION_CODE="${VERSION_CODE:-1}"
@@ -406,7 +406,8 @@ if [ "${RESOURCE_BUILD_ENABLED:-false}" = "true" ]; then
   if [ "${RESOURCE_CLEAN_VERSION:-true}" = "true" ]; then
     VER_ROOT="${UNITY_PROJECT_PATH:-${GIT_WORKSPACE:-}}"
     if [ -n "$VER_ROOT" ]; then
-      VER_DIR="$VER_ROOT/Builds/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-common}/${RELEASE_PLATFORM:-Android}/Version_${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}"
+      VER_BASE="$VER_ROOT/Builds/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-wechat}/${RELEASE_PLATFORM:-android}/Version_${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}"
+      if [ -n "${VERSION_CODE:-}" ]; then VER_DIR="$VER_BASE/${VERSION_CODE}"; else VER_DIR="$VER_BASE"; fi
       if [ -d "$VER_DIR" ]; then
         rm -rf "$VER_DIR"
         echo "已清理版本目录: $VER_DIR"
@@ -416,8 +417,8 @@ if [ "${RESOURCE_BUILD_ENABLED:-false}" = "true" ]; then
   RP_ARGS="-m09bMode \"build\""
   RP_ARGS="$RP_ARGS -m09bVersion \"${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}\""
   RP_ARGS="$RP_ARGS -m09bEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
-  RP_ARGS="$RP_ARGS -m09bChannel \"${RELEASE_CHANNEL:-common}\""
-  RP_ARGS="$RP_ARGS -m09bPlatform \"${RELEASE_PLATFORM:-Android}\""
+  RP_ARGS="$RP_ARGS -m09bChannel \"${RELEASE_CHANNEL:-wechat}\""
+  RP_ARGS="$RP_ARGS -m09bPlatform \"${RELEASE_PLATFORM:-android}\""
   [ -n "${RESOURCE_PROVIDER}" ] && RP_ARGS="$RP_ARGS -m09bProvider \"${RESOURCE_PROVIDER}\""
   if [ -n "${RESOURCE_SCENARIO}" ] && [[ "${RESOURCE_SCENARIO}" == *"/"* || "${RESOURCE_SCENARIO}" == *.json ]]; then
     RP_ARGS="$RP_ARGS -m09bScenario \"${RESOURCE_SCENARIO}\""
@@ -456,14 +457,14 @@ if [ "${HOT_RELEASE_ENABLED:-false}" = "true" ]; then
   echo "上传: Unity 项目 Assets/Editor/Configs/OSSConfig.json (aliyun-oss)"
   HR_ARGS="-releaseVersion \"${RELEASE_VERSION:-0.0.1}\""
   HR_ARGS="$HR_ARGS -releaseEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
-  HR_ARGS="$HR_ARGS -releaseChannel \"${RELEASE_CHANNEL:-common}\""
-  HR_ARGS="$HR_ARGS -releasePlatform \"${RELEASE_PLATFORM:-Android}\""
+  HR_ARGS="$HR_ARGS -releaseChannel \"${RELEASE_CHANNEL:-wechat}\""
+  HR_ARGS="$HR_ARGS -releasePlatform \"${RELEASE_PLATFORM:-android}\""
   HR_ARGS="$HR_ARGS -releaseTargets \"${RELEASE_TARGETS:-code,resource}\""
   HR_ARGS="$HR_ARGS -releaseHotLabels \"${RELEASE_HOT_LABELS:-hotupdate,aotmeta}\""
   HR_ARGS="$HR_ARGS -releaseUpload \"${RELEASE_UPLOAD:-true}\""
   HR_ARGS="$HR_ARGS -versionCode \"${VERSION_CODE}\""
   _step3_upload_mode="${RELEASE_UPLOAD_MODE:-incremental}"
-  _vc_parent="${UNITY_PROJECT_PATH:-${GIT_WORKSPACE:-}}/Builds/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-common}/${RELEASE_PLATFORM:-Android}/Version_${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}"
+  _vc_parent="${UNITY_PROJECT_PATH:-${GIT_WORKSPACE:-}}/Builds/${RELEASE_ENVIRONMENT:-Development}/${RELEASE_CHANNEL:-wechat}/${RELEASE_PLATFORM:-android}/Version_${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}"
   if [ "${_step3_upload_mode}" = "incremental" ] && [ -d "${_vc_parent}" ]; then
     _prev_vc_count=$(find "${_vc_parent}" -maxdepth 1 -mindepth 1 -type d -name '[0-9]*' ! -name "${VERSION_CODE}" 2>/dev/null | wc -l | tr -d ' ')
     if [ "${_prev_vc_count:-0}" = "0" ]; then
@@ -510,6 +511,25 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   export GIT_BRANCH="${GIT_BRANCH:-main}"
   export PROJECT_ID="${PROJECT_ID:-GomeKu}"
   export VERSION_STAGE="${VERSION_STAGE:-dev}"
+  echo "=== Step 4-pre: 同步 HotUpdateConfig（免手工改 Unity） ==="
+  if [ -z "${GAME_ID:-}" ] || [ -z "${GAME_KEY:-}" ]; then
+    echo "ERROR: GAME_ID/GAME_KEY 未注入。正式构建必须由 Portal 写入项目接入凭据后再触发。"
+    exit 1
+  fi
+  _HC_ARGS="-releaseVersion \"${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}\""
+  _HC_ARGS="$_HC_ARGS -releaseEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
+  _HC_ARGS="$_HC_ARGS -releaseChannel \"${RELEASE_CHANNEL:-${CHANNEL:-wechat}}\""
+  _HC_ARGS="$_HC_ARGS -projectId \"${PROJECT_ID:-GomeKu}\""
+  _HC_ARGS="$_HC_ARGS -gameId \"${GAME_ID}\""
+  _HC_ARGS="$_HC_ARGS -gameKey \"${GAME_KEY}\""
+  _HC_ARGS="$_HC_ARGS -versionCode \"${VERSION_CODE:-1}\""
+  if [ -n "${RESOURCE_SERVER_URL:-}" ]; then
+    _HC_ARGS="$_HC_ARGS -resourceServerUrl \"${RESOURCE_SERVER_URL}\""
+  fi
+  if [ -n "${PORTAL_BASE_URL:-${APK_SITE_BASE_URL:-}}" ]; then
+    _HC_ARGS="$_HC_ARGS -portalBaseUrl \"${PORTAL_BASE_URL:-${APK_SITE_BASE_URL}}\""
+  fi
+  _run_unity HotUpdateConfigSyncCli.ExecuteFromCommandLine $_HC_ARGS || exit $?
   APK_SCRIPT="$(_resolve_apk_build_script || true)"
   if [ -z "$APK_SCRIPT" ]; then
     echo "ERROR: APK 步骤已启用但未找到 build_gameku_android.sh"
@@ -531,8 +551,8 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
   APK_UP_ARGS="-apkFile \"$APK_FILE\""
   APK_UP_ARGS="$APK_UP_ARGS -releaseVersion \"${RELEASE_VERSION:-${VERSION_NAME:-1.0.0}}\""
   APK_UP_ARGS="$APK_UP_ARGS -releaseEnvironment \"${RELEASE_ENVIRONMENT:-Development}\""
-  APK_UP_ARGS="$APK_UP_ARGS -releaseChannel \"${RELEASE_CHANNEL:-common}\""
-  APK_UP_ARGS="$APK_UP_ARGS -releasePlatform \"${RELEASE_PLATFORM:-Android}\""
+  APK_UP_ARGS="$APK_UP_ARGS -releaseChannel \"${RELEASE_CHANNEL:-wechat}\""
+  APK_UP_ARGS="$APK_UP_ARGS -releasePlatform \"${RELEASE_PLATFORM:-android}\""
   APK_UP_ARGS="$APK_UP_ARGS -projectRoot \"${RELEASE_PROJECT_ROOT:-MyGame1}\""
   APK_UP_ARGS="$APK_UP_ARGS -appName \"${APP_NAME:-GomeKu}\""
   APK_UP_ARGS="$APK_UP_ARGS -versionCode \"${VERSION_CODE}\""

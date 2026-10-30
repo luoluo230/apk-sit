@@ -27,11 +27,11 @@
           "version_name": "1.0.0",
           "version_code": "12",
           "platform": "android",
-          "resource_relative_path": "development/wechat/android/Version_1.0.0/12",
-          "config_relative_path": "development/wechat/android/Version_1.0.0/12/config",
-          "code_relative_path": "development/wechat/android/Version_1.0.0/12/code",
+          "resource_relative_path": "Development/wechat/android/Version_1.0.0/12",
+          "config_relative_path": "Development/wechat/android/Version_1.0.0/12/config",
+          "code_relative_path": "Development/wechat/android/Version_1.0.0/12/code",
           "catalog_file_name": "catalog_1.0.0.bin",
-          "catalog_url": "https://example.oss.aliyuncs.com/bucket/development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
+          "catalog_url": "https://example.oss.aliyuncs.com/bucket/Development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
           "min_client_version": "1.0.0",
           "max_client_version": "9.9.9",
           "rollout_percentage": 100,
@@ -40,7 +40,12 @@
           "resource_server_url": "https://example.oss.aliyuncs.com/bucket"
         },
         "rollout_percentage": 100,
-        "rollout_bucket": 42
+        "rollout_bucket": 42,
+        "env_key": "development",
+        "channel_id": "1001",
+        "channel_key": "wechat",
+        "platform": "android",
+        "channel": "wechat"
       },
       "unity_assets": [
         "Assets/Src/HotUpdate/Framework/Bootstrap/RuntimeBootstrapService.cs",
@@ -121,11 +126,11 @@
           "version_name": "1.0.0",
           "version_code": "12",
           "platform": "android",
-          "resource_relative_path": "development/wechat/android/Version_1.0.0/12",
-          "config_relative_path": "development/wechat/android/Version_1.0.0/12/config",
-          "code_relative_path": "development/wechat/android/Version_1.0.0/12/code",
+          "resource_relative_path": "Development/wechat/android/Version_1.0.0/12",
+          "config_relative_path": "Development/wechat/android/Version_1.0.0/12/config",
+          "code_relative_path": "Development/wechat/android/Version_1.0.0/12/code",
           "catalog_file_name": "catalog_1.0.0.bin",
-          "catalog_url": "https://example.oss.aliyuncs.com/bucket/development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
+          "catalog_url": "https://example.oss.aliyuncs.com/bucket/Development/wechat/android/Version_1.0.0/12/catalog_1.0.0.bin",
           "min_client_version": "1.0.0",
           "max_client_version": "9.9.9",
           "rollout_percentage": 100,
@@ -134,7 +139,12 @@
           "resource_server_url": "https://example.oss.aliyuncs.com/bucket"
         },
         "rollout_percentage": 100,
-        "rollout_bucket": 42
+        "rollout_bucket": 42,
+        "env_key": "development",
+        "channel_id": "1001",
+        "channel_key": "wechat",
+        "platform": "android",
+        "channel": "wechat"
       },
       "unity_assets": [
         "Assets/Src/HotUpdate/Framework/Bootstrap/RuntimeBootstrapService.cs",

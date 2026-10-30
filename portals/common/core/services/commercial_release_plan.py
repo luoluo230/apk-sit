@@ -273,6 +273,48 @@ def plan_to_jenkins_params(
         params["VERSION_ID"] = vid
     params["RELEASE_PROJECT_ROOT"] = config_prefix or DEFAULT_PROJECT_ROOT
 
+    # Client bootstrap identity: Portal project credentials → Jenkins → HotUpdateConfigSyncCli
+    game_id = str(plan.get("gameId") or plan.get("game_id") or "").strip()
+    game_key = str(plan.get("gameKey") or plan.get("game_key") or "").strip()
+    if pid and (not game_id or not game_key):
+        proj = None
+        try:
+            from models.data import projects_db
+
+            proj = projects_db.get(pid) if isinstance(projects_db, dict) else None
+        except Exception:
+            proj = None
+        if not isinstance(proj, dict):
+            try:
+                from repositories.admin import projects_repo
+
+                proj = projects_repo.get_project(pid)
+            except Exception:
+                proj = None
+        if isinstance(proj, dict):
+            if not game_id:
+                game_id = str(proj.get("game_id") or "").strip()
+            if not game_key:
+                game_key = str(proj.get("game_key") or "").strip()
+    if pid and (not game_id or not game_key):
+        raise ValueError(
+            f"项目 {pid} 缺少接入凭据 game_id/game_key；请在项目管理中生成凭据后再触发构建，"
+            "否则客户端无法调用 runtime-bootstrap。"
+        )
+    if game_id:
+        params["GAME_ID"] = game_id
+    if game_key:
+        params["GAME_KEY"] = game_key
+    portal_base = str(
+        plan.get("portalBaseUrl")
+        or plan.get("portal_base_url")
+        or os.environ.get("APK_SITE_BASE_URL")
+        or os.environ.get("PORTAL_BASE_URL")
+        or ""
+    ).strip().rstrip("/")
+    if portal_base:
+        params["PORTAL_BASE_URL"] = portal_base
+
     unity_project_path = str(plan.get("unityProjectPath") or "").strip()
     if unity_project_path:
         params["UNITY_PROJECT_PATH"] = unity_project_path
@@ -290,11 +332,23 @@ def plan_to_jenkins_params(
     if resource_server_url:
         params["RESOURCE_SERVER_URL"] = resource_server_url.rstrip("/")
 
-    version_channel = str(version_obj.get("channel") or "").strip()
-    if version_channel and not params.get("CHANNEL"):
-        params["CHANNEL"] = version_channel
-    if version_channel:
-        params["VERSION_CHANNEL_ID"] = version_channel
+    version_channel_raw = str(
+        version_obj.get("channel_id") or version_obj.get("channel") or ""
+    ).strip()
+    version_channel_id = ""
+    if version_channel_raw:
+        try:
+            from services.release.scope_ids import resolve_channel_id
+
+            pid = str(version_obj.get("project_id") or params.get("PROJECT_ID") or "").strip()
+            version_channel_id = resolve_channel_id(pid, version_channel_raw) or version_channel_raw
+        except Exception:
+            version_channel_id = version_channel_raw
+    if version_channel_id and not params.get("CHANNEL"):
+        # Jenkins CHANNEL historically carries catalog id; path slug goes to RELEASE_CHANNEL.
+        params["CHANNEL"] = version_channel_id
+    if version_channel_id:
+        params["VERSION_CHANNEL_ID"] = version_channel_id
 
     saved = version_obj.get("jenkins_params") if isinstance(version_obj.get("jenkins_params"), dict) else {}
     for key in ("VERSION_CODE", "UNITY_VERSION", "GIT_BRANCH", "UNITY_PROJECT_PATH", "CHANNEL"):

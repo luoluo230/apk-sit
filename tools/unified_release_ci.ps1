@@ -108,6 +108,16 @@ if (-not $SkipServer) {
         py -3 scripts\bootstrap_gate_e2e.py
     }
 
+    Invoke-Step "S2b2: runtime hotupdate domain gate" {
+        Set-Location $ApkCore
+        $env:PORTAL_BASE_URL = $BaseUrl
+        if (-not $env:HOTUPDATE_CONFIG_ASSET) {
+            $env:HOTUPDATE_CONFIG_ASSET = "E:\maclient\Assets\Content\Resources\HotUpdateConfig.asset"
+        }
+        $env:RUNTIME_DOMAIN_UNITY = "0"
+        py -3 scripts\runtime_hotupdate_domain_gate.py
+    }
+
     if ($RequireStack) {
         Invoke-Step "S2c: transport login matrix" {
             Set-Location $ApkCore

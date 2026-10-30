@@ -41,6 +41,30 @@
           <description>Git 鍒嗘敮 (鍙€?</description>
           <trim>true</trim>
         </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>PROJECT_ID</name>
+          <description>Portal project_id (OSS / project slug)</description>
+          <defaultValue></defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>GAME_ID</name>
+          <description>Portal game_id for runtime-bootstrap (injected by Portal)</description>
+          <defaultValue></defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>GAME_KEY</name>
+          <description>Portal game_key for runtime-bootstrap (injected by Portal)</description>
+          <defaultValue></defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>PORTAL_BASE_URL</name>
+          <description>Portal base URL for HotUpdateConfigSyncCli</description>
+          <defaultValue>http://127.0.0.1:5003</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>
   </properties>

@@ -80,9 +80,28 @@ def validate_bootstrap_contract(payload: Mapping[str, Any]) -> List[str]:
     if "is_revoked" in bootstrap and not isinstance(bootstrap.get("is_revoked"), bool):
         errors.append("is_revoked must be boolean")
 
-    rel_path = str(bootstrap.get("resource_relative_path") or "")
+    rel_path = str(bootstrap.get("resource_relative_path") or "").replace("\\", "/")
     if rel_path and "/Android/" in rel_path:
         errors.append("resource_relative_path must use lowercase android segment")
+    if rel_path:
+        first_seg = rel_path.split("/", 1)[0].strip()
+        if first_seg and first_seg[0].islower() and first_seg.lower() in {
+            "development",
+            "testing",
+            "staging",
+            "production",
+        }:
+            errors.append(
+                "resource_relative_path env segment must be Jenkins PascalCase "
+                f"(got {first_seg!r}; expected Development/Testing/...)"
+            )
+
+    for key in ("channel_id", "channel_key", "env_key"):
+        # Top-level identity fields are required for contract v2 clients.
+        if key not in payload or not str(payload.get(key) or "").strip():
+            # Soft during migration: only warn via error list when bootstrap path present.
+            if rel_path:
+                errors.append(f"missing top-level field: {key}")
 
     for key in REQUIRED_NETWORK:
         if not str(network.get(key) or "").strip():

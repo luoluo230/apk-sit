@@ -89,6 +89,9 @@ class RequestBuildIdentityTests(unittest.TestCase):
         with mock.patch(
             "services.admin.version_service.resolve_effective_wx_minigame",
             return_value={"wx_app_id": "wx123", "wx_project_name": "GomeKu"},
+        ), mock.patch(
+            "models.data.projects_db",
+            {"p1": {"game_id": "g-p1", "game_key": "k-p1"}},
         ):
             params, _ = plan_to_jenkins_params(
                 {"releasePlatform": "wechat_minigame", "apkBuildEnabled": False},
@@ -98,6 +101,34 @@ class RequestBuildIdentityTests(unittest.TestCase):
             )
         self.assertEqual(params["WX_APP_ID"], "wx123")
         self.assertEqual(params["RELEASE_PLATFORM"], "wechat_minigame")
+        self.assertEqual(params["GAME_ID"], "g-p1")
+        self.assertEqual(params["GAME_KEY"], "k-p1")
+
+    def test_plan_requires_game_credentials(self):
+        with mock.patch("models.data.projects_db", {"p1": {"name": "NoCreds"}}):
+            with self.assertRaises(ValueError) as ctx:
+                plan_to_jenkins_params(
+                    {"apkBuildEnabled": False},
+                    "inline.json",
+                    {"id": "v1", "version_name": "1.0.0"},
+                    project_id="p1",
+                )
+        self.assertIn("game_id", str(ctx.exception))
+
+    def test_plan_writes_game_credentials_from_project(self):
+        with mock.patch(
+            "models.data.projects_db",
+            {"GomeKu": {"game_id": "gomeku-abc", "game_key": "secret-key"}},
+        ):
+            params, _ = plan_to_jenkins_params(
+                {"apkBuildEnabled": False},
+                "inline.json",
+                {"id": "v1", "version_name": "1.0.0"},
+                project_id="GomeKu",
+            )
+        self.assertEqual(params["GAME_ID"], "gomeku-abc")
+        self.assertEqual(params["GAME_KEY"], "secret-key")
+        self.assertEqual(params["PROJECT_ID"], "GomeKu")
 
 
 if __name__ == "__main__":

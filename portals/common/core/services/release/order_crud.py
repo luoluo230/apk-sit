@@ -278,7 +278,9 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
         "reason": str(payload.get("reason") or ""),
         "version_snapshot": version,
         "topology_binding_snapshot": binding,
-        "build_job_id": str(version.get("jenkins_job_id") or ""),
+        # build_job_id = Jenkins 构建号；勿把 Job 名(jenkins_job_id)写进来
+        "build_job_id": "",
+        "jenkins_job": str(version.get("jenkins_job_id") or version.get("jenkins_job") or ""),
     }
     batch_id = str(payload.get("batch_id") or "").strip()
     for key in EDITABLE_PLAN_FIELDS:

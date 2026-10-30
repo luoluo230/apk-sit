@@ -29,24 +29,56 @@ def main() -> int:
         print(json.dumps({"ok": True, "mode": "jenkins_online", "host": host, "port": port}))
         return 0
     if os.environ.get("JENKINS_GATE_DEV_SKIP") == "1":
-        print(json.dumps({"ok": True, "mode": "dev_skip", "reason": "simulate_e2e_publish path"}))
+        # Explicit soft-pass: never treat as product SUCCESS in dashboards.
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "mode": "dev_skip",
+                    "failure_class": "env_bypass",
+                    "reason": "JENKINS_GATE_DEV_SKIP=1 (not a product pass)",
+                }
+            )
+        )
         return 0
     if os.environ.get("CLOSURE_MODE") == "1":
+        # Closure may still simulate fixture publish, but mark failure_class.
         rc = subprocess.call(
             [sys.executable, os.path.join(ROOT, "scripts", "simulate_e2e_publish.py"), "--mode", "fixture"],
             cwd=ROOT,
         )
         if rc == 0:
-            print(json.dumps({"ok": True, "mode": "simulate_e2e_fixture", "host": host, "port": port}))
+            print(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "mode": "simulate_e2e_fixture",
+                        "failure_class": "env_bypass",
+                        "host": host,
+                        "port": port,
+                        "warning": "fixture simulation is not Jenkins product proof",
+                    }
+                )
+            )
             return 0
-        print(json.dumps({"ok": False, "mode": "simulate_e2e_fixture_failed", "exit_code": rc}))
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "mode": "simulate_e2e_fixture_failed",
+                    "failure_class": "env",
+                    "exit_code": rc,
+                }
+            )
+        )
         return rc
     print(
         json.dumps(
             {
                 "ok": False,
+                "failure_class": "env",
                 "error": f"jenkins unreachable at {host}:{port}",
-                "hint": "start Jenkins or set JENKINS_GATE_DEV_SKIP=1 for dev-only",
+                "hint": "start Jenkins or set JENKINS_GATE_DEV_SKIP=1 for explicit env bypass",
             },
             ensure_ascii=False,
         )

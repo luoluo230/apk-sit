@@ -178,10 +178,8 @@ def _check_remote_artifact(url: str, *, timeout: float = 5.0) -> Dict[str, Any]:
 
 
 _DIRECTORY_PROBE_KEYS = frozenset({"resource_url", "config_url"})
-_PROBE_FALLBACKS = {
-    "resource_url": "catalog_url",
-    "config_url": "config_manifest_url",
-}
+# Do NOT promote catalog/manifest success into resource/config URL success — that greened empty trees.
+_PROBE_FALLBACKS: Dict[str, str] = {}
 
 
 def _unity_project_path_from_version(version_row: Dict[str, Any]) -> str:

@@ -229,20 +229,58 @@ def resolve_jenkins_job(
     """
     version = version or {}
     group_meta = group_meta or {}
-    cid = str(channel_id or version.get("channel") or version.get("channel_id") or "").strip()
+    cid = str(channel_id or version.get("channel_id") or version.get("channel") or "").strip()
+    if project_id and cid:
+        try:
+            from services.release.scope_ids import resolve_channel_id
+
+            cid = resolve_channel_id(project_id, cid) or cid
+        except Exception:
+            pass
+
+    def _usable_job(raw: Any) -> str:
+        job = str(raw or "").strip()
+        # 纯数字是构建号，不是 Job 名（历史脏数据常见）
+        if not job or job.isdigit():
+            return ""
+        return job
+
+    def _override_candidates(channel: str) -> list:
+        keys = [channel]
+        try:
+            from data.channels import get_channel_by_id
+
+            row = get_channel_by_id(channel) or {}
+            for alt in (
+                row.get("id"),
+                row.get("channel_id"),
+                row.get("channel_key"),
+                row.get("apk_subdir"),
+                row.get("build_param"),
+                row.get("name"),
+            ):
+                text = str(alt or "").strip()
+                if text and text not in keys:
+                    keys.append(text)
+        except Exception:
+            pass
+        return keys
+
     overrides = group_meta.get("jenkins_job_overrides")
     if isinstance(overrides, dict) and cid:
-        override = str(overrides.get(cid) or "").strip()
-        if override:
-            return override
+        for key in _override_candidates(cid):
+            override = _usable_job(overrides.get(key))
+            if override:
+                return override
     if project_id and cid:
-        binding_job = _project_channel_binding_job(project_id, cid)
-        if binding_job:
-            return binding_job
-    group_job = str(group_meta.get("jenkins_job_id") or "").strip()
+        for key in _override_candidates(cid):
+            binding_job = _usable_job(_project_channel_binding_job(project_id, key))
+            if binding_job:
+                return binding_job
+    group_job = _usable_job(group_meta.get("jenkins_job_id"))
     if group_job:
         return group_job
-    return str(version.get("jenkins_job_id") or version.get("jenkins_job") or "").strip()
+    return _usable_job(version.get("jenkins_job_id") or version.get("jenkins_job"))
 
 
 def _project_channel_binding_job(project_id: str, channel_id: str) -> str:

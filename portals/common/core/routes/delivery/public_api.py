@@ -85,7 +85,17 @@ def release_config():
     })
 
 
-def _bootstrap_response(project_id: str, channel_name: str, bundle: dict, rollout_meta: dict):
+def _bootstrap_response(
+    project_id: str,
+    channel_name: str,
+    bundle: dict,
+    rollout_meta: dict,
+    *,
+    env_key: str = "",
+    channel_id: str = "",
+    channel_key: str = "",
+    platform: str = "",
+):
     client = bundle.get("client") if isinstance(bundle.get("client"), dict) else {}
     server = bundle.get("server") if isinstance(bundle.get("server"), dict) else {}
     bootstrap = dict(client)
@@ -99,6 +109,10 @@ def _bootstrap_response(project_id: str, channel_name: str, bundle: dict, rollou
         "ok": True,
         "project_id": project_id,
         "channel": channel_name,
+        "channel_id": str(channel_id or "").strip(),
+        "channel_key": str(channel_key or channel_name or "").strip(),
+        "env_key": str(env_key or "").strip(),
+        "platform": str(platform or bootstrap.get("platform") or "").strip().lower(),
         "scope_id": bundle.get("scope_id"),
         "active_bundle_id": bundle.get("bundle_id"),
         "release_order_id": bundle.get("release_order_id"),
@@ -190,7 +204,24 @@ def runtime_bootstrap():
     client = effective.get("client") if isinstance(effective.get("client"), dict) else {}
     if str(client.get("platform") or "").lower() != platform:
         return jsonify({"ok": False, "error": "已发布 Bundle 平台不匹配"}), 404
-    return jsonify(_bootstrap_response(project_id, channel_name, effective, rollout))
+    channel_key = str(
+        channel_row.get("channel_key")
+        or channel_row.get("apk_subdir")
+        or channel_row.get("build_param")
+        or channel_name
+    ).strip()
+    return jsonify(
+        _bootstrap_response(
+            project_id,
+            channel_name,
+            effective,
+            rollout,
+            env_key=env_key,
+            channel_id=resolved_channel_id,
+            channel_key=channel_key,
+            platform=platform,
+        )
+    )
 
 
 def unity_contract_manifest():
@@ -203,17 +234,20 @@ def unity_contract_manifest():
 def startup_gate():
     from services.release.startup_gate_service import resolve_startup_gate
 
-    project_id = str(request.args.get("game_id") or request.args.get("project_id") or "").strip()
-    return jsonify(
-        resolve_startup_gate(
-            project_id,
-            env_key=str(request.args.get("env_key") or ""),
-            channel_id=str(request.args.get("channel") or request.args.get("channel_id") or ""),
-            platform=str(request.args.get("platform") or "android"),
-            version_name=str(request.args.get("version_name") or ""),
-            version_code=str(request.args.get("version_code") or ""),
-        )
+    result = resolve_startup_gate(
+        project_id=str(request.args.get("project_id") or "").strip(),
+        game_id=str(request.args.get("game_id") or "").strip(),
+        game_key=str(request.args.get("game_key") or "").strip(),
+        env_key=str(request.args.get("env_key") or ""),
+        channel_id=str(request.args.get("channel") or request.args.get("channel_id") or ""),
+        platform=str(request.args.get("platform") or "android"),
+        version_name=str(request.args.get("version_name") or ""),
+        version_code=str(request.args.get("version_code") or ""),
     )
+    status = 200 if result.get("ok") else 400
+    if result.get("error") == "项目凭证无效":
+        status = 401
+    return jsonify(result), status
 
 
 def register_public_routes(target_bp):

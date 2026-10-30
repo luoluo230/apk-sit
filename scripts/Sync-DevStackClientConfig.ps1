@@ -72,7 +72,9 @@ function Set-UnityYamlScalar {
     $escaped = [regex]::Escape($FieldName)
     $pattern = '(?m)^(\s*' + $escaped + ':\s).*?(\r?\n|$)'
     if (-not [regex]::IsMatch($content, $pattern)) {
-        throw "Field not found in $Path : $FieldName"
+        # Unity YAML may omit newly added ScriptableObject fields until the asset is reserialized.
+        Write-Host "[sync] skip missing field $FieldName in $(Split-Path $Path -Leaf)"
+        return $false
     }
     $replacement = '${1}' + $Value + '${2}'
     $updated = [regex]::Replace($content, $pattern, $replacement, 1)
@@ -109,6 +111,9 @@ function Sync-HotUpdateConfigAsset {
             @{ Field = "VersionResolveUrl"; Value = $base },
             @{ Field = "RuntimeChannel"; Value = "development" },
             @{ Field = "ExpectedUploadEnvironment"; Value = $DevProfile },
+            @{ Field = "PreferUnifiedBootstrap"; Value = "1" },
+            @{ Field = "PreferWebVersionResolve"; Value = "0" },
+            @{ Field = "AllowOssMetadataFallback"; Value = "0" },
             @{ Field = "BlockStartupOnConfigSyncFailure"; Value = "0" },
             @{ Field = "RequireConfigPatchManifestSignature"; Value = "0" },
             @{ Field = "RequireCodePatchManifestSignature"; Value = "0" },
@@ -174,13 +179,43 @@ function Sync-ProtocolNetworkSettingsAsset {
     return @{ Path = $asset; Changed = @("EndpointUrl", "ActiveEnvironmentId", "dev preset") }
 }
 
+function Resolve-LocalPortalCredentials {
+    param([string]$PreferredProjectId = "GomeKu")
+    $projectsJson = Join-Path (Split-Path -Parent $PSScriptRoot) "data\projects.json"
+    if (-not (Test-Path $projectsJson)) {
+        return $null
+    }
+    try {
+        $db = Get-Content $projectsJson -Raw -Encoding UTF8 | ConvertFrom-Json
+        $proj = $null
+        if ($db.PSObject.Properties.Name -contains $PreferredProjectId) {
+            $proj = $db.$PreferredProjectId
+        } elseif ($db.PSObject.Properties.Count -gt 0) {
+            $first = $db.PSObject.Properties | Select-Object -First 1
+            $proj = $first.Value
+            $PreferredProjectId = $first.Name
+        }
+        if (-not $proj) { return $null }
+        return [pscustomobject]@{
+            ProjectId = $PreferredProjectId
+            GameId    = [string]$proj.game_id
+            GameKey   = [string]$proj.game_key
+        }
+    } catch {
+        return $null
+    }
+}
+
 function Invoke-UnitySyncCli {
     param(
         [string]$Root,
         [string]$BaseUrl,
         [string]$Endpoint,
         [string]$DevProfile,
-        [string]$DevChannel
+        [string]$DevChannel,
+        [string]$DevGameId = "",
+        [string]$DevGameKey = "",
+        [string]$DevProjectId = ""
     )
     $unity = Resolve-UnityExecutable
     if (-not $unity) {
@@ -204,8 +239,17 @@ function Invoke-UnitySyncCli {
         "-gatewayWs", $Endpoint,
         "-logFile", $log
     )
+    if (-not [string]::IsNullOrWhiteSpace($DevProjectId)) {
+        $args += @("-projectId", $DevProjectId)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DevGameId)) {
+        $args += @("-gameId", $DevGameId)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DevGameKey)) {
+        $args += @("-gameKey", $DevGameKey)
+    }
 
-    Write-Host "[sync] Unity batchmode HotUpdateConfigSyncCli"
+    Write-Host "[sync] Unity batchmode HotUpdateConfigSyncCli (gameId=$DevGameId)"
     $proc = Start-Process -FilePath $unity -ArgumentList $args -NoNewWindow -PassThru -Wait
     if ($proc.ExitCode -ne 0) {
         if (Test-Path $log) {
@@ -222,6 +266,17 @@ $gateway = ($(if ($GatewayWs) { $GatewayWs } else { "" })).Trim()
 Write-Host "=== Sync-DevStackClientConfig ===" -ForegroundColor Cyan
 Write-Host "[sync] mode=$Mode maclient=$maclient"
 Write-Host "[sync] portal=$portal gateway=$gateway profile=$Profile channel=$Channel"
+
+$resolvedProjectId = ""
+if ([string]::IsNullOrWhiteSpace($GameId) -or [string]::IsNullOrWhiteSpace($GameKey)) {
+    $localCred = Resolve-LocalPortalCredentials -PreferredProjectId "GomeKu"
+    if ($localCred) {
+        if ([string]::IsNullOrWhiteSpace($GameId) -and $localCred.GameId) { $GameId = $localCred.GameId }
+        if ([string]::IsNullOrWhiteSpace($GameKey) -and $localCred.GameKey) { $GameKey = $localCred.GameKey }
+        $resolvedProjectId = [string]$localCred.ProjectId
+        Write-Host "[sync] loaded credentials from data/projects.json project=$resolvedProjectId"
+    }
+}
 
 if ($Mode -eq "baas") {
     if ([string]::IsNullOrWhiteSpace($PortalBaseUrl) -or $PortalBaseUrl -match ":5003") {
@@ -246,7 +301,8 @@ if ($Mode -eq "baas") {
 }
 
 if ($UseUnity) {
-    Invoke-UnitySyncCli -Root $maclient -BaseUrl $portal -Endpoint $gateway -DevProfile $Profile -DevChannel $Channel
+    Invoke-UnitySyncCli -Root $maclient -BaseUrl $portal -Endpoint $gateway -DevProfile $Profile -DevChannel $Channel `
+        -DevGameId $GameId -DevGameKey $GameKey -DevProjectId $resolvedProjectId
 }
 
 $serverMode = if ($Mode -eq "baas") { "2" } else { "0" }

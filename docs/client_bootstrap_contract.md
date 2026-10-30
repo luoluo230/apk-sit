@@ -69,6 +69,26 @@ Production maclient builds (`DEVELOPMENT` not defined) **must not** silently fal
 
 手工修改 `HotUpdateConfig.asset` / `ProtocolNetworkSettings.asset` 不应提交；开发请运行 Sync 脚本。
 
+### Jenkins must inject credentials
+
+Portal `plan_to_jenkins_params` writes `GAME_ID` / `GAME_KEY` (and optional `PORTAL_BASE_URL`) from the project record. Builds without credentials are rejected.
+
+`commercial_android_pipeline.sh` Step4-pre calls:
+
+```text
+HotUpdateConfigSyncCli … -gameId $GAME_ID -gameKey $GAME_KEY -portalBaseUrl $PORTAL_BASE_URL
+```
+
+SyncCli forces `PreferUnifiedBootstrap=true`, `PreferWebVersionResolve=false`, and (non-Development) `AllowOssMetadataFallback=false`.
+
+### Editor local upload = test bypass only
+
+maclient `CommercialBundleReleaseWindow` may upload OSS for **local testing**. Formal go-live is always:
+
+```text
+Portal → Jenkins → Publish (activate Bundle) → client runtime-bootstrap
+```
+
 `ProtocolNetworkSettings` dev 默认 `ws://127.0.0.1:15050`；生产网络地址来自 bootstrap `network_profile` inject。
 
 ## Client startup order (maclient Main.cs)

@@ -88,6 +88,14 @@ jobs:
           RELEASE_GATE_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
         run: py -3 scripts/bootstrap_gate_e2e.py
 
+      - name: runtime hotupdate domain gate
+        env:
+          PORTAL_BASE_URL: ${{ vars.RELEASE_GATE_BASE_URL || 'http://127.0.0.1:5003' }}
+          HOTUPDATE_CONFIG_ASSET: E:/maclient/Assets/Content/Resources/HotUpdateConfig.asset
+          # Fixture-active scopes may still PASS HTTP domain if files non-empty; Unity optional.
+          RUNTIME_DOMAIN_UNITY: "0"
+        run: py -3 portals/common/core/scripts/runtime_hotupdate_domain_gate.py
+
       - name: ops platform e2e gate
         run: py -3 scripts/ops_platform_e2e_gate.py
 

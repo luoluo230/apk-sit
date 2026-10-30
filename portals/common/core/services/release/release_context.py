@@ -29,12 +29,17 @@ def apply_scope_fields_to_version_row(row: Dict[str, Any], project_id: str) -> D
     out = dict(row)
     stage = str(row.get("stage") or "dev").strip()
     env_key = normalize_release_env_key(row.get("env_key") or stage)
-    channel_id = str(row.get("channel") or "").strip()
+    channel_raw = str(row.get("channel_id") or row.get("channel") or "").strip()
+    channel_id = resolve_channel_id(project_id, channel_raw) or channel_raw
 
     platform = str(row.get("platform") or "android").strip().lower()
 
     out["env_key"] = env_key
-    out["scope_id"] = str(row.get("scope_id") or build_scope_id(project_slug(project_id), env_key, channel_id, platform))
+    out["channel"] = channel_id
+    out["channel_id"] = channel_id
+    out["scope_id"] = str(
+        row.get("scope_id") or build_scope_id(project_slug(project_id), env_key, channel_id, platform)
+    )
     out["env"] = str(row.get("env") or env_key_to_gm_env(env_key))
     return out
 
@@ -50,11 +55,18 @@ def resolve_release_context(
     pid = str(project_id or "").strip()
     if version_row and isinstance(version_row, dict):
         env_key = normalize_release_env_key(version_row.get("env_key") or version_row.get("stage") or env_raw)
-        channel_id = str(version_row.get("channel") or resolve_channel_id(pid, channel_raw) or channel_raw).strip()
+        raw_channel = str(
+            version_row.get("channel_id") or version_row.get("channel") or channel_raw or ""
+        ).strip()
+        channel_id = resolve_channel_id(pid, raw_channel) or raw_channel
     else:
         scope_probe = resolve_scope_by_inputs(pid, env_raw, channel_raw)
         env_key = normalize_release_env_key(scope_probe.get("env_key") or env_raw)
-        channel_id = str(scope_probe.get("channel_id") or resolve_channel_id(pid, channel_raw) or channel_raw).strip()
+        channel_id = str(
+            resolve_channel_id(pid, scope_probe.get("channel_id") or channel_raw)
+            or scope_probe.get("channel_id")
+            or channel_raw
+        ).strip()
 
     platform = ""
     if version_row and isinstance(version_row, dict):
