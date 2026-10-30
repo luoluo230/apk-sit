@@ -1,3 +1,4 @@
+{% include "_release_steps.html" %}
 <section class="build-center" data-project-id="{{ project_id }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-scope-version-id="{{ scope_version_id }}" data-scope-env-key="{{ scope_env_key }}" data-scope-platform="{{ scope_platform }}" data-scope-version-name="{{ scope_version_name }}" data-scope-version-code="{{ scope_version_code }}" data-scope-channel-id="{{ scope_channel_id }}" data-scoped="{{ 'true' if scope_version_id or scope_env_key or scope_platform else 'false' }}">
   <header class="build-page-head pm-page-head">
     <div class="pm-page-head-copy">
@@ -8,7 +9,7 @@
     </div>
     <div class="build-page-actions pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
-      <a class="build-btn release" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'production' }}">
+      <a class="build-btn release" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'development' }}">
         <img src="/static/project_ui/svg/nav_version_code.svg" alt="">返回版本与管线
       </a>
       <button class="build-btn neutral" type="button" data-refresh>
@@ -35,11 +36,16 @@
           </label>
           <label><span>构建状态</span><select data-status><option value="">全部状态</option><option value="building">进行中</option><option value="SUCCESS">成功</option><option value="FAILURE">失败</option><option value="ABORTED">已取消</option><option value="UNKNOWN">未知</option></select></label>
           <label><span>平台</span><select data-platform><option value="">全部平台</option><option value="Android">Android</option><option value="iOS">iOS</option></select></label>
-          <label><span>产物类型</span><select data-artifact-type><option value="">全部类型</option><option value="apk">安装包</option><option value="missing">缺失产物</option></select></label>
-          <label><span>开始日期</span><input type="date" data-date-from style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
-          <label><span>结束日期</span><input type="date" data-date-to style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
-          <label><span>每页</span><select data-page-size><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></label>
           <button class="build-btn neutral" type="button" data-reset><img src="/static/project_ui/svg/action_refresh.svg" alt="">重置</button>
+          <details class="build-filter-more">
+            <summary>更多筛选</summary>
+            <div class="build-filter-more-body">
+              <label><span>产物类型</span><select data-artifact-type><option value="">全部类型</option><option value="apk">安装包</option><option value="missing">缺失产物</option></select></label>
+              <label><span>开始日期</span><input type="date" data-date-from style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
+              <label><span>结束日期</span><input type="date" data-date-to style="height:36px;border:1px solid #dce4f2;border-radius:6px;padding:0 8px"></label>
+              <label><span>每页</span><select data-page-size><option value="10">10 条</option><option value="20" selected>20 条</option><option value="50">50 条</option><option value="100">100 条</option></select></label>
+            </div>
+          </details>
         </div>
       </section>
 

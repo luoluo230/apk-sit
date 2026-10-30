@@ -25,21 +25,15 @@
     _listFilter = type;
     document.querySelectorAll('#listFilterTabs [data-filter]').forEach(function (btn) {
       var on = btn.getAttribute('data-filter') === type;
-      btn.className =
-        'px-3 py-1 rounded text-xs font-medium ' +
-        (on
-          ? 'bg-white shadow-sm'
-          : btn.getAttribute('data-filter') === 'commercial'
-            ? 'text-violet-700'
-            : 'text-slate-600');
+      btn.className = 'pm-btn pm-btn--compact' + (on ? ' pm-btn--primary is-active' : '');
     });
     renderList();
   }
 
   function _typeBadge(t) {
     return t === 'commercial'
-      ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-100 text-violet-700">商业</span>'
-      : '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">通用</span>';
+      ? '<span class="jm-badge jm-badge--commercial">商业</span>'
+      : '<span class="jm-badge jm-badge--general">通用</span>';
   }
 
   function renderList() {
@@ -62,37 +56,37 @@
         var t = i.instance_type || 'general';
         var status =
           i.status === 'running'
-            ? '<span class="text-green-600">运行中</span>'
-            : '<span class="text-gray-500">已停止</span>';
+            ? '<span class="jm-status-ok">运行中</span>'
+            : '<span class="jm-status-off">已停止</span>';
         var stopBtn =
           i.status === 'running'
             ? '<button type="button" onclick="stopInstance(\'' +
               i.id +
-              '\')" class="text-red-600 hover:underline">停止</button>'
+              '\')" class="jm-link jm-link--danger">停止</button>'
             : '';
         var startBtn =
           i.status !== 'running'
             ? '<button type="button" onclick="startInstance(\'' +
               i.id +
-              '\')" class="text-green-600 hover:underline">启动</button>'
+              '\')" class="jm-link jm-link--ok">启动</button>'
             : '';
         var delBtn =
           '<button type="button" onclick="deleteInstance(\'' +
           i.id +
-          '\')" class="text-gray-600 hover:underline ml-2">删除</button>';
+          '\')" class="jm-link">删除</button>';
         var consoleUrl = 'http://127.0.0.1:' + i.port + '/';
         var consoleBtn =
           i.status === 'running'
-            ? '<a href="' + consoleUrl + '" target="_blank" class="text-blue-600 hover:underline">控制台</a>'
-            : '<span class="text-gray-400">控制台</span>';
+            ? '<a href="' + consoleUrl + '" target="_blank" class="jm-link">控制台</a>'
+            : '<span class="jm-link jm-link--muted">控制台</span>';
         var logBtn =
           '<a href="/admin/jenkins/instance-log?instance_id=' +
           encodeURIComponent(i.id) +
-          '" target="_blank" class="text-blue-600 hover:underline">日志</a>';
+          '" target="_blank" class="jm-link">日志</a>';
         var editBtn =
           '<a href="/admin/jenkins/edit?instance_id=' +
           encodeURIComponent(i.id) +
-          '" class="text-blue-600 hover:underline ml-1">编辑</a>';
+          '" class="jm-link">编辑</a>';
         var taskName = (i.task_name || '').trim() || '-';
         return (
           '<tr class="border-b"><td class="py-2">' +
@@ -195,20 +189,16 @@
   }
 
   function bindEvents() {
-    _jmBindClick('instanceTypeGeneral', function () {
+    function _setInstanceType( whichtype ) {
       var typeEl = document.getElementById('newInstanceType');
-      if (typeEl) typeEl.value = 'general';
-      this.className = 'px-3 py-1 rounded text-xs font-medium bg-white shadow-sm';
-      var c = document.getElementById('instanceTypeCommercial');
-      if (c) c.className = 'px-3 py-1 rounded text-xs font-medium text-violet-700';
-    });
-    _jmBindClick('instanceTypeCommercial', function () {
-      var typeEl = document.getElementById('newInstanceType');
-      if (typeEl) typeEl.value = 'commercial';
-      this.className = 'px-3 py-1 rounded text-xs font-medium bg-violet-600 text-white';
+      if (typeEl) typeEl.value = whichtype;
       var g = document.getElementById('instanceTypeGeneral');
-      if (g) g.className = 'px-3 py-1 rounded text-xs font-medium text-slate-600';
-    });
+      var c = document.getElementById('instanceTypeCommercial');
+      if (g) g.classList.toggle('is-active', whichtype === 'general');
+      if (c) c.classList.toggle('is-active', whichtype === 'commercial');
+    }
+    _jmBindClick('instanceTypeGeneral', function () { _setInstanceType('general'); });
+    _jmBindClick('instanceTypeCommercial', function () { _setInstanceType('commercial'); });
     _jmBindClick('btnCheckPort', function () {
       var portEl = document.getElementById('newPort');
       var resultEl = document.getElementById('portCheckResult');
@@ -231,14 +221,20 @@
       var port = portEl.value.trim();
       var taskNameEl = document.getElementById('newTaskName');
       var feishuEl = document.getElementById('newFeishuWebhook');
+      var dingEl = document.getElementById('newDingtalkWebhook');
+      var wecomEl = document.getElementById('newWecomWebhook');
       var taskName = taskNameEl && taskNameEl.value ? taskNameEl.value.trim() : '';
       var feishuWebhook = feishuEl && feishuEl.value ? feishuEl.value.trim() : '';
+      var dingtalkWebhook = dingEl && dingEl.value ? dingEl.value.trim() : '';
+      var wecomWebhook = wecomEl && wecomEl.value ? wecomEl.value.trim() : '';
       el.textContent = '启动中…';
       var body = { port: parseInt(port, 10) };
       var typeEl = document.getElementById('newInstanceType');
       body.instance_type = (typeEl && typeEl.value) || 'general';
       if (taskName) body.task_name = taskName;
       if (feishuWebhook) body.feishu_webhook = feishuWebhook;
+      if (dingtalkWebhook) body.dingtalk_webhook = dingtalkWebhook;
+      if (wecomWebhook) body.wecom_webhook = wecomWebhook;
       fetch('/api/jenkins-manage/start', {
         method: 'POST',
         headers: _jmHeaders(true),
@@ -265,7 +261,7 @@
     _jmBindClick('btnDeployEnv', function () {
       var logEl = document.getElementById('deployLog');
       if (!logEl) return;
-      logEl.classList.remove('hidden');
+      logEl.classList.remove('hidden', 'is-hidden');
       logEl.textContent = '部署已开始，请稍候…';
       fetch('/api/jenkins-manage/deploy-env', {
         method: 'POST',
@@ -308,7 +304,72 @@
     });
   }
 
+  var _TAB_HASH = {
+    list: 'jm-list',
+    start: 'jm-start',
+    unity: 'unity-catalog',
+    env: 'jm-env',
+  };
+  var _HASH_TAB = {
+    'jm-list': 'list',
+    list: 'list',
+    'jm-start': 'start',
+    start: 'start',
+    'unity-catalog': 'unity',
+    unity: 'unity',
+    'jm-env': 'env',
+    env: 'env',
+  };
+
+  function showJmTab(tab) {
+    var key = _HASH_TAB[tab] || tab || 'list';
+    if (!_TAB_HASH[key]) key = 'list';
+    var root = document.querySelector('[data-jm-page]');
+    if (!root) return;
+    root.querySelectorAll('[data-jm-tab]').forEach(function (btn) {
+      var on = btn.getAttribute('data-jm-tab') === key;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    root.querySelectorAll('[data-jm-panel]').forEach(function (panel) {
+      var on = panel.getAttribute('data-jm-panel') === key;
+      panel.classList.toggle('is-active', on);
+      if (on) panel.removeAttribute('hidden');
+      else panel.setAttribute('hidden', '');
+    });
+    var hash = _TAB_HASH[key];
+    if (hash && location.hash.replace(/^#/, '') !== hash) {
+      try {
+        history.replaceState(null, '', '#' + hash);
+      } catch (e) {
+        location.hash = hash;
+      }
+    }
+  }
+
+  function bindJmTabs() {
+    var root = document.querySelector('[data-jm-page]');
+    if (!root) return;
+    root.querySelectorAll('[data-jm-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        showJmTab(btn.getAttribute('data-jm-tab'));
+      });
+    });
+    root.querySelectorAll('[data-jm-goto]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        showJmTab(btn.getAttribute('data-jm-goto'));
+      });
+    });
+    window.addEventListener('hashchange', function () {
+      var h = (location.hash || '').replace(/^#/, '');
+      if (h) showJmTab(h);
+    });
+    var initial = (location.hash || '').replace(/^#/, '');
+    showJmTab(initial || 'list');
+  }
+
   function init() {
+    bindJmTabs();
     bindEvents();
     loadList();
   }
@@ -317,6 +378,7 @@
   global.startInstance = startInstance;
   global.stopInstance = stopInstance;
   global.deleteInstance = deleteInstance;
+  global.showJmTab = showJmTab;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

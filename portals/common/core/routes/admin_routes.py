@@ -117,19 +117,38 @@ def _get_csrf_token():
 
 
 
-def _admin_layout(content, title, back_href='/admin'):
+def _studio_active_page():
+    path = request.path or ""
+    if path.startswith("/admin/notifications"):
+        return "message-center"
+    if path.startswith("/admin/users"):
+        return "users"
+    if path.startswith("/admin/jenkins"):
+        return "jenkins"
+    if path.startswith("/admin/site-config"):
+        return "site-config"
+    if path == "/admin/projects":
+        return "projects"
+    if "/tasks" in path:
+        return "project-tasks"
+    if path == "/admin":
+        return "home"
+    return ""
+
+
+def _admin_layout(content, title, back_href='/admin', extra_css: str = ""):
     from services.ops.helpers import _render_ops_page
 
-    extra_css = (
-        '<link rel="stylesheet" href="/static/tailwind.css">'
-        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">'
+    css = (
+        '<link rel="stylesheet" href="/static/project_ui/studio-pages.css?v=20261030-wb5">'
+        + (extra_css or "")
     )
     return _render_ops_page(
-        content,
+        f'<div class="studio-page">{content}</div>',
         title,
-        active_page="admin",
+        active_page=_studio_active_page(),
         breadcrumb_module="管理",
-        extra_css=extra_css,
+        extra_css=css,
     )
 
 
@@ -254,7 +273,7 @@ def _current_username():
     return session.get('user') or ''
 
 
-PROJECT_LIST_ASSET_VER = "20260723-favorites-sync"
+PROJECT_LIST_ASSET_VER = "20261030-edit-creds-ro"
 ONBOARDING_WIZARD_ASSET_VER = "20260728-p102"
 
 

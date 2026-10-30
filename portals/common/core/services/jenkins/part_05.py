@@ -205,6 +205,7 @@ def apply_project_build_env(instance_id, project_id='', build_defaults_override=
         output_base,
         inst.get('feishu_webhook') or '',
         inst.get('dingtalk_webhook') or '',
+        inst.get('wecom_webhook') or '',
         bd,
     )
     return True, ''
@@ -236,14 +237,24 @@ def prepare_instance_for_project_build(instance_id, project_id='', git_branch=''
         return False, str(exc) or '准备 Jenkins 构建环境失败'
 
 
-def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk_webhook='', instance_type='general'):
-    """启动一个 Jenkins 实例。支持飞书和钉钉多渠道通知。"""
+def start_jenkins(
+    port,
+    started_by='',
+    task_name='',
+    feishu_webhook='',
+    dingtalk_webhook='',
+    wecom_webhook='',
+    instance_type='general',
+):
+    """启动一个 Jenkins 实例。支持飞书 / 钉钉 / 企微多渠道通知。"""
     ok, msg = check_port(port)
     if not ok:
         return (False, None, msg)
     port = int(port)
     task_name = (task_name or '').strip()
     feishu_webhook = (feishu_webhook or '').strip()
+    dingtalk_webhook = (dingtalk_webhook or '').strip()
+    wecom_webhook = (wecom_webhook or '').strip()
     war = get_jenkins_war_path()
     if not war:
         return (False, None, "未找到 jenkins.war。请在 .env 中设置 JENKINS_WAR_PATH 或将 war 放到 data/jenkins_instances/jenkins.war")
@@ -254,8 +265,17 @@ def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk
     _write_jenkins_init_admin_script(jenkins_home, Config.JENKINS_DEFAULT_USER, Config.JENKINS_DEFAULT_PASSWORD)
     # 复制 Android 任务（Unity 版本下拉来自全局版本库）
     _copy_android_job_to_jenkins_home(jenkins_home, port=port, task_name=task_name, build_defaults=None, instance_type=instance_type)
-    # 写入 .apk-site-env 与（可选）.apk-site-feishu，并复制通知脚本，修复通知脚本路径
-    _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, feishu_webhook, dingtalk_webhook, None)
+    # 写入 .apk-site-env 与通知 webhook，并复制通知脚本
+    _write_instance_env_and_scripts(
+        jenkins_home,
+        port,
+        task_name,
+        output_base,
+        feishu_webhook,
+        dingtalk_webhook,
+        wecom_webhook,
+        None,
+    )
     instances = load_jenkins_instances()
     for inst in instances:
         if inst.get('port') == port and inst.get('status') == 'running':
@@ -293,6 +313,7 @@ def start_jenkins(port, started_by='', task_name='', feishu_webhook='', dingtalk
         'task_name': task_name,
         'feishu_webhook': feishu_webhook,
         'dingtalk_webhook': dingtalk_webhook,
+        'wecom_webhook': wecom_webhook,
         'instance_type': instance_type,
         'status': 'running',
         'pid': proc.pid,

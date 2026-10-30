@@ -18,6 +18,17 @@ except ImportError:
 
 bp = Blueprint('jenkins_manage_routes', __name__, url_prefix='')
 
+_JM_CSS = '<link rel="stylesheet" href="/static/admin/jenkins_manage.css?v=20261030-jm4">'
+
+
+def _jm_layout(content: str, title: str):
+    return _admin_layout(
+        f'<div class="jm-page">{content}</div>',
+        title,
+        back_href='/admin/jenkins' if title != 'Jenkins 管理' else '/admin',
+        extra_css=_JM_CSS,
+    )
+
 
 @bp.route('/admin/jenkins')
 @admin_required('jenkins')
@@ -27,7 +38,7 @@ def jenkins_manage_page():
     script_mac = jm.deploy_env_script('mac')
     script_win = jm.deploy_env_script('windows')
     content = _jenkins_manage_html(env, script_mac, script_win)
-    return _admin_layout(content, 'Jenkins 管理', back_href='/admin')
+    return _jm_layout(content, 'Jenkins 管理')
 
 
 @bp.route('/admin/unity-versions')
@@ -40,16 +51,16 @@ def unity_versions_manage_page():
 
 def _unity_catalog_module_html():
     return '''
-    <div id="unity-catalog" class="bg-white rounded-lg shadow p-6 scroll-mt-4">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <h2 class="text-lg font-semibold">Unity 版本库</h2>
+    <div id="unity-catalog" class="studio-config-panel scroll-mt-4">
+        <div class="studio-section-head">
+            <h3>Unity 版本库</h3>
             <div class="flex flex-wrap gap-2">
-                <button type="button" id="uvBtnReload" class="px-3 py-1.5 border border-gray-200 rounded text-xs hover:bg-gray-50">刷新列表</button>
-                <button type="button" id="uvBtnImportDetect" class="px-3 py-1.5 bg-gray-200 rounded hover:bg-gray-300 text-xs">从本机检测导入</button>
-                <button type="button" id="uvBtnAdd" class="px-3 py-1.5 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-xs">新增版本</button>
+                <button type="button" id="uvBtnReload" class="pm-btn pm-btn--compact">刷新列表</button>
+                <button type="button" id="uvBtnImportDetect" class="pm-btn pm-btn--compact">从本机检测导入</button>
+                <button type="button" id="uvBtnAdd" class="pm-btn pm-btn--compact pm-btn--primary">新增版本</button>
             </div>
         </div>
-        <p class="text-xs text-gray-500 mb-3">在此维护全局 Unity 版本（有效/失效、分类、备注）。Jenkins 构建参数、项目版本编辑、构建管理页的下拉仅展示<strong>有效</strong>项。</p>
+        <p class="text-xs text-gray-500">维护全局 Unity 版本。构建参数与版本编辑下拉仅展示<strong>有效</strong>项。</p>
         <div class="flex flex-wrap gap-2 mb-3 text-sm">
             <label class="text-gray-600">状态</label>
             <select id="uvFilterStatus" class="border rounded px-2 py-1 text-xs">
@@ -61,23 +72,18 @@ def _unity_catalog_module_html():
             <select id="uvFilterCategory" class="border rounded px-2 py-1 text-xs min-w-[120px]"><option value="">全部分类</option></select>
         </div>
         <div id="uvCatalogListStatus" class="text-sm text-gray-500">加载中…</div>
-        <div class="overflow-x-auto border border-gray-200 rounded-lg mt-2">
-            <table class="min-w-full text-sm">
-                <thead class="bg-gray-50 text-gray-600">
+        <div class="pm-table-panel overflow-x-auto">
+            <table class="pm-table">
+                <thead>
                     <tr>
-                        <th class="text-left px-2 py-2">版本号</th>
-                        <th class="text-left px-2 py-2">分类</th>
-                        <th class="text-left px-2 py-2">状态</th>
-                        <th class="text-left px-2 py-2">备注</th>
-                        <th class="text-left px-2 py-2">安装路径</th>
-                        <th class="text-left px-2 py-2">操作</th>
+                        <th>版本号</th><th>分类</th><th>状态</th><th>备注</th><th>安装路径</th><th>操作</th>
                     </tr>
                 </thead>
-                <tbody id="uvCatalogTableBody"><tr><td colspan="6" class="px-3 py-4 text-gray-400">加载中…</td></tr></tbody>
+                <tbody id="uvCatalogTableBody"><tr><td colspan="6">加载中…</td></tr></tbody>
             </table>
         </div>
-        <div id="uvFormPanel" class="hidden mt-4 border border-indigo-200 rounded-lg p-4 bg-indigo-50/40">
-            <h3 id="uvFormTitle" class="text-sm font-semibold text-gray-800 mb-3">新增 Unity 版本</h3>
+        <div id="uvFormPanel" class="is-hidden studio-config-panel">
+            <h3 id="uvFormTitle">新增 Unity 版本</h3>
             <input type="hidden" id="uvFormEntryId">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                 <div><label class="block text-gray-600 mb-1">版本号</label><input id="uvFormVersion" class="border rounded px-2 py-1.5 w-full font-mono text-xs" placeholder="6000.3.15f1"></div>
@@ -87,9 +93,9 @@ def _unity_catalog_module_html():
                 <div class="md:col-span-2"><label class="block text-gray-600 mb-1">备注说明</label><textarea id="uvFormNote" rows="2" class="border rounded px-2 py-1.5 w-full text-xs" placeholder="用途、项目、注意事项等"></textarea></div>
             </div>
             <div id="uvFormStatusMsg" class="text-sm mt-2 text-gray-500"></div>
-            <div class="mt-3 flex gap-2">
-                <button type="button" id="uvFormSave" class="px-4 py-1.5 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700">保存</button>
-                <button type="button" id="uvFormCancel" class="px-4 py-1.5 border border-gray-300 rounded text-xs hover:bg-gray-50">取消</button>
+            <div class="flex gap-2">
+                <button type="button" id="uvFormSave" class="pm-btn pm-btn--primary">保存</button>
+                <button type="button" id="uvFormCancel" class="pm-btn">取消</button>
             </div>
         </div>
     </div>
@@ -98,81 +104,134 @@ def _unity_catalog_module_html():
 
 
 def _jenkins_manage_html(env, script_mac, script_win):
-    return '''<!-- apk-site-page: jenkins-manage-v20260609 -->
-<div class="space-y-6">
-<nav id="jmQuickNav" class="sticky top-0 z-10 flex flex-wrap gap-2 p-3 rounded-lg border border-violet-200 bg-violet-50 shadow-sm">
-    <a href="#unity-catalog" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">Unity 版本库</a>
-    <a href="#jm-env" class="inline-flex items-center px-3 py-2 rounded-md bg-white border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">环境检查</a>
-    <a href="#jm-start" class="inline-flex items-center px-3 py-2 rounded-md bg-white border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">启动新实例</a>
-    <a href="#jm-list" class="inline-flex items-center px-3 py-2 rounded-md bg-white border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">实例列表</a>
+    java_ok = bool(env.get('java', {}).get('ok'))
+    git_ok = bool(env.get('git', {}).get('ok'))
+    war_ok = bool(env.get('war', {}).get('ok'))
+    java_line = (
+        '<span class="jm-status-ok">已安装</span> ' + (env.get('java', {}).get('version') or '')
+        if java_ok else '<span class="jm-status-off">未安装或不可用</span>'
+    )
+    git_line = (
+        '<span class="jm-status-ok">已安装</span> ' + (env.get('git', {}).get('version') or '')
+        if git_ok else '<span class="jm-status-off">可选</span>'
+    )
+    war_line = (
+        '<span class="jm-status-ok">已配置</span> ' + (env.get('war', {}).get('path') or '')
+        if war_ok else
+        '<span class="jm-link--danger">未配置</span>。可在 .env 设置 JENKINS_WAR_PATH，或放入 data/jenkins_instances/jenkins.war / jenkins-clone/jenkins.war'
+    )
+    return f'''<!-- apk-site-page: jenkins-manage-v20261030 -->
+<section class="jm-page" data-jm-page>
+<header class="pm-page-head">
+  <div class="pm-page-head-copy"><div>
+    <h1>打包机</h1>
+    <p>日常管理 Jenkins 实例；环境与 Unity 版本按需切换。</p>
+  </div></div>
+  <div class="pm-page-head-actions">
+    <button type="button" class="pm-btn pm-btn--primary" data-jm-goto="start">启动新实例</button>
+  </div>
+</header>
+<nav id="jmQuickNav" class="jm-tabs" role="tablist" aria-label="打包机分区">
+  <button type="button" class="jm-tab is-active" role="tab" aria-selected="true" data-jm-tab="list">实例列表</button>
+  <button type="button" class="jm-tab" role="tab" aria-selected="false" data-jm-tab="start">启动新实例</button>
+  <button type="button" class="jm-tab" role="tab" aria-selected="false" data-jm-tab="unity">Unity 版本库</button>
+  <button type="button" class="jm-tab" role="tab" aria-selected="false" data-jm-tab="env">环境检查</button>
 </nav>
-''' + _unity_catalog_module_html() + '''
-    <div id="jm-env" class="bg-white rounded-lg shadow p-6 scroll-mt-20">
-        <h2 class="text-lg font-semibold mb-4">环境检查</h2>
-        <ul class="space-y-2 text-sm">
-            <li>Java: ''' + ('<span class="text-green-600">已安装</span> ' + (env.get('java', {}).get('version') or '') if env.get('java', {}).get('ok') else '<span class="text-red-600">未安装或不可用</span>') + '''</li>
-            <li>Git: ''' + ('<span class="text-green-600">已安装</span> ' + (env.get('git', {}).get('version') or '') if env.get('git', {}).get('ok') else '<span class="text-gray-500">可选</span>') + '''</li>
-            <li>Jenkins war: ''' + ('<span class="text-green-600">已配置</span> ' + (env.get('war', {}).get('path') or '') if env.get('war', {}).get('ok') else '<span class="text-red-600">未配置。</span> 可选：① .env 中设置 JENKINS_WAR_PATH ② 将 jenkins.war 放到 <code>data/jenkins_instances/jenkins.war</code> ③ 迁入 jenkins-clone 后放到 <code>jenkins-clone/jenkins.war</code>（见文档 docs/JENKINS_MIGRATION.md）') + '''</li>
-        </ul>
-        <div class="mt-4">
-            <p class="text-sm text-gray-600 mb-2">一键部署（Mac 会尝试 brew install openjdk@17；Windows 请按下方说明手动安装）：</p>
-            <button type="button" id="btnDeployEnv" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">执行部署并查看日志</button>
-            <pre id="deployLog" class="mt-2 p-3 bg-gray-900 text-green-400 text-xs rounded overflow-auto max-h-48 hidden"></pre>
-        </div>
-        <details class="mt-4"><summary class="cursor-pointer text-sm text-gray-600">Mac / Windows 手动部署说明</summary>
-        <pre class="mt-2 p-3 bg-gray-100 text-sm rounded overflow-auto">''' + script_mac.replace('<', '&lt;').replace('>', '&gt;') + '''</pre>
-        <pre class="mt-2 p-3 bg-gray-100 text-sm rounded overflow-auto">''' + script_win.replace('<', '&lt;').replace('>', '&gt;') + '''</pre>
-        </details>
+<div class="jm-panel is-active" data-jm-panel="list" id="jm-list">
+  <div class="studio-config-panel">
+    <div class="studio-section-head">
+      <h3>Jenkins 实例</h3>
+      <p class="jm-hint">构建时选择实例执行打包，支持多实例并行。</p>
     </div>
-    <div id="jm-start" class="bg-white rounded-lg shadow p-6 scroll-mt-20">
-        <h2 class="text-lg font-semibold mb-4">启动新 Jenkins 实例</h2>
-        <div class="mb-3">
-            <label class="block text-sm text-gray-600 mb-1">实例类型</label>
-            <div class="inline-flex rounded border border-gray-200 bg-gray-50 p-1">
-                <button type="button" id="instanceTypeGeneral" class="px-3 py-1 rounded text-xs font-medium bg-white shadow-sm">通用 APK 构建</button>
-                <button type="button" id="instanceTypeCommercial" class="px-3 py-1 rounded text-xs font-medium text-violet-700">商业级热更新发布</button>
-            </div>
-            <input type="hidden" id="newInstanceType" value="general">
-        </div>
-        <div class="flex flex-wrap items-end gap-4">
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">端口</label>
-                <input type="number" id="newPort" value="8080" min="1" max="65535" class="border rounded px-3 py-2 w-24">
-            </div>
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">任务名（可选）</label>
-                <input type="text" id="newTaskName" placeholder="如 GomeKu、RecycleTycoon" class="border rounded px-3 py-2 w-48" title="用于区分实例，且作为 Builds 下输出子目录名">
-            </div>
-            <div>
-                <label class="block text-sm text-gray-600 mb-1">飞书 Webhook（可选）</label>
-                <input type="text" id="newFeishuWebhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" class="border rounded px-3 py-2 w-72" title="该实例构建完成后通知的飞书机器人 Webhook，不同实例可填不同">
-            </div>
-            <button type="button" id="btnCheckPort" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">检测端口</button>
-            <span id="portCheckResult" class="text-sm"></span>
-            <button type="button" id="btnStartJenkins" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm">启动 Jenkins</button>
-        </div>
-        <p class="text-xs text-gray-500 mt-1">Git、APP_NAME 等构建参数请在「项目管理」中配置，构建时按所选项目自动注入。</p>
-        <p class="text-xs text-gray-500 mt-1">任务名用于构建页区分不同 Jenkins，且该实例的构建输出目录为：扫描目录/任务名（未填则用 jenkins_端口）</p>
-        <p id="startResult" class="mt-2 text-sm"></p>
+    <div id="listFilterTabs" class="jm-filter-tabs">
+      <button type="button" data-filter="all" class="pm-btn pm-btn--compact pm-btn--primary is-active" onclick="filterList('all')">全部</button>
+      <button type="button" data-filter="general" class="pm-btn pm-btn--compact" onclick="filterList('general')">通用</button>
+      <button type="button" data-filter="commercial" class="pm-btn pm-btn--compact" onclick="filterList('commercial')">商业</button>
     </div>
-    <div id="jm-list" class="bg-white rounded-lg shadow p-6 scroll-mt-20">
-        <h2 class="text-lg font-semibold mb-4">已添加的 Jenkins 实例</h2>
-        <p class="text-sm text-gray-500 mb-2">在「构建管理」页可选择使用哪个 Jenkins 进行构建，支持多实例并行。</p>
-        <div id="listFilterTabs" class="mb-2 inline-flex rounded border border-gray-200 bg-gray-50 p-1">
-            <button type="button" data-filter="all" class="px-3 py-1 rounded text-xs font-medium bg-white shadow-sm" onclick="filterList('all')">全部</button>
-            <button type="button" data-filter="general" class="px-3 py-1 rounded text-xs font-medium text-slate-600" onclick="filterList('general')">通用</button>
-            <button type="button" data-filter="commercial" class="px-3 py-1 rounded text-xs font-medium text-violet-700" onclick="filterList('commercial')">商业</button>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full text-sm">
-                <thead><tr class="border-b"><th class="text-left py-2">类型</th><th class="text-left py-2">端口</th><th class="text-left py-2">任务名</th><th class="text-left py-2">状态</th><th class="text-left py-2">添加时间</th><th class="text-left py-2">添加人</th><th class="text-left py-2">启动时间</th><th class="text-left py-2">启动人</th><th class="text-left py-2">操作</th></tr></thead>
-                <tbody id="jenkinsInstanceList"></tbody>
-            </table>
-        </div>
-        <p id="instanceListMsg" class="text-gray-500 text-sm mt-2">加载中…</p>
+    <div class="pm-table-panel">
+      <table class="pm-table">
+        <thead><tr><th>类型</th><th>端口</th><th>任务名</th><th>状态</th><th>添加时间</th><th>添加人</th><th>启动时间</th><th>启动人</th><th>操作</th></tr></thead>
+        <tbody id="jenkinsInstanceList"></tbody>
+      </table>
     </div>
+    <p id="instanceListMsg" class="jm-hint">加载中…</p>
+  </div>
 </div>
-<script src="/static/admin/jenkins_manage.js?v=20260622-status"></script>
+<div class="jm-panel" data-jm-panel="start" id="jm-start" hidden>
+  <div class="studio-config-panel">
+    <h3>启动新实例</h3>
+    <div class="jm-start-core">
+      <label class="jm-label">实例用途</label>
+      <div class="jm-type-toggle" role="group" aria-label="实例用途">
+        <button type="button" id="instanceTypeGeneral" class="is-active">通用 APK 打包</button>
+        <button type="button" id="instanceTypeCommercial">商业热更发布</button>
+      </div>
+      <input type="hidden" id="newInstanceType" value="general">
+      <p class="jm-hint">通用侧重安装包；商业侧重热更 Bundle。版本页「版本模式」需与用途一致。</p>
+      <div class="jm-field-row">
+        <div class="jm-field" style="flex:0 0 120px;min-width:120px">
+          <label class="jm-label" for="newPort">端口</label>
+          <input type="number" id="newPort" value="8080" min="1" max="65535">
+        </div>
+        <div class="jm-field">
+          <label class="jm-label" for="newTaskName">任务名（可选）</label>
+          <input type="text" id="newTaskName" placeholder="如 GomeKu" title="区分实例，并作为产物子目录名">
+        </div>
+        <div class="jm-field" style="flex:0 0 auto;display:flex;gap:8px;align-items:flex-end">
+          <button type="button" id="btnCheckPort" class="pm-btn">检测端口</button>
+          <button type="button" id="btnStartJenkins" class="pm-btn pm-btn--primary">启动 Jenkins</button>
+        </div>
+      </div>
+      <p id="portCheckResult" class="jm-hint"></p>
+      <p id="startResult" class="jm-hint"></p>
+    </div>
+    <details class="jm-advanced">
+      <summary>构建完成通知（可选）</summary>
+      <div class="jm-notify-grid">
+        <div class="jm-notify-card">
+          <h4>飞书</h4>
+          <label class="jm-label" for="newFeishuWebhook">Webhook URL</label>
+          <input type="url" id="newFeishuWebhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx">
+        </div>
+        <div class="jm-notify-card">
+          <h4>钉钉</h4>
+          <label class="jm-label" for="newDingtalkWebhook">Webhook URL</label>
+          <input type="url" id="newDingtalkWebhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx">
+        </div>
+        <div class="jm-notify-card">
+          <h4>企业微信</h4>
+          <label class="jm-label" for="newWecomWebhook">Webhook URL</label>
+          <input type="url" id="newWecomWebhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx">
+        </div>
+      </div>
+    </details>
+  </div>
+</div>
+<div class="jm-panel" data-jm-panel="unity" id="unity-catalog-wrap" hidden>
+{_unity_catalog_module_html()}
+</div>
+<div class="jm-panel" data-jm-panel="env" id="jm-env" hidden>
+  <div class="studio-config-panel">
+    <h3>环境检查</h3>
+    <ul class="jm-env-list">
+      <li><strong>Java</strong>：{java_line}</li>
+      <li><strong>Git</strong>：{git_line}</li>
+      <li><strong>Jenkins war</strong>：{war_line}</li>
+    </ul>
+    <div class="jm-env-actions">
+      <p class="jm-hint">一键部署（Mac 尝试 brew install openjdk@17；Windows 请按说明手动安装）。</p>
+      <button type="button" id="btnDeployEnv" class="pm-btn pm-btn--primary">执行部署并查看日志</button>
+      <pre id="deployLog" class="jm-deploy-log is-hidden"></pre>
+    </div>
+    <details class="jm-advanced">
+      <summary>Mac / Windows 手动部署说明</summary>
+      <pre class="jm-script-pre">{script_mac.replace('<', '&lt;').replace('>', '&gt;')}</pre>
+      <pre class="jm-script-pre">{script_win.replace('<', '&lt;').replace('>', '&gt;')}</pre>
+    </details>
+  </div>
+</div>
+</section>
+<script src="/static/admin/jenkins_manage.js?v=20261030-jm4"></script>
 '''
 
 
@@ -331,9 +390,17 @@ def api_start_jenkins():
     started_by = session.get('user') or request.remote_addr or ''
     task_name = (data.get('task_name') or '').strip()
     feishu_webhook = (data.get('feishu_webhook') or '').strip()
+    dingtalk_webhook = (data.get('dingtalk_webhook') or '').strip()
+    wecom_webhook = (data.get('wecom_webhook') or '').strip()
     instance_type = (data.get('instance_type') or 'general').strip()
     success, instance_id, err = jm.start_jenkins(
-        int(port), started_by, task_name=task_name, feishu_webhook=feishu_webhook, instance_type=instance_type
+        int(port),
+        started_by,
+        task_name=task_name,
+        feishu_webhook=feishu_webhook,
+        dingtalk_webhook=dingtalk_webhook,
+        wecom_webhook=wecom_webhook,
+        instance_type=instance_type,
     )
     if success:
         log_audit('jenkins_start', '启动 Jenkins 实例 %s 端口 %s' % (instance_id, port))
@@ -413,14 +480,18 @@ def api_get_instance():
 @bp.route('/api/jenkins-manage/update', methods=['POST'])
 @admin_required('jenkins')
 def api_update_instance():
-    """更新实例的 task_name、feishu_webhook。"""
+    """更新实例的 task_name 与通知 Webhook。"""
     data = request.get_json() or {}
     instance_id = (data.get('instance_id') or '').strip()
     if not instance_id:
         return jsonify({'success': False, 'error': '缺少 instance_id'})
-    task_name = data.get('task_name')
-    feishu_webhook = data.get('feishu_webhook')
-    success, err = jm.update_instance(instance_id, task_name=task_name, feishu_webhook=feishu_webhook)
+    success, err = jm.update_instance(
+        instance_id,
+        task_name=data.get('task_name'),
+        feishu_webhook=data.get('feishu_webhook'),
+        dingtalk_webhook=data.get('dingtalk_webhook'),
+        wecom_webhook=data.get('wecom_webhook'),
+    )
     if success:
         log_audit('jenkins_update', '更新 Jenkins 实例 %s' % instance_id)
         return jsonify({'success': True})
@@ -445,90 +516,143 @@ def api_sync_job():
 @bp.route('/admin/jenkins/edit')
 @admin_required('jenkins')
 def jenkins_edit_page():
-    """编辑实例：任务名、飞书 Webhook（构建参数已归属项目）。"""
+    """编辑实例：任务名与多渠道通知 Webhook。"""
     instance_id = request.args.get('instance_id', '').strip()
     if not instance_id:
-        return _admin_layout('<p class="text-red-600">缺少 instance_id</p>', '编辑实例', back_href='/admin/jenkins')
+        return _jm_layout('<p class="jm-hint" style="color:#cf1322">缺少 instance_id</p>', '编辑实例')
     inst = jm.get_instance_by_id(instance_id)
     if not inst:
-        return _admin_layout('<p class="text-red-600">未找到该实例</p>', '编辑实例', back_href='/admin/jenkins')
+        return _jm_layout('<p class="jm-hint" style="color:#cf1322">未找到该实例</p>', '编辑实例')
     content = _jenkins_edit_html(instance_id, inst)
-    return _admin_layout(content, '编辑 Jenkins 实例', back_href='/admin/jenkins')
+    return _jm_layout(content, '编辑 Jenkins 实例')
 
 
 def _jenkins_edit_html(instance_id, inst):
-    return '''<div class="space-y-6">
-    <p class="text-sm text-gray-600">实例 ID: ''' + instance_id + ''' · 端口: ''' + str(inst.get('port', '')) + '''</p>
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">实例属性</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-                <label class="block text-gray-600 mb-1">任务名</label>
-                <input type="text" id="editTaskName" value="''' + (inst.get('task_name') or '').replace('"', '&quot;') + '''" class="border rounded px-2 py-1.5 w-full">
-            </div>
-            <div class="md:col-span-2">
-                <label class="block text-gray-600 mb-1">飞书 Webhook</label>
-                <input type="text" id="editFeishuWebhook" value="''' + (inst.get('feishu_webhook') or '').replace('"', '&quot;') + '''" placeholder="https://open.feishu.cn/..." class="border rounded px-2 py-1.5 w-full">
-            </div>
-        </div>
-        <p class="text-xs text-gray-500 mt-4">Git、APP_NAME、Unity 路径等构建参数请在「项目管理」中配置，构建时按所选项目自动注入。</p>
-        <div class="mt-4 flex gap-2">
-            <button type="button" id="btnSaveEdit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">保存</button>
-        </div>
-        <div id="editResult" class="mt-3 px-4 py-3 rounded text-sm font-medium min-h-[3rem] border-2 border-gray-200 bg-gray-50 text-gray-600" role="status" aria-live="polite">点击「保存」后，结果将显示在此处。</div>
+    def _esc(v):
+        return html.escape(str(v or ''), quote=True)
+
+    itype = (inst.get('instance_type') or 'general').strip().lower()
+    type_label = '商业热更发布' if itype == 'commercial' else '通用 APK 打包'
+    return '''
+<header class="pm-page-head">
+  <div class="pm-page-head-copy"><div>
+    <h1>编辑打包机实例</h1>
+    <p>实例 ID: ''' + _esc(instance_id) + ''' · 端口 ''' + _esc(inst.get('port', '')) + ''' · ''' + type_label + '''</p>
+  </div></div>
+  <div class="pm-page-head-actions">
+    <a class="pm-btn" href="/admin/jenkins">返回列表</a>
+    <a class="pm-btn" href="/admin/jenkins/instance-log?instance_id=''' + _esc(instance_id) + '''">查看日志</a>
+  </div>
+</header>
+<section class="studio-config-panel">
+  <h3>实例属性</h3>
+  <div class="jm-field-row">
+    <div class="jm-field">
+      <label class="jm-label" for="editTaskName">任务名</label>
+      <input type="text" id="editTaskName" value="''' + _esc(inst.get('task_name')) + '''" placeholder="如 Gomoku">
+      <p class="jm-hint">用于区分实例，并作为构建产物输出子目录名。</p>
     </div>
-</div>
+  </div>
+  <h3 style="margin-top:20px">构建通知（可选）</h3>
+  <p class="jm-hint">配置后，构建成功会向对应群机器人推送版本与下载链接。可只填其中一个或多个。</p>
+  <div class="jm-notify-grid">
+    <div class="jm-notify-card">
+      <h4>飞书机器人</h4>
+      <label class="jm-label" for="editFeishuWebhook">Webhook URL</label>
+      <input type="url" id="editFeishuWebhook" value="''' + _esc(inst.get('feishu_webhook')) + '''" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx">
+    </div>
+    <div class="jm-notify-card">
+      <h4>钉钉机器人</h4>
+      <label class="jm-label" for="editDingtalkWebhook">Webhook URL</label>
+      <input type="url" id="editDingtalkWebhook" value="''' + _esc(inst.get('dingtalk_webhook')) + '''" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx">
+    </div>
+    <div class="jm-notify-card">
+      <h4>企业微信机器人</h4>
+      <label class="jm-label" for="editWecomWebhook">Webhook URL</label>
+      <input type="url" id="editWecomWebhook" value="''' + _esc(inst.get('wecom_webhook')) + '''" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx">
+    </div>
+  </div>
+  <p class="jm-hint">Git、APP_NAME、Unity 运行时参数请在「项目管理」中配置，构建时自动注入。</p>
+  <div style="margin-top:16px;display:flex;gap:8px;align-items:center">
+    <button type="button" id="btnSaveEdit" class="pm-btn pm-btn--primary">保存</button>
+    <span id="editResult" class="jm-hint" role="status">点击「保存」后结果将显示在此处。</span>
+  </div>
+</section>
 <script>
 (function(){
 var instanceId = ''' + json.dumps(instance_id) + ''';
 function _jmHeaders(isJson){
-    var t=document.querySelector('meta[name="csrf-token"]');
-    var h={};
-    if(isJson) h['Content-Type']='application/json';
-    if(t&&t.content) h['X-CSRFToken']=t.content;
-    return h;
+  var t=document.querySelector('meta[name="csrf-token"]');
+  var h={}; if(isJson) h['Content-Type']='application/json';
+  if(t&&t.content) h['X-CSRFToken']=t.content; return h;
 }
 function setEditResult(msg, isError){
-    var el = document.getElementById('editResult');
-    if(el){ el.textContent = msg; el.className = 'mt-3 px-3 py-2 rounded text-sm font-medium min-h-[2.5rem] border ' + (isError ? 'bg-red-100 text-red-700 border-red-300' : 'bg-green-100 text-green-700 border-green-300'); el.setAttribute('role', 'status'); try{ el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }catch(e){} }
-    else{ alert(msg); }
+  var el=document.getElementById('editResult');
+  if(!el) return;
+  el.textContent=msg;
+  el.style.color=isError?'#cf1322':'#389e0d';
 }
 function doSave(){
-    try{
-        setEditResult('保存中…', false);
-        var payload = { instance_id: instanceId, task_name: document.getElementById('editTaskName').value.trim(), feishu_webhook: document.getElementById('editFeishuWebhook').value.trim() };
-        fetch('/api/jenkins-manage/update', { method: 'POST', headers: _jmHeaders(true), credentials: 'same-origin', body: JSON.stringify(payload) })
-        .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }).catch(function(){ return { ok: false, data: { error: '响应格式错误' } }; }); })
-        .then(function(x){ if(x.data && x.data.success) setEditResult('已保存', false); else setEditResult(x.data && x.data.error ? x.data.error : '保存失败', true); })
-        .catch(function(e){ setEditResult('请求失败: ' + (e && e.message ? e.message : '请检查网络'), true); });
-    }catch(e){ setEditResult('操作异常: ' + (e.message || ''), true); }
+  setEditResult('保存中…', false);
+  var payload={
+    instance_id: instanceId,
+    task_name: (document.getElementById('editTaskName').value||'').trim(),
+    feishu_webhook: (document.getElementById('editFeishuWebhook').value||'').trim(),
+    dingtalk_webhook: (document.getElementById('editDingtalkWebhook').value||'').trim(),
+    wecom_webhook: (document.getElementById('editWecomWebhook').value||'').trim()
+  };
+  fetch('/api/jenkins-manage/update',{method:'POST',headers:_jmHeaders(true),credentials:'same-origin',body:JSON.stringify(payload)})
+  .then(function(r){return r.json();})
+  .then(function(d){ if(d&&d.success) setEditResult('已保存',false); else setEditResult((d&&d.error)||'保存失败',true); })
+  .catch(function(){ setEditResult('请求失败',true); });
 }
-var btnSave = document.getElementById('btnSaveEdit');
-if(btnSave) btnSave.onclick = doSave;
+var btn=document.getElementById('btnSaveEdit');
+if(btn) btn.onclick=doSave;
 })();
 </script>
 '''
+
+
+def _colorize_jenkins_log(raw: str) -> str:
+    """按行着色：ERROR/Exception 红、WARNING 黄、INFO 蓝、成功绿。"""
+    import re
+
+    lines_out = []
+    for line in (raw or '').splitlines():
+        esc = html.escape(line)
+        low = line.lower()
+        cls = ''
+        if re.search(r'\b(error|exception|fatal|severe)\b', low) or 'traceback' in low or 'caused by:' in low:
+            cls = 'jm-log-line--error'
+        elif re.search(r'\b(warn(ing)?)\b', low):
+            cls = 'jm-log-line--warn'
+        elif re.search(r'\b(info|informational)\b', low):
+            cls = 'jm-log-line--info'
+        elif re.search(r'\b(success|started successfully|listening)\b', low):
+            cls = 'jm-log-line--ok'
+        if cls:
+            lines_out.append('<span class="%s">%s</span>' % (cls, esc))
+        else:
+            lines_out.append(esc)
+    return '\n'.join(lines_out)
 
 
 @bp.route('/admin/jenkins/instance-log')
 @admin_required('jenkins')
 def instance_log_page():
     """查看指定 Jenkins 实例的运行日志（stdout/stderr），便于出问题时定位。"""
-    from flask import Response
     instance_id = request.args.get('instance_id', '').strip()
     if not instance_id:
-        return '<p>缺少 instance_id</p>', 400
+        return _jm_layout('<p class="jm-hint" style="color:#cf1322">缺少 instance_id</p>', 'Jenkins 运行日志')
     inst = jm.get_instance_by_id(instance_id)
     if not inst:
-        return '<p>未找到该实例</p>', 404
+        return _jm_layout('<p class="jm-hint" style="color:#cf1322">未找到该实例</p>', 'Jenkins 运行日志')
     jenkins_home = jm.resolve_jenkins_home(inst)
     if not jenkins_home or not os.path.isdir(jenkins_home):
-        return _admin_layout(
-            '<p class="text-red-600">实例目录不存在：%s</p>' % html.escape(jenkins_home or '(空)'),
+        return _jm_layout(
+            '<p class="jm-hint" style="color:#cf1322">实例目录不存在：%s</p>' % html.escape(jenkins_home or '(空)'),
             'Jenkins 运行日志',
-            back_href='/admin/jenkins',
         )
-    # 顺带刷新该实例的 .apk-site-env（含当前局域网 APKSITE_BASE_URL）与通知脚本，并修复可执行权限
     jm.refresh_instance_env_and_scripts(instance_id)
     scripts_dir = os.path.join(jenkins_home, 'scripts')
     if os.path.isdir(scripts_dir):
@@ -541,19 +665,50 @@ def instance_log_page():
                     pass
     log_path = os.path.join(jenkins_home, 'logs', 'jenkins.log')
     if not os.path.isfile(log_path):
-        return _admin_layout('<pre class="p-4 text-sm text-gray-600">暂无运行日志（可能尚未启动或日志未生成）</pre>', 'Jenkins 运行日志', back_href='/admin/jenkins')
+        return _jm_layout(
+            '<div class="jm-log-shell"><div class="jm-log-meta"><span>实例 %s · 端口 %s</span>'
+            '<a href="/admin/jenkins">返回 Jenkins 管理</a></div>'
+            '<pre class="jm-log-body">暂无运行日志（可能尚未启动或日志未生成）</pre></div>'
+            % (html.escape(instance_id), html.escape(str(inst.get('port', '')))),
+            'Jenkins 运行日志',
+        )
     try:
         with open(log_path, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
     except Exception as e:
-        return _admin_layout('<p class="text-red-600">读取失败: %s</p>' % str(e), 'Jenkins 运行日志', back_href='/admin/jenkins')
-    # 限制展示尾部，避免过大
+        return _jm_layout(
+            '<p class="jm-hint" style="color:#cf1322">读取失败: %s</p>' % html.escape(str(e)),
+            'Jenkins 运行日志',
+        )
     max_chars = 512 * 1024
+    truncated = False
     if len(content) > max_chars:
-        content = '...(仅显示最后 %d 字符)\n\n' % max_chars + content[-max_chars:]
-    html = '<div class="bg-white rounded-lg shadow p-4"><p class="text-sm text-gray-500 mb-2">实例 %s 端口 %s · <a href="/admin/jenkins" class="text-blue-600">返回 Jenkins 管理</a></p><pre class="bg-gray-900 text-green-400 text-xs p-4 rounded overflow-auto max-h-[80vh] whitespace-pre-wrap">%s</pre></div>' % (
-        instance_id, inst.get('port', ''), content.replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;'))
-    return _admin_layout(html, 'Jenkins 运行日志', back_href='/admin/jenkins')
+        content = content[-max_chars:]
+        truncated = True
+    colored = _colorize_jenkins_log(content)
+    note = '（仅显示最后 %d 字节）' % max_chars if truncated else ''
+    page = (
+        '<header class="pm-page-head"><div class="pm-page-head-copy"><div>'
+        '<h1>Jenkins 运行日志</h1>'
+        '<p>实例 %s · 端口 %s %s</p></div></div>'
+        '<div class="pm-page-head-actions">'
+        '<a class="pm-btn" href="/admin/jenkins">返回列表</a>'
+        '<a class="pm-btn" href="/admin/jenkins/edit?instance_id=%s">编辑实例</a>'
+        '<a class="pm-btn pm-btn--primary" href="/admin/jenkins/instance-log?instance_id=%s">刷新</a>'
+        '</div></header>'
+        '<div class="jm-log-shell"><div class="jm-log-meta">'
+        '<span>深色终端视图 · ERROR 红 / WARN 黄 / INFO 蓝</span>'
+        '<a href="/admin/jenkins">返回 Jenkins 管理</a></div>'
+        '<pre class="jm-log-body">%s</pre></div>'
+    ) % (
+        html.escape(instance_id),
+        html.escape(str(inst.get('port', ''))),
+        note,
+        html.escape(instance_id),
+        html.escape(instance_id),
+        colored,
+    )
+    return _jm_layout(page, 'Jenkins 运行日志')
 
 
 @bp.route('/api/jenkins-manage/list')

@@ -62,9 +62,9 @@
 .p01-rail-empty p{margin:0 0 12px;font-size:13px;color:#667085}
 .p01-modal-root.delivery-dialog{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:24px;background:rgba(15,23,42,.48);backdrop-filter:blur(4px)}
 .p01-modal-root.delivery-dialog.is-hidden{display:none!important}
-.p01-modal-card{width:min(720px,100%);max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:#fff;border:1px solid #e8ecf2;border-radius:14px;box-shadow:0 20px 48px rgba(15,23,42,.14),0 0 0 1px rgba(15,23,42,.04);overflow:hidden}
+.p01-modal-card{width:min(720px,100%);max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:#fff;border:1px solid #e8ecf2;border-radius:14px;box-shadow:0 20px 48px rgba(15,23,42,.14),0 0 0 1px rgba(15,23,42,.04);overflow:hidden;min-height:0}
 .p01-modal-card--create{width:min(640px,100%)}
-.p01-modal-card--edit{width:min(720px,100%)}
+.p01-modal-card--edit{width:min(880px,100%)}
 .p01-modal-card--sm{width:min(400px,100%)}
 .p01-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 22px;border-bottom:1px solid #eef1f6;background:linear-gradient(180deg,#fafbfc 0%,#fff 100%);flex-shrink:0}
 .p01-modal-head__copy{min-width:0}
@@ -74,7 +74,8 @@
 .p01-modal-close{width:34px;height:34px;border:1px solid #e4e9f2;border-radius:8px;background:#fff;display:grid;place-items:center;cursor:pointer;flex-shrink:0;transition:border-color .15s,background .15s}
 .p01-modal-close:hover{border-color:#c7d2e3;background:#f8fafc}
 .p01-modal-close img{width:14px;height:14px;opacity:.72}
-.p01-modal-scroll{flex:1;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+/* min-height:0 让 flex 子项可收缩，高级构建展开后才能滚完 */
+.p01-modal-scroll{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
 .p01-modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;border-top:1px solid #eef1f6;background:#fafbfc;flex-shrink:0}
 .p01-modal-panel{border:1px solid #e8ecf2;border-radius:12px;background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
 .p01-modal-panel--muted{background:#f8fafc}
@@ -117,13 +118,13 @@
 .p01-channel-chip span{display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid #dce4f2;border-radius:16px;background:#fff;font-size:13px;font-weight:500;color:#475467;transition:all .15s;user-select:none}
 .p01-channel-chip input:checked+span{border-color:var(--color-primary);background:var(--color-primary-weak);color:var(--color-primary)}
 .p01-channel-chip:hover span{border-color:#91caff}
-.p01-disclosure{border:1px solid #e8ecf2;border-radius:12px;background:#fafbfc;overflow:hidden}
+.p01-disclosure{border:1px solid #e8ecf2;border-radius:12px;background:#fafbfc;overflow:visible}
 .p01-disclosure summary{list-style:none;display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;font-size:13px;font-weight:600;color:#344054;outline:none;user-select:none;transition:background .15s}
 .p01-disclosure summary::-webkit-details-marker{display:none}
 .p01-disclosure summary::before{content:"";width:7px;height:7px;border-right:2px solid #667085;border-bottom:2px solid #667085;transform:rotate(-45deg);transition:transform .15s;margin-right:2px;flex-shrink:0}
-.p01-disclosure[open] summary{border-bottom:1px solid #eef1f6;background:#f8fafc}
+.p01-disclosure[open] summary{border-bottom:1px solid #eef1f6;background:#f8fafc;border-radius:12px 12px 0 0}
 .p01-disclosure[open] summary::before{transform:rotate(45deg);margin-top:-2px}
-.p01-disclosure__body{padding:16px;display:flex;flex-direction:column;gap:12px;background:#fff}
+.p01-disclosure__body{padding:16px;display:flex;flex-direction:column;gap:12px;background:#fff;overflow:visible}
 .p01-modal-tip{margin:0;padding:10px 14px;border-radius:8px;background:#f0f6ff;border:1px solid #d6e8ff;font-size:12px;line-height:20px;color:#475467}
 .p01-inline{display:flex;align-items:center;gap:8px}
 .p01-inline input{flex:1;min-width:0}

@@ -158,7 +158,7 @@
   function openForm(entry) {
     var panel = document.getElementById('uvFormPanel');
     if (!panel) return;
-    panel.classList.remove('hidden');
+    panel.classList.remove('hidden', 'is-hidden');
     document.getElementById('uvFormEntryId').value = (entry && entry.id) || '';
     document.getElementById('uvFormVersion').value = (entry && entry.version) || '';
     document.getElementById('uvFormPath').value = (entry && entry.path) || '';
@@ -171,7 +171,7 @@
 
   function closeForm() {
     var panel = document.getElementById('uvFormPanel');
-    if (panel) panel.classList.add('hidden');
+    if (panel) panel.classList.add('is-hidden');
   }
 
   function bindEvents() {

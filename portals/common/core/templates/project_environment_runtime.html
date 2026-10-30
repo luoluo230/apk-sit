@@ -40,11 +40,11 @@
   <div class="p16-layout pm-page-layout">
     <div class="p16-main pm-page-main">
       <div class="pm-kpi-row" id="p16Kpis">
-        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--green"><img src="/static/project_ui/svg/kpi_health.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">服务健康度</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
-        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--orange"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">在线实例</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
-        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--red"><img src="/static/project_ui/svg/global_bell.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">今日告警</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
-        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--blue"><img src="/static/project_ui/svg/status_running.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">平均响应</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
-        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--violet"><img src="/static/project_ui/svg/status_success.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">错误率</span><div class="pm-kpi-value-row"><strong>—</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--green"><img src="/static/project_ui/svg/kpi_health.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">服务健康度</span><div class="pm-kpi-value-row"><strong class="pm-empty-dash" data-empty="1">加载中…</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--orange"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">在线实例</span><div class="pm-kpi-value-row"><strong class="pm-empty-dash" data-empty="1">加载中…</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--red"><img src="/static/project_ui/svg/global_bell.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">今日告警</span><div class="pm-kpi-value-row"><strong class="pm-empty-dash" data-empty="1">加载中…</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--blue"><img src="/static/project_ui/svg/status_running.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">平均响应</span><div class="pm-kpi-value-row"><strong class="pm-empty-dash" data-empty="1">加载中…</strong></div></div></article>
+        <article class="pm-kpi-card p16-kpi-skeleton"><span class="pm-kpi-icon pm-kpi-icon--violet"><img src="/static/project_ui/svg/status_success.svg" alt=""></span><div class="pm-kpi-body"><span class="pm-kpi-label">错误率</span><div class="pm-kpi-value-row"><strong class="pm-empty-dash" data-empty="1">加载中…</strong></div></div></article>
       </div>
 
       <section class="p16-panel">
@@ -92,12 +92,6 @@
                 <img src="/static/project_ui/svg/global_search.svg" alt="">
                 <input type="search" id="p16ServiceSearch" placeholder="搜索服务 / 集群 / ID" aria-label="搜索服务">
               </label>
-              <select class="p16-table-filter" id="p16ServiceCluster" aria-label="集群筛选">
-                <option value="">全部集群</option>
-              </select>
-              <select class="p16-table-filter" id="p16ServiceCategory" aria-label="分类筛选">
-                <option value="">全部分类</option>
-              </select>
               <select class="p16-table-filter" id="p16ServiceHealth" aria-label="健康度筛选">
                 <option value="">全部健康度</option>
                 <option value="healthy">健康 ≥90%</option>
@@ -110,6 +104,17 @@
                 <option value="degraded">降级</option>
                 <option value="offline">离线</option>
               </select>
+              <details class="p16-filter-more">
+                <summary>更多筛选</summary>
+                <div class="p16-filter-more-body">
+                  <select class="p16-table-filter" id="p16ServiceCluster" aria-label="集群筛选">
+                    <option value="">全部集群</option>
+                  </select>
+                  <select class="p16-table-filter" id="p16ServiceCategory" aria-label="分类筛选">
+                    <option value="">全部分类</option>
+                  </select>
+                </div>
+              </details>
             </div>
           </div>
           <div class="p16-table-wrap">
@@ -153,19 +158,19 @@
       </section>
 
       <section class="p16-rail-panel pm-rail-panel">
-        <div class="p16-rail-head"><h2>最近变更</h2></div>
-        <div class="p16-rail-changes" id="p16RecentChanges"></div>
-      </section>
-
-      <section class="p16-rail-panel pm-rail-panel">
         <div class="p16-rail-head"><h2 id="p16RiskTitle">当前风险</h2></div>
         <div class="p16-rail-risks" id="p16CurrentRisks"></div>
       </section>
 
-      <section class="p16-rail-panel pm-rail-panel">
-        <div class="p16-rail-head"><h2>快速操作</h2></div>
+      <details class="p16-rail-panel pm-rail-panel p16-rail-fold">
+        <summary class="p16-rail-head"><h2>最近变更</h2></summary>
+        <div class="p16-rail-changes" id="p16RecentChanges"></div>
+      </details>
+
+      <details class="p16-rail-panel pm-rail-panel p16-rail-fold">
+        <summary class="p16-rail-head"><h2>快速操作</h2></summary>
         <div class="p16-quick-grid" id="p16QuickLinks"></div>
-      </section>
+      </details>
     </aside>
   </div>
 </section>

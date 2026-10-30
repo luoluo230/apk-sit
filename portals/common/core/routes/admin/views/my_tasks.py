@@ -203,36 +203,44 @@ def _my_tasks_html(tasks, sort_by='remaining', sort2='', project_filter='', urge
         ' selected' if overdue_filter == 'normal' else '', ' selected' if overdue_filter == 'soon' else '', ' selected' if overdue_filter == 'overdue' else ''
     )
     plan_opts_filter = '<option value="">全部</option><option value="__none__"' + (' selected' if plan_filter == '__none__' else '') + '>未规划</option>' + ''.join('<option value="%s"%s>%s</option>' % (k, ' selected' if plan_filter == k else '', v) for k, v in PLAN_LABELS.items())
-    filter_form = '<form method="get" action="/admin/my-tasks" class="flex flex-wrap gap-3 items-center mt-2"><input type="hidden" name="sort" value="' + html.escape(sort_by) + '"><input type="hidden" name="sort2" value="' + html.escape(sort2) + '"><input type="hidden" name="quick" value="' + html.escape(quick_filter) + '"><select name="plan" class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">' + plan_opts_filter + '</select><select name="view" class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">' + view_opts + '</select><select name="project" class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">' + project_opts + '</select><select name="urgency" class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">' + urgency_opts + '</select><select name="status" class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">' + status_opts + '</select><select name="overdue" class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm">' + overdue_opts + '</select><button type="submit" class="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium">筛选</button></form>'
+    filter_form = (
+        '<form method="get" action="/admin/my-tasks" class="pm-filter-bar">'
+        '<input type="hidden" name="sort" value="' + html.escape(sort_by) + '">'
+        '<input type="hidden" name="sort2" value="' + html.escape(sort2) + '">'
+        '<input type="hidden" name="quick" value="' + html.escape(quick_filter) + '">'
+        '<select name="plan">' + plan_opts_filter + '</select>'
+        '<select name="view">' + view_opts + '</select>'
+        '<select name="project">' + project_opts + '</select>'
+        '<select name="urgency">' + urgency_opts + '</select>'
+        '<select name="status">' + status_opts + '</select>'
+        '<select name="overdue">' + overdue_opts + '</select>'
+        '<button type="submit" class="pm-btn pm-btn--primary">筛选</button></form>'
+    )
     reminder = ''
     if soon_count or overdue_count:
-        reminder = '<p class="text-sm text-amber-700 mt-2">任务提醒：即将超时 <strong>%d</strong> 条，已超时 <strong>%d</strong> 条</p>' % (soon_count, overdue_count)
+        reminder = '<p class="text-sm" style="color:var(--color-warning)">即将超时 <strong>%d</strong> 条，已超时 <strong>%d</strong> 条</p>' % (soon_count, overdue_count)
+    empty_or_rows = rows_html or '<tr><td colspan="7"><div class="pm-placeholder-page"><h2>暂无任务</h2><p>当前筛选下没有任务。可到项目任务里创建，或清空筛选。</p><a class="pm-btn pm-btn--primary" href="/admin/projects">去项目列表</a></div></td></tr>'
     return '''
-<div class="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden">
-    <div class="px-6 py-6 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white">
-        <div class="flex justify-between items-center flex-wrap gap-2">
-            <h2 class="text-xl font-semibold text-gray-800">我的任务</h2>
-            <a href="/admin" class="inline-flex items-center px-4 py-1.5 rounded-lg text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition">← 返回管理中心</a>
+<div class="studio-page">
+    <header class="pm-page-head">
+        <div class="pm-page-head-copy"><div>
+            <h1>我的任务</h1>
+            <p>跨项目查看分派给你的需求、Bug 与协作任务。</p>
+        </div></div>
+        <div class="pm-page-head-actions">
+            <a class="pm-btn" href="/admin">工作台</a>
+            <a class="pm-btn pm-btn--primary" href="/admin/projects">项目列表</a>
         </div>
-        ''' + reminder + '''
-        ''' + quick_tabs + '''
-        ''' + plan_tabs + '''
-        <div class="mt-4 p-4 bg-white/80 rounded-xl border border-gray-100">
-            <div class="text-sm font-medium text-gray-700 mb-2">筛选</div>
-            ''' + filter_form + '''
-        </div>
-        <div class="mt-4 p-3 bg-white/60 rounded-lg border border-gray-100 text-sm text-gray-600">排序：''' + sort_bar + '''</div>
-    </div>
-    <div class="overflow-x-auto p-2">
-        <table class="min-w-full"><thead class="bg-gray-50"><tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">项目</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">任务</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">紧急程度</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">当前负责人</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">状态</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">时间</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
-        </tr></thead><tbody>''' + rows_html + '''</tbody></table>
+    </header>
+    ''' + reminder + '''
+    ''' + quick_tabs + '''
+    ''' + plan_tabs + '''
+    ''' + filter_form + '''
+    <div class="studio-section"><div class="studio-section-head"><h2>排序</h2></div><div class="text-sm text-gray-500">''' + sort_bar + '''</div></div>
+    <div class="pm-table-panel overflow-x-auto">
+        <table class="pm-table"><thead><tr>
+            <th>项目</th><th>任务</th><th>紧急程度</th><th>当前负责人</th><th>状态</th><th>时间</th><th>操作</th>
+        </tr></thead><tbody>''' + empty_or_rows + '''</tbody></table>
     </div>
 </div>
 <div id="myTaskEditModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 overflow-y-auto" onclick="if(event.target===this) document.getElementById('myTaskEditModal').classList.add('hidden')">

@@ -90,17 +90,23 @@
   }
 
   function formatMetric(value, unit) {
-    if (value === null || value === undefined || value === "") return "—";
+    if (value === null || value === undefined || value === "") return "暂无";
     if (unit === "%") return String(value) + "%";
     if (unit === "ms") return String(value) + " ms";
     return String(value);
+  }
+
+  function emptyBlock(msg) {
+    return '<div class="p16-empty"><strong>暂无数据</strong><span>' + esc(msg || "配置采集或等待 Agent 上报后将在此展示。") + "</span></div>";
   }
 
   function renderKpiCard(opts) {
     var trendHtml = "";
     var trendLabel = String(opts.trendLabel || "");
     var trendDir = opts.trendDir || "flat";
-    if (trendLabel && trendLabel !== "—" && trendDir !== "flat" && trendLabel.indexOf("持平") < 0) {
+    var valueText = String(opts.value || "");
+    var isEmpty = !valueText || valueText === "暂无" || valueText === "—";
+    if (trendLabel && trendLabel !== "—" && trendLabel !== "暂无" && trendDir !== "flat" && trendLabel.indexOf("持平") < 0) {
       trendHtml =
         '<span class="pm-kpi-trend ' +
         esc(trendDir) +
@@ -117,8 +123,10 @@
       '" alt=""></span>' +
       '<div class="pm-kpi-body"><span class="pm-kpi-label">' +
       esc(opts.label) +
-      '</span><div class="pm-kpi-value-row"><strong>' +
-      esc(opts.value) +
+      '</span><div class="pm-kpi-value-row"><strong' +
+      (isEmpty ? ' class="pm-empty-dash" data-empty="1"' : "") +
+      ">" +
+      esc(isEmpty ? "暂无" : opts.value) +
       "</strong>" +
       trendHtml +
       "</div></div></article>"
@@ -290,7 +298,7 @@
     bundle = bundle || {};
     if (!bundle.version) {
       host.innerHTML =
-        '<div class="p16-widget-head"><h3>最近发布</h3></div><div class="p16-empty">—</div>';
+        '<div class="p16-widget-head"><h3>最近发布</h3></div>' + emptyBlock('暂无最近发布记录');
       return;
     }
     var publisher = bundle.publisher || "";
@@ -347,7 +355,7 @@
         points +
         '"></polyline></svg>';
     } else {
-      sparkHtml = '<div class="p16-sparkline-empty">—</div>';
+      sparkHtml = emptyBlock('暂无趋势样本');
     }
     var deltaHtml =
       deltaClass !== "flat" && deltaText !== "—"
@@ -383,7 +391,7 @@
             );
           })
           .join("")
-      : '<div class="p16-empty">—</div>';
+      : emptyBlock();
   }
 
   function renderRisks(items) {
@@ -412,7 +420,7 @@
             );
           })
           .join("")
-      : '<div class="p16-empty">—</div>';
+      : emptyBlock();
   }
 
   function renderDashboard(data) {
@@ -733,7 +741,7 @@
     if (!host) return;
     onCall = onCall || {};
     if (!onCall.name && !onCall.configured) {
-      host.innerHTML = '<div class="p16-empty">—</div>';
+      host.innerHTML = emptyBlock();
       return;
     }
     var initial = String(onCall.name || "?").slice(0, 1);
@@ -796,7 +804,7 @@
               );
             })
             .join("")
-        : '<div class="p16-empty">—</div>';
+        : emptyBlock();
     }
     if (quickHost) {
       quickHost.innerHTML = (sidebar.quick_links || [])

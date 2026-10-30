@@ -1222,8 +1222,43 @@ def init_db():
 
             conn.executescript(BAAS_DUNGEON_TIER_V1_SQL)
             _mark_migration(conn, "baas_dungeon_tier_v1")
+        # Restore / seed can leave SERIAL sequences behind MAX(id); resync every boot.
+        _resync_pg_serial_sequences(conn)
         conn.commit()
         _schema_initialized = True
+
+
+def _resync_pg_serial_sequences(conn) -> None:
+    """Align Postgres SERIAL sequences with MAX(id) so INSERT does not UniqueViolation."""
+    raw = getattr(conn, "_raw", None)
+    if raw is None:
+        return
+    cur = raw.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT c.relname AS table_name, a.attname AS column_name,
+                   pg_get_serial_sequence(quote_ident(c.relname), a.attname) AS seq_name
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+            JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+            WHERE n.nspname = current_schema()
+              AND c.relkind = 'r'
+              AND pg_get_expr(d.adbin, d.adrelid) LIKE 'nextval(%'
+            """
+        )
+        rows = cur.fetchall()
+        for table_name, column_name, seq_name in rows:
+            if not seq_name:
+                continue
+            cur.execute(
+                f'SELECT COALESCE(MAX("{column_name}"), 0) FROM "{table_name}"'
+            )
+            max_id = int(cur.fetchone()[0] or 0)
+            cur.execute("SELECT setval(%s, %s, %s)", (seq_name, max(max_id, 1), max_id > 0))
+    finally:
+        cur.close()
 
 
 @contextmanager

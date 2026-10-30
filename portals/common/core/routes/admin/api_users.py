@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from flask import jsonify, request
+from flask import jsonify, request, session
 
 from services.authz import admin_required
 from services.admin import user_service
+
+
+def _actor() -> str:
+    return str(session.get("user") or "").strip()
 
 
 def users_list_response():
@@ -24,7 +28,7 @@ def users_create_response(min_password_len: int):
 
 
 def users_update_response():
-    payload, status = user_service.update_user(request.get_json(silent=True) or {})
+    payload, status = user_service.update_user(request.get_json(silent=True) or {}, actor=_actor())
     return jsonify(payload), status
 
 
@@ -34,7 +38,7 @@ def users_reset_password_response(min_password_len: int):
 
 
 def users_delete_response(username: str):
-    payload, status = user_service.delete_user(username)
+    payload, status = user_service.delete_user(username, actor=_actor())
     return jsonify(payload), status
 
 
@@ -84,7 +88,10 @@ def register_routes(bp, password_min_getter):
         data = request.get_json(silent=True) or {}
         if "allowed_modules" not in data:
             return jsonify({"error": "allowed_modules required"}), 400
-        payload, status = user_service.update_user({"username": username, "allowed_modules": data["allowed_modules"]})
+        payload, status = user_service.update_user(
+            {"username": username, "allowed_modules": data["allowed_modules"]},
+            actor=_actor(),
+        )
         return jsonify(payload), status
 
     bp.add_url_rule("/admin/rbac/users/<username>", endpoint="admin_rbac_get", view_func=_rbac_get, methods=["GET"])

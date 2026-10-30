@@ -190,6 +190,8 @@ def get_project(project_id: str) -> Tuple[Dict[str, Any], int]:
         "disabled_platforms": v.get("disabled_platforms") if isinstance(v.get("disabled_platforms"), list) else [],
         "server_mode": str(v.get("server_mode") or "topology"),
         "baas_service_id": str(v.get("baas_service_id") or ""),
+        "game_id": str(v.get("game_id") or ""),
+        "game_key": str(v.get("game_key") or ""),
     }
     bc = build_config_for_api({**v, "id": project_id})
     project.update(bc)

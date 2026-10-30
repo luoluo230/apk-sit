@@ -12,7 +12,7 @@
       <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span>
       <div class="ops-page-head-text">
         <h1>服务器管理</h1>
-        <p class="sm-hub-sub">中重度拓扑与轻度 BaaS 统一运行视图</p>
+        <p class="sm-hub-sub">游戏服拓扑。休闲服务从功能配置和 GM 进入。</p>
       </div>
     </div>
     <div class="ops-page-head-actions">
@@ -23,11 +23,9 @@
   </header>
 
   <div class="sm-hub-tabs" role="tablist">
-    {% if show_topology_tab %}
-    <button class="sm-hub-tab{% if default_tab == 'topology' %} is-active{% endif %}" type="button" data-tab="topology" role="tab">中重度服务器</button>
-    {% endif %}
-    {% if show_baas_tab %}
-    <button class="sm-hub-tab{% if default_tab == 'baas' %} is-active{% endif %}" type="button" data-tab="baas" role="tab">轻度服务器</button>
+    {% if show_topology_tab and show_baas_tab %}
+    <button class="sm-hub-tab{% if default_tab == 'topology' %} is-active{% endif %}" type="button" data-tab="topology" role="tab">游戏服</button>
+    <button class="sm-hub-tab{% if default_tab == 'baas' %} is-active{% endif %}" type="button" data-tab="baas" role="tab">休闲服务</button>
     {% endif %}
     <div class="sm-hub-tab-actions">
       <a class="pm-btn pm-btn--compact sm-deploy-pack-btn" id="smDeployPackBtn" href="/api/server-management/deploy-pack/topology" download hidden>

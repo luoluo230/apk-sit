@@ -131,9 +131,16 @@
 .p02-role[data-role="查看者"]{background:#f2f4f7;color:#667085}
 .p02-member-invite{padding:0 16px 14px}
 .p02-member-invite a{display:flex;align-items:center;justify-content:center;min-height:36px;border:1px dashed #dce4f2;border-radius:var(--radius-sm);color:var(--color-primary);font-size:13px;font-weight:600}
+.p02-support>summary.p02-rail-head{cursor:pointer;list-style:none}
+.p02-support>summary.p02-rail-head::-webkit-details-marker{display:none}
 .p02-support a{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid #eef1f6;color:#475467;font-size:13px}
 .p02-support a:first-of-type{border-top:0}
 .p02-support a img{width:20px;height:20px;flex-shrink:0}
+.p02-panel--secondary{opacity:.98}
+.p02-env-more{grid-column:1/-1;border:1px dashed #d0d5dd;border-radius:10px;padding:10px 12px;background:#fafbfc}
+.p02-env-more>summary{cursor:pointer;font-size:13px;font-weight:600;color:#475467;margin-bottom:8px}
+.p02-env-more[open]>summary{margin-bottom:12px}
+.p02-env-more .p02-env-card{margin-bottom:10px}
 .p02-quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px 16px}
 .p02-quick-grid a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:72px;border:1px solid var(--color-line);border-radius:10px;color:#475467;font-size:12px;font-weight:600;background:#fff}
 .p02-quick-grid a:hover{background:#f8fafc;border-color:#dce4f2}
@@ -243,3 +250,7 @@
 .p02-release-failure-list li{padding:10px 12px;border:1px solid #fecdca;border-radius:8px;background:#fffafa}
 .p02-release-failure-list a{display:flex;justify-content:space-between;gap:12px;color:#1d2939}
 .p02-release-failure-error{display:block;margin-top:4px;font-size:12px;color:#b42318}
+.p02-overview .pm-kpi-body strong:is(:empty,[data-empty="1"]),
+.p02-overview .pm-kpi-body strong.pm-empty-dash{color:#98a2b3;font-weight:500}
+.p02-overview .p02-panel{box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 24px rgba(16,24,40,.04)}
+.p02-overview .p02-env-card:hover{border-color:#91caff;box-shadow:0 4px 14px rgba(22,119,255,.08)}

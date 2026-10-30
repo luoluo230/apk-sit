@@ -46,7 +46,7 @@ Global Catalog → Project → Environment → Channel Binding
 | 改客户端网关 | topology + bootstrap | ProtocolNetworkSettings | cluster.json |
 | 启停游戏服 | Ops Agent | — | cluster / Agent |
 | 客户端发版 | ReleaseOrder Journey | bootstrap | — |
-| 服务端发版 | **P2-01 Server Release Plane**（当前未实现） | — | 制品 + 滚动重启 |
+| 服务端发版 | `server_release_service` 单独状态机，部署丢给 Agent | — | 制品由 Agent 落地 |
 
 ---
 
@@ -56,7 +56,7 @@ Global Catalog → Project → Environment → Channel Binding
 |------|------|------|--------|--------|
 | 配置中心 | Rainbow/CMDB | 配置平台+Homer | launcher 配置 | JSON+SQLite |
 | 客户端发布 | Puffer+MSDK | CDN+NPK | OSS+bootstrap | runtime-bootstrap ✅ |
-| 服务端发布 | K8s+配置热更 | 独立管线 | rolling | ❌ 未纳入 ReleaseOrder |
+| 服务端发布 | K8s+配置热更 | 独立管线 | rolling | 独立服务端发布单 + Agent 部署 |
 | 构建 | 蓝盾+机池 | DevCloud | Unity 农场 | Jenkins+build_grid |
 
 ---
@@ -70,7 +70,7 @@ Global Catalog → Project → Environment → Channel Binding
 | 项目 JSON | `portals/common/core/data/projects.py` |
 | Scope | `data/delivery_scope.py`, `services/release/scope_ids.py` |
 | 发布 | `services/release/order_publish_flow.py` |
-| Ops 巨石 | `services/ops/helpers.py` |
+| Ops 门面 | `services/ops/helpers.py` 只再导出；拓扑图在 `topology_graph.py` |
 | 构建网格 | `services/build/build_grid.py` |
 | 客户端 | `maclient/Assets/Src/Main.cs` |
 | 游戏服 | `maclient/game-server/config/cluster.json` |
@@ -80,5 +80,5 @@ Global Catalog → Project → Environment → Channel Binding
 ## 6. 若只记三件事
 
 1. 发版围绕 **Scope**，不是「项目一个按钮」。
-2. **Delivery / Build Grid / Ops** 三平面平行，Web 编排但不自动部署服。
+2. **Delivery / Build Grid / Ops** 三平面平行。服务端发布单单独走 Agent，不并进客户端发版状态机。
 3. 配置 SSOT 分裂 — 改一项先查七层归属表。

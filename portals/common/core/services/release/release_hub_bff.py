@@ -11,17 +11,18 @@ from services.release.flow_storyline_service import build_runtime_snapshot, buil
 from services.release.server_artifact_promotion_service import list_server_promotion_candidates
 from services.release.env_registry import get_project_env_defs, normalize_release_env_key, project_env_label
 from services.release.overview_feed_service import build_release_health_summary
-from services.release.release_order_service import list_release_orders, resolve_release_order_next_action
+from services.release.release_order_service import list_release_orders
 from services.release.release_policy_service import get_env_release_policy
 
 
-def _module_cards(project_id: str) -> List[Dict[str, Any]]:
+def _module_cards(project_id: str, env_key: str = "development") -> List[Dict[str, Any]]:
+    env = str(env_key or "development").strip() or "development"
     return [
         {
             "id": "release-console",
             "title": "发版",
             "desc": "勾选交付线，按主线完成构建、预检与发布",
-            "href": f"/admin/projects/{project_id}/release",
+            "href": f"/admin/projects/{project_id}/release?env_key={env}",
             "icon": "nav_release",
             "primary": True,
         },
@@ -29,21 +30,21 @@ def _module_cards(project_id: str) -> List[Dict[str, Any]]:
             "id": "versions",
             "title": "版本与管线",
             "desc": "VersionCode、版本组与构建管线配置",
-            "href": f"/admin/projects/{project_id}/versions",
-            "icon": "nav_version",
+            "href": f"/admin/projects/{project_id}/versions?env_key={env}",
+            "icon": "nav_version_code",
         },
         {
             "id": "release-orders",
             "title": "发布历史",
             "desc": "各环境发布单、审批与回滚记录",
-            "href": f"/admin/projects/{project_id}/release-orders",
+            "href": f"/admin/projects/{project_id}/release-orders?env_key={env}",
             "icon": "nav_release_order",
         },
         {
             "id": "build-history",
             "title": "构建与产物",
             "desc": "Jenkins 构建记录与产物下载",
-            "href": f"/admin/projects/{project_id}/build-history?scoped=1&env_key=development",
+            "href": f"/admin/projects/{project_id}/build-history?scoped=1&env_key={env}",
             "icon": "nav_build_artifact",
         },
     ]
@@ -104,7 +105,7 @@ def _coordinated_deploy_summary(order: Dict[str, Any]) -> Dict[str, Any] | None:
 
 
 def _coordinated_deploy_feed(project_id: str, *, limit: int = 12) -> List[Dict[str, Any]]:
-    orders = list_release_orders(project_id, {})
+    orders = list_release_orders(project_id, {}, sync_builds=False, limit=60)
     out: List[Dict[str, Any]] = []
     for order in orders:
         plan = order.get("payload") if isinstance(order.get("payload"), dict) else {}
@@ -169,7 +170,8 @@ def _coordinated_deploy_feed(project_id: str, *, limit: int = 12) -> List[Dict[s
 
 
 def _pending_actions(project_id: str, *, limit: int = 8) -> List[Dict[str, Any]]:
-    orders = list_release_orders(project_id, {})
+    # Hub dashboard must stay fast: skip Jenkins build-sync poll on every paint.
+    orders = list_release_orders(project_id, {}, sync_builds=False, limit=80)
     pending_statuses = {
         "awaiting_approval",
         "precheck_failed",
@@ -184,10 +186,15 @@ def _pending_actions(project_id: str, *, limit: int = 8) -> List[Dict[str, Any]]
         status = str(order.get("status") or "")
         if status not in pending_statuses:
             continue
-        try:
-            nxt = resolve_release_order_next_action(project_id, str(order.get("release_order_id") or ""))
-        except ValueError:
-            nxt = {}
+        oid = str(order.get("release_order_id") or "")
+        href = f"/admin/projects/{project_id}/release-orders/{oid}"
+        # Hub list must not N× call resolve_release_order_next_action (artifacts_ready alone ~12s).
+        nxt: Dict[str, Any] = {
+            "id": "open_order",
+            "label": "查看并继续",
+            "href": href,
+            "enabled": True,
+        }
         out.append(
             {
                 "release_order_id": order.get("release_order_id"),
@@ -201,7 +208,7 @@ def _pending_actions(project_id: str, *, limit: int = 8) -> List[Dict[str, Any]]
                 "status_label": status_label(status),
                 "next_action": nxt,
                 "coordinated_deploy": _coordinated_deploy_summary(order),
-                "href": f"/admin/projects/{project_id}/release-orders/{order.get('release_order_id')}",
+                "href": href,
             }
         )
         if len(out) >= limit:
@@ -230,7 +237,7 @@ def build_release_hub(project_id: str, *, env_key: str = "") -> Dict[str, Any]:
         "project_id": project_id,
         "selected_env": selected_env,
         "env_defs": env_defs,
-        "module_cards": _module_cards(project_id),
+        "module_cards": _module_cards(project_id, selected_env),
         "prod_wizard_steps": _prod_wizard_steps(project_id),
         "runtime_snapshot": build_runtime_snapshot(project_id, selected_env),
         "storyline": build_storyline(

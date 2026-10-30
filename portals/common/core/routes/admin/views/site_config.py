@@ -104,13 +104,20 @@ def render_site_config_page():
             for val, label in sizes
         )
 
+    _type_label_map = dict(module_types)
+
     def _render_module_rows(modules):
         rows = []
         for idx, module in enumerate(modules):
             mtype = str(module.get("type") or "products")
-            title = html.escape(str(module.get("title") or ""))
+            type_label = html.escape(_type_label_map.get(mtype, mtype))
+            title_raw = str(module.get("title") or "").strip()
+            title = html.escape(title_raw)
+            summary_title = html.escape(title_raw or _type_label_map.get(mtype, mtype) or "未命名模块")
             description = html.escape(str(module.get("description") or ""))
-            enabled = "checked" if module.get("enabled", True) else ""
+            is_on = bool(module.get("enabled", True))
+            enabled = "checked" if is_on else ""
+            status_txt = "启用" if is_on else "停用"
             order = module.get("order", idx + 1)
             size = str(module.get("size") or "full")
             limit = module.get("limit", "")
@@ -123,77 +130,63 @@ def render_site_config_page():
             cta_link = html.escape(str(module.get("cta_link") or ""))
             rows.append(
                 f'''
-                <div class="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 cursor-move" data-module-row draggable="true">
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">模块类型</label>
-                            <select class="module-type mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">{_module_type_options(mtype)}</select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">模块标题</label>
-                            <input type="text" value="{title}" class="module-title mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="展示标题">
-                        </div>
+                <details class="studio-module-card" data-module-row draggable="true">
+                    <summary class="studio-module-summary">
+                        <span class="studio-module-summary-main">
+                            <strong>{summary_title}</strong>
+                            <em>{type_label}</em>
+                        </span>
+                        <span class="studio-module-summary-meta">{status_txt} · 点击编辑</span>
+                    </summary>
+                    <div class="studio-module-body">
+                    <div class="studio-form-grid studio-module-core">
+                        <div class="studio-form-field"><label>模块类型</label>
+                            <select class="module-type studio-field">{_module_type_options(mtype)}</select></div>
+                        <div class="studio-form-field"><label>模块标题</label>
+                            <input type="text" value="{title}" class="module-title studio-field" placeholder="展示标题"></div>
+                        <div class="studio-form-field"><label>显示</label>
+                            <label class="studio-check"><input type="checkbox" class="module-enabled" {enabled}><span>启用</span></label></div>
+                        <div class="studio-form-field"><label>排序</label>
+                            <input type="number" value="{order}" min="1" class="module-order studio-field"></div>
                     </div>
-                    <div class="grid gap-3 md:grid-cols-3">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">显示</label>
-                            <div class="mt-2 flex items-center gap-2">
-                                <input type="checkbox" class="module-enabled" {enabled}>
-                                <span class="text-xs text-slate-500">启用</span>
-                            </div>
+                    <details class="sc-fold sc-fold--nested">
+                      <summary>描述 / 数量 / 来源</summary>
+                      <div class="sc-fold-body">
+                        <div class="studio-form-grid">
+                        <div class="studio-form-field"><label>数量限制</label>
+                            <input type="number" value="{limit}" min="1" class="module-limit studio-field" placeholder="可选"></div>
+                        <div class="studio-form-field"><label>样式</label>
+                            <select class="module-size studio-field">{_size_options(size)}</select></div>
+                        <div class="studio-form-field studio-form-field--full"><label>模块描述</label>
+                            <textarea class="module-description studio-field" rows="2" placeholder="模块说明">{description}</textarea></div>
+                        <div class="studio-form-field"><label>数据来源</label>
+                            <input type="text" value="{source}" class="module-source studio-field" placeholder="如 latest / featured"></div>
                         </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">排序</label>
-                            <input type="number" value="{order}" min="1" class="module-order mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">
+                      </div>
+                    </details>
+                    <details class="sc-fold sc-fold--nested" data-module-media>
+                      <summary>媒体与 CTA</summary>
+                      <div class="sc-fold-body">
+                        <div class="studio-form-grid">
+                        <div class="studio-form-field"><label>本地图片</label>
+                            <input type="text" value="{image_url}" class="module-image-url studio-field studio-field--readonly" placeholder="上传后自动填充" readonly></div>
+                        <div class="studio-form-field"><label>本地视频</label>
+                            <input type="text" value="{video_url}" class="module-video-url studio-field studio-field--readonly" placeholder="上传后自动填充" readonly></div>
+                        <div class="studio-form-field studio-form-field--full"><label>本地图集</label>
+                            <textarea class="module-media-urls studio-field studio-field--readonly" rows="2" placeholder="上传后自动填充，支持多张" readonly>{media_urls}</textarea></div>
+                        <div class="studio-form-field"><label>CTA 文案</label>
+                            <input type="text" value="{cta_text}" class="module-cta-text studio-field" placeholder="按钮文案"></div>
+                        <div class="studio-form-field"><label>CTA 链接</label>
+                            <input type="text" value="{cta_link}" class="module-cta-link studio-field" placeholder="按钮链接"></div>
                         </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">数量限制</label>
-                            <input type="number" value="{limit}" min="1" class="module-limit mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="可选">
-                        </div>
+                      </div>
+                    </details>
+                    <div class="studio-module-card-foot">
+                        <span>拖动卡片可调序</span>
+                        <button type="button" class="remove-module pm-btn pm-btn--compact pm-btn--danger">移除</button>
                     </div>
-                    <div>
-                        <label class="text-xs font-semibold text-slate-500">模块描述</label>
-                        <textarea class="module-description mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" rows="2" placeholder="模块说明">{description}</textarea>
                     </div>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">样式</label>
-                            <select class="module-size mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">{_size_options(size)}</select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">数据来源</label>
-                            <input type="text" value="{source}" class="module-source mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="如 latest / featured">
-                        </div>
-                    </div>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">本地图片</label>
-                            <input type="text" value="{image_url}" class="module-image-url mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="上传后自动填充本地路径" readonly>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">本地视频</label>
-                            <input type="text" value="{video_url}" class="module-video-url mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="上传后自动填充本地路径" readonly>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-xs font-semibold text-slate-500">本地图集</label>
-                        <textarea class="module-media-urls mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" rows="2" placeholder="上传后自动填充本地路径，支持多张" readonly>{media_urls}</textarea>
-                    </div>
-                    <div class="grid gap-3 md:grid-cols-2">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">CTA 文案</label>
-                            <input type="text" value="{cta_text}" class="module-cta-text mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="按钮文案">
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">CTA 链接</label>
-                            <input type="text" value="{cta_link}" class="module-cta-link mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm" placeholder="按钮链接">
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between text-xs text-slate-400">
-                        <span>拖动卡片可调整模块顺序</span>
-                        <button type="button" class="remove-module text-rose-500 hover:text-rose-600">移除</button>
-                    </div>
-                </div>
+                </details>
                 '''
             )
         return ''.join(rows)
@@ -212,123 +205,203 @@ def render_site_config_page():
     dev_featured_options = _render_product_options(dev_featured_ids)
     template_row = _render_module_rows([{"type": "products", "title": "", "enabled": True, "order": 1, "size": "full"}])
     content = f"""
-    <section class="space-y-6">
-        <div class="flex items-end justify-between gap-4">
-            <div>
-                <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">\u914d\u7f6e\u4e2d\u5fc3</p>
-                <h2 class="mt-1 text-2xl font-semibold text-slate-900">\u5b98\u7f51\u4e0e\u5916\u90e8\u6a21\u5757\u914d\u7f6e</h2>
-                <p class="mt-1 text-sm text-slate-500">将公司简介、玩家官网、开发者官网和外部入口集中配置。</p>
-            </div>
-            <div class="flex items-center gap-2">
-                <a href="/admin/site-config/editor/player" class="rounded-xl border border-violet-200 bg-violet-50 px-4 py-1.5 text-sm font-semibold text-violet-700">\u73a9\u5bb6\u5b98\u7f51\u53ef\u89c6\u5316\u7f16\u8f91\u5668</a>
-                <a href="/admin/site-config/editor/dev" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-sm font-semibold text-emerald-700">\u5f00\u53d1\u8005\u5b98\u7f51\u53ef\u89c6\u5316\u7f16\u8f91\u5668</a>
-                <a href="/admin" class="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-700">\u8fd4\u56de\u7ba1\u7406\u4e2d\u5fc3</a>
-            </div>
+    <section class="sc-page" data-sc-page>
+    <header class="pm-page-head">
+        <div class="pm-page-head-copy"><div>
+            <h1>\u7ad9\u70b9\u5916\u58f3</h1>
+            <p>\u4e00\u6b21\u53ea\u7f16\u8f91\u4e00\u4e2a\u6a21\u5757\uff1a\u516c\u53f8\u7b80\u4ecb\u3001\u73a9\u5bb6\u7ad9\u6216\u5f00\u53d1\u8005\u7ad9\u3002</p>
+        </div></div>
+        <div class="pm-page-head-actions">
+            <a href="/admin/site-config/editor/player" class="pm-btn pm-btn--primary">\u73a9\u5bb6\u7ad9\u53ef\u89c6\u5316</a>
+            <a href="/admin/site-config/editor/dev" class="pm-btn">\u5f00\u53d1\u8005\u7ad9\u53ef\u89c6\u5316</a>
         </div>
-        <div class="grid gap-6 xl:grid-cols-3">
-            <form id="companyProfileForm" class="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 class="text-lg font-semibold text-slate-900">\u516c\u53f8\u7b80\u4ecb\u9875</h3>
-                <input name="company_name" value="{_safe(company.get('company_name'), '星云游戏站')}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u516c\u53f8\u540d\u79f0">
-                <input name="hero_eyebrow" value="{_safe(company.get('hero_eyebrow'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u7709\u6807\u6807\u9898">
-                <textarea name="hero_title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="3" placeholder="\u4e3b\u6807\u9898">{_safe(company.get('hero_title'))}</textarea>
-                <textarea name="hero_summary" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="4" placeholder="\u54c1\u724c\u6458\u8981">{_safe(company.get('hero_summary'))}</textarea>
-                <textarea name="company_intro" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="5" placeholder="\u516c\u53f8\u4ecb\u7ecd">{_safe(company.get('company_intro'))}</textarea>
-                <input name="mission_title" value="{_safe(company.get('mission_title'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u4f7f\u547d\u6807\u9898">
-                <textarea name="mission_body" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="4" placeholder="\u4f7f\u547d\u6b63\u6587">{_safe(company.get('mission_body'))}</textarea>
-                <textarea name="timeline_json" class="w-full rounded-2xl border border-slate-200 px-4 py-3 font-mono text-xs" rows="6" placeholder="\u65f6\u95f4\u7ebf JSON">{timeline_json}</textarea>
-                <textarea name="achievements_json" class="w-full rounded-2xl border border-slate-200 px-4 py-3 font-mono text-xs" rows="5" placeholder="\u6210\u5c31 JSON">{achievements_json}</textarea>
-                <button class="rounded-full bg-slate-900 px-5 py-3 font-bold text-white">\u4fdd\u5b58\u516c\u53f8\u7b80\u4ecb</button>
-                <div id="companyProfileResult" class="text-sm text-slate-500"></div>
-            </form>
-            <form id="playerPortalConfigForm" class="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 class="text-lg font-semibold text-slate-900">\u73a9\u5bb6\u5b98\u7f51\u914d\u7f6e</h3>
-                <input name="site_name" value="{_safe(player_portal.get('site_name'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u7ad9\u70b9\u540d\u79f0">
-                <input name="site_subtitle" value="{_safe(player_portal.get('site_subtitle'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u526f\u6807\u9898">
-                <input name="logo_icon" value="{_safe(player_portal.get('logo_icon'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="Logo \u56fe\u6807">
-                <input name="hero_image_url" value="{_safe(player_portal.get('hero_image_url'))}" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" placeholder="Hero \u672c\u5730\u56fe\u7247\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
-                <input name="hero_video_url" value="{_safe(player_portal.get('hero_video_url'))}" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" placeholder="Hero \u672c\u5730\u89c6\u9891\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
-                <textarea name="hero_gallery_urls" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" rows="2" placeholder="Hero \u672c\u5730\u56fe\u96c6\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>{_safe(",".join(player_portal.get('hero_gallery_urls') or []))}</textarea>
-                <p class="text-xs text-slate-500">\u8bf4\u660e\uff1a\u8fd9\u91cc\u53ea\u5141\u8bb8\u672c\u5730\u4e0a\u4f20\u5a92\u4f53\uff0c\u5916\u94fe URL \u4f1a\u88ab\u540e\u7aef\u81ea\u52a8\u8fc7\u6ee4\u3002</p>
-                <input name="nav_about" value="{_safe(player_portal.get('nav_about'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u516c\u53f8\u7b80\u4ecb\u5bfc\u822a\u6587\u6848">
-                <input name="nav_games" value="{_safe(player_portal.get('nav_games'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u6e38\u620f\u4ea7\u54c1\u5bfc\u822a\u6587\u6848">
-                <textarea name="hero_title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="3" placeholder="Hero \u6807\u9898">{_safe(player_portal.get('hero_title'))}</textarea>
-                <textarea name="hero_description" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="4" placeholder="Hero \u63cf\u8ff0">{_safe(player_portal.get('hero_description'))}</textarea>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">\u4ea7\u54c1\u5c55\u793a\u8303\u56f4</p>
-                    <div class="mt-3 space-y-3">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">\u5c55\u793a\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
-                            <select name="visible_product_ids" multiple class="mt-2 h-28 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">{player_options}</select>
-                            <p class="mt-2 text-xs text-slate-500">\u672a\u9009\u62e9\u5219\u5c55\u793a\u5168\u90e8\u9879\u76ee</p>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">\u4e3b\u63a8\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
-                            <select name="featured_product_ids" multiple class="mt-2 h-24 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">{player_featured_options}</select>
-                            <p class="mt-2 text-xs text-slate-500">\u9996\u4e2a\u4e3b\u63a8\u4ea7\u54c1\u5c06\u4f5c\u4e3a\u9996\u9875\u4e3b\u89c6\u89c9</p>
-                        </div>
-                    </div>
+    </header>
+    <nav class="sc-tabs" role="tablist" aria-label="\u7ad9\u70b9\u914d\u7f6e\u5206\u533a">
+        <button type="button" class="sc-tab is-active" role="tab" aria-selected="true" data-sc-tab="player">\u73a9\u5bb6\u5b98\u7f51</button>
+        <button type="button" class="sc-tab" role="tab" aria-selected="false" data-sc-tab="dev">\u5f00\u53d1\u8005\u5b98\u7f51</button>
+        <button type="button" class="sc-tab" role="tab" aria-selected="false" data-sc-tab="company">\u516c\u53f8\u7b80\u4ecb</button>
+    </nav>
+    <div class="sc-panels">
+            <form id="companyProfileForm" class="studio-config-panel sc-panel" data-sc-panel="company" hidden>
+                <h3>\u516c\u53f8\u7b80\u4ecb\u9875</h3>
+                <div class="sc-form-stack">
+                <label class="sc-label">\u516c\u53f8\u540d\u79f0</label>
+                <input name="company_name" value="{_safe(company.get('company_name'), '星云游戏站')}" class="studio-field" placeholder="\u516c\u53f8\u540d\u79f0">
+                <label class="sc-label">\u7709\u6807</label>
+                <input name="hero_eyebrow" value="{_safe(company.get('hero_eyebrow'))}" class="studio-field" placeholder="\u7709\u6807\u6807\u9898">
+                <label class="sc-label">\u4e3b\u6807\u9898</label>
+                <textarea name="hero_title" class="studio-field" rows="3" placeholder="\u4e3b\u6807\u9898">{_safe(company.get('hero_title'))}</textarea>
+                <label class="sc-label">\u54c1\u724c\u6458\u8981</label>
+                <textarea name="hero_summary" class="studio-field" rows="3" placeholder="\u54c1\u724c\u6458\u8981">{_safe(company.get('hero_summary'))}</textarea>
+                <label class="sc-label">\u516c\u53f8\u4ecb\u7ecd</label>
+                <textarea name="company_intro" class="studio-field" rows="4" placeholder="\u516c\u53f8\u4ecb\u7ecd">{_safe(company.get('company_intro'))}</textarea>
+                <label class="sc-label">\u4f7f\u547d\u6807\u9898</label>
+                <input name="mission_title" value="{_safe(company.get('mission_title'))}" class="studio-field" placeholder="\u4f7f\u547d\u6807\u9898">
+                <label class="sc-label">\u4f7f\u547d\u6b63\u6587</label>
+                <textarea name="mission_body" class="studio-field" rows="3" placeholder="\u4f7f\u547d\u6b63\u6587">{_safe(company.get('mission_body'))}</textarea>
+                <details class="sc-advanced">
+                  <summary>\u65f6\u95f4\u7ebf / \u6210\u5c31\uff08JSON\uff09</summary>
+                  <label class="sc-label">\u65f6\u95f4\u7ebf</label>
+                  <textarea name="timeline_json" class="studio-field font-mono text-xs" rows="6" placeholder="\u65f6\u95f4\u7ebf JSON">{timeline_json}</textarea>
+                  <label class="sc-label">\u6210\u5c31</label>
+                  <textarea name="achievements_json" class="studio-field font-mono text-xs" rows="5" placeholder="\u6210\u5c31 JSON">{achievements_json}</textarea>
+                </details>
+                <button type="submit" class="pm-btn pm-btn--primary">\u4fdd\u5b58\u516c\u53f8\u7b80\u4ecb</button>
+                <div id="companyProfileResult" class="sc-hint"></div>
                 </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            </form>
+            <form id="playerPortalConfigForm" class="studio-config-panel sc-panel is-active" data-sc-panel="player">
+                <h3>\u73a9\u5bb6\u5b98\u7f51\u914d\u7f6e</h3>
+                <p class="sc-panel-lead">\u5148\u6539\u57fa\u7840\u4fe1\u606f\uff1bHero\u3001\u4ea7\u54c1\u8303\u56f4\u4e0e\u6a21\u5757\u6309\u9700\u5c55\u5f00\u3002</p>
+                <div class="sc-basics">
+                <input name="site_name" value="{_safe(player_portal.get('site_name'))}" class="studio-field" placeholder="\u7ad9\u70b9\u540d\u79f0">
+                <input name="site_subtitle" value="{_safe(player_portal.get('site_subtitle'))}" class="studio-field" placeholder="\u526f\u6807\u9898">
+                <input name="logo_icon" value="{_safe(player_portal.get('logo_icon'))}" class="studio-field" placeholder="Logo \u56fe\u6807">
+                </div>
+                <details class="sc-fold">
+                  <summary>\u9996\u5c4f Hero \u4e0e\u5bfc\u822a\u6587\u6848</summary>
+                  <div class="sc-fold-body">
+                <input name="hero_image_url" value="{_safe(player_portal.get('hero_image_url'))}" class="studio-field studio-field--readonly" placeholder="Hero \u672c\u5730\u56fe\u7247\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
+                <input name="hero_video_url" value="{_safe(player_portal.get('hero_video_url'))}" class="studio-field studio-field--readonly" placeholder="Hero \u672c\u5730\u89c6\u9891\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
+                <textarea name="hero_gallery_urls" class="studio-field studio-field--readonly" rows="2" placeholder="Hero \u672c\u5730\u56fe\u96c6\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>{_safe(",".join(player_portal.get('hero_gallery_urls') or []))}</textarea>
+                <p class="text-xs text-slate-500">\u8bf4\u660e\uff1a\u8fd9\u91cc\u53ea\u5141\u8bb8\u672c\u5730\u4e0a\u4f20\u5a92\u4f53\uff0c\u5916\u94fe URL \u4f1a\u88ab\u540e\u7aef\u81ea\u52a8\u8fc7\u6ee4\u3002</p>
+                <input name="nav_about" value="{_safe(player_portal.get('nav_about'))}" class="studio-field" placeholder="\u516c\u53f8\u7b80\u4ecb\u5bfc\u822a\u6587\u6848">
+                <input name="nav_games" value="{_safe(player_portal.get('nav_games'))}" class="studio-field" placeholder="\u6e38\u620f\u4ea7\u54c1\u5bfc\u822a\u6587\u6848">
+                <textarea name="hero_title" class="studio-field" rows="3" placeholder="Hero \u6807\u9898">{_safe(player_portal.get('hero_title'))}</textarea>
+                <textarea name="hero_description" class="studio-field" rows="4" placeholder="Hero \u63cf\u8ff0">{_safe(player_portal.get('hero_description'))}</textarea>
+                  </div>
+                </details>
+                <details class="sc-fold">
+                  <summary>\u4ea7\u54c1\u5c55\u793a\u8303\u56f4</summary>
+                  <div class="sc-fold-body">
+                            <label class="text-xs font-semibold text-slate-500">\u5c55\u793a\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
+                            <select name="visible_product_ids" multiple class="studio-field">{player_options}</select>
+                            <p class="mt-2 text-xs text-slate-500">\u672a\u9009\u62e9\u5219\u5c55\u793a\u5168\u90e8\u9879\u76ee</p>
+                            <label class="text-xs font-semibold text-slate-500">\u4e3b\u63a8\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
+                            <select name="featured_product_ids" multiple class="studio-field">{player_featured_options}</select>
+                            <p class="mt-2 text-xs text-slate-500">\u9996\u4e2a\u4e3b\u63a8\u4ea7\u54c1\u5c06\u4f5c\u4e3a\u9996\u9875\u4e3b\u89c6\u89c9</p>
+                  </div>
+                </details>
+                <div class="studio-subpanel sc-modules">
                     <div class="flex items-center justify-between">
-                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">\u9996\u9875\u6a21\u5757\u7f16\u6392</p>
-                        <button type="button" class="add-module text-xs font-semibold text-indigo-600">\u6dfb\u52a0\u6a21\u5757</button>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">\u9996\u9875\u6a21\u5757\uff08{len(player_modules)}\uff0c\u70b9\u5f00\u5355\u4e2a\u7f16\u8f91\uff09</p>
+                        <button type="button" class="add-module text-xs font-semibold text-primary">\u6dfb\u52a0\u6a21\u5757</button>
                     </div>
-                    <div id="playerModules" class="mt-3 space-y-3">
+                    <div id="playerModules" class="mt-3 space-y-2 sc-module-list">
                         {_render_module_rows(player_modules)}
                     </div>
                 </div>
-                <button class="rounded-full bg-violet-600 px-5 py-3 font-bold text-white">\u4fdd\u5b58\u73a9\u5bb6\u5b98\u7f51</button>
-                <div id="playerPortalConfigResult" class="text-sm text-slate-500"></div>
+                <button type="submit" class="pm-btn pm-btn--primary">\u4fdd\u5b58\u73a9\u5bb6\u5b98\u7f51</button>
+                <div id="playerPortalConfigResult" class="text-sm text-gray-500"></div>
             </form>
-            <form id="devPortalConfigForm" class="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 class="text-lg font-semibold text-slate-900">\u5f00\u53d1\u8005\u5b98\u7f51\u914d\u7f6e</h3>
-                <input name="site_name" value="{_safe(dev_portal.get('site_name'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u7ad9\u70b9\u540d\u79f0">
-                <input name="site_subtitle" value="{_safe(dev_portal.get('site_subtitle'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u526f\u6807\u9898">
-                <input name="logo_icon" value="{_safe(dev_portal.get('logo_icon'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="Logo \u56fe\u6807">
-                <input name="hero_image_url" value="{_safe(dev_portal.get('hero_image_url'))}" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" placeholder="Hero \u672c\u5730\u56fe\u7247\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
-                <input name="hero_video_url" value="{_safe(dev_portal.get('hero_video_url'))}" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" placeholder="Hero \u672c\u5730\u89c6\u9891\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
-                <textarea name="hero_gallery_urls" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3" rows="2" placeholder="Hero \u672c\u5730\u56fe\u96c6\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>{_safe(",".join(dev_portal.get('hero_gallery_urls') or []))}</textarea>
-                <p class="text-xs text-slate-500">\u8bf4\u660e\uff1a\u8fd9\u91cc\u53ea\u5141\u8bb8\u672c\u5730\u4e0a\u4f20\u5a92\u4f53\uff0c\u5916\u94fe URL \u4f1a\u88ab\u540e\u7aef\u81ea\u52a8\u8fc7\u6ee4\u3002</p>
-                <input name="nav_games" value="{_safe(dev_portal.get('nav_games'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u6e38\u620f\u9635\u5bb9\u6587\u6848">
-                <input name="nav_showcase" value="{_safe(dev_portal.get('nav_showcase'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u89c6\u89c9\u5c55\u793a\u6587\u6848">
-                <input name="nav_news" value="{_safe(dev_portal.get('nav_news'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u65b0\u95fb\u516c\u544a\u6587\u6848">
-                <input name="nav_welfare" value="{_safe(dev_portal.get('nav_welfare'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u798f\u5229\u4e2d\u5fc3\u6587\u6848">
-                <input name="nav_forum" value="{_safe(dev_portal.get('nav_forum'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u73a9\u5bb6\u8bba\u575b\u6587\u6848">
-                <input name="nav_download" value="{_safe(dev_portal.get('nav_download'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="\u4e0b\u8f7d\u4e2d\u5fc3\u6587\u6848">
-                <input name="workspace_badge" value="{_safe(dev_portal.get('workspace_badge'))}" class="w-full rounded-2xl border border-slate-200 px-4 py-3" placeholder="Workspace \u6807\u8bc6">
-                <textarea name="workspace_title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="2" placeholder="Workspace \u4e3b\u6807\u9898">{_safe(dev_portal.get('workspace_title'))}</textarea>
-                <textarea name="workspace_intro" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="3" placeholder="Workspace \u7b80\u4ecb">{_safe(dev_portal.get('workspace_intro'))}</textarea>
-                <textarea name="hero_title" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="3" placeholder="Hero \u6807\u9898">{_safe(dev_portal.get('hero_title'))}</textarea>
-                <textarea name="hero_description" class="w-full rounded-2xl border border-slate-200 px-4 py-3" rows="4" placeholder="Hero \u63cf\u8ff0">{_safe(dev_portal.get('hero_description'))}</textarea>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">\u4ea7\u54c1\u5c55\u793a\u8303\u56f4</p>
-                    <div class="mt-3 space-y-3">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">\u5c55\u793a\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
-                            <select name="visible_product_ids" multiple class="mt-2 h-28 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">{dev_options}</select>
-                            <p class="mt-2 text-xs text-slate-500">\u672a\u9009\u62e9\u5219\u5c55\u793a\u5168\u90e8\u9879\u76ee</p>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500">\u4e3b\u63a8\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
-                            <select name="featured_product_ids" multiple class="mt-2 h-24 w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm">{dev_featured_options}</select>
-                            <p class="mt-2 text-xs text-slate-500">\u9996\u4e2a\u4e3b\u63a8\u4ea7\u54c1\u5c06\u4f5c\u4e3a\u9996\u9875\u4e3b\u89c6\u89c9</p>
-                        </div>
-                    </div>
+            <form id="devPortalConfigForm" class="studio-config-panel sc-panel" data-sc-panel="dev" hidden>
+                <h3>\u5f00\u53d1\u8005\u5b98\u7f51\u914d\u7f6e</h3>
+                <p class="sc-panel-lead">\u5148\u6539\u57fa\u7840\u4fe1\u606f\uff1b\u5bfc\u822a\u3001Workspace\u3001\u4ea7\u54c1\u4e0e\u6a21\u5757\u6309\u9700\u5c55\u5f00\u3002</p>
+                <div class="sc-basics">
+                <input name="site_name" value="{_safe(dev_portal.get('site_name'))}" class="studio-field" placeholder="\u7ad9\u70b9\u540d\u79f0">
+                <input name="site_subtitle" value="{_safe(dev_portal.get('site_subtitle'))}" class="studio-field" placeholder="\u526f\u6807\u9898">
+                <input name="logo_icon" value="{_safe(dev_portal.get('logo_icon'))}" class="studio-field" placeholder="Logo \u56fe\u6807">
                 </div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <details class="sc-fold">
+                  <summary>\u5bfc\u822a\u3001Workspace \u4e0e Hero</summary>
+                  <div class="sc-fold-body">
+                <input name="hero_image_url" value="{_safe(dev_portal.get('hero_image_url'))}" class="studio-field studio-field--readonly" placeholder="Hero \u672c\u5730\u56fe\u7247\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
+                <input name="hero_video_url" value="{_safe(dev_portal.get('hero_video_url'))}" class="studio-field studio-field--readonly" placeholder="Hero \u672c\u5730\u89c6\u9891\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>
+                <textarea name="hero_gallery_urls" class="studio-field studio-field--readonly" rows="2" placeholder="Hero \u672c\u5730\u56fe\u96c6\u8def\u5f84\uff08\u4e0a\u4f20\u540e\u81ea\u52a8\u586b\u5199\uff09" readonly>{_safe(",".join(dev_portal.get('hero_gallery_urls') or []))}</textarea>
+                <p class="text-xs text-slate-500">\u8bf4\u660e\uff1a\u8fd9\u91cc\u53ea\u5141\u8bb8\u672c\u5730\u4e0a\u4f20\u5a92\u4f53\uff0c\u5916\u94fe URL \u4f1a\u88ab\u540e\u7aef\u81ea\u52a8\u8fc7\u6ee4\u3002</p>
+                <input name="nav_games" value="{_safe(dev_portal.get('nav_games'))}" class="studio-field" placeholder="\u6e38\u620f\u9635\u5bb9\u6587\u6848">
+                <input name="nav_showcase" value="{_safe(dev_portal.get('nav_showcase'))}" class="studio-field" placeholder="\u89c6\u89c9\u5c55\u793a\u6587\u6848">
+                <input name="nav_news" value="{_safe(dev_portal.get('nav_news'))}" class="studio-field" placeholder="\u65b0\u95fb\u516c\u544a\u6587\u6848">
+                <input name="nav_welfare" value="{_safe(dev_portal.get('nav_welfare'))}" class="studio-field" placeholder="\u798f\u5229\u4e2d\u5fc3\u6587\u6848">
+                <input name="nav_forum" value="{_safe(dev_portal.get('nav_forum'))}" class="studio-field" placeholder="\u73a9\u5bb6\u8bba\u575b\u6587\u6848">
+                <input name="nav_download" value="{_safe(dev_portal.get('nav_download'))}" class="studio-field" placeholder="\u4e0b\u8f7d\u4e2d\u5fc3\u6587\u6848">
+                <input name="workspace_badge" value="{_safe(dev_portal.get('workspace_badge'))}" class="studio-field" placeholder="Workspace \u6807\u8bc6">
+                <textarea name="workspace_title" class="studio-field" rows="2" placeholder="Workspace \u4e3b\u6807\u9898">{_safe(dev_portal.get('workspace_title'))}</textarea>
+                <textarea name="workspace_intro" class="studio-field" rows="3" placeholder="Workspace \u7b80\u4ecb">{_safe(dev_portal.get('workspace_intro'))}</textarea>
+                <textarea name="hero_title" class="studio-field" rows="3" placeholder="Hero \u6807\u9898">{_safe(dev_portal.get('hero_title'))}</textarea>
+                <textarea name="hero_description" class="studio-field" rows="4" placeholder="Hero \u63cf\u8ff0">{_safe(dev_portal.get('hero_description'))}</textarea>
+                  </div>
+                </details>
+                <details class="sc-fold">
+                  <summary>\u4ea7\u54c1\u5c55\u793a\u8303\u56f4</summary>
+                  <div class="sc-fold-body">
+                            <label class="text-xs font-semibold text-slate-500">\u5c55\u793a\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
+                            <select name="visible_product_ids" multiple class="studio-field">{dev_options}</select>
+                            <p class="mt-2 text-xs text-slate-500">\u672a\u9009\u62e9\u5219\u5c55\u793a\u5168\u90e8\u9879\u76ee</p>
+                            <label class="text-xs font-semibold text-slate-500">\u4e3b\u63a8\u4ea7\u54c1\uff08\u591a\u9009\uff09</label>
+                            <select name="featured_product_ids" multiple class="studio-field">{dev_featured_options}</select>
+                            <p class="mt-2 text-xs text-slate-500">\u9996\u4e2a\u4e3b\u63a8\u4ea7\u54c1\u5c06\u4f5c\u4e3a\u9996\u9875\u4e3b\u89c6\u89c9</p>
+                  </div>
+                </details>
+                <div class="studio-subpanel sc-modules">
                     <div class="flex items-center justify-between">
-                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">\u9996\u9875\u6a21\u5757\u7f16\u6392</p>
-                        <button type="button" class="add-module text-xs font-semibold text-indigo-600">\u6dfb\u52a0\u6a21\u5757</button>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">\u9996\u9875\u6a21\u5757\uff08{len(dev_modules)}\uff0c\u70b9\u5f00\u5355\u4e2a\u7f16\u8f91\uff09</p>
+                        <button type="button" class="add-module text-xs font-semibold text-primary">\u6dfb\u52a0\u6a21\u5757</button>
                     </div>
-                    <div id="devModules" class="mt-3 space-y-3">
+                    <div id="devModules" class="mt-3 space-y-2 sc-module-list">
                         {_render_module_rows(dev_modules)}
                     </div>
                 </div>
-                <button class="rounded-full bg-emerald-600 px-5 py-3 font-bold text-white">\u4fdd\u5b58\u5f00\u53d1\u8005\u5b98\u7f51</button>
-                <div id="devPortalConfigResult" class="text-sm text-slate-500"></div>
+                <button type="submit" class="pm-btn pm-btn--primary">\u4fdd\u5b58\u5f00\u53d1\u8005\u5b98\u7f51</button>
+                <div id="devPortalConfigResult" class="sc-hint"></div>
             </form>
         </div>
     </section>
+    <style>
+    .sc-page .sc-tabs{{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px;padding:4px;border:1px solid #e5eaf3;border-radius:12px;background:#f8fafc}}
+    .sc-page .sc-tab{{border:0;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;color:#475467;background:transparent;cursor:pointer}}
+    .sc-page .sc-tab:hover{{color:#1677ff;background:#fff}}
+    .sc-page .sc-tab.is-active{{background:#fff;color:#1677ff;box-shadow:0 1px 2px rgba(16,24,40,.08)}}
+    .sc-page .sc-panels{{max-width:760px}}
+    .sc-page .sc-panel[hidden],.sc-page .sc-panel:not(.is-active){{display:none!important}}
+    .sc-page .sc-panel.is-active{{display:block}}
+    .sc-page .sc-form-stack{{display:flex;flex-direction:column;gap:8px;max-width:640px}}
+    .sc-page .sc-label{{font-size:12px;font-weight:600;color:#475467;margin-top:4px}}
+    .sc-page .sc-hint{{margin-top:8px;font-size:12px;color:#667085}}
+    .sc-page .sc-advanced{{margin:8px 0;padding:10px 12px;border:1px solid #e5eaf3;border-radius:8px;background:#fafbfc}}
+    .sc-page .sc-advanced>summary{{cursor:pointer;font-size:13px;font-weight:600;color:#475467}}
+    .sc-page .sc-panel-lead{{margin:0 0 12px;font-size:13px;color:#667085;line-height:1.5}}
+    .sc-page .sc-basics{{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}}
+    .sc-page .sc-fold{{margin:0 0 8px;padding:10px 12px;border:1px solid #e5eaf3;border-radius:10px;background:#fafbfc}}
+    .sc-page .sc-fold>summary{{cursor:pointer;font-size:13px;font-weight:600;color:#344054;list-style:none}}
+    .sc-page .sc-fold>summary::-webkit-details-marker{{display:none}}
+    .sc-page .sc-fold-body{{display:flex;flex-direction:column;gap:8px;margin-top:10px}}
+    .sc-page .sc-fold--nested{{margin:10px 0 0;padding:8px 10px;background:#fff}}
+    .sc-page .sc-fold--nested>summary{{font-size:12px;color:#475467}}
+    .sc-page .sc-modules{{margin-top:8px}}
+    .sc-page .studio-module-core{{margin-top:10px}}
+    .sc-page .studio-module-card{{border:1px solid #e5eaf3;border-radius:10px;padding:0;margin:0;background:#fff}}
+    .sc-page .studio-module-summary{{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;cursor:pointer;list-style:none}}
+    .sc-page .studio-module-summary::-webkit-details-marker{{display:none}}
+    .sc-page .studio-module-summary-main{{display:flex;align-items:baseline;gap:8px;min-width:0}}
+    .sc-page .studio-module-summary-main strong{{font-size:13px;color:#101828;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+    .sc-page .studio-module-summary-main em{{font-style:normal;font-size:12px;color:#667085}}
+    .sc-page .studio-module-summary-meta{{flex-shrink:0;font-size:12px;color:#98a2b3}}
+    .sc-page .studio-module-body{{padding:0 12px 12px;border-top:1px solid #eef1f6}}
+    .sc-page .studio-module-card-foot{{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:#98a2b3}}
+    .sc-page .studio-module-card[open] .studio-module-summary{{background:#f8fafc;border-radius:10px 10px 0 0}}
+    </style>
+    <script>
+    (function(){{
+      var root=document.querySelector('[data-sc-page]');
+      if(!root) return;
+      function showSc(key){{
+        root.querySelectorAll('[data-sc-tab]').forEach(function(btn){{
+          var on=btn.getAttribute('data-sc-tab')===key;
+          btn.classList.toggle('is-active',on);
+          btn.setAttribute('aria-selected',on?'true':'false');
+        }});
+        root.querySelectorAll('[data-sc-panel]').forEach(function(panel){{
+          var on=panel.getAttribute('data-sc-panel')===key;
+          panel.classList.toggle('is-active',on);
+          if(on) panel.removeAttribute('hidden'); else panel.setAttribute('hidden','');
+        }});
+      }}
+      root.querySelectorAll('[data-sc-tab]').forEach(function(btn){{
+        btn.addEventListener('click',function(){{ showSc(btn.getAttribute('data-sc-tab')); }});
+      }});
+    }})();
+    </script>
     <script>
     function collectModules(form) {{
         var rows = form.querySelectorAll('[data-module-row]');
@@ -375,6 +448,7 @@ def render_site_config_page():
                 var row = wrapper.firstElementChild;
                 if (row) {{
                     container.appendChild(row);
+                    row.open = true;
                     enhanceModuleRow(row, 'portal-module', formId === 'playerPortalConfigForm' ? 'player-portal' : 'dev-portal');
                 }}
                 syncOrder();
@@ -414,6 +488,16 @@ def render_site_config_page():
             dragging = null;
             syncOrder();
         }});
+        container.addEventListener('toggle', function(e) {{
+            var t = e.target;
+            if (!t || !t.matches || !t.matches('details[data-module-row]')) return;
+            if (t.open) {{
+                container.querySelectorAll('details[data-module-row][open]').forEach(function(other) {{
+                    if (other !== t) other.open = false;
+                }});
+                enhanceModuleRow(t, 'portal-module', formId === 'playerPortalConfigForm' ? 'player-portal' : 'dev-portal');
+            }}
+        }}, true);
     }}
     function collectMultiSelect(form, name) {{
         var select = form.querySelector('select[name="' + name + '"]');
@@ -439,9 +523,9 @@ def render_site_config_page():
         target.innerHTML = list.map(function(url) {{
             var safe = escapeHtmlText(url);
             if (kind === 'video') {{
-                return '<div class="rounded-xl border border-slate-200 bg-slate-50 p-2"><video src="' + safe + '" controls class="h-32 w-full rounded-lg bg-black object-cover"></video><p class="mt-2 truncate text-[11px] text-slate-500">' + safe + '</p></div>';
+                return '<div class="studio-media-thumb"><video src="' + safe + '" controls class="h-32 w-full rounded-lg bg-black object-cover"></video><p class="mt-2 truncate text-[11px] text-slate-500">' + safe + '</p></div>';
             }}
-            return '<div class="rounded-xl border border-slate-200 bg-slate-50 p-2"><img src="' + safe + '" class="h-28 w-full rounded-lg object-cover" alt=""><p class="mt-2 truncate text-[11px] text-slate-500">' + safe + '</p></div>';
+            return '<div class="studio-media-thumb"><img src="' + safe + '" class="h-28 w-full rounded-lg object-cover" alt=""><p class="mt-2 truncate text-[11px] text-slate-500">' + safe + '</p></div>';
         }}).join('');
     }}
     function uploadMediaFiles(files, scope, bucket) {{
@@ -462,7 +546,7 @@ def render_site_config_page():
         input.dataset.uploaderReady = '1';
         var kind = options.kind === 'video' ? 'video' : 'image';
         var wrap = document.createElement('div');
-        wrap.className = 'mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3';
+        wrap.className = 'studio-subpanel';
         wrap.innerHTML = '' +
             '<label class="block text-xs font-semibold text-slate-500">本地' + (kind === 'video' ? '视频' : '图片') + '</label>' +
             '<input type="file" accept="' + (kind === 'video' ? 'video/*' : 'image/*') + '" class="mt-2 block w-full text-sm text-slate-600">' +
@@ -488,7 +572,7 @@ def render_site_config_page():
         if (!textarea || textarea.dataset.uploaderReady === '1') return;
         textarea.dataset.uploaderReady = '1';
         var wrap = document.createElement('div');
-        wrap.className = 'mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3';
+        wrap.className = 'studio-subpanel';
         wrap.innerHTML = '' +
             '<label class="block text-xs font-semibold text-slate-500">本地图集</label>' +
             '<input type="file" accept="image/*" multiple class="mt-2 block w-full text-sm text-slate-600">' +
@@ -530,9 +614,7 @@ def render_site_config_page():
         attachSingleMediaUploader(form.querySelector('[name="hero_image_url"]'), {{ kind: 'image', scope: 'portal', bucket: bucket }});
         attachSingleMediaUploader(form.querySelector('[name="hero_video_url"]'), {{ kind: 'video', scope: 'portal', bucket: bucket }});
         attachGalleryUploader(form.querySelector('[name="hero_gallery_urls"]'), {{ scope: 'portal', bucket: bucket }});
-        form.querySelectorAll('[data-module-row]').forEach(function(row) {{
-            enhanceModuleRow(row, 'portal-module', bucket);
-        }});
+        /* 模块媒体上传器改为展开时再挂载，避免默认页被预览撑高 */
     }}
     function bindSiteConfigForm(formId, endpoint, resultId, transform) {{
         var form = document.getElementById(formId);

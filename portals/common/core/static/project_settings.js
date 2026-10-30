@@ -5,7 +5,9 @@
   if (!root) return;
 
   var projectId = root.dataset.projectId || "";
-  var tab = new URLSearchParams(location.search).get("tab") || "";
+  var tab = new URLSearchParams(location.search).get("tab") || "members";
+  if (["members", "architecture", "delivery"].indexOf(tab) < 0) tab = "members";
+
   var toast = window.DeliveryCommon && window.DeliveryCommon.toast
     ? window.DeliveryCommon.toast
     : function (msg) { alert(msg); };
@@ -17,13 +19,15 @@
       .replace(/"/g, "&quot;");
   }
 
-  function showMembersPanel() {
-    var placeholder = document.querySelector(".pm-placeholder-page");
-    var membersPanel = document.getElementById("projectSettingsMembers");
-    var archPanel = document.getElementById("projectSettingsArchitecture");
-    if (placeholder) placeholder.hidden = tab === "members" || tab === "architecture";
-    if (membersPanel) membersPanel.hidden = tab !== "members";
-    if (archPanel) archPanel.hidden = tab !== "architecture";
+  function showPanel() {
+    root.querySelectorAll("[data-settings-panel]").forEach(function (panel) {
+      var on = panel.getAttribute("data-settings-panel") === tab;
+      panel.hidden = !on;
+    });
+    root.querySelectorAll("[data-settings-tab]").forEach(function (btn) {
+      var on = btn.getAttribute("data-settings-tab") === tab;
+      btn.classList.toggle("is-active", on);
+    });
   }
 
   async function loadServerMode() {
@@ -34,7 +38,7 @@
     var sel = document.getElementById("settingsServerMode");
     var hint = document.getElementById("settingsCasualHint");
     if (sel) sel.value = row.server_mode === "casual_baas" ? "casual_baas" : "topology";
-    if (hint) hint.hidden = sel && sel.value !== "casual_baas";
+    if (hint) hint.hidden = !(sel && sel.value === "casual_baas");
     if (sel) {
       sel.onchange = function () {
         if (hint) hint.hidden = sel.value !== "casual_baas";
@@ -61,12 +65,6 @@
     } else {
       toast("架构设置已保存", "success");
     }
-  }
-
-  function memberRole(username, project) {
-    if (String(project.created_by || "") === username) return "owner";
-    if ((project.editors || []).indexOf(username) >= 0) return "editor";
-    return "viewer";
   }
 
   function renderMembers(members) {
@@ -201,15 +199,7 @@
     toast("成员角色已更新", "success");
   }
 
-  showMembersPanel();
-  if (tab === "architecture") {
-    loadServerMode().catch(function (error) {
-      toast(error.message || "加载失败", "error");
-    });
-    var archBtn = document.getElementById("settingsSaveServerMode");
-    if (archBtn) archBtn.onclick = function () { saveServerMode().catch(function (e) { toast(e.message, "error"); }); };
-  }
-  if (tab === "members") {
+  function bindMembers() {
     loadProject().catch(function (error) {
       toast(error.message || "加载失败", "error");
     });
@@ -233,4 +223,16 @@
       });
     }
   }
+
+  function bindArchitecture() {
+    loadServerMode().catch(function (error) {
+      toast(error.message || "加载失败", "error");
+    });
+    var archBtn = document.getElementById("settingsSaveServerMode");
+    if (archBtn) archBtn.onclick = function () { saveServerMode().catch(function (e) { toast(e.message, "error"); }); };
+  }
+
+  showPanel();
+  if (tab === "members") bindMembers();
+  if (tab === "architecture") bindArchitecture();
 })();

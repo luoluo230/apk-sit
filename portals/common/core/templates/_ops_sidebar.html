@@ -5,12 +5,20 @@
   </a>
   <nav class="ops-shell-nav-tree">
     {% for group in shell_groups(nav_project|default('', true), env_key, active_page, request.path) %}
-    <div class="ops-shell-nav-group"><b>{{ group.label }}</b>
+    {% set group_key = group.label %}
+    {% set has_active = group["items"]|selectattr("active")|list|length > 0 %}
+    <div class="ops-shell-nav-group" data-nav-group="{{ group_key }}" data-has-active="{{ '1' if has_active else '0' }}">
+      <button type="button" class="ops-shell-nav-group-toggle" data-nav-group-toggle aria-expanded="true">
+        <b>{{ group.label }}</b>
+        <span class="ops-shell-nav-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="ops-shell-nav-group-body">
       {% for item in group["items"] %}
       <a {% if item.active %}class="active"{% endif %} href="{{ item.href }}">
         <img src="/static/project_ui/svg/{{ item.icon }}.svg" alt=""><span>{{ item.label }}</span>
       </a>
       {% endfor %}
+      </div>
     </div>
     {% endfor %}
   </nav>

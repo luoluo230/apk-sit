@@ -552,6 +552,9 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
         for row in get_channels_for_env(project_id, ek)
     ]
     platforms = get_platform_defs_for_env(project_id, ek)
+    from services.release.topology_binding_service import _topology_name_map
+
+    topo_names = _topology_name_map(project_id)
     lines: List[Dict[str, Any]] = []
     for channel in channels:
         cid = str(channel.get("channel_id") or "").strip()
@@ -567,9 +570,6 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
             version_name = str(client.get("version_name") or bundle.get("version_name") or "")
             binding = resolve_topology_binding_for_scope(scope or {}, version_name) if scope else {}
             topology_id = str(binding.get("topology_id") or server.get("topology_id") or "")
-            from services.release.topology_binding_service import _topology_name_map
-
-            topo_names = _topology_name_map(project_id)
             configured = bool(scope and (bundle or version_name))
             line_version_code = str(client.get("version_code") or bundle.get("version_code") or "")
             lines.append(

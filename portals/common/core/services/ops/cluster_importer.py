@@ -148,7 +148,19 @@ def _sync_cluster_to_nodes(servers: List[Dict[str, Any]], project_id: str = "Gom
             "channel": "1001",
         }))
     if new_nodes:
-        _save_nodes(new_nodes)
+        existing = _load_nodes()
+        new_ids = {str(item.get("id") or "") for item in new_nodes}
+        kept = []
+        for item in existing:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "")
+            item_pid = str(item.get("project_id") or "").strip()
+            if item_id in new_ids:
+                continue
+            if item_pid and item_pid != str(project_id or "").strip():
+                kept.append(item)
+        _save_nodes(kept + new_nodes)
 
 def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
     """
@@ -164,6 +176,9 @@ def _sync_cluster_to_agents(project_id: str = "GomeKu") -> Dict[str, Any]:
         return {"synced": 0, "added": 0, "updated": 0, "stale": 0, "error": "no cluster.json data"}
 
     pid = str(project_id or "GomeKu").strip()
+    owns_cluster = globals().get("_project_has_cluster_json")
+    if callable(owns_cluster) and not owns_cluster(pid):
+        return {"synced": 0, "added": 0, "updated": 0, "stale": 0, "error": "project has no cluster.json"}
     if _project_uses_runtime_topology(pid):
         services: List[Dict[str, Any]] = []
         active_node_ids: set = set()

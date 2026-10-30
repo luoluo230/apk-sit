@@ -59,6 +59,8 @@ flowchart LR
 **最小可上线路径（Prod 客户端发版）**：P0-01 → P0-02 → P1-03 → P1-04 → P2-03  
 **完整三平面**：上述 + P1-01 → P1-05 → P2-01 → P2-02
 
+**本轮上线前收敛**：[P3-01_workstation_convergence.md](./P3-01_workstation_convergence.md) 导航/环境；[P3-02_workstation_ui_commercial.md](./P3-02_workstation_ui_commercial.md) 按 [workstation_ui_system.md](../../design_specs/workstation_ui_system.md) 收商业 UI。不重开 P0–P2，也不把 iOS、微信真发、游戏服进程启动算进本轮。
+
 ---
 
 ## 3. 每个 Plan 文档结构（统一模板）
@@ -108,3 +110,5 @@ flowchart LR
 |------|------|
 | 2026-07-24 | 由 expert review 拆分为 10 份可执行 Plan + 1 份 REF |
 | 2026-07-24 | §3.1 增加 architecture-plan-implementation skill 与 rules |
+| 2026-10-29 | 增加 P3-01 工作站收敛，作为上线前最后一轮 |
+| 2026-10-29 | 增加 P3-02 管理端商业 UI 统一（规范 + 分波改造） |

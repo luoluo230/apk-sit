@@ -13,6 +13,31 @@
     const collapsed = app.classList.toggle("sidebar-collapsed");
     localStorage.setItem(storageKey, collapsed ? "1" : "0");
   });
+  const groupFoldKey = "ops_shell_nav_group_folds_v1";
+  let groupFolds = {};
+  try {
+    groupFolds = JSON.parse(localStorage.getItem(groupFoldKey) || "{}") || {};
+  } catch (_) {
+    groupFolds = {};
+  }
+  document.querySelectorAll("[data-nav-group]").forEach((group) => {
+    const key = group.getAttribute("data-nav-group") || "";
+    const toggle = group.querySelector("[data-nav-group-toggle]");
+    if (!toggle) return;
+    const hasActive = group.getAttribute("data-has-active") === "1";
+    if (hasActive) {
+      group.classList.remove("is-collapsed");
+    } else if (Object.prototype.hasOwnProperty.call(groupFolds, key)) {
+      group.classList.toggle("is-collapsed", !!groupFolds[key]);
+    }
+    toggle.setAttribute("aria-expanded", group.classList.contains("is-collapsed") ? "false" : "true");
+    toggle.addEventListener("click", () => {
+      const collapsed = group.classList.toggle("is-collapsed");
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      groupFolds[key] = collapsed;
+      localStorage.setItem(groupFoldKey, JSON.stringify(groupFolds));
+    });
+  });
   document.querySelectorAll('a[href^="/admin/projects/"]').forEach((link) => {
     const url = new URL(link.href, location.origin);
     contextKeys.forEach((key) => {

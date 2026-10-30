@@ -215,10 +215,74 @@ def project_overview(project_id: str, filters: Optional[Dict[str, str]] = None) 
     }
 
 
+def _channel_journeys_from_lines(project_id: str, env_key: str, delivery_lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build matrix channel entries from delivery_lines without heavy per-platform readiness probes."""
+    from services.release.channel_journey_bff import _channel_entry_urls
+
+    by_channel: Dict[str, List[Dict[str, Any]]] = {}
+    for line in delivery_lines:
+        cid = str(line.get("channel_id") or "").strip()
+        if not cid:
+            continue
+        by_channel.setdefault(cid, []).append(line)
+    out: List[Dict[str, Any]] = []
+    for cid, lines in by_channel.items():
+        urls = _channel_entry_urls(project_id, env_key, cid)
+        channel_name = str(lines[0].get("channel_name") or cid)
+        platform_lines = []
+        any_pipeline = False
+        any_artifact = False
+        for line in lines:
+            pipeline_ready = bool(line.get("pipeline_ready"))
+            artifact_ready = str(line.get("readiness") or "") in {"ready", "artifacts_ready"} or bool(line.get("configured"))
+            any_pipeline = any_pipeline or pipeline_ready
+            any_artifact = any_artifact or artifact_ready
+            platform_lines.append(
+                {
+                    "platform": line.get("platform"),
+                    "platform_label": line.get("platform_label") or line.get("platform"),
+                    "scope_id": line.get("scope_id") or "",
+                    "version_id": line.get("recommended_version_id") or line.get("version_id") or "",
+                    "version_name": line.get("version_name") or "",
+                    "version_code": line.get("version_code") or "",
+                    "configured": bool(line.get("configured")),
+                    "pipeline_ready": pipeline_ready,
+                    "artifact_ready": artifact_ready,
+                    "order_status": "",
+                    "release_order_id": "",
+                    "active_bundle_id": line.get("bundle_id") or "",
+                    "topology_id": line.get("topology_id") or "",
+                    "build_config_href": "",
+                    "versions": [],
+                    "publishable_bundles": [],
+                }
+            )
+        out.append(
+            {
+                "channel_id": cid,
+                "channel_name": channel_name,
+                "build_entry": {
+                    "label": "版本与管线",
+                    "href": urls["build"],
+                    "enabled": True,
+                    "reason": "" if any_pipeline or platform_lines else "请先配置平台",
+                },
+                "release_entry": {
+                    "label": "发版",
+                    "href": urls["release"],
+                    "enabled": True,
+                    "reason": "" if any_artifact else "暂无产物或线上版本",
+                },
+                "platform_lines": platform_lines,
+            }
+        )
+    return out
+
+
 def environment_detail(project_id: str, env_key: str) -> Dict[str, Any]:
     ek = normalize_release_env_key(env_key, project_id=project_id)
     delivery_lines = [_core().enrich_delivery_line_actions(project_id, line) for line in _delivery_lines_for_env(project_id, ek)]
-    orders = _core().list_release_orders(project_id, {"env_key": ek})
+    orders = _core().list_release_orders(project_id, {"env_key": ek}, sync_builds=False, limit=40)
     versions = []
     seen = set()
     for source in project_versions_db.get(project_id) or []:
@@ -243,8 +307,8 @@ def environment_detail(project_id: str, env_key: str) -> Dict[str, Any]:
     processing = sum(1 for row in orders if row["status"] in {"building", "prechecking", "publishing", "verifying"})
     unconfigured = sum(1 for line in delivery_lines if not line.get("configured"))
     manifest = find_manifest(project_id)
-    channel_ids = sorted({str(line.get("channel_id") or "").strip() for line in delivery_lines if str(line.get("channel_id") or "").strip()})
-    channel_journeys = [resolve_channel_journey_entries(project_id, ek, cid) for cid in channel_ids]
+    # Prefer already-enriched delivery_lines over N× resolve_channel_journey_entries (~12s/channel).
+    channel_journeys = _channel_journeys_from_lines(project_id, ek, delivery_lines)
     return {
         "project_id": project_id,
         "project": projects_db.get(project_id) or {},

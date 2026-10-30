@@ -267,6 +267,23 @@
     if (node) node.classList.remove("is-hidden");
   }
 
+  function bindEditAdvancedDisclosure() {
+    var modal = el("editProjectModal");
+    if (!modal || modal.dataset.advBound === "1") return;
+    modal.dataset.advBound = "1";
+    var disclosure = modal.querySelector("details.p01-disclosure");
+    var scroller = modal.querySelector(".p01-modal-scroll");
+    if (!disclosure || !scroller) return;
+    disclosure.addEventListener("toggle", function () {
+      if (!disclosure.open) return;
+      // 展开后滚到分区顶部，避免高级构建底部字段被裁切看不见
+      window.requestAnimationFrame(function () {
+        var top = disclosure.offsetTop - 8;
+        scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      });
+    });
+  }
+
   function closeModal(id) {
     var node = el(id);
     if (node) node.classList.add("is-hidden");
@@ -1009,6 +1026,8 @@
         el("editProjectIntro").value = p.intro || "";
         el("editProjectDetail").value = p.detail || "";
         el("editProjectNetwork").value = p.network_connection || "";
+        if (el("editProjectGameId")) el("editProjectGameId").value = p.game_id || "";
+        if (el("editProjectGameKey")) el("editProjectGameKey").value = p.game_key || "";
         fillProjectBuildFields("editProject", p);
         if (el("editProjectPlayerPublicUrl")) el("editProjectPlayerPublicUrl").value = p.player_public_url || "";
         if (el("editProjectForumPublicUrl")) el("editProjectForumPublicUrl").value = p.forum_public_url || "";
@@ -1330,6 +1349,24 @@
     if (el("btnAddEditParticipant")) el("btnAddEditParticipant").onclick = addEditParticipant;
     if (el("btnConfirmParticipantRole")) el("btnConfirmParticipantRole").onclick = confirmParticipantRole;
     if (el("btnSaveEditProject")) el("btnSaveEditProject").onclick = saveEditProject;
+    document.querySelectorAll("[data-copy-input]").forEach(function (btn) {
+      if (btn.getAttribute("data-bound-copy") === "1") return;
+      btn.setAttribute("data-bound-copy", "1");
+      btn.onclick = function () {
+        var inputId = btn.getAttribute("data-copy-input") || "";
+        var input = el(inputId);
+        var val = input ? String(input.value || "") : "";
+        if (!val) { alert("暂无凭据可复制"); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(val).then(function () { alert("已复制"); }).catch(function () {
+            input.select(); document.execCommand("copy"); alert("已复制");
+          });
+        } else {
+          input.select(); document.execCommand("copy"); alert("已复制");
+        }
+      };
+    });
+    bindEditAdvancedDisclosure();
     if (el("btnResetChannelForm")) el("btnResetChannelForm").onclick = resetChannelForm;
     if (el("btnSubmitChannelForm")) el("btnSubmitChannelForm").onclick = submitChannelForm;
     if (el("editProjectValidateGitBtn")) el("editProjectValidateGitBtn").onclick = function () {

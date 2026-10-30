@@ -56,3 +56,31 @@
 .project-ops-agent-card b{font-size:12px;color:#1d2939}
 @media(max-width:1100px){.project-ops-grid{grid-template-columns:1fr}.project-ops-form{grid-template-columns:1fr}.project-ops-field.wide,.project-ops-form-actions,.project-ops-panel.wide{grid-column:auto}}
 @media(max-width:720px){.project-ops-head{align-items:flex-start;flex-direction:column}.project-ops-actions{width:100%}}
+
+/* 动作执行：分区 Tab，默认只露「执行」 */
+.ops-actions-app .ops-act-tabs{
+  display:flex;flex-wrap:wrap;gap:6px;margin:0 0 4px;padding:4px;
+  border:1px solid #e5eaf3;border-radius:8px;background:#f8fafc
+}
+.ops-actions-app .ops-act-tab{
+  border:0;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;
+  color:#475467;background:transparent;cursor:pointer
+}
+.ops-actions-app .ops-act-tab:hover{color:#1677ff;background:#fff}
+.ops-actions-app .ops-act-tab.is-active{
+  background:#fff;color:#1677ff;box-shadow:0 1px 2px rgba(16,24,40,.08)
+}
+.ops-actions-app .ops-act-panel[hidden],
+.ops-actions-app .ops-act-panel:not(.is-active){display:none!important}
+.ops-actions-app .ops-act-panel.is-active{display:block}
+.ops-actions-app .ops-act-advanced{
+  border:1px solid #e5eaf3;border-radius:6px;padding:8px 10px;background:#fafcff
+}
+.ops-actions-app .ops-act-advanced>summary{
+  cursor:pointer;font-size:12px;font-weight:600;color:#475467;list-style:none
+}
+.ops-actions-app .ops-act-advanced>summary::-webkit-details-marker{display:none}
+.ops-actions-app .ops-act-advanced-body{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px
+}
+@media(max-width:1100px){.ops-actions-app .ops-act-advanced-body{grid-template-columns:1fr}}

@@ -92,6 +92,7 @@ def register_routes(bp, *, current_username):
             "project_versions_workspace.html",
             project_id=project_id,
             env_key=env_key,
+            active_page="versions",
             platform_filter=platform_filter,
             channel_filter=channel_filter,
             can_edit=can_edit,
@@ -104,6 +105,7 @@ def register_routes(bp, *, current_username):
             project_id=project_id,
             env_key=env_key or "development",
             breadcrumb_module="交付发版",
+            extra_css='<link rel="stylesheet" href="/static/project_release_hub.css?v=20261029-steps">',
         )
 
     @bp.route("/admin/projects/<project_id>/version-groups/build-config")
@@ -358,7 +360,8 @@ def register_routes(bp, *, current_username):
             project_id=project_id,
             project_name=proj.get("name") or project_id,
             can_edit=can_edit_project(project_id, current_username()),
-            env_key=request.args.get("env_key") or "production",
+            env_key=request.args.get("env_key") or "development",
+            active_page="builds",
             scope_version_id=scope_version_id,
             scope_env_key=scope_env_key,
             scope_platform=(request.args.get("platform") or "").strip(),
@@ -371,7 +374,10 @@ def register_routes(bp, *, current_username):
             "构建与产物",
             active_page="builds",
             project_id=project_id,
-            env_key=request.args.get("env_key") or "production",
+            env_key=request.args.get("env_key") or "development",
             breadcrumb_module="交付发版",
-            extra_css='<link rel="stylesheet" href="/static/project_build_history.css?v=20260708-bh9">',
+            extra_css=(
+                '<link rel="stylesheet" href="/static/project_build_history.css?v=20260708-bh9">'
+                '<link rel="stylesheet" href="/static/project_release_hub.css?v=20261029-steps">'
+            ),
         )

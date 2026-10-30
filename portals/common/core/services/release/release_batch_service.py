@@ -187,6 +187,14 @@ def _merge_shared_into_order_payload(shared: Dict[str, Any], line_overrides: Opt
     return payload
 
 
+def _is_serial_unique_violation(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name == "UniqueViolation":
+        return True
+    text = str(exc).lower()
+    return "uniqueviolation" in text or ("duplicate key" in text and "_pkey" in text)
+
+
 def create_release_batch(project_id: str, payload: Dict[str, Any], actor: str) -> Dict[str, Any]:
     if project_id not in projects_db:
         raise ValueError("项目不存在")
@@ -198,11 +206,44 @@ def create_release_batch(project_id: str, payload: Dict[str, Any], actor: str) -
     announcement = dict(payload.get("announcement") or {})
     if not str(shared_plan.get("owner") or actor).strip():
         shared_plan["owner"] = actor
-    batch_id = _batch_id()
-    now = _now_iso()
     init_db()
+
+    last_exc: Optional[BaseException] = None
+    for attempt in range(2):
+        try:
+            return _create_release_batch_once(
+                project_id, env_key, line_targets, shared_plan, announcement, actor
+            )
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 0 and _is_serial_unique_violation(exc):
+                try:
+                    from models.db_postgres import _get_conn, _resync_pg_serial_sequences
+
+                    conn = _get_conn()
+                    _resync_pg_serial_sequences(conn)
+                    conn.commit()
+                except Exception:
+                    pass
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("创建发版批次失败")
+
+
+def _create_release_batch_once(
+    project_id: str,
+    env_key: str,
+    line_targets: List[Any],
+    shared_plan: Dict[str, Any],
+    announcement: Dict[str, Any],
+    actor: str,
+) -> Dict[str, Any]:
     from services.release.order_crud import create_release_order
 
+    batch_id = _batch_id()
+    now = _now_iso()
     with get_cursor() as cur:
         cur.execute(
             """

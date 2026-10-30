@@ -132,18 +132,19 @@ PM_UI_CSS = (
     '<link rel="stylesheet" href="/static/project_ui/ui-microcopy-cleanup.css?v=20260729-v2">'
     '<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v=20260625-pm9">'
     '<link rel="stylesheet" href="/static/project_ui/pm-kpi.css?v=20260625-pm9">'
-    '<link rel="stylesheet" href="/static/project_ui/pm-table.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-table.css?v=20261029-pm10">'
     '<link rel="stylesheet" href="/static/project_ui/pm-drawer.css?v=20260625-pm9">'
     '<link rel="stylesheet" href="/static/project_ui/pm-filter-bar.css?v=20260625-pm9">'
     '<link rel="stylesheet" href="/static/project_ui/pm-stepper.css?v=20260625-pm9">'
-    '<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v=20260625-pm9">'
+    '<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v=20261029-pm11">'
+    '<link rel="stylesheet" href="/static/project_ui/product_polish.css?v=20261029-pp7">'
 )
 
-OPS_SHELL_ASSET_VER = "20260730-release-console-v1"
+OPS_SHELL_ASSET_VER = "20261029-product-ui-v3"
 
 OPS_WORKSPACE_CSS = (
     '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260717-workspace-v5">'
-    '<link rel="stylesheet" href="/static/ops_workspace_pages.css?v=20260717-workspace-v5">'
+    '<link rel="stylesheet" href="/static/ops_workspace_pages.css?v=20261029-exec-tone-v1">'
 )
 
 OPS_COMPACT_CSS = OPS_WORKSPACE_CSS

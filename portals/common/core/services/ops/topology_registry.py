@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Facade. Grouped sources share one namespace so existing cross-calls stay valid."""
+"""Topology plane. Parts share this module so existing cross-calls stay valid."""
 from pathlib import Path
+
+from services.ops.namespace_loader import load_parts
 
 _PARTS = [
     "_header.py",
@@ -23,11 +25,4 @@ _PARTS = [
     "runtime_bindings.py",
 ]
 
-def _load_parts():
-    folder = Path(__file__).resolve().parent / "topology"
-    for name in _PARTS:
-        path = folder / name
-        code = path.read_text(encoding="utf-8")
-        exec(compile(code, str(path), "exec"), globals())
-
-_load_parts()
+load_parts(globals(), Path(__file__).resolve().parent / "topology", _PARTS)

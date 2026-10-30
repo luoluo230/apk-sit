@@ -19,11 +19,15 @@
 
   function renderMetrics(summary){
     const s=summary||{};
+    const total=s.total_nodes??state.rows.length;
+    const ok=s.ok_nodes??0;
+    const warn=s.warning??0;
+    const crit=s.critical??0;
     $('diagMetrics').innerHTML=''
-      +'<div class="m"><div class="n">总节点</div><div class="v">'+esc(s.total_nodes??state.rows.length)+'</div></div>'
-      +'<div class="m"><div class="n">健康</div><div class="v">'+esc(s.ok_nodes??0)+'</div></div>'
-      +'<div class="m"><div class="n">告警</div><div class="v">'+esc(s.warning??0)+'</div></div>'
-      +'<div class="m"><div class="n">严重</div><div class="v">'+esc(s.critical??0)+'</div></div>';
+      +'<div class="m"><div class="n">总节点</div><div class="v">'+esc(total)+'</div></div>'
+      +'<div class="m is-ok"><div class="n">健康</div><div class="v">'+esc(ok)+'</div></div>'
+      +'<div class="m'+(warn>0?' is-warn':'')+'"><div class="n">告警</div><div class="v">'+esc(warn)+'</div></div>'
+      +'<div class="m'+(crit>0?' is-err':'')+'"><div class="n">严重</div><div class="v">'+esc(crit)+'</div></div>';
   }
 
   function applyFilters(){
@@ -40,20 +44,25 @@
   }
 
   function renderTable(){
-    if(!state.filtered.length){$('diagTableWrap').innerHTML='<div style="border:1px dashed #cbd5e1;background:#f8fafc;border-radius:10px;padding:14px;color:#64748b">暂无匹配数据</div>';return;}
+    if(!state.filtered.length){
+      $('diagTableWrap').innerHTML='<div class="ops-workspace-empty"><strong>暂无匹配节点</strong><span>调整筛选条件，或到动作执行中心对目标节点发起健康检查。</span></div>';
+      return;
+    }
     let html='<table><thead><tr><th>节点</th><th>角色</th><th>Agent</th><th>Probe</th><th>状态</th><th>检查</th><th>修复</th></tr></thead><tbody>';
     state.filtered.forEach(r=>{
       const s=String(r.status||'UNKNOWN').toUpperCase();
-      const probe=String(r.probe_status||'-').toUpperCase();
-      const fixes=(r.fix_actions||[]).map(act=>'<a class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px" href="'+esc(actionHref(act))+'">'+esc(act.label||act.action_type||'修复')+'</a>').join('');
+      const probeRaw=String(r.probe_status||'').trim();
+      const probe=probeRaw?probeRaw.toUpperCase():'';
+      const checkText=String(r.message||r.onboarding_check||'').trim()||'暂无';
+      const fixes=(r.fix_actions||[]).map(act=>'<a class="btn" href="'+esc(actionHref(act))+'">'+esc(act.label||act.action_type||'修复')+'</a>').join('');
       html+='<tr>'
         +'<td>'+esc(r.id||r.node_id||r.name||'-')+'</td>'
         +'<td>'+esc(ROLE_ZH[r.role]||r.role||'-')+'</td>'
         +'<td>'+esc(r.agent_id||'-')+'</td>'
-        +'<td><span class="badge '+statusCls(probe)+'">'+esc(zhStatus(probe))+'</span></td>'
+        +'<td>'+(probe?'<span class="badge '+statusCls(probe)+'">'+esc(zhStatus(probe))+'</span>':'<span class="pm-empty-dash">暂无</span>')+'</td>'
         +'<td><span class="badge '+statusCls(s)+'">'+esc(zhStatus(s))+'</span></td>'
-        +'<td>'+esc(r.message||r.onboarding_check||'')+'</td>'
-        +'<td>'+(fixes||'-')+'</td>'
+        +'<td>'+(checkText==='暂无'?'<span class="pm-empty-dash">暂无</span>':esc(checkText))+'</td>'
+        +'<td>'+(fixes?'<div class="diag-fix-actions">'+fixes+'</div>':'<span class="pm-empty-dash">暂无</span>')+'</td>'
         +'</tr>';
     });
     html+='</tbody></table>';

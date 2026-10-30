@@ -132,10 +132,18 @@
     renderCatalog();
     applyUrlPrefill();
     const list=$('execEvents'); list.innerHTML='';
-    (events.events||[]).slice(0,12).forEach(it=>{
+    const items=(events.events||[]).slice(0,12);
+    if(!items.length){
+      list.innerHTML='<div class="ops-workspace-empty"><strong>暂无执行事件</strong><span>预校验或执行动作后，结果与事件将显示在这里。</span></div>';
+      return;
+    }
+    items.forEach(it=>{
       const row=document.createElement('div');
-      row.style.cssText='border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px';
-      row.innerHTML='<div style="display:flex;justify-content:space-between"><b>'+esc(it.action||it.type||'-')+'</b><span style="font-size:11px;color:#64748b">'+esc(it.level||'info')+'</span></div><div style="font-size:11px;color:#64748b">'+esc(it.message||'')+'</div>';
+      row.className='ops-exec-event';
+      const level=String(it.level||'info').toLowerCase();
+      const levelCls=level==='error'||level==='err'?'err':(level==='warn'||level==='warning'?'warn':'ok');
+      const levelZh={info:'信息',warn:'警告',warning:'警告',error:'错误',err:'错误',success:'成功'}[level]||it.level||'信息';
+      row.innerHTML='<div class="ops-exec-event-head"><b>'+esc(ACTION_ZH[it.action]||it.action||it.type||'-')+'</b><span class="badge '+levelCls+'">'+esc(levelZh)+'</span></div><div class="ops-exec-event-msg">'+esc(it.message||'')+'</div>';
       list.appendChild(row);
     });
   }
@@ -154,7 +162,13 @@
   async function run(mode){
     const req=buildRequest();
     const d=mode==='validate'?await OpsApi.validateAction(req):(mode==='approval'?await OpsApi.createActionApproval(req):await OpsApi.executeAction(req));
-    $('execOutput').textContent=JSON.stringify(d,null,2);
+    const raw=JSON.stringify(d,null,2);
+    const out=$('execOutput');
+    if(out){
+      const tone=d.degraded?'warn':(d.ok?'ok':'error');
+      out.className='ops-exec-output ops-exec-output--'+tone;
+      out.textContent=raw;
+    }
     var statusLabel = d.ok ? '成功: ' : '失败: ';
     if (d.degraded) statusLabel = '降级执行: ';
     var metaText = statusLabel+(d.message||d.error||mode)+(d.trace_id?(' | trace='+d.trace_id):'')+(d.approval_id?(' | approval='+d.approval_id):'');
@@ -164,8 +178,10 @@
       execMeta.classList.remove('is-hidden');
       if (d.degraded) {
         execMeta.style.cssText='background:#ff9f1a;color:#fff;padding:6px 10px;border-radius:6px';
+      } else if (d.ok) {
+        execMeta.style.cssText='background:#f6ffed;color:#389e0d;padding:6px 10px;border-radius:6px;border:1px solid #b7eb8f';
       } else {
-        execMeta.style.cssText='';
+        execMeta.style.cssText='background:#fff2f0;color:#cf1322;padding:6px 10px;border-radius:6px;border:1px solid #ffccc7';
       }
     }
     if(mode==='execute' && d.ok) await loadAgentRegistryAndQueue();
@@ -254,11 +270,11 @@
     }
     $('queueTableWrap').innerHTML=jobs.map(function(j){
       const st=String(j.status||'').toUpperCase();
-      return '<article class="ops-queue-card '+queueCardClass(st)+'"><div class="ops-queue-card-head"><strong title="'+esc(j.job_id||'-')+'">'+esc(j.job_id||'-')+'</strong><span class="ops-queue-badge '+queueBadgeClass(st)+'">'+esc(st||'-')+'</span></div>'
+      return '<article class="ops-queue-card '+queueCardClass(st)+'"><div class="ops-queue-card-head"><strong title="'+esc(j.job_id||'-')+'">'+esc(j.job_id||'-')+'</strong><span class="ops-queue-badge '+queueBadgeClass(st)+'">'+esc(STATUS_ZH[st]||st||'-')+'</span></div>'
         +'<dl class="ops-queue-fields"><div><dt>节点</dt><dd title="'+esc(j.node_id||'-')+'">'+esc(j.node_id||'-')+'</dd></div>'
         +'<div><dt>动作</dt><dd>'+esc(ACTION_ZH[j.action_type]||j.action_type||'-')+'</dd></div>'
         +'<div><dt>尝试</dt><dd>'+esc(j.attempt??0)+'</dd></div>'
-        +'<div><dt>更新</dt><dd>'+esc(j.updated_at||'-')+'</dd></div></dl></article>';
+        +'<div><dt>更新</dt><dd>'+esc(j.updated_at||'暂无')+'</dd></div></dl></article>';
     }).join('');
   }
 

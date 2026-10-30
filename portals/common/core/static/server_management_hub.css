@@ -20,11 +20,18 @@
 .sm-hub-runtime div{background:#fafafa;border:1px solid #f0f0f0;border-radius:6px;padding:6px 8px}
 .sm-hub-runtime dt{font-size:11px;color:#8c8c8c;margin:0}
 .sm-hub-runtime dd{margin:2px 0 0;font-weight:600;color:#262626}
-.sm-hub-logs{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;min-height:42px}
+.sm-hub-logs-wrap{margin:0;padding:6px 8px;border:1px solid #f0f0f0;border-radius:6px;background:#fafafa}
+.sm-hub-logs-wrap>summary{cursor:pointer;font-size:12px;font-weight:600;color:#ad6800;list-style:none}
+.sm-hub-logs-wrap>summary::-webkit-details-marker{display:none}
+.sm-hub-logs{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
 .sm-hub-logs li{font-size:11px;line-height:1.35;padding:4px 6px;border-radius:4px;background:#fff7e6;border:1px solid #ffe7ba;color:#ad6800}
 .sm-hub-logs li.is-error{background:#fff1f0;border-color:#ffccc7;color:#cf1322}
 .sm-hub-card-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:8px}
-.sm-hub-card-actions .matrix-btn{font-size:11px;padding:4px 8px}
+.sm-hub-card-actions .pm-btn{text-decoration:none}
+.sm-hub-card-actions .sm-btn-warn{border-color:#ffd591;color:#ad6800;background:#fff7e6}
+.sm-hub-card-actions .sm-btn-warn:hover{border-color:#ffa940;background:#fff1b8}
+.sm-hub-card-actions .pm-btn--danger{border-color:#ffccc7;color:#cf1322;background:#fff1f0}
+.sm-hub-card-actions .pm-btn--danger:hover{border-color:#ffa39e;background:#fff2f0}
 .env-line-card.error{border-color:#ffa39e;background:linear-gradient(180deg,#fffafa 0%,#fff 28%)}
 .env-line-card.error .env-line-platform-icon{background:#fff1f0;border-color:#ffccc7}
 .env-line-card.error .env-line-status-hint,.env-line-card.error .env-line-badge.error{color:#cf1322}

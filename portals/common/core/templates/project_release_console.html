@@ -1,8 +1,9 @@
+{% include "_release_steps.html" %}
 <section class="rc-app" data-release-console data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
   <header class="rc-header">
     <div class="rc-header-main">
       <h1>发版</h1>
-      <p class="rc-subtitle">勾选交付线，按 构建 → 预检 → 发布 执行。线上当前版本请看发版中心。</p>
+      <p class="rc-subtitle">左侧选目标 → 中间填配置 → 右侧执行。无需批次时中间保持空态。</p>
     </div>
     <div class="rc-header-meta">
       <span class="rc-batch-id" id="rcBatchIdLabel" hidden></span>
@@ -33,9 +34,16 @@
       <div class="rc-config-placeholder" id="rcConfigPlaceholder">
         <p>选择环境并勾选交付线，然后创建发版批次以编辑配置。</p>
       </div>
+      <div class="rc-batch-summary" id="rcBatchSummary" hidden>
+        <div class="rc-batch-summary-copy">
+          <strong id="rcSummaryTitle">当前批次</strong>
+          <span id="rcSummaryMeta"></span>
+        </div>
+        <button type="button" class="rc-btn rc-btn--ghost" id="rcExpandConfigBtn">展开配置</button>
+      </div>
       <div class="rc-config-body" id="rcConfigBody" hidden>
-        <details class="rc-section" open>
-          <summary>发版元信息</summary>
+        <div class="rc-section rc-section--core">
+          <h3 class="rc-section-title">必填信息</h3>
           <div class="rc-form-grid">
             <label class="rc-field"><span>发版类型</span>
               <select id="rcReasonType">
@@ -46,13 +54,19 @@
               </select>
             </label>
             <label class="rc-field"><span>负责人</span><input id="rcOwner" type="text" placeholder="必填"></label>
+          </div>
+        </div>
+
+        <details class="rc-section">
+          <summary>发布窗口与说明</summary>
+          <div class="rc-form-grid">
             <label class="rc-field rc-field--full"><span>发布窗口</span><input id="rcReleaseWindow" type="text" placeholder="staging+ 必填"></label>
             <label class="rc-field rc-field--full"><span>对内说明</span><textarea id="rcReleaseDescription" rows="2"></textarea></label>
           </div>
         </details>
 
         <details class="rc-section">
-          <summary>发版公告</summary>
+          <summary>发版公告（可选）</summary>
           <div class="rc-form-grid">
             <label class="rc-field rc-field--full"><span>公告标题</span><input id="rcAnnTitle" type="text"></label>
             <label class="rc-field rc-field--full"><span>公告正文</span><textarea id="rcAnnBody" rows="3"></textarea></label>
@@ -68,7 +82,7 @@
         </details>
 
         <details class="rc-section">
-          <summary>服务端配置</summary>
+          <summary>服务端配置（可选）</summary>
           <div class="rc-form-grid">
             <label class="rc-field"><span>服务端制品 ID</span><input id="rcServerArtifact" type="text"></label>
             <label class="rc-field"><span>目标拓扑</span><input id="rcTargetTopology" type="text"></label>
@@ -79,7 +93,7 @@
         </details>
 
         <details class="rc-section">
-          <summary>发布策略</summary>
+          <summary>发布策略与回滚（可选）</summary>
           <div class="rc-form-grid">
             <label class="rc-field"><span>策略</span>
               <select id="rcReleaseStrategy">

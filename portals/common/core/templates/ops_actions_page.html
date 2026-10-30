@@ -1,9 +1,12 @@
-<link rel="stylesheet" href="/static/project_ops_workspace.css?v=20260717-workspace-v5">
-<section class="project-ops-page project-ops-mount ops-page ops-actions-app ops-workspace-app" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}">
+<link rel="stylesheet" href="/static/project_ops_workspace.css?v=20261030-actions-w5">
+<section class="project-ops-page project-ops-mount ops-page ops-actions-app ops-workspace-app" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-ops-actions-page>
   <header class="ops-page-head">
     <div class="ops-page-head-main">
       <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_execute.svg" alt=""></span>
-      <div class="ops-page-head-text"><h1>运行执行中心</h1></div>
+      <div class="ops-page-head-text">
+        <h1>动作执行</h1>
+        <p>选目标、跑动作、看结果。策略与队列按需切换。</p>
+      </div>
     </div>
     <div class="ops-page-head-actions">
       <a class="pm-btn pm-btn--compact" href="/admin/projects/{{ project_id }}/agents?env_key={{ env_key }}"><img src="/static/project_ui/svg/nav_agent_server.svg" alt="">Agent</a>
@@ -11,59 +14,53 @@
     </div>
   </header>
 
-  <div class="project-ops-grid">
-    <section class="project-ops-panel env-panel">
-      <div class="project-ops-panel-head env-panel-head"><h2>创建动作</h2></div>
-      <div class="project-ops-panel-body">
-        <div class="project-ops-form">
-          <label class="project-ops-field"><span>目标类型</span><select id="actTargetType"><option value="" selected>全部</option><option value="service">服务</option><option value="topology">拓扑</option><option value="agent">Agent</option><option value="node">节点</option></select></label>
-          <label class="project-ops-field"><span>动作目标</span><select id="actTargetKey"></select></label>
-          <div id="actTargetMeta" class="project-ops-note project-ops-field wide is-hidden"></div>
-          <label class="project-ops-field"><span>动作类型</span><select id="actType"></select></label>
-          <label class="project-ops-field"><span>目标 ID</span><input id="actTarget"></label>
-          <label class="project-ops-field"><span>变更单</span><input id="actTicket" placeholder="OPS-20260613"></label>
-          <label class="project-ops-field"><span>审批人</span><input id="actApprover"></label>
-          <label class="project-ops-field wide"><span>原因</span><textarea id="actReason" rows="2"></textarea></label>
-          <div class="project-ops-form-actions">
-            <button id="btnValidate" class="pm-btn pm-btn--compact" type="button">预校验</button>
-            <button id="btnCreateApproval" class="pm-btn pm-btn--compact" type="button">审批</button>
-            <button id="btnExecute" class="pm-btn pm-btn--primary pm-btn--compact" type="button">执行</button>
+  <nav class="ops-act-tabs" role="tablist" aria-label="动作执行分区">
+    <button type="button" class="ops-act-tab is-active" role="tab" aria-selected="true" data-ops-act-tab="run">执行</button>
+    <button type="button" class="ops-act-tab" role="tab" aria-selected="false" data-ops-act-tab="queue">任务队列</button>
+    <button type="button" class="ops-act-tab" role="tab" aria-selected="false" data-ops-act-tab="policy">执行策略</button>
+  </nav>
+
+  <div class="ops-act-panel is-active" data-ops-act-panel="run">
+    <div class="project-ops-grid ops-act-run-grid">
+      <section class="project-ops-panel env-panel">
+        <div class="project-ops-panel-head env-panel-head"><h2>创建动作</h2></div>
+        <div class="project-ops-panel-body">
+          <div class="project-ops-form">
+            <label class="project-ops-field"><span>目标类型</span><select id="actTargetType"><option value="" selected>全部</option><option value="service">服务</option><option value="topology">拓扑</option><option value="agent">Agent</option><option value="node">节点</option></select></label>
+            <label class="project-ops-field"><span>动作目标</span><select id="actTargetKey"></select></label>
+            <div id="actTargetMeta" class="project-ops-note project-ops-field wide is-hidden"></div>
+            <label class="project-ops-field"><span>动作类型</span><select id="actType"></select></label>
+            <label class="project-ops-field"><span>目标 ID</span><input id="actTarget"></label>
+            <details class="ops-act-advanced project-ops-field wide">
+              <summary>审批与变更单（高危动作时填写）</summary>
+              <div class="ops-act-advanced-body">
+                <label class="project-ops-field"><span>变更单</span><input id="actTicket" placeholder="OPS-20260613"></label>
+                <label class="project-ops-field"><span>审批人</span><input id="actApprover"></label>
+                <label class="project-ops-field wide"><span>原因</span><textarea id="actReason" rows="2"></textarea></label>
+              </div>
+            </details>
+            <div class="project-ops-form-actions">
+              <button id="btnValidate" class="pm-btn pm-btn--compact" type="button">预校验</button>
+              <button id="btnCreateApproval" class="pm-btn pm-btn--compact" type="button">发起审批</button>
+              <button id="btnExecute" class="pm-btn pm-btn--primary pm-btn--compact" type="button">执行</button>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
+      <section class="project-ops-panel env-panel">
+        <div class="project-ops-panel-head env-panel-head"><h2>执行结果</h2></div>
+        <div class="project-ops-panel-body">
+          <div id="execMeta" class="project-ops-note is-hidden"></div>
+          <pre id="execOutput" class="project-ops-output"></pre>
+          <div id="execEvents"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="ops-act-panel" data-ops-act-panel="queue" hidden>
     <section class="project-ops-panel env-panel">
-      <div class="project-ops-panel-head env-panel-head"><h2>执行结果</h2></div>
-      <div class="project-ops-panel-body">
-        <div id="execMeta" class="project-ops-note is-hidden"></div>
-        <pre id="execOutput" class="project-ops-output"></pre>
-        <div id="execEvents"></div>
-      </div>
-    </section>
-
-    <section class="project-ops-panel env-panel">
-      <div class="project-ops-panel-head env-panel-head"><h2>执行策略</h2><button id="btnRefreshPolicy" class="pm-btn pm-btn--compact" type="button">刷新</button></div>
-      <div class="project-ops-panel-body"><div class="project-ops-form">
-        <label class="project-ops-field"><span>mTLS</span><select id="polMtls"><option value="false">否</option><option value="true">是</option></select></label>
-        <label class="project-ops-field"><span>并发</span><input id="polConc" type="number" min="1" max="20"></label>
-        <label class="project-ops-field"><span>租约(s)</span><input id="polLease" type="number" min="5" max="3600"></label>
-        <label class="project-ops-field"><span>重试</span><input id="polRetry" type="number" min="0" max="10"></label>
-        <label class="project-ops-field"><span>灰度</span><select id="polRollEnable"><option value="false">否</option><option value="true">是</option></select></label>
-        <label class="project-ops-field"><span>版本</span><input id="polVersion"></label>
-        <label class="project-ops-field"><span>通道</span><input id="polChannel" placeholder="stable"></label>
-        <label class="project-ops-field"><span>比例%</span><input id="polPercent" type="number" min="0" max="100"></label>
-        <label class="project-ops-field wide"><span>白名单</span><input id="polAllowIds" placeholder="逗号分隔"></label>
-        <div class="project-ops-form-actions"><button id="btnSavePolicy" class="pm-btn pm-btn--primary pm-btn--compact" type="button">保存</button></div>
-      </div></div>
-    </section>
-
-    <section class="project-ops-panel env-panel">
-      <div class="project-ops-panel-head env-panel-head"><h2>Agent 在线</h2><button id="btnRefreshAgents" class="pm-btn pm-btn--compact" type="button">刷新</button></div>
-      <div class="project-ops-panel-body"><div id="agentRegistryWrap" class="ops-agent-registry"></div></div>
-    </section>
-
-    <section class="project-ops-panel env-panel wide">
       <div class="project-ops-panel-head env-panel-head">
         <h2>任务队列</h2>
         <div class="project-ops-toolbar">
@@ -77,6 +74,51 @@
       </div>
     </section>
   </div>
+
+  <div class="ops-act-panel" data-ops-act-panel="policy" hidden>
+    <div class="project-ops-grid ops-act-policy-grid">
+      <section class="project-ops-panel env-panel">
+        <div class="project-ops-panel-head env-panel-head"><h2>执行策略</h2><button id="btnRefreshPolicy" class="pm-btn pm-btn--compact" type="button">刷新</button></div>
+        <div class="project-ops-panel-body"><div class="project-ops-form">
+          <label class="project-ops-field"><span>mTLS</span><select id="polMtls"><option value="false">否</option><option value="true">是</option></select></label>
+          <label class="project-ops-field"><span>并发</span><input id="polConc" type="number" min="1" max="20"></label>
+          <label class="project-ops-field"><span>租约(s)</span><input id="polLease" type="number" min="5" max="3600"></label>
+          <label class="project-ops-field"><span>重试</span><input id="polRetry" type="number" min="0" max="10"></label>
+          <label class="project-ops-field"><span>灰度</span><select id="polRollEnable"><option value="false">否</option><option value="true">是</option></select></label>
+          <label class="project-ops-field"><span>版本</span><input id="polVersion"></label>
+          <label class="project-ops-field"><span>通道</span><input id="polChannel" placeholder="stable"></label>
+          <label class="project-ops-field"><span>比例%</span><input id="polPercent" type="number" min="0" max="100"></label>
+          <label class="project-ops-field wide"><span>白名单</span><input id="polAllowIds" placeholder="逗号分隔"></label>
+          <div class="project-ops-form-actions"><button id="btnSavePolicy" class="pm-btn pm-btn--primary pm-btn--compact" type="button">保存策略</button></div>
+        </div></div>
+      </section>
+      <section class="project-ops-panel env-panel">
+        <div class="project-ops-panel-head env-panel-head"><h2>Agent 在线</h2><button id="btnRefreshAgents" class="pm-btn pm-btn--compact" type="button">刷新</button></div>
+        <div class="project-ops-panel-body"><div id="agentRegistryWrap" class="ops-agent-registry"></div></div>
+      </section>
+    </div>
+  </div>
 </section>
-<script src="/static/ops_platform_api.js?v=20260717-workspace-v5"></script>
-<script src="/static/ops_platform_actions.js?v=20260717-workspace-v5"></script>
+<script src="/static/ops_platform_api.js?v=20261030-actions-w5"></script>
+<script src="/static/ops_platform_actions.js?v=20261030-actions-w5"></script>
+<script>
+(function(){
+  var root=document.querySelector('[data-ops-actions-page]');
+  if(!root) return;
+  function showTab(key){
+    root.querySelectorAll('[data-ops-act-tab]').forEach(function(btn){
+      var on=btn.getAttribute('data-ops-act-tab')===key;
+      btn.classList.toggle('is-active',on);
+      btn.setAttribute('aria-selected',on?'true':'false');
+    });
+    root.querySelectorAll('[data-ops-act-panel]').forEach(function(panel){
+      var on=panel.getAttribute('data-ops-act-panel')===key;
+      panel.classList.toggle('is-active',on);
+      if(on) panel.removeAttribute('hidden'); else panel.setAttribute('hidden','');
+    });
+  }
+  root.querySelectorAll('[data-ops-act-tab]').forEach(function(btn){
+    btn.addEventListener('click',function(){ showTab(btn.getAttribute('data-ops-act-tab')); });
+  });
+})();
+</script>

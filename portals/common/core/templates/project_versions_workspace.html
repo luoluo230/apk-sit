@@ -1,4 +1,5 @@
 <link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260921-flow-final">
+{% include "_release_steps.html" %}
 <section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-server-mode="{{ server_mode }}" data-env-scoped="true"{% if platform_filter %} data-platform-filter="{{ platform_filter }}"{% endif %}{% if channel_filter %} data-channel-filter="{{ channel_filter }}"{% endif %}>
   <header class="version-head pm-page-head">
     <div class="pm-page-head-copy">

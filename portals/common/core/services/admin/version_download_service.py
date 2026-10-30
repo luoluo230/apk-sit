@@ -9,7 +9,7 @@ import copy
 import re
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from repositories.admin import projects_repo, versions_repo
 from data.delivery_scope import get_channels_for_env, is_channel_allowed_for_env, is_platform_allowed_for_env
@@ -107,6 +107,47 @@ def list_versions(project_id: str, username: str) -> Tuple[Dict[str, Any], int]:
     return {"versions": rows}, 200
 
 
+def _list_version_download_files(project_id: str, version: Dict[str, Any], scan_dir: str) -> List[Dict[str, Any]]:
+    """Scan stage output dir for APK/IPA matching this VersionCode (replaces removed build_routes helper)."""
+    import os
+
+    from data.versions import get_version_download_count
+
+    files: List[Dict[str, Any]] = []
+    root = str(scan_dir or "").strip()
+    if not root or not os.path.isdir(root):
+        return files
+    version_name = str(version.get("version_name") or "").strip()
+    version_code = str(version.get("version_code") or "").strip()
+    needles = [n.lower() for n in (version_name, version_code) if n]
+    for name in os.listdir(root):
+        lower = name.lower()
+        if not lower.endswith((".apk", ".ipa", ".aab")):
+            continue
+        if needles and not any(n in lower for n in needles):
+            continue
+        full = os.path.join(root, name)
+        if not os.path.isfile(full):
+            continue
+        try:
+            size = os.path.getsize(full)
+        except OSError:
+            size = 0
+        rel = name
+        files.append(
+            {
+                "name": name,
+                "size_bytes": size,
+                "size_mb": round(size / (1024 * 1024), 2) if size else 0,
+                "downloads": int(get_version_download_count(project_id, version) or 0),
+                "url": f"/download/{rel}",
+                "path": full,
+            }
+        )
+    files.sort(key=lambda row: str(row.get("name") or ""))
+    return files
+
+
 def get_version_downloads(project_id: str, version_id: str, username: str) -> Tuple[Dict[str, Any], int]:
     if not versions_repo.has_project(project_id) or not versions_repo.can_view(project_id, username):
         return {"error": "无权限"}, 403
@@ -114,13 +155,13 @@ def get_version_downloads(project_id: str, version_id: str, username: str) -> Tu
     v = next((x for x in versions if (x.get("id") or "") == version_id), None)
     if not v:
         return {"error": "版本不存在"}, 404
-    from routes.build_routes import _compute_stage_output_base, _get_version_downloads
+    from routes.build_routes import _compute_stage_output_base
     from config import Config
 
     channel_id = (v.get("channel") or "").strip()
     stage_id = (v.get("stage") or "dev").strip()
     scan_dir = _compute_stage_output_base(Config.APK_DIR, channel_id, stage_id)
-    files = _get_version_downloads(project_id, v, scan_dir=scan_dir)
+    files = _list_version_download_files(project_id, v, scan_dir)
     return {"files": files}, 200
 
 

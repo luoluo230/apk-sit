@@ -52,7 +52,7 @@
 .rh-kpi-grid strong{font-size:20px;color:#1d2939}
 .rh-flow{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
 .rh-flow a{height:32px;padding:0 12px;display:inline-flex;align-items:center;border:1px solid #dce4f2;border-radius:7px;background:#fff;color:#344054;text-decoration:none;font-size:13px;font-weight:600}
-.rh-flow a:hover{border-color:#1677ff;color:#1677ff;background:#e8f1ff}
+.rh-flow a:hover,.rh-flow a.is-current{border-color:#1677ff;color:#1677ff;background:#e8f1ff}
 .rh-stepper{margin:0 0 14px;padding:0 0 0 20px;color:#475467;font-size:13px;line-height:1.6}
 .rh-stepper li{margin-bottom:6px}
 .rh-hint{margin:0 0 10px;font-size:12px;color:#667085}

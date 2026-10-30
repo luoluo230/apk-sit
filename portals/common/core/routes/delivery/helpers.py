@@ -8,7 +8,7 @@ from flask import render_template, request, session
 from models.data import projects_db
 from services.ops.helpers import _render_ops_page
 
-DELIVERY_ASSET_VER = "20261028-ship-tasks-b"
+DELIVERY_ASSET_VER = "20261030-product-ui-e"
 
 BREADCRUMB_BY_PAGE = {
     "project-home": "总览",
@@ -72,12 +72,19 @@ def filters() -> dict:
 def render_delivery_page(template_name: str, title: str, project_id: str, active_page: str, breadcrumb_module: str = "", **context):
     if project_id not in projects_db:
         return "项目不存在", 404
-    env_key = str(context.pop("page_env_key", "") or request.args.get("env_key") or "production")
+    explicit_env = str(context.pop("page_env_key", "") or request.args.get("env_key") or "").strip()
+    if explicit_env:
+        env_key = explicit_env
+    else:
+        from services.ops.topology_registry import _resolve_ops_env_key
+
+        env_key = _resolve_ops_env_key("")
     content = render_template(
         template_name,
         project_id=project_id,
         project=projects_db.get(project_id) or {},
         env_key=env_key,
+        active_page=active_page,
         context_filters=filters(),
         **context,
     )
@@ -143,6 +150,7 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
         css = (
             f'<link rel="stylesheet" href="/static/project_ui/pm-shell.css?v={DELIVERY_ASSET_VER}">'
             f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+            f'<link rel="stylesheet" href="/static/project_release_hub.css?v=20261029-steps">'
             f'<link rel="stylesheet" href="/static/project_release_console.css?v={DELIVERY_ASSET_VER}">'
         )
         js = (
@@ -196,6 +204,8 @@ def render_delivery_page(template_name: str, title: str, project_id: str, active
         js = json_js + f'<script src="/static/baas_gm_console.js?v={DELIVERY_ASSET_VER}"></script>'
     else:
         css = f'<link rel="stylesheet" href="/static/project_delivery.css?v={DELIVERY_ASSET_VER}">'
+        if template_name in ("release_orders.html", "project_download_center.html"):
+            css += '<link rel="stylesheet" href="/static/project_release_hub.css?v=20261029-steps">'
         js = delivery_js_bundle()
     return _render_ops_page(
         content,

@@ -22,7 +22,7 @@ def _resolve_ops_env_key(raw: str = "") -> str:
     env = str(session.get("ops_last_env") or "").strip()
     if env:
         return _normalize_env_key(env)
-    return "production"
+    return "development"
 
 
 def _agent_matches_env(item: Dict[str, Any], env_key: str = "") -> bool:

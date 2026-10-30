@@ -248,37 +248,22 @@ def docs_list_page():
     my_count = sum(1 for d in docs if d.get('created_by') == username)
     att_count = sum(len(d.get('attachments') or []) for d in docs)
     pinned = [d for d in docs if d.get('pinned')]
-    # 模块快捷卡片
-    mod_cards = []
-    for mid, mname in DOC_MODULES:
-        count = sum(1 for d in docs if d.get('module') == mid)
-        latest = next((d for d in docs if d.get('module') == mid), None)
-        latest_title = (latest.get('title') or '无标题')[:20] + ('…' if len(latest.get('title') or '') > 20 else '') if latest else '-'
-        href = '/docs?module=' + mid
-        mod_cards.append(
-            '<a href="%s" class="block p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition">'
-            '<p class="text-xs font-medium text-slate-500 uppercase tracking-wide">%s</p>'
-            '<p class="text-lg font-semibold text-slate-800 mt-0.5">%d</p>'
-            '<p class="text-xs text-slate-400 mt-1 truncate">%s</p></a>' % (
-                href, html.escape(mname), count, html.escape(latest_title)
-            )
-        )
-    # 置顶文档
     pinned_html = ''
     if pinned:
-        pinned_html = '<div class="mb-6"><h3 class="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2"><i class="fas fa-thumbtack text-amber-500"></i> 推荐文档</h3><div class="flex flex-wrap gap-2">'
-        for d in pinned[:6]:
-            pinned_html += '<a href="/docs/%s" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-50 border border-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-100 transition">%s</a>' % (
-                html.escape(d.get('id', '')), html.escape((d.get('title') or '无标题')[:30])
-            )
-        pinned_html += '</div></div>'
-    # 模板入口
+        chips = ''.join(
+            '<a class="pm-tag pm-tag--warning" href="/docs/%s">%s</a>'
+            % (html.escape(d.get('id', '')), html.escape((d.get('title') or '无标题')[:28]))
+            for d in pinned[:6]
+        )
+        pinned_html = (
+            '<section class="studio-section"><div class="studio-section-head"><h2>置顶文档</h2></div>'
+            '<div class="flex flex-wrap gap-2">%s</div></section>' % chips
+        )
     tpl_btns = ''.join(
-        '<a href="/docs/new?template=%s" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">%s</a>' % (
-            html.escape(tid), html.escape(t.get('title', tid))[:18]
-        ) for tid, t in list(DOC_TEMPLATES.items())[:4]
+        '<a class="pm-btn pm-btn--compact" href="/docs/new?template=%s">%s</a>'
+        % (html.escape(tid), html.escape((t.get('title') or tid).replace('【', '').replace('】', '').replace('模板', '')[:14]))
+        for tid, t in list(DOC_TEMPLATES.items())[:4]
     )
-    # 文档表格行
     rows = []
     for d in docs:
         if filter_module and d.get('module') != filter_module:
@@ -291,125 +276,121 @@ def docs_list_page():
         can_del_ = _can_delete(d, username)
         acts = []
         if can_edit_:
-            acts.append('<a href="/docs/%s/edit" class="text-indigo-600 hover:underline text-sm">编辑</a>' % html.escape(d.get('id', '')))
+            acts.append('<a class="pm-btn pm-btn--compact" href="/docs/%s/edit">编辑</a>' % html.escape(d.get('id', '')))
         if can_del_:
-            acts.append('<button type="button" class="doc-del-btn text-red-600 hover:underline text-sm" data-id="%s">删除</button>' % html.escape(d.get('id', '')))
-        project_badge = '<span class="px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-700">%s</span>' % html.escape(_project_label(d.get('project_id')))
-        mod_badge = '<span class="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-600">%s</span>' % html.escape(_module_label(d.get('module')))
-        cat_badge = '<span class="px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700">%s</span>' % html.escape(_category_label(d.get('category')))
-        pin_badge = '<span class="px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800">置顶</span>' if d.get('pinned') else ''
+            acts.append('<button type="button" class="doc-del-btn pm-btn pm-btn--compact pm-btn--danger" data-id="%s">删除</button>' % html.escape(d.get('id', '')))
+        tags = []
+        if d.get('pinned'):
+            tags.append('<span class="pm-tag pm-tag--warning">置顶</span>')
+        tags.append('<span class="pm-tag pm-tag--muted">%s</span>' % html.escape(_project_label(d.get('project_id'))))
+        tags.append('<span class="pm-tag pm-tag--official">%s</span>' % html.escape(_module_label(d.get('module'))))
+        tags.append('<span class="pm-tag pm-tag--draft">%s</span>' % html.escape(_category_label(d.get('category'))))
         tags_str = (d.get('tags') or '') if isinstance(d.get('tags'), str) else ','.join(d.get('tags') or [])
-        tags_badges = ''.join('<span class="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">%s</span>' % html.escape(t.strip()) for t in tags_str.split(',') if t.strip())[:3]
-        att_icon = '<i class="fas fa-paperclip text-slate-400 text-xs" title="有附件"></i>' if (d.get('attachments') or []) else ''
         rows.append(
-            '<tr class="border-b border-gray-100 hover:bg-slate-50 doc-row" data-title="%s" data-creator="%s" data-tags="%s" data-module="%s" data-category="%s">'
-            '<td class="px-4 py-3"><a href="/docs/%s" class="font-medium text-indigo-600 hover:underline">%s</a> %s <div class="flex flex-wrap gap-1 mt-1">%s %s %s %s %s</div></td>'
-            '<td class="px-4 py-3 text-sm text-slate-500">%s</td>'
-            '<td class="px-4 py-3 text-sm text-slate-500">%s</td>'
-            '<td class="px-4 py-3 text-sm">%s</td></tr>' % (
+            '<tr class="doc-row" data-title="%s" data-creator="%s" data-tags="%s">'
+            '<td><a href="/docs/%s">%s</a><div class="flex flex-wrap gap-2 mt-1">%s</div></td>'
+            '<td>%s</td><td>%s</td><td><div class="pm-table-actions">%s</div></td></tr>'
+            % (
                 html.escape((d.get('title') or '')[:80]).replace('"', '&quot;'),
                 html.escape(d.get('created_by', '')),
                 html.escape(tags_str[:100]).replace('"', '&quot;'),
-                html.escape(d.get('module') or ''),
-                html.escape(d.get('category') or ''),
                 html.escape(d.get('id', '')),
                 html.escape((d.get('title') or '无标题')[:50]),
-                pin_badge,
-                project_badge,
-                mod_badge,
-                cat_badge,
-                tags_badges,
-                att_icon,
+                ''.join(tags),
                 html.escape(d.get('created_by', '')),
                 (d.get('updated_at') or '')[:16] if d.get('updated_at') else '-',
-                ' '.join(acts) if acts else '-'
+                ' '.join(acts) if acts else '-',
             )
         )
-    rows_html = ''.join(rows) if rows else '<tr><td colspan="4" class="px-4 py-12 text-center text-slate-500">暂无文档，可使用下方模板快速创建</td></tr>'
-    filter_mod_opts = ''.join('<option value="%s"%s>%s</option>' % (mid, ' selected' if filter_module == mid else '', html.escape(mname)) for mid, mname in [('', '全部模块')] + list(DOC_MODULES))
-    filter_cat_opts = ''.join('<option value="%s"%s>%s</option>' % (cid, ' selected' if filter_category == cid else '', html.escape(cname)) for cid, cname in [('', '全部分类')] + list(DOC_CATEGORIES))
-    filter_project_opts = ''.join('<option value="%s"%s>%s</option>' % (html.escape(project['id']), ' selected' if filter_project == project['id'] else '', html.escape(project['name'])) for project in ([{'id': '', 'name': '全部项目'}] + _project_choices(filter_project)))
+    rows_html = ''.join(rows) if rows else (
+        '<tr><td colspan="4"><div class="pm-placeholder-page">'
+        '<h2>暂无文档</h2><p>可以用模板快速创建第一篇文档。</p>'
+        '<a class="pm-btn pm-btn--primary" href="/docs/new">新建文档</a></div></td></tr>'
+    )
+    filter_mod_opts = ''.join(
+        '<option value="%s"%s>%s</option>' % (mid, ' selected' if filter_module == mid else '', html.escape(mname))
+        for mid, mname in [('', '全部模块')] + list(DOC_MODULES)
+    )
+    filter_cat_opts = ''.join(
+        '<option value="%s"%s>%s</option>' % (cid, ' selected' if filter_category == cid else '', html.escape(cname))
+        for cid, cname in [('', '全部分类')] + list(DOC_CATEGORIES)
+    )
+    filter_project_opts = ''.join(
+        '<option value="%s"%s>%s</option>'
+        % (html.escape(project['id']), ' selected' if filter_project == project['id'] else '', html.escape(project['name']))
+        for project in ([{'id': '', 'name': '全部项目'}] + _project_choices(filter_project))
+    )
     content = '''
-    <div class="space-y-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h2 class="text-xl font-bold text-slate-800">知识中心</h2>
-                <p class="text-sm text-slate-500 mt-0.5">项目文档、运维手册、FAQ 统一管理与协作</p>
-            </div>
-            <a href="/docs/new" class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 shadow-sm"><i class="fas fa-plus"></i> 新建文档</a>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">文档总数</p>
-                <p class="text-2xl font-bold text-slate-800 mt-0.5">%d</p>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">近 7 日更新</p>
-                <p class="text-2xl font-bold text-indigo-600 mt-0.5">%d</p>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">我创建的</p>
-                <p class="text-2xl font-bold text-slate-800 mt-0.5">%d</p>
-            </div>
-            <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">附件总数</p>
-                <p class="text-2xl font-bold text-slate-800 mt-0.5">%d</p>
-            </div>
-        </div>
-        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-            %s
-        </div>
-        %s
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="px-5 py-4 border-b bg-slate-50/50 flex flex-col sm:flex-row gap-3 sm:items-center">
-                <h3 class="text-sm font-semibold text-slate-800">文档列表</h3>
-                <div class="flex flex-wrap gap-2 flex-1">
-                    <input type="text" id="docSearch" placeholder="搜索标题、创建者、标签…" class="flex-1 min-w-[160px] px-3 py-1.5 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/30">
-                    <select id="docProjectFilter" class="px-3 py-1.5 rounded-lg border border-slate-200 text-sm">%s</select>
-                    <select id="docModFilter" class="px-3 py-1.5 rounded-lg border border-slate-200 text-sm">%s</select>
-                    <select id="docCatFilter" class="px-3 py-1.5 rounded-lg border border-slate-200 text-sm">%s</select>
-                    <button type="button" onclick="applyDocFilter()" class="px-4 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200">筛选</button>
-                    <button type="button" onclick="location.href=\'/docs\'" class="px-4 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50">重置</button>
-                </div>
-                <p class="text-xs text-slate-500">使用模板: %s</p>
-            </div>
-            <table class="min-w-full text-sm">
-                <thead><tr class="border-b border-slate-200 text-left text-slate-600 bg-slate-50"><th class="px-4 py-2.5">标题</th><th class="px-4 py-2.5 w-24">创建者</th><th class="px-4 py-2.5 w-36">更新时间</th><th class="px-4 py-2.5 w-28">操作</th></tr></thead>
-                <tbody>%s</tbody>
-            </table>
-        </div>
+    <header class="pm-page-head">
+      <div class="pm-page-head-copy"><div>
+        <h1>文档中心</h1>
+        <p>项目文档、运维手册与 FAQ，统一在工作站内管理。</p>
+      </div></div>
+      <div class="pm-page-head-actions">
+        <a class="pm-btn pm-btn--primary" href="/docs/new">新建文档</a>
+      </div>
+    </header>
+    <div class="pm-kpi-row" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="pm-kpi-card"><div class="pm-kpi-body"><span>文档总数</span><div class="pm-kpi-value-row"><strong>%d</strong></div></div></div>
+      <div class="pm-kpi-card"><div class="pm-kpi-body"><span>近 7 日更新</span><div class="pm-kpi-value-row"><strong>%d</strong></div></div></div>
+      <div class="pm-kpi-card"><div class="pm-kpi-body"><span>我创建的</span><div class="pm-kpi-value-row"><strong>%d</strong></div></div></div>
+      <div class="pm-kpi-card"><div class="pm-kpi-body"><span>附件总数</span><div class="pm-kpi-value-row"><strong>%d</strong></div></div></div>
+    </div>
+    %s
+    <div class="pm-filter-bar">
+      <div class="pm-filter-search"><input type="text" id="docSearch" placeholder="搜索标题、创建者、标签…"></div>
+      <select id="docProjectFilter">%s</select>
+      <select id="docModFilter">%s</select>
+      <select id="docCatFilter">%s</select>
+      <button type="button" class="pm-btn" onclick="applyDocFilter()">筛选</button>
+      <button type="button" class="pm-btn" onclick="location.href='/docs'">重置</button>
+    </div>
+    <section class="studio-section">
+      <div class="studio-section-head"><h2>从模板创建</h2></div>
+      <div class="flex flex-wrap gap-2">%s</div>
+    </section>
+    <div class="pm-table-panel">
+      <table class="pm-table">
+        <thead><tr><th>标题</th><th>创建者</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody>%s</tbody>
+      </table>
     </div>
     <script>
     function applyDocFilter(){
-        var p=document.getElementById("docProjectFilter").value, m=document.getElementById("docModFilter").value, c=document.getElementById("docCatFilter").value;
-        var q=[];
-        if(p) q.push("project_id="+encodeURIComponent(p));
-        if(m) q.push("module="+encodeURIComponent(m));
-        if(c) q.push("category="+encodeURIComponent(c));
-        location.href="/docs"+(q.length?("?"+q.join("&")):"");
+      var p=document.getElementById("docProjectFilter").value, m=document.getElementById("docModFilter").value, c=document.getElementById("docCatFilter").value;
+      var q=[];
+      if(p) q.push("project_id="+encodeURIComponent(p));
+      if(m) q.push("module="+encodeURIComponent(m));
+      if(c) q.push("category="+encodeURIComponent(c));
+      location.href="/docs"+(q.length?("?"+q.join("&")):"");
     }
     function filterRows(){
-        var q=(document.getElementById("docSearch").value||"").toLowerCase().trim();
-        document.querySelectorAll(".doc-row").forEach(function(tr){
-            var title=(tr.getAttribute("data-title")||"").toLowerCase();
-            var creator=(tr.getAttribute("data-creator")||"").toLowerCase();
-            var tags=(tr.getAttribute("data-tags")||"").toLowerCase();
-            var show=!q||title.indexOf(q)>=0||creator.indexOf(q)>=0||tags.indexOf(q)>=0;
-            tr.style.display=show?"":"none";
-        });
+      var q=(document.getElementById("docSearch").value||"").toLowerCase().trim();
+      document.querySelectorAll(".doc-row").forEach(function(tr){
+        var title=(tr.getAttribute("data-title")||"").toLowerCase();
+        var creator=(tr.getAttribute("data-creator")||"").toLowerCase();
+        var tags=(tr.getAttribute("data-tags")||"").toLowerCase();
+        tr.style.display=(!q||title.indexOf(q)>=0||creator.indexOf(q)>=0||tags.indexOf(q)>=0)?"":"none";
+      });
     }
     if(document.getElementById("docSearch")) document.getElementById("docSearch").oninput=filterRows;
-    document.querySelectorAll(".doc-del-btn").forEach(function(btn){ btn.onclick=function(){ if(!confirm("确定删除此文档？此操作不可恢复。")) return; var id=btn.getAttribute("data-id"); var h=_docH(); delete h["Content-Type"]; fetch("/docs/"+id, { method: "DELETE", headers: h, credentials: "same-origin" }).then(function(r){ return r.json(); }).then(function(d){ if(d.error) alert(d.error); else location.reload(); }); }; });
+    document.querySelectorAll(".doc-del-btn").forEach(function(btn){
+      btn.onclick=function(){
+        if(!confirm("确定删除此文档？此操作不可恢复。")) return;
+        var id=btn.getAttribute("data-id");
+        var h=_docH(); delete h["Content-Type"];
+        fetch("/docs/"+id,{method:"DELETE",headers:h,credentials:"same-origin"}).then(function(r){return r.json();}).then(function(d){ if(d.error) alert(d.error); else location.reload(); });
+      };
+    });
     </script>
     ''' % (
         total, recent_count, my_count, att_count,
-        ''.join(mod_cards),
         pinned_html,
         filter_project_opts,
         filter_mod_opts,
         filter_cat_opts,
         tpl_btns,
-        rows_html
+        rows_html,
     )
     return _docs_layout(content, '文档中心', back_href='/admin', csrf_token=generate_csrf())
 
@@ -666,34 +647,26 @@ def _doc_edit_page(doc, template=None):
 
 
 def _docs_layout(content, title, back_href='/admin', csrf_token=''):
-    csrf_meta = '<meta name="csrf-token" content="%s">' % html.escape(csrf_token) if csrf_token else ''
-    return '''<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    ''' + csrf_meta + '''
-    <title>%s - 知识中心</title>
-    <link rel="stylesheet" href="/static/tailwind.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script>
-    function _docH(){ var m=document.querySelector("meta[name=csrf-token]"); return m&&m.content?{"X-CSRFToken":m.content,"Content-Type":"application/json"}:{"Content-Type":"application/json"}; }
-    </script>
-</head>
-<body class="bg-slate-50 min-h-screen">
-    <div class="max-w-6xl mx-auto px-4 py-6">
-        <div class="flex justify-between items-center mb-6">
-            <div class="flex items-center gap-3">
-                <a href="/docs" class="text-indigo-600 hover:text-indigo-700 font-medium">知识中心</a>
-                <span class="text-slate-300">/</span>
-                <h1 class="text-xl font-bold text-slate-800">%s</h1>
-            </div>
-            <a href="%s" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-white hover:border-slate-300"><i class="fas fa-arrow-left"></i> 返回</a>
-        </div>
-        %s
-    </div>
-</body>
-</html>''' % (html.escape(title), html.escape(title), html.escape(back_href), content)
+    from services.ops.helpers import _render_ops_page
+
+    del back_href
+    token = html.escape(csrf_token or '')
+    extra_css = (
+        '<link rel="stylesheet" href="/static/project_ui/studio-pages.css?v=20261029-w3">'
+        + ('<meta name="csrf-token" content="%s">' % token if token else '')
+    )
+    extra_js = (
+        '<script>function _docH(){var m=document.querySelector("meta[name=csrf-token]");'
+        'return m&&m.content?{"X-CSRFToken":m.content,"Content-Type":"application/json"}:{"Content-Type":"application/json"};}</script>'
+    )
+    return _render_ops_page(
+        '<div class="studio-page">' + content + '</div>',
+        title,
+        active_page="docs",
+        breadcrumb_module="文档",
+        extra_css=extra_css,
+        extra_js=extra_js,
+    )
 
 
 # ---------- API ----------

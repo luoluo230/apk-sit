@@ -1,6 +1,7 @@
 /* PM modal / confirm — M01–M37 unified */
 .pm-modal-root{position:fixed;inset:0;z-index:210;display:grid;place-items:center;padding:24px}
-.pm-modal-root.is-hidden{display:none}
+.pm-modal-root.is-hidden,
+.pm-modal-root.hidden{display:none !important}
 .pm-modal-mask{position:absolute;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(2px)}
 .pm-modal{width:min(560px,calc(100vw - 48px));position:relative;border-radius:var(--radius-lg);background:#fff;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;max-height:calc(100vh - 48px)}
 .pm-modal--480{width:min(480px,calc(100vw - 48px))}

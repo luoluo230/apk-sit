@@ -14,14 +14,8 @@ from server_frameworks.registry import is_module_enabled
 def _hub_page_context(locked_project_id: str = ""):
     locked = str(locked_project_id or "").strip()
     show_topology = is_module_enabled("topology_server")
-    show_baas = is_module_enabled("casual_baas_server")
-    tab = str(request.args.get("tab") or ("topology" if show_topology else "baas")).strip().lower()
-    if tab not in ("topology", "baas"):
-        tab = "topology" if show_topology else "baas"
-    if tab == "topology" and not show_topology:
-        tab = "baas"
-    if tab == "baas" and not show_baas:
-        tab = "topology"
+    show_baas = False
+    tab = "topology" if show_topology else "baas"
     return {
         "locked_project_id": locked,
         "default_tab": tab,
@@ -45,8 +39,8 @@ def register_server_management_page_routes(bp) -> None:
         ctx = _hub_page_context("")
         content = _render_local_template("server_management_hub.html", **ctx)
         css = '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260724-sm2">'
-        css += '<link rel="stylesheet" href="/static/server_management_hub.css?v=20260724-sm2">'
-        js = '<script src="/static/server_management_hub.js?v=20260724-sm2"></script>'
+        css += '<link rel="stylesheet" href="/static/server_management_hub.css?v=20261030-sm3">'
+        js = '<script src="/static/server_management_hub.js?v=20261030-sm3"></script>'
         return _render_ops_page(
             content,
             "服务器管理",
@@ -67,8 +61,8 @@ def register_server_management_page_routes(bp) -> None:
         ctx = _hub_page_context(pid)
         content = _render_local_template("server_management_hub.html", **ctx)
         css = '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260724-sm2">'
-        css += '<link rel="stylesheet" href="/static/server_management_hub.css?v=20260724-sm2">'
-        js = '<script src="/static/server_management_hub.js?v=20260724-sm2"></script>'
+        css += '<link rel="stylesheet" href="/static/server_management_hub.css?v=20261030-sm3">'
+        js = '<script src="/static/server_management_hub.js?v=20261030-sm3"></script>'
         return _render_ops_page(
             content,
             "服务器管理",

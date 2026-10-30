@@ -74,7 +74,14 @@ def delete_jenkins_instance(instance_id=None, port=None):
     return (True, None)
 
 
-def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_webhook=None, instance_type=None):
+def update_instance(
+    instance_id,
+    task_name=None,
+    feishu_webhook=None,
+    dingtalk_webhook=None,
+    wecom_webhook=None,
+    instance_type=None,
+):
     """更新实例的 task_name、webhooks、instance_type。"""
     instances = load_jenkins_instances()
     for i, inst in enumerate(instances):
@@ -85,10 +92,13 @@ def update_instance(instance_id, task_name=None, feishu_webhook=None, dingtalk_w
                 inst['feishu_webhook'] = str(feishu_webhook).strip()
             if dingtalk_webhook is not None:
                 inst['dingtalk_webhook'] = str(dingtalk_webhook).strip()
+            if wecom_webhook is not None:
+                inst['wecom_webhook'] = str(wecom_webhook).strip()
             if instance_type is not None:
                 inst['instance_type'] = str(instance_type).strip() or 'general'
             inst.pop('build_defaults', None)
             save_jenkins_instances(instances)
+            refresh_instance_env_and_scripts(instance_id)
             return (True, None)
     return (False, "未找到该实例")
 

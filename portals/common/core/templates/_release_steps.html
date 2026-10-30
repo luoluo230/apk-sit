@@ -1,0 +1,7 @@
+<nav class="rh-flow" aria-label="发版步骤">
+  <a class="{% if active_page == 'versions' %}is-current{% endif %}" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'development' }}">版本与管线</a>
+  <a class="{% if active_page == 'builds' %}is-current{% endif %}" href="/admin/projects/{{ project_id }}/build-history?scoped=1&env_key={{ env_key or 'development' }}">构建与产物</a>
+  <a class="{% if active_page == 'release-console' %}is-current{% endif %}" href="/admin/projects/{{ project_id }}/release?env_key={{ env_key or 'development' }}">去发版</a>
+  <a class="{% if active_page == 'release-orders' %}is-current{% endif %}" href="/admin/projects/{{ project_id }}/release-orders?env_key={{ env_key or 'development' }}">发布历史</a>
+  <a class="{% if active_page == 'download-center' %}is-current{% endif %}" href="/admin/projects/{{ project_id }}/download-center?env_key={{ env_key or 'development' }}">下载中心</a>
+</nav>

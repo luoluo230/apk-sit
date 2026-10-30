@@ -96,26 +96,28 @@
     if (!host) return;
     var k = data.kpis || {};
     var links = k.links || {};
-    var versionText = k.current_version && k.current_version !== "—"
-      ? (k.current_version_code ? k.current_version + " / " + k.current_version_code : k.current_version)
-      : "—";
-    var healthVal = k.service_health_pct == null ? "—" : String(k.service_health_pct) + "%";
+    var versionEmpty = !(k.current_version && k.current_version !== "—");
+    var versionText = versionEmpty
+      ? "暂无"
+      : (k.current_version_code ? k.current_version + " / " + k.current_version_code : k.current_version);
+    var healthEmpty = k.service_health_pct == null;
+    var healthVal = healthEmpty ? "暂无" : String(k.service_health_pct) + "%";
     var releaseHealth = k.release_health || {};
-    var releaseRate = releaseHealth.success_rate_pct == null ? "—" : String(releaseHealth.success_rate_pct) + "%";
+    var releaseEmpty = releaseHealth.success_rate_pct == null;
+    var releaseRate = releaseEmpty ? "暂无" : String(releaseHealth.success_rate_pct) + "%";
     var kpis = [
-      { icon: "kpi_version.svg", label: "当前版本", value: versionText, tone: "violet", href: links.release_hub || links.version },
-      { icon: "kpi_health.svg", label: "服务健康度", value: healthVal, tone: "green", href: links.health },
-      { icon: "kpi_build.svg", label: "近7天发布成功率", value: releaseRate, tone: "violet", href: links.release_hub || links.changes },
-      { icon: "kpi_build.svg", label: "今日构建次数", value: String(k.today_build_count != null ? k.today_build_count : 0), tone: "violet", href: links.release_hub || links.builds },
+      { icon: "kpi_version.svg", label: "当前版本", value: versionText, empty: versionEmpty, tone: "violet", href: links.release_hub || links.version },
+      { icon: "kpi_health.svg", label: "服务健康度", value: healthVal, empty: healthEmpty, tone: "green", href: links.health },
+      { icon: "kpi_build.svg", label: "近7天发布成功率", value: releaseRate, empty: releaseEmpty, tone: "violet", href: links.release_hub || links.changes },
       { icon: "kpi_change.svg", label: "待处理变更", value: String(k.pending_changes != null ? k.pending_changes : 0), tone: "orange", href: links.release_hub || links.changes },
-      { icon: "kpi_member.svg", label: "项目成员", value: String(k.member_count != null ? k.member_count : memberCount), tone: "cyan", href: links.members },
     ];
     host.innerHTML = kpis.map(function (card) {
       var foot = card.href ? '<a class="pm-kpi-footlink" href="' + esc(card.href) + '">查看详情 &gt;</a>' : "";
+      var emptyAttr = card.empty ? ' data-empty="1" class="pm-empty-dash"' : "";
       return (
         '<article class="pm-kpi-card">' +
         '<span class="pm-kpi-icon pm-kpi-icon--' + card.tone + '"><img src="/static/project_ui/svg/' + card.icon + '" alt=""></span>' +
-        '<div class="pm-kpi-body"><span class="pm-kpi-label">' + esc(card.label) + '</span><div class="pm-kpi-value-row"><strong>' + esc(card.value) + "</strong></div>" + foot + "</div></article>"
+        '<div class="pm-kpi-body"><span class="pm-kpi-label">' + esc(card.label) + '</span><div class="pm-kpi-value-row"><strong' + emptyAttr + '>' + esc(card.value) + "</strong></div>" + foot + "</div></article>"
       );
     }).join("");
   }
@@ -130,82 +132,91 @@
       host.innerHTML = '<div class="p02-empty">—</div>';
       return;
     }
-    host.innerHTML = visible
-      .map(function (item) {
-        var hp = healthPercent(item);
-        var instances = (item.configured_line_count || 0) + " / " + (item.delivery_line_count || 0);
-        var badgeClass =
-          item.env_key === "production"
-            ? "production"
-            : item.health === "healthy" || item.health === "processing"
-              ? "running"
-              : item.health === "unconfigured"
-                ? "muted"
-                : "warning";
-        var badgeText =
-          item.env_key === "production"
-            ? "生产"
-            : item.health === "healthy" || item.health === "processing"
-              ? "稳定"
-              : item.health === "unconfigured"
-                ? "未配置"
-                : "预警";
-        var iconCls = envIconClass(item.env_key);
-        var runtimePill = item.runtime_status
-          ? '<div class="p02-env-kv"><span class="p02-env-kv__label">Runtime</span><strong class="p02-env-kv__value"><span class="p02-env-badge ' +
-            (item.runtime_status === "running" ? "running" : "warning") +
-            '">' +
-            esc(item.runtime_label || (item.runtime_status === "running" ? "运行中" : "已停止")) +
-            "</span></strong></div>"
-          : "";
-        return (
-          '<article class="p02-env-card">' +
-          '<header class="p02-env-card-head">' +
-          '<div class="p02-env-card-lead">' +
-          '<span class="p02-env-card-icon p02-env-card-icon--' +
-          iconCls +
-          '"><img src="/static/project_ui/svg/' +
-          envIconFile(item.env_key) +
-          '" alt=""></span>' +
-          '<div class="p02-env-card-names">' +
-          "<h3>" +
-          esc(item.env_label) +
-          "</h3></div></div>" +
-          '<span class="p02-env-badge ' +
-          badgeClass +
+    var priority = { production: 0, staging: 1, testing: 2, development: 3, canary: 4 };
+    visible.sort(function (a, b) {
+      var pa = priority[String(a.env_key || "").toLowerCase()];
+      var pb = priority[String(b.env_key || "").toLowerCase()];
+      return (pa == null ? 9 : pa) - (pb == null ? 9 : pb);
+    });
+    var primary = visible.slice(0, 2);
+    var rest = visible.slice(2);
+
+    function cardHtml(item) {
+      var hp = healthPercent(item);
+      var instances = (item.configured_line_count || 0) + " / " + (item.delivery_line_count || 0);
+      var badgeClass =
+        item.env_key === "production"
+          ? "production"
+          : item.health === "healthy" || item.health === "processing"
+            ? "running"
+            : item.health === "unconfigured"
+              ? "muted"
+              : "warning";
+      var badgeText =
+        item.env_key === "production"
+          ? "生产"
+          : item.health === "healthy" || item.health === "processing"
+            ? "稳定"
+            : item.health === "unconfigured"
+              ? "未配置"
+              : "预警";
+      var iconCls = envIconClass(item.env_key);
+      var runtimePill = item.runtime_status
+        ? '<div class="p02-env-kv"><span class="p02-env-kv__label">运行</span><strong class="p02-env-kv__value"><span class="p02-env-badge ' +
+          (item.runtime_status === "running" ? "running" : "warning") +
           '">' +
-          esc(badgeText) +
-          "</span></header>" +
-          '<div class="p02-env-metrics">' +
-          '<div class="p02-env-kv"><span class="p02-env-kv__label">健康度</span><strong class="p02-env-kv__value health ' +
-          hp.cls +
-          '">' +
-          esc(hp.text) +
-          "</strong></div>" +
-          runtimePill +
-          '<div class="p02-env-kv p02-env-kv--instances"><span class="p02-env-kv__label">实例</span><strong class="p02-env-kv__value p02-env-kv__value--instances">' +
-          esc(instances) +
-          "</strong></div></div>" +
-          '<footer class="p16-env-footer p02-env-footer"><a href="/admin/projects/' +
-          encodeURIComponent(projectId) +
-          "/release-hub?env_key=" +
-          encodeURIComponent(item.env_key) +
-          '">发版中心<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
-          encodeURIComponent(projectId) +
-          "/versions?env_key=" +
-          encodeURIComponent(item.env_key) +
-          '">版本与管线<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
-          encodeURIComponent(projectId) +
-          "/environments/" +
-          encodeURIComponent(item.env_key) +
-          '">环境详情<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a class="p02-env-runtime-link" href="/admin/projects/' +
-          encodeURIComponent(projectId) +
-          "/environments/" +
-          encodeURIComponent(item.env_key) +
-          '/runtime">运行工作台<img src="/static/project_ui/svg/action_next.svg" alt=""></a></footer></article>'
-        );
-      })
-      .join("");
+          esc(item.runtime_label || (item.runtime_status === "running" ? "运行中" : "已停止")) +
+          "</span></strong></div>"
+        : "";
+      return (
+        '<article class="p02-env-card">' +
+        '<header class="p02-env-card-head">' +
+        '<div class="p02-env-card-lead">' +
+        '<span class="p02-env-card-icon p02-env-card-icon--' +
+        iconCls +
+        '"><img src="/static/project_ui/svg/' +
+        envIconFile(item.env_key) +
+        '" alt=""></span>' +
+        '<div class="p02-env-card-names">' +
+        "<h3>" +
+        esc(item.env_label) +
+        "</h3></div></div>" +
+        '<span class="p02-env-badge ' +
+        badgeClass +
+        '">' +
+        esc(badgeText) +
+        "</span></header>" +
+        '<div class="p02-env-metrics">' +
+        '<div class="p02-env-kv"><span class="p02-env-kv__label">健康度</span><strong class="p02-env-kv__value health ' +
+        hp.cls +
+        '">' +
+        esc(hp.text) +
+        "</strong></div>" +
+        runtimePill +
+        '<div class="p02-env-kv p02-env-kv--instances"><span class="p02-env-kv__label">实例</span><strong class="p02-env-kv__value p02-env-kv__value--instances">' +
+        esc(instances) +
+        "</strong></div></div>" +
+        '<footer class="p16-env-footer p02-env-footer"><a href="/admin/projects/' +
+        encodeURIComponent(projectId) +
+        "/release-hub?env_key=" +
+        encodeURIComponent(item.env_key) +
+        '">发版中心<img src="/static/project_ui/svg/action_next.svg" alt=""></a><a href="/admin/projects/' +
+        encodeURIComponent(projectId) +
+        "/environments/" +
+        encodeURIComponent(item.env_key) +
+        '">环境详情<img src="/static/project_ui/svg/action_next.svg" alt=""></a></footer></article>'
+      );
+    }
+
+    host.innerHTML =
+      primary.map(cardHtml).join("") +
+      (rest.length
+        ? '<details class="p02-env-more"><summary>其余 ' +
+          rest.length +
+          " 个环境</summary>" +
+          rest.map(cardHtml).join("") +
+          "</details>"
+        : "");
   }
 
   function renderActivity(tab) {

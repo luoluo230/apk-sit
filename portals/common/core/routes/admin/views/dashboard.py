@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Admin dashboard rendering helpers."""
+"""Admin workbench: inbox tabs + shortcuts + recent projects."""
 
 import html as html_module
 from datetime import date
 
-from data.audit import audit_log_db
-from data.builds import load_jenkins_instances
-from data.packages import extract_package_info, get_platform_label, iter_package_files
+from flask import session
+
+from data.packages import get_platform_label
 from data.projects import can_view_project, projects_db
 from data.tasks import project_tasks_db
 from data.approvals import get_pending_approvals_for_user
@@ -15,18 +15,12 @@ from data.versions import (
     get_version_platform,
     project_versions_db,
     version_has_apk,
-    version_is_recommended,
 )
+from services.admin import user_favorites_service
+from services.ops.topology_registry import _resolve_ops_env_key
 
-
-def _clean_display_text(value, fallback=''):
-    text = '' if value is None else str(value).strip()
-    if not text:
-        return fallback
-    question_ratio = text.count('?') / max(len(text), 1)
-    if question_ratio >= 0.35 or '锟' in text or '�' in text:
-        return fallback or text.replace('?', '').strip() or fallback
-    return text
+_PREVIEW = 5
+_MAX_ROWS = 20
 
 
 def admin_panel_descriptions():
@@ -48,267 +42,413 @@ def admin_panel_descriptions():
     }
 
 
-def render_module_card(link, icon, color, title, description):
+def _esc(value, fallback=''):
+    text = '' if value is None else str(value).strip()
+    if not text:
+        text = fallback
+    return html_module.escape(text)
+
+
+_APPROVAL_TYPE_ZH = {
+    'news_publish': '新闻发布',
+    'forum_post_publish': '官方帖子发布',
+    'welfare_publish': '福利发布',
+    'release_publish': '发版审批',
+    'ops_action': '运维动作',
+    'change_request': '变更申请',
+}
+
+
+def _approval_type_label(value):
+    key = str(value or '').strip()
+    if not key:
+        return '审批'
+    return _APPROVAL_TYPE_ZH.get(key, key.replace('_', ' '))
+
+
+def _todo_row(title, meta, href, index, tag='', tag_tone='muted'):
+    hidden = ' is-collapsed' if index >= _PREVIEW else ''
+    tag_html = ''
+    if tag:
+        tone = tag_tone if tag_tone in ('success', 'warning', 'danger', 'official', 'muted') else 'muted'
+        tag_html = f'<span class="pm-tag pm-tag--{tone}">{_esc(tag)}</span>'
     return (
-        f'<a href="{link}" class="admin-card block bg-white/95 rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:bg-white group">'
-        f'<div class="flex items-start gap-2">'
-        f'<div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">'
-        f'<i class="fas {icon} {color} text-lg"></i>'
-        f'</div>'
-        f'<div class="min-w-0">'
-        f'<h2 class="text-sm font-semibold text-slate-900 mb-1 group-hover:text-indigo-600">{title}</h2>'
-        f'<p class="text-xs text-slate-500 leading-snug">{description}</p>'
-        f'</div>'
-        f'</div>'
-        f'</a>'
+        f'<li class="studio-todo{hidden}" data-todo-index="{index}"><div><strong>'
+        + _esc(title)
+        + '</strong>'
+        + tag_html
+        + '<span>'
+        + _esc(meta)
+        + '</span></div><a class="pm-btn pm-btn--compact" href="'
+        + _esc(href)
+        + '">去处理</a></li>'
     )
 
 
-def render_grouped_admin_sections(sections):
-    parts = []
-    for title, description, cards in sections:
-        if not cards:
-            continue
-        desc_html = ""
-        if str(description or "").strip():
-            desc_html = f'<p class="mt-1 text-sm text-slate-500">{description}</p>'
-        parts.append(
-            '<section class="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">'
-            f'<div class="mb-4"><h3 class="text-base font-semibold text-slate-900">{title}</h3>{desc_html}</div>'
-            '<div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">'
-            + ''.join(cards) +
-            '</div></section>'
+def _grouped_approval_rows(pending):
+    """按类型聚合，避免审批票据墙。"""
+    buckets = {}
+    order = []
+    for item in pending or []:
+        label = _approval_type_label(item.get('type'))
+        if label not in buckets:
+            buckets[label] = []
+            order.append(label)
+        buckets[label].append(item)
+    rows = []
+    for idx, label in enumerate(order[:_MAX_ROWS]):
+        items = buckets[label]
+        latest = items[0]
+        when = str(latest.get('created_at') or '')[:16].replace('T', ' ')
+        meta = f'{len(items)} 条待审' + (f' · 最近 {when}' if when else '')
+        rows.append(
+            _todo_row(label, meta, '/admin/approval', idx, tag=str(len(items)), tag_tone='warning')
         )
-    return ''.join(parts)
+    return rows
 
 
-def render_admin_dashboard_v2(summary_cards, quick_actions, todo_html, risk_html, audit_html, recent_package_rows, package_counts, cards):
-    cards_html = cards if isinstance(cards, str) else ''.join(cards)
-    return '''
-    <section class="space-y-6"> 
-        <div class="rounded-[28px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-900 p-6 md:p-7 shadow-xl shadow-slate-900/10"> 
-            <div class="grid gap-6 xl:grid-cols-[1.45fr_0.95fr] xl:items-start"> 
-                <div>
-                    <p class="text-[11px] font-semibold tracking-[0.22em] uppercase text-slate-300/80">工作台总览</p>
-                    <h2 class="mt-2 text-2xl md:text-3xl font-semibold text-white">管理中心</h2>
-                    <div class="mt-5 flex flex-wrap gap-2">''' + (''.join(quick_actions) if quick_actions else '<span class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-300">当前没有快捷操作</span>') + '''</div>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">''' + ''.join(
-                    f'<div class="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur"><div class="flex items-center justify-between gap-2"><div><p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">{label}</p><p class="mt-2 text-3xl font-semibold text-white">{value}</p></div><div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white"><i class="fas {icon} text-lg"></i></div></div></div>'
-                    for label, value, icon, _bg_cls, _text_cls in summary_cards
-                ) + '''</div>
-            </div>
-        </div>
-        <div class="grid gap-5 xl:grid-cols-[1.55fr_0.95fr]"> 
-            <div class="space-y-5"> 
-                <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
-                    <div class="mb-4 flex flex-wrap items-center justify-between gap-2"> 
-                        <div>
-                            <h3 class="text-base font-semibold text-slate-900">工作优先级</h3>
-                        </div>
-                        <a href="/admin/my-tasks" class="text-xs font-medium text-indigo-600 hover:underline">查看我的任务</a>
-                    </div>
-                    <ul class="space-y-3">''' + todo_html + '''</ul>
-                </div>
-                <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
-                    <div class="mb-4 flex flex-wrap items-center justify-between gap-2"> 
-                        <div>
-                            <h3 class="text-base font-semibold text-slate-900">功能导航</h3>
-                        </div>
-                    </div>
-                    <div class="space-y-4">''' + cards_html + '''</div>
-                </div>
-            </div>
-            <div class="space-y-5"> 
-                <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
-                    <div class="mb-4 flex items-center justify-between"><h3 class="text-base font-semibold text-slate-900">安装包概览</h3><a href="/download-center" class="text-xs font-medium text-indigo-600 hover:underline">查看下载中心</a></div>
-                    <div class="grid grid-cols-2 gap-2"> 
-                        <a href="/download-center?platform=android" class="rounded-2xl border border-slate-200 px-4 py-4 transition hover:bg-slate-50"><p class="text-xs text-slate-500">Android 包</p><p class="mt-2 text-3xl font-semibold text-slate-900">''' + str(package_counts.get('android', 0)) + '''</p><p class="mt-1 text-xs text-slate-400">可公开或内部分发</p></a>
-                        <a href="/download-center?platform=ios" class="rounded-2xl border border-slate-200 px-4 py-4 transition hover:bg-slate-50"><p class="text-xs text-slate-500">iOS 包</p><p class="mt-2 text-3xl font-semibold text-slate-900">''' + str(package_counts.get('ios', 0)) + '''</p><p class="mt-1 text-xs text-slate-400">用于 TestFlight 或企业分发</p></a>
-                    </div>
-                </div>
-                <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
-                    <div class="mb-4 flex items-center justify-between"><h3 class="text-base font-semibold text-slate-900">发布风险提醒</h3><a href="/admin/projects" class="text-xs font-medium text-indigo-600 hover:underline">查看项目</a></div>
-                    <ul class="space-y-3">''' + risk_html + '''</ul>
-                </div>
-                <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
-                    <div class="mb-4 flex items-center justify-between"><h3 class="text-base font-semibold text-slate-900">最近审计记录</h3><a href="/admin/audit-log" class="text-xs font-medium text-indigo-600 hover:underline">查看全部</a></div>
-                    <ul class="space-y-3">''' + audit_html + '''</ul>
-                </div>
-            </div>
-        </div>
-        <div class="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"> 
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-2"> 
-                <div>
-                    <h3 class="text-base font-semibold text-slate-900">最近安装包</h3>
-                </div>
-                <a href="/admin/projects" class="text-xs font-medium text-indigo-600 hover:underline">查看项目</a>
-            </div>
-            <div class="overflow-x-auto"><table class="min-w-full"><thead><tr class="border-b border-slate-200 text-left text-xs text-slate-500"><th class="px-4 py-2">项目</th><th class="px-4 py-2">版本</th><th class="px-4 py-2">平台</th><th class="px-4 py-2">上传时间</th></tr></thead><tbody>''' + recent_package_rows + '''</tbody></table></div>
-        </div>
-    </section>
-    '''
+def _grouped_risk_rows(missing, env_key):
+    """按项目聚合缺包风险。"""
+    buckets = {}
+    order = []
+    for item in missing or []:
+        pid = str(item.get('project_id') or '')
+        if not pid:
+            continue
+        if pid not in buckets:
+            buckets[pid] = []
+            order.append(pid)
+        buckets[pid].append(item)
+    rows = []
+    for idx, pid in enumerate(order[:_MAX_ROWS]):
+        items = buckets[pid]
+        name = items[0].get('project_name') or pid
+        platforms = sorted({str(x.get('platform_label') or '') for x in items if x.get('platform_label')})
+        plat_txt = '、'.join(platforms[:3]) if platforms else ''
+        meta = f'{len(items)} 个版本缺包' + (f' · {plat_txt}' if plat_txt else '')
+        href = (
+            f'/admin/projects/{html_module.escape(pid)}/versions'
+            f'?env_key={html_module.escape(env_key)}'
+        )
+        rows.append(_todo_row(name, meta, href, idx, tag='缺包', tag_tone='danger'))
+    return rows
 
 
-def render_admin_panel_dashboard(visible, desc, username, admin_layout):
-    package_counts = {'android': 0, 'ios': 0}
-    recent_packages = []
-    for filename, filepath in iter_package_files():
-        info = extract_package_info(filename, filepath)
-        package_counts[info.get('platform', 'android')] = package_counts.get(info.get('platform', 'android'), 0) + 1
-        recent_packages.append(info)
-    recent_packages.sort(key=lambda item: item.get('timestamp', 0), reverse=True)
-
-    visible_project_ids = [pid for pid in projects_db.keys() if can_view_project(pid, username)]
-    pending_approvals = get_pending_approvals_for_user(username)
-    user_notifications = get_notifications_for_user(username, limit=20)
+def _collect_work_items(username, visible_project_ids):
+    pending_approvals = get_pending_approvals_for_user(username) or []
+    user_notifications = get_notifications_for_user(username, limit=50) or []
     unread_notifications = [n for n in user_notifications if not n.get('read_at')]
-    overdue_tasks = []
+    my_tasks = []
     missing_package_versions = []
-    recommended_gaps = []
     for project_id in visible_project_ids:
+        project_name = (projects_db.get(project_id) or {}).get('name') or project_id
         versions = project_versions_db.get(project_id) or []
-        recommended_exists = False
         for version in versions:
-            if version_is_recommended(project_id, version):
-                recommended_exists = True
             if not version_has_apk(project_id, version):
                 missing_package_versions.append({
                     'project_id': project_id,
+                    'project_name': project_name,
                     'version_name': version.get('version_name') or version.get('version_code') or '未命名版本',
                     'platform_label': get_platform_label(get_version_platform(version)),
                 })
-        if versions and not recommended_exists:
-            recommended_gaps.append(project_id)
         for task in (project_tasks_db.get(project_id) or []):
-            current_assignee = task.get('current_assignee') or ''
+            if task.get('current_assignee') != username:
+                continue
+            if task.get('status') in ('done', 'abandoned'):
+                continue
             end_time = (task.get('end_time') or '')[:10]
-            if current_assignee == username and end_time and task.get('status') not in ('done', 'abandoned'):
+            overdue = False
+            if end_time:
                 try:
-                    if date.fromisoformat(end_time) < date.today():
-                        overdue_tasks.append(dict(task, project_id=project_id))
+                    overdue = date.fromisoformat(end_time) < date.today()
                 except ValueError:
-                    pass
+                    overdue = False
+            my_tasks.append(dict(task, project_id=project_id, project_name=project_name, overdue=overdue))
+    my_tasks.sort(key=lambda t: (0 if t.get('overdue') else 1, t.get('end_time') or '9999'))
+    return pending_approvals, my_tasks, unread_notifications, missing_package_versions
 
-    recent_audit = list(reversed(audit_log_db))[:6]
-    from services import jenkins_manager as jm
-    jenkins_instances = jm.list_instances()
-    running_jenkins = [inst for inst in jenkins_instances if (inst.get('status') or '').lower() == 'running']
 
-    module_order = {
-        'projects': 10,
-        'versions': 20,
-        'build': 30,
-        'gm_ops': 40,
-        'approval': 50,
-        'notifications': 60,
-        'reports': 70,
-        'audit_log': 80,
-        'system_settings': 90,
-        'user_management': 100,
-    }
-    visible_sorted = sorted(visible, key=lambda item: (module_order.get(item[0], 999), item[1]))
-    grouped_cards = {
-        'project': [],
-        'governance': [],
-        'system': [],
-    }
-
-    grouped_cards['project'].append(
-        render_module_card('/admin/projects', 'fa-folder-tree', 'text-green-600', '项目管理总览', '创建/编辑项目，并从项目列表进入各项目工作台。')
-    )
-    grouped_cards['project'].append(
-        render_module_card('/admin/my-tasks', 'fa-list-check', 'text-indigo-600', '我的任务', '查看与处理分配给我的项目任务。')
-    )
-    if any(mid in ('jenkins', 'build') for mid, _, _ in visible_sorted):
-        grouped_cards['project'].append(
-            render_module_card('/admin/jenkins', 'fa-server', 'text-orange-600', 'Jenkins 实例管理', '创建/维护 Jenkins 实例与构建可用性。')
+def _recent_projects(username, visible_project_ids, env_key):
+    fav = user_favorites_service.get_user_favorites(username) or {}
+    favorite_ids = [pid for pid in (fav.get('project_favorites') or []) if pid in visible_project_ids]
+    last_id = str(session.get('ops_last_project') or '').strip()
+    ordered = []
+    for pid in favorite_ids + ([last_id] if last_id else []) + list(visible_project_ids):
+        if pid in visible_project_ids and pid not in ordered:
+            ordered.append(pid)
+        if len(ordered) >= 4:
+            break
+    cards = []
+    for pid in ordered:
+        proj = projects_db.get(pid) or {}
+        name = proj.get('name') or pid
+        href = f'/admin/projects/{html_module.escape(pid)}/overview?env_key={html_module.escape(env_key)}'
+        cards.append(
+            '<a class="studio-project-card" href="'
+            + href
+            + '"><strong>'
+            + _esc(name)
+            + '</strong><span>'
+            + _esc(pid)
+            + '</span></a>'
         )
-        grouped_cards['project'].append(
-            render_module_card('/admin/jenkins#unity-catalog', 'fa-cube', 'text-violet-600', 'Unity 版本库', '在 Jenkins 管理内维护有效/失效、分类与备注；供构建与版本编辑下拉选用。')
+    return cards
+
+
+def _inbox_panel(tab_id, label, rows, total, more_href, more_label, active):
+    hidden = '' if active else ' is-hidden'
+    row_count = len(rows or [])
+    if not rows:
+        body = '<p class="studio-empty">这一类当前没有事项。</p>'
+        actions = ''
+    else:
+        body = '<ul class="studio-todo-list" data-todo-list="' + _esc(tab_id) + '">' + ''.join(rows) + '</ul>'
+        more_btn = ''
+        if row_count > _PREVIEW:
+            more_btn = (
+                '<button type="button" class="pm-btn" data-todo-more="'
+                + _esc(tab_id)
+                + '">展开更多（'
+                + str(row_count - _PREVIEW)
+                + '）</button>'
+            )
+        actions = (
+            '<div class="studio-inbox-actions">'
+            + more_btn
+            + '<a class="pm-btn pm-btn--primary" href="'
+            + _esc(more_href)
+            + '">'
+            + _esc(more_label)
+            + '</a></div>'
         )
+    return (
+        f'<div class="studio-inbox-panel{hidden}" data-inbox-panel="{_esc(tab_id)}">'
+        f'<div class="studio-section-head"><h2>{_esc(label)}</h2>'
+        f'<span class="text-sm text-gray-500">共 {total} 条</span></div>'
+        + body
+        + actions
+        + '</div>'
+    )
 
-    if any(mid == 'approval' for mid, _, _ in visible_sorted):
-        grouped_cards['governance'].append(render_module_card('/admin/approval', 'fa-check-double', 'text-emerald-500', '审批与发布管控', desc.get('approval', '')))
-    if any(mid == 'notifications' for mid, _, _ in visible_sorted):
-        grouped_cards['governance'].append(render_module_card('/admin/notifications', 'fa-bell', 'text-amber-500', '通知与消息中心', desc.get('notifications', '')))
-    if any(mid == 'reports' for mid, _, _ in visible_sorted):
-        grouped_cards['governance'].append(render_module_card('/admin/reports', 'fa-file-alt', 'text-cyan-500', '报表与证据包', '质量门禁、闭环证据、导出追踪。'))
-    if any(mid == 'audit_log' for mid, _, _ in visible_sorted):
-        grouped_cards['governance'].append(render_module_card('/admin/audit-log', 'fa-history', 'text-gray-500', '审计与安全日志', desc.get('audit_log', '')))
 
-    grouped_cards['system'].append(render_module_card('/admin/site-config', 'fa-swatchbook', 'text-fuchsia-500', '官网与外部模块配置', '统一维护公司简介、玩家官网、开发者官网与外部入口'))
-    grouped_cards['system'].append(render_module_card('/admin/settings', 'fa-cog', 'text-slate-500', '系统与安全设置', '系统开关、策略、Webhook、安全参数与权限治理。'))
-    grouped_cards['system'].append(render_module_card('/workspace', 'fa-briefcase', 'text-amber-500', '个人工作区', '处理个人文件、截图、书签和协作资料'))
+def render_admin_panel_dashboard(visible, desc, username, admin_layout):
+    del visible, desc
+    env_key = _resolve_ops_env_key('')
+    visible_project_ids = [pid for pid in projects_db.keys() if can_view_project(pid, username)]
+    pending, my_tasks, unread, missing = _collect_work_items(username, visible_project_ids)
+    last_project = str(session.get('ops_last_project') or '').strip()
+    if last_project not in visible_project_ids:
+        last_project = visible_project_ids[0] if visible_project_ids else ''
+    release_href = (
+        f'/admin/projects/{html_module.escape(last_project)}/release-hub?env_key={html_module.escape(env_key)}'
+        if last_project
+        else '/admin/projects'
+    )
 
-    cards = render_grouped_admin_sections([
-        ('项目工作台', '', grouped_cards.get('project')),
-        ('全局审计', '', grouped_cards.get('governance')),
-        ('系统配置', '', grouped_cards.get('system')),
-    ])
-    summary_cards = [
-        ('可见项目', len(visible_project_ids), 'fa-folder-tree', 'bg-emerald-100', 'text-emerald-700'),
-        ('安装包总数', sum(package_counts.values()), 'fa-mobile-screen', 'bg-indigo-100', 'text-indigo-700'),
-        ('待处理事项', len(pending_approvals) + len(unread_notifications) + len(overdue_tasks), 'fa-bell', 'bg-amber-100', 'text-amber-700'),
-        ('运行中 Jenkins', len(running_jenkins), 'fa-server', 'bg-cyan-100', 'text-cyan-700'),
+    tabs = [
+        {
+            'id': 'approvals',
+            'label': '待审批',
+            'total': len(pending),
+            'href': '/admin/approval',
+            'more': '打开审批中心',
+            'rows': _grouped_approval_rows(pending),
+        },
+        {
+            'id': 'tasks',
+            'label': '我的任务',
+            'total': len(my_tasks),
+            'href': '/admin/my-tasks',
+            'more': '打开我的任务',
+            'rows': [
+                _todo_row(
+                    item.get('title') or '未命名任务',
+                    f'{item.get("project_name") or item.get("project_id") or ""} · {(item.get("end_time") or "")}',
+                    f'/admin/projects/{html_module.escape(str(item.get("project_id") or ""))}/tasks',
+                    idx,
+                    tag='逾期' if item.get('overdue') else '进行中',
+                    tag_tone='danger' if item.get('overdue') else 'official',
+                )
+                for idx, item in enumerate(my_tasks[:_MAX_ROWS])
+            ],
+        },
+        {
+            'id': 'notices',
+            'label': '未读通知',
+            'total': len(unread),
+            'href': '/admin/notifications',
+            'more': '打开消息',
+            'rows': [
+                _todo_row(
+                    str(item.get('title') or '未命名通知'),
+                    str(item.get('created_at') or '')[:16].replace('T', ' '),
+                    '/admin/notifications',
+                    idx,
+                    tag='未读',
+                    tag_tone='official',
+                )
+                for idx, item in enumerate(unread[:_MAX_ROWS])
+            ],
+        },
+        {
+            'id': 'risks',
+            'label': '发版风险',
+            'total': len(missing),
+            'href': '/admin/projects',
+            'more': '打开项目列表',
+            'rows': _grouped_risk_rows(missing, env_key),
+        },
     ]
-    quick_actions = []
-    if pending_approvals:
-        quick_actions.append(f'<a href="/admin/approval" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-100 text-sm font-medium hover:bg-amber-100">待审批 {len(pending_approvals)} 项</a>')
-    if unread_notifications:
-        quick_actions.append(f'<a href="/admin/notifications" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-sky-50 text-sky-800 border border-sky-100 text-sm font-medium hover:bg-sky-100">未读通知 {len(unread_notifications)} 条</a>')
-    if overdue_tasks:
-        quick_actions.append(f'<a href="/admin/my-tasks?quick=overdue" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-100 text-sm font-medium hover:bg-rose-100">超时任务 {len(overdue_tasks)} 条</a>')
-    if missing_package_versions:
-        quick_actions.append(f'<a href="/admin/projects" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-50 text-violet-800 border border-violet-100 text-sm font-medium hover:bg-violet-100">缺安装包版本 {len(missing_package_versions)} 个</a>')
 
-    recent_package_rows = ''.join(
-        f'<tr><td class="px-4 py-3 text-sm font-medium text-slate-800">{html_module.escape(item["basename"])}</td>'
-        f'<td class="px-4 py-3 text-sm text-slate-500">{html_module.escape(item["platform_label"])}</td>'
-        f'<td class="px-4 py-3 text-sm text-slate-500">{item["size_mb"]} MB</td>'
-        f'<td class="px-4 py-3 text-sm text-slate-500">{html_module.escape(item["date"])}</td></tr>'
-        for item in recent_packages[:6]
-    ) or '<tr><td colspan="4" class="px-4 py-6 text-center text-sm text-slate-500">暂无安装包</td></tr>'
-    todo_html = ''.join(
-        f'<li class="flex items-start justify-between gap-2"><span class="text-sm text-slate-700">审批：{html_module.escape(item.get("type",""))} / {html_module.escape(item.get("target_id",""))}</span><a href="/admin/approval" class="text-xs text-indigo-600 hover:underline">去处理</a></li>'
-        for item in pending_approvals[:3]
-    )
-    todo_html += ''.join(
-        f'<li class="flex items-start justify-between gap-2"><span class="text-sm text-slate-700">超时任务：{html_module.escape(_clean_display_text(item.get("title"), "未命名任务"))}</span><a href="/admin/my-tasks?quick=overdue" class="text-xs text-indigo-600 hover:underline">去处理</a></li>'
-        for item in overdue_tasks[:3]
-    )
-    todo_html += ''.join(
-        f'<li class="flex items-start justify-between gap-2"><span class="text-sm text-slate-700">通知：{html_module.escape(_clean_display_text(item.get("title"), "未命名通知"))}</span><a href="/admin/notifications" class="text-xs text-indigo-600 hover:underline">查看</a></li>'
-        for item in unread_notifications[:2]
-    )
-    if not todo_html:
-        todo_html = '<li class="text-sm text-slate-500">当前没有待处理事项</li>'
-    risk_html = ''.join(
-        f'<li class="flex items-start justify-between gap-2"><span class="text-sm text-slate-700">{html_module.escape(item["project_id"])} / {html_module.escape(item["version_name"])}</span><span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">{html_module.escape(item["platform_label"])}</span></li>'
-        for item in missing_package_versions[:4]
-    )
-    risk_html += ''.join(
-        f'<li class="flex items-start justify-between gap-2"><span class="text-sm text-slate-700">{html_module.escape(project_id)} 缺少推荐版本</span><span class="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">建议处理</span></li>'
-        for project_id in recommended_gaps[:4]
-    )
-    if not risk_html:
-        risk_html = '<li class="text-sm text-slate-500">当前没有明显版本风险</li>'
-    audit_html = ''.join(
-        f'<li class="flex items-start justify-between gap-2"><div><p class="text-sm font-medium text-slate-800">{html_module.escape(_clean_display_text(entry.get("action"), "系统操作"))}</p><p class="text-xs text-slate-500">{html_module.escape(_clean_display_text(entry.get("user"), "-"))} · {html_module.escape((entry.get("at") or entry.get("timestamp") or "")[:16])}</p></div><span class="text-xs text-slate-400 max-w-[200px] truncate">{html_module.escape(_clean_display_text(entry.get("details"), "无附加说明")[:40])}</span></li>'
-        for entry in recent_audit
-    ) or '<li class="text-sm text-slate-500">暂无审计记录</li>'
+    default_tab = 'approvals'
+    for tab in tabs:
+        if tab['total'] > 0:
+            default_tab = tab['id']
+            break
 
-    return admin_layout(
-        render_admin_dashboard_v2(
-            summary_cards,
-            quick_actions,
-            todo_html,
-            risk_html,
-            audit_html,
-            recent_package_rows,
-            package_counts,
-            cards,
-        ),
-        '管理中心',
-        back_href='/',
+    tab_buttons = ''.join(
+        '<button type="button" class="studio-inbox-tab'
+        + (' is-active' if tab['id'] == default_tab else '')
+        + '" data-inbox-tab="'
+        + _esc(tab['id'])
+        + '">'
+        + _esc(tab['label'])
+        + '<em>'
+        + str(tab['total'])
+        + '</em></button>'
+        for tab in tabs
     )
+    panels = ''.join(
+        _inbox_panel(
+            tab['id'],
+            tab['label'],
+            tab['rows'],
+            tab['total'],
+            tab['href'],
+            tab['more'],
+            tab['id'] == default_tab,
+        )
+        for tab in tabs
+    )
+    total_open = sum(tab['total'] for tab in tabs)
+    primary = next((t for t in tabs if t['id'] == default_tab), tabs[0])
+    if total_open <= 0:
+        focus_html = (
+            '<div class="studio-focus studio-focus--clear">'
+            '<strong>暂无待办</strong>'
+            '<span>可以从项目列表或发版入口继续推进。</span>'
+            '<a class="pm-btn pm-btn--primary" href="/admin/projects">打开项目列表</a>'
+            '</div>'
+        )
+    else:
+        focus_html = (
+            '<div class="studio-focus">'
+            '<div class="studio-focus-copy"><strong>今天优先：'
+            + _esc(primary['label'])
+            + ' '
+            + str(primary['total'])
+            + ' 条</strong>'
+            '<span>合计 '
+            + str(total_open)
+            + ' 条待处理；先处理最高优先类，其余可切换查看。</span></div>'
+            '<a class="pm-btn pm-btn--primary" href="'
+            + _esc(primary['href'])
+            + '">'
+            + _esc(primary['more'])
+            + '</a></div>'
+        )
+    summary_chips = ''.join(
+        '<button type="button" class="studio-summary-chip'
+        + (' is-active' if tab['id'] == default_tab else '')
+        + '" data-inbox-tab="'
+        + _esc(tab['id'])
+        + '"><span>'
+        + _esc(tab['label'])
+        + '</span><em>'
+        + str(tab['total'])
+        + '</em></button>'
+        for tab in tabs
+    )
+
+    shortcuts = [
+        ('项目列表', '进入多项目交付', '/admin/projects'),
+        ('发版', '版本、构建与发布', release_href),
+        ('审批中心', '待审与已审记录', '/admin/approval'),
+        ('打包机', 'Jenkins 实例', '/admin/jenkins'),
+    ]
+    shortcut_html = ''.join(
+        '<a class="studio-shortcut" href="'
+        + _esc(href)
+        + '"><strong>'
+        + _esc(title)
+        + '</strong><span>'
+        + _esc(meta)
+        + '</span></a>'
+        for title, meta, href in shortcuts
+    )
+    recent_cards = _recent_projects(username, visible_project_ids, env_key)
+    recent_html = (
+        ''.join(recent_cards)
+        if recent_cards
+        else '<p class="studio-empty">还没有可打开的项目。</p>'
+    )
+
+    content = (
+        '<header class="pm-page-head"><div class="pm-page-head-copy"><div>'
+        '<h1>工作台</h1><p>先看今天优先事项，再进中心处理。</p>'
+        '</div></div>'
+        '<div class="pm-page-head-actions">'
+        '<a class="pm-btn" href="/admin/my-tasks">我的任务</a>'
+        '<a class="pm-btn pm-btn--primary" href="/admin/projects">项目列表</a>'
+        '</div></header>'
+        '<div class="studio-workbench">'
+        '<section class="studio-workbench-main">'
+        + focus_html
+        + '<div class="studio-summary-row" role="tablist" aria-label="待办分类">'
+        + summary_chips
+        + '</div>'
+        '<section class="studio-section studio-inbox-section">'
+        '<div class="studio-inbox-tabs is-hidden" aria-hidden="true">'
+        + tab_buttons
+        + '</div>'
+        + panels
+        + '</section></section>'
+        '<aside class="studio-workbench-side">'
+        '<section class="studio-section"><div class="studio-section-head"><h2>快捷入口</h2></div>'
+        '<div class="studio-shortcut-stack">'
+        + shortcut_html
+        + '</div></section>'
+        '<section class="studio-section"><div class="studio-section-head"><h2>最近项目</h2>'
+        '<a class="studio-section-more" href="/admin/projects">全部</a></div>'
+        '<div class="studio-project-stack">'
+        + recent_html
+        + '</div></section>'
+        '</aside></div>'
+        '''<script>
+(function(){
+  var root=document.querySelector('.studio-workbench');
+  if(!root) return;
+  function activate(id){
+    root.querySelectorAll('[data-inbox-tab]').forEach(function(b){
+      b.classList.toggle('is-active', b.getAttribute('data-inbox-tab')===id);
+    });
+    root.querySelectorAll('[data-inbox-panel]').forEach(function(p){
+      p.classList.toggle('is-hidden', p.getAttribute('data-inbox-panel')!==id);
+    });
+  }
+  root.querySelectorAll('[data-inbox-tab]').forEach(function(btn){
+    btn.addEventListener('click', function(){ activate(btn.getAttribute('data-inbox-tab')); });
+  });
+  root.querySelectorAll('[data-todo-more]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id=btn.getAttribute('data-todo-more');
+      var list=root.querySelector('[data-todo-list="'+id+'"]');
+      if(!list) return;
+      list.querySelectorAll('.studio-todo.is-collapsed').forEach(function(li){ li.classList.remove('is-collapsed'); });
+      btn.classList.add('is-hidden');
+    });
+  });
+})();
+</script>'''
+    )
+    return admin_layout(content, '工作台', back_href='/admin')

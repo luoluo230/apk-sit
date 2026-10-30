@@ -450,9 +450,9 @@ def register_page_routes(bp) -> None:
             title,
             active_page="project-tasks",
             project_id=project_id,
-            env_key=str(request.args.get("env_key") or "production"),
+            env_key=str(request.args.get("env_key") or ""),
             breadcrumb_module=BREADCRUMB_BY_PAGE.get("project-tasks", "协作"),
-            extra_css=f'<link rel="stylesheet" href="/static/tailwind.css?v={DELIVERY_ASSET_VER}">',
+            extra_css='<link rel="stylesheet" href="/static/project_ui/studio-pages.css?v=20261029-w3">',
         )
 
     @bp.route("/admin/projects/<project_id>/docs")
@@ -472,7 +472,13 @@ def register_page_routes(bp) -> None:
     @bp.route("/admin/projects/<project_id>/settings")
     @admin_required("projects")
     def project_settings_page(project_id: str):
-        return _page("project_settings.html", "项目设置", project_id, "project-settings")
+        return _page(
+            "project_settings.html",
+            "项目设置",
+            project_id,
+            "project-settings",
+            extra_css='<link rel="stylesheet" href="/static/project_settings.css?v=20261030-hub1">',
+        )
 
     @bp.route("/admin/projects/<project_id>/audit-log")
     @admin_required("projects")

@@ -26,8 +26,8 @@ def password_min_length():
     except (ValueError, TypeError):
         return 6
 
+
 def render_settings_page():
-    import sys
     values = {}
     for key, *_ in DEFAULT_SYSTEM_KEYS:
         v = get_system_config(key)
@@ -52,46 +52,72 @@ def render_settings_page():
         if key == 'webhook_url':
             val = get_system_config('webhook_url') or default
         if vtype == 'boolean':
-            inp = f'<input type="checkbox" name="{key}" value="true" class="rounded" ' + ('checked' if str(val).lower() in ('true', '1', 'yes') else '') + '>'
+            inp = (
+                f'<label class="flex items-center gap-2 text-sm">'
+                f'<input type="checkbox" name="{key}" value="true" '
+                + ('checked' if str(val).lower() in ('true', '1', 'yes') else '')
+                + '><span>启用</span></label>'
+            )
         elif vtype == 'string':
-            inp = f'<input type="text" name="{key}" value="{html.escape(str(val))}" class="w-full max-w-md px-3 py-1.5 border rounded-lg text-sm" placeholder="https://...">'
+            inp = (
+                f'<input type="text" name="{key}" value="{html.escape(str(val))}" '
+                f'placeholder="https://...">'
+            )
         else:
-            inp = f'<input type="number" name="{key}" value="{html.escape(str(val))}" class="w-32 px-3 py-1.5 border rounded-lg text-sm" min="1">'
-        rows.append(f'<tr><td class="px-4 py-3 font-medium text-gray-700">{html.escape(label)}</td><td class="px-4 py-3">{inp}</td><td class="px-4 py-3 text-sm text-gray-500">{html.escape(desc)}</td></tr>')
+            inp = (
+                f'<input type="number" name="{key}" value="{html.escape(str(val))}" min="1">'
+            )
+        rows.append(
+            f'<tr><td><strong>{html.escape(label)}</strong></td>'
+            f'<td>{inp}</td><td>{html.escape(desc)}</td></tr>'
+        )
     table_rows = ''.join(rows)
-    content = f'''
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-        <div class="p-6 border-b">
-            <h2 class="text-lg font-semibold text-gray-800">登录与安全</h2>
-            <p class="text-sm text-gray-500 mt-1">修改后立即生效。</p>
+    return f'''
+    <header class="pm-page-head">
+      <div class="pm-page-head-copy"><div>
+        <h1>系统设置</h1>
+        <p>登录安全、通知与 Webhook 等平台级参数，保存后立即生效。</p>
+      </div></div>
+    </header>
+    <section class="studio-section">
+      <div class="studio-section-head"><h2>登录与安全</h2></div>
+      <form id="settingsForm" class="studio-config-panel">
+        <div class="pm-table-panel overflow-x-auto">
+          <table class="pm-table">
+            <thead><tr><th>配置项</th><th>值</th><th>说明</th></tr></thead>
+            <tbody>{table_rows}</tbody>
+          </table>
         </div>
-        <form id="settingsForm" class="p-6">
-            <table class="min-w-full"><thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">配置项</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">值</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">说明</th></tr></thead><tbody>{table_rows}</tbody></table>
-            <button type="submit" class="mt-4 px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">保存</button>
-        </form>
-    </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div class="p-6 border-b"><h3 class="font-medium text-gray-700">环境信息（只读）</h3></div>
-        <div class="p-6">
-            <ul class="text-sm text-gray-600 space-y-1">
-                <li>Python: {sys.version.split()[0]}</li>
-                <li>数据目录: {html.escape(DATA_DIR)}</li>
-                <li>APK 目录: {html.escape(Config.APK_DIR)}</li>
-            </ul>
-        </div>
-    </div>
+        <div><button type="submit" class="pm-btn pm-btn--primary">保存</button></div>
+      </form>
+    </section>
+    <section class="studio-section">
+      <div class="studio-section-head"><h2>环境信息</h2></div>
+      <div class="studio-config-panel">
+        <ul class="text-sm text-gray-500" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
+          <li>Python: {sys.version.split()[0]}</li>
+          <li>数据目录: {html.escape(DATA_DIR)}</li>
+          <li>APK 目录: {html.escape(Config.APK_DIR)}</li>
+        </ul>
+      </div>
+    </section>
     <script>
     document.getElementById("settingsForm").onsubmit = function(e) {{
-        e.preventDefault();
-        var form = this;
-        var data = {{}};
-        [].forEach.call(form.querySelectorAll("input[name]"), function(inp) {{
-            if (inp.type === "checkbox") data[inp.name] = inp.checked ? "true" : "false";
-            else data[inp.name] = inp.value;
-        }});
-        fetch("/admin/settings/save", {{ method: "POST", headers: {{ "Content-Type": "application/json" }}, credentials: "same-origin", body: JSON.stringify(data) }})
-        .then(function(r) {{ return r.json(); }}).then(function(d) {{ if (d.error) alert(d.error); else alert("已保存"); }});
+      e.preventDefault();
+      var form = this;
+      var data = {{}};
+      [].forEach.call(form.querySelectorAll("input[name]"), function(inp) {{
+        if (inp.type === "checkbox") data[inp.name] = inp.checked ? "true" : "false";
+        else data[inp.name] = inp.value;
+      }});
+      fetch("/admin/settings/save", {{
+        method: "POST",
+        headers: {{ "Content-Type": "application/json" }},
+        credentials: "same-origin",
+        body: JSON.stringify(data)
+      }}).then(function(r) {{ return r.json(); }}).then(function(d) {{
+        if (d.error) alert(d.error); else alert("已保存");
+      }});
     }};
-    </script>'''
-    return content
-
+    </script>
+    '''

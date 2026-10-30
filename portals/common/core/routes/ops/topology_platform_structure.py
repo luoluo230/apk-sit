@@ -128,87 +128,10 @@ def ops_platform_topology_edge_upsert():
     if not ops_helpers._allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
-    project_id = str(payload.get("project_id") or "").strip()
-    env_key = ops_helpers._normalize_env_key(payload.get("env_key") or "")
-    topology_id = str(payload.get("topology_id") or "").strip()
-    frm = str(payload.get("from") or "").strip()
-    to = str(payload.get("to") or "").strip()
-    from_port = str(payload.get("from_port") or "out-1").strip()
-    to_port = str(payload.get("to_port") or "in-1").strip()
-    etype = str(payload.get("type") or "depends_on").strip()
-    note = str(payload.get("note") or "").strip()
-    if not frm or not to or frm == to:
-        return jsonify({"ok": False, "error": "invalid edge endpoints"}), 400
+    from services.ops.topology_graph import upsert_edge
 
-    topo = ops_helpers._load_topology_scoped(project_id, env_key, topology_id)
-    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
-    edges = topo.get("edges") if isinstance(topo.get("edges"), list) else []
-    topo["edges"] = edges
-    valid = set([str(x.get("id") or "") for x in topo.get("nodes") or [] if isinstance(x, dict)])
-    if frm not in valid or to not in valid:
-        return jsonify({"ok": False, "error": "node not found"}), 404
-    topo_nodes = {str(x.get("id") or ""): x for x in (topo.get("nodes") or []) if isinstance(x, dict)}
-    fn = topo_nodes.get(frm) or {}
-    tn = topo_nodes.get(to) or {}
-    if not ops_helpers._can_link_nodes(fn, tn):
-        return jsonify({
-            "ok": False,
-            "error": "invalid_edge_by_role",
-            "error_code": "OPS_EDGE_ROLE_FORBIDDEN",
-            "message": "当前节点角色规则不允许该连线",
-        }), 409
-    fkind = str(fn.get("kind") or ops_helpers._infer_node_kind(str(fn.get("role") or ""), ""))
-    tkind = str(tn.get("kind") or ops_helpers._infer_node_kind(str(tn.get("role") or ""), ""))
-    if fkind == "terminal" or tkind == "entry":
-        return jsonify({"ok": False, "error": "node_kind_violation", "error_code": "OPS_NODE_KIND_VIOLATION", "message": "Node kind direction is not allowed"}), 400
-    fports = ops_helpers._normalize_ports(fkind, ((fn.get("ui") or {}).get("ports") if isinstance(fn.get("ui"), dict) else None))
-    tports = ops_helpers._normalize_ports(tkind, ((tn.get("ui") or {}).get("ports") if isinstance(tn.get("ui"), dict) else None))
-    if from_port not in [str(p.get("id") or "") for p in fports.get("out", [])] or to_port not in [str(p.get("id") or "") for p in tports.get("in", [])]:
-        return jsonify({"ok": False, "error": "port_not_found", "error_code": "OPS_PORT_NOT_FOUND", "message": "Port not found"}), 400
-    for ex in edges:
-        if not isinstance(ex, dict):
-            continue
-        if str(ex.get("from") or "") == frm and str(ex.get("to") or "") == to and str(ex.get("from_port") or "out-1") == from_port and str(ex.get("to_port") or "in-1") == to_port:
-            return jsonify({"ok": False, "error": "edge_duplicate", "error_code": "OPS_EDGE_DUPLICATE", "message": "Duplicate edge"}), 409
-    incoming_count = 0
-    for ex in edges:
-        if isinstance(ex, dict) and str(ex.get("to") or "") == to and str(ex.get("to_port") or "in-1") == to_port:
-            incoming_count += 1
-    in_max = 1
-    for p in tports.get("in", []):
-        if str(p.get("id") or "") == to_port:
-            in_max = int(p.get("max_links") or 1)
-            break
-    if incoming_count >= in_max:
-        return jsonify({"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "Input port capacity exceeded"}), 409
-    outgoing_count = 0
-    for ex in edges:
-        if isinstance(ex, dict) and str(ex.get("from") or "") == frm and str(ex.get("from_port") or "out-1") == from_port:
-            outgoing_count += 1
-    out_max = 1
-    for p in fports.get("out", []):
-        if str(p.get("id") or "") == from_port:
-            out_max = int(p.get("max_links") or 1)
-            break
-    if outgoing_count >= out_max:
-        return jsonify({"ok": False, "error": "port_capacity_exceeded", "error_code": "OPS_PORT_CAPACITY_EXCEEDED", "message": "Output port capacity exceeded"}), 409
-
-    updated = False
-    for edge in edges:
-        if not isinstance(edge, dict):
-            continue
-        if str(edge.get("from") or "") == frm and str(edge.get("to") or "") == to and str(edge.get("from_port") or "out-1") == from_port and str(edge.get("to_port") or "in-1") == to_port:
-            edge["type"] = etype
-            edge["note"] = note
-            updated = True
-            break
-    if not updated:
-        edges.append({"id": f"edge-{uuid.uuid4().hex[:10]}", "from": frm, "to": to, "from_port": from_port, "to_port": to_port, "type": etype, "note": note})
-
-    saved = ops_helpers._save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
-    log_audit("ops_platform_topology_edge_upsert", f"{frm}->{to}; type={etype}")
-    resp = {"ok": True, "message": "连线已保存", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry}
-    return jsonify(resp)
+    body, status = upsert_edge(payload)
+    return jsonify(body), status
 
 
 
@@ -218,30 +141,10 @@ def ops_platform_topology_edge_delete():
     if not ops_helpers._allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "缺少运维执行权限 (ops.platform.execute)"}), 403
     payload = request.get_json(silent=True) or {}
-    project_id = str(payload.get("project_id") or "").strip()
-    env_key = ops_helpers._normalize_env_key(payload.get("env_key") or "")
-    topology_id = str(payload.get("topology_id") or "").strip()
-    edge_id = str(payload.get("edge_id") or "").strip()
-    if not edge_id:
-        return jsonify({"ok": False, "error": "missing edge_id"}), 400
+    from services.ops.topology_graph_remove import delete_edge
 
-    topo = ops_helpers._load_topology_scoped(project_id, env_key, topology_id)
-    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
-    if ops_helpers._is_critical_topology_edge(topo, edge_id):
-        return jsonify({
-            "ok": False,
-            "error": "edge_delete_blocked",
-            "error_code": "OPS_EDGE_DELETE_BLOCKED",
-            "message": "关键链路连线不可删除（会导致架构断裂）",
-        }), 409
-    before = len(topo.get("edges") or [])
-    topo["edges"] = [x for x in (topo.get("edges") or []) if not (isinstance(x, dict) and str(x.get("id") or "") == edge_id)]
-    after = len(topo.get("edges") or [])
-    if after == before:
-        return jsonify({"ok": False, "error": "edge not found"}), 404
-    saved = ops_helpers._save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), str(registry.get("topology_id") or topology_id or ""), topo)
-    log_audit("ops_platform_topology_edge_delete", f"edge={edge_id}")
-    return jsonify({"ok": True, "message": "Edge deleted", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
+    body, status = delete_edge(payload)
+    return jsonify(body), status
 
 
 
@@ -254,38 +157,10 @@ def ops_platform_topology_node_delete():
     if not ops_helpers._allow_ops_execute():
         return jsonify({"ok": False, "error": "forbidden", "message": "Missing ops execute permission"}), 403
     payload = request.get_json(silent=True) or {}
-    project_id = str(payload.get("project_id") or "").strip()
-    env_key = ops_helpers._normalize_env_key(payload.get("env_key") or "")
-    topology_id = str(payload.get("topology_id") or "").strip()
-    node_id = str(payload.get("node_id") or "").strip()
-    if not node_id:
-        return jsonify({"ok": False, "error": "missing node_id"}), 400
+    from services.ops.topology_graph_remove import delete_node
 
-    topo = ops_helpers._load_topology_scoped(project_id, env_key, topology_id)
-    registry = topo.get("registry") if isinstance(topo.get("registry"), dict) else {}
-    tid = str(registry.get("topology_id") or topology_id or "")
-    node_ids = {str(x.get("id") or "") for x in (topo.get("nodes") or []) if isinstance(x, dict)}
-    if node_id not in node_ids:
-        return jsonify({"ok": False, "error": "node not found"}), 404
-    if ops_helpers._is_critical_topology_node(topo, node_id):
-        return jsonify({"ok": False, "error": "node_delete_blocked", "error_code": "OPS_NODE_DELETE_BLOCKED", "message": "Critical node cannot be deleted"}), 409
-
-    before_edges = len(topo.get("edges") or [])
-    topo["nodes"] = [x for x in (topo.get("nodes") or []) if not (isinstance(x, dict) and str(x.get("id") or "") == node_id)]
-    topo["edges"] = [x for x in (topo.get("edges") or []) if not (isinstance(x, dict) and (str(x.get("from") or "") == node_id or str(x.get("to") or "") == node_id))]
-    saved = ops_helpers._save_topology_scoped(str(registry.get("project_id") or project_id or ""), str(registry.get("env_key") or env_key or ""), tid, topo)
-
-    bindings = ops_helpers._load_scope_agent_bindings(tid)
-    if node_id in bindings:
-        bindings.pop(node_id, None)
-        ops_helpers._save_scope_agent_binding(tid, node_id, "")
-    service_bindings = ops_helpers._load_scope_service_bindings(tid)
-    if node_id in service_bindings:
-        service_bindings.pop(node_id, None)
-        ops_helpers._save_scope_service_binding(tid, node_id, "")
-
-    log_audit("ops_platform_topology_node_delete", f"node={node_id}; removed_edges={before_edges - len(saved.get('edges') or [])}")
-    return jsonify({"ok": True, "message": "Node deleted", "topology": {"nodes": saved.get("nodes") or [], "edges": saved.get("edges") or [], "meta": saved.get("meta") or {}}, "bindings": bindings, "service_bindings": service_bindings, "registry": saved.get("registry") if isinstance(saved.get("registry"), dict) else registry})
+    body, status = delete_node(payload)
+    return jsonify(body), status
 
 
 

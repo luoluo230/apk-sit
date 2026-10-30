@@ -1,0 +1,255 @@
+/* Jenkins 管理页：不依赖 Tailwind，保证标签/按钮/日志对比度 */
+
+.jm-page { color: #1f2a37; }
+
+/* 分区 Tab：同一时间只露一个面板 */
+.jm-page .jm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 4px;
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.jm-page .jm-tab {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475467;
+  background: transparent;
+  cursor: pointer;
+}
+.jm-page .jm-tab:hover { color: #1677ff; background: #fff; }
+.jm-page .jm-tab.is-active {
+  background: #fff;
+  color: #1677ff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08);
+}
+.jm-page .jm-panel[hidden],
+.jm-page .jm-panel:not(.is-active) { display: none !important; }
+.jm-page .jm-panel.is-active { display: block; }
+.jm-page .jm-start-core { max-width: 720px; }
+.jm-page .jm-advanced {
+  margin-top: 16px;
+  border: 1px solid #e5eaf3;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: #fafbfc;
+}
+.jm-page .jm-advanced > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475467;
+  list-style: none;
+}
+.jm-page .jm-advanced > summary::-webkit-details-marker { display: none; }
+.jm-page .jm-env-list {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.jm-page .jm-env-list li { padding: 6px 0; border-bottom: 1px solid #f0f2f5; }
+.jm-page .jm-env-actions { margin-bottom: 12px; }
+.jm-page .jm-deploy-log,
+.jm-page .jm-script-pre {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 240px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.jm-page .jm-deploy-log {
+  background: #0b1220;
+  color: #73d13d;
+}
+.jm-page .jm-deploy-log.is-hidden,
+.jm-page .jm-deploy-log.hidden { display: none; }
+.jm-page .jm-script-pre { background: #f2f4f7; color: #344054; }
+.jm-page label,
+.jm-page .jm-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+}
+.jm-page .jm-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #667085;
+}
+.jm-page input[type="text"],
+.jm-page input[type="number"],
+.jm-page input[type="url"],
+.jm-page select,
+.jm-page textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2a37;
+  font-size: 13px;
+}
+.jm-page input::placeholder,
+.jm-page textarea::placeholder { color: #98a2b3; }
+.jm-page .jm-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+.jm-page .jm-field { min-width: 160px; flex: 1 1 180px; }
+.jm-page .jm-field--wide { flex: 2 1 280px; }
+.jm-page .jm-type-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e5eaf3;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.jm-page .jm-type-toggle button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475467;
+  background: transparent;
+  cursor: pointer;
+}
+.jm-page .jm-type-toggle button.is-active {
+  background: #1677ff;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .12);
+}
+.jm-page .jm-notify-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.jm-page .jm-notify-card {
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px 14px;
+}
+.jm-page .jm-notify-card h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2a37;
+}
+.jm-page .jm-notify-card p {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #667085;
+  line-height: 1.45;
+}
+.jm-page a.pm-btn,
+.jm-page button.pm-btn {
+  color: #475467;
+}
+.jm-page a.pm-btn--primary,
+.jm-page button.pm-btn--primary {
+  background: #1677ff !important;
+  border-color: #1677ff !important;
+  color: #fff !important;
+}
+.jm-page a.pm-btn--primary:hover,
+.jm-page button.pm-btn--primary:hover {
+  background: #0958d9 !important;
+  color: #fff !important;
+}
+.jm-page .uv-edit,
+.jm-page .uv-toggle,
+.jm-page .jm-link,
+.jm-page a.jm-link,
+.jm-page button.jm-link {
+  color: #1677ff !important;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  margin-right: 8px;
+  padding: 0;
+}
+.jm-page .uv-edit:hover,
+.jm-page .uv-toggle:hover,
+.jm-page .jm-link:hover { text-decoration: underline; }
+.jm-page .jm-link--danger { color: #cf1322 !important; }
+.jm-page .jm-link--ok { color: #389e0d !important; }
+.jm-page .jm-link--muted { color: #98a2b3 !important; cursor: default; }
+.jm-page .jm-status-ok { color: #389e0d; font-weight: 600; }
+.jm-page .jm-status-off { color: #667085; }
+.jm-page .jm-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.jm-page .jm-badge--general { background: #fff7e6; color: #d46b08; }
+.jm-page .jm-badge--commercial { background: #f9f0ff; color: #531dab; }
+.jm-page .jm-filter-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.jm-page .jm-filter-tabs .pm-btn.is-active,
+.jm-page .jm-filter-tabs .pm-btn--primary {
+  background: #1677ff !important;
+  border-color: #1677ff !important;
+  color: #fff !important;
+}
+
+/* 日志页 */
+.jm-log-shell {
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  background: #0b1220;
+  overflow: hidden;
+}
+.jm-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #111827;
+  color: #d0d5dd;
+  font-size: 13px;
+}
+.jm-log-meta a { color: #69b1ff; text-decoration: none; }
+.jm-log-body {
+  margin: 0;
+  padding: 14px 16px;
+  max-height: 75vh;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e5e7eb;
+  background: #0b1220;
+}
+.jm-log-line--error { color: #ff7875; }
+.jm-log-line--warn { color: #ffc53d; }
+.jm-log-line--info { color: #69b1ff; }
+.jm-log-line--ok { color: #73d13d; }

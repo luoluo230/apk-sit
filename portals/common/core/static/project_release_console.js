@@ -42,6 +42,34 @@
     setTimeout(function () { el.remove(); }, 3200);
   }
 
+  var STATUS_ZH = {
+    draft: "草稿",
+    building: "构建中",
+    build_failed: "构建失败",
+    artifacts_ready: "产物就绪",
+    prechecking: "预检中",
+    precheck_failed: "预检失败",
+    ready: "待发布",
+    awaiting_approval: "待审批",
+    approved: "待发布",
+    publishing: "发布中",
+    published: "已发布",
+    publish_failed: "发布失败",
+    verifying: "验证中",
+    verified: "验证通过",
+    verify_failed: "验证失败",
+    rolled_back: "已回滚",
+    cancelled: "已取消",
+    failed: "失败",
+    ok: "成功",
+  };
+
+  function statusLabel(value) {
+    var key = String(value || "").trim();
+    if (!key) return "暂无";
+    return STATUS_ZH[key] || key.replace(/_/g, " ");
+  }
+
   function lineKey(line) {
     return (line.channel_id || line.channelId) + ":" + (line.platform || "android");
   }
@@ -183,14 +211,40 @@
     setVal("rcAnnAudience", ann.audience || "all");
     setChk("rcAnnSyncGm", ann.sync_to_gm);
     document.getElementById("rcConfigPlaceholder").hidden = true;
-    document.getElementById("rcConfigBody").hidden = false;
     var label = document.getElementById("rcBatchIdLabel");
     if (label) {
       label.hidden = false;
       label.textContent = batch.batch_id || "";
     }
+    var summary = document.getElementById("rcBatchSummary");
+    var title = document.getElementById("rcSummaryTitle");
+    var meta = document.getElementById("rcSummaryMeta");
+    var plan = batch.shared_plan || {};
+    if (summary) summary.hidden = false;
+    if (title) title.textContent = "批次 " + (batch.batch_id || "");
+    if (meta) {
+      meta.textContent =
+        statusLabel(batch.status || "draft") +
+        " · " +
+        (plan.release_reason_type || "regular") +
+        " · 负责人 " +
+        (plan.owner || batch.created_by || "未填");
+    }
+    // 默认摘要态：不展开说明书式配置，执行轨仍可用
+    var body = document.getElementById("rcConfigBody");
+    if (body && !body.dataset.forceOpen) body.hidden = true;
     renderClientTabs(batch);
     renderExecPreview(batch);
+  }
+
+  function expandReleaseConfig() {
+    var body = document.getElementById("rcConfigBody");
+    var summary = document.getElementById("rcBatchSummary");
+    if (body) {
+      body.hidden = false;
+      body.dataset.forceOpen = "1";
+    }
+    if (summary) summary.hidden = true;
   }
 
   function renderClientTabs(batch) {
@@ -226,8 +280,8 @@
       "&channel_id=" + encodeURIComponent(order.channel_id || "") +
       "&platform=" + encodeURIComponent(order.platform || "android");
     return (
-      "<div><strong>VersionCode:</strong> " + esc(order.version_code || "—") +
-      " · 状态: " + esc(order.status || "draft") + "</div>" +
+      "<div><strong>VersionCode:</strong> " + esc(order.version_code || "暂无") +
+      " · 状态: " + esc(statusLabel(order.status || "draft")) + "</div>" +
       '<p><a href="' + buildUrl + '" target="_blank" rel="noopener">展开编辑构建配置 →</a></p>'
     );
   }
@@ -252,11 +306,11 @@
       if (rollback && !rollback.skipped) {
         coord += rollback.ok
           ? ' <span class="rc-coord rc-coord--ok">联合回滚: ok</span>'
-          : ' <span class="rc-coord rc-coord--fail">联合回滚: ' + esc(rollback.error || "failed") + "</span>";
+          : ' <span class="rc-coord rc-coord--fail">联合回滚: ' + esc(statusLabel(rollback.error || "failed")) + "</span>";
       }
       return '<div class="rc-preview-row"><strong>' + esc(o.channel_id) + "/" + esc(o.platform) +
-        "</strong> → " + esc(o.release_order_id) + " · " + esc(o.status) + coord + "</div>";
-    }).join("") || '<div class="rc-empty">—</div>';
+        "</strong> → " + esc(o.release_order_id) + " · " + esc(statusLabel(o.status)) + coord + "</div>";
+    }).join("") || '<div class="rc-empty">暂无</div>';
   }
 
   function renderReadiness(readiness) {
@@ -270,7 +324,7 @@
       var fail = !line.ready;
       return '<div class="rc-readiness-item' + (fail ? " is-fail" : "") + '">' +
         "<span>" + esc(line.channel_name || line.channel_id) + " · " + esc(line.platform) + "</span>" +
-        "<span>" + esc(line.status) + (line.issues && line.issues.length ? " — " + esc(line.issues.join("; ")) : "") + "</span></div>";
+        "<span>" + esc(statusLabel(line.status)) + (line.issues && line.issues.length ? " — " + esc(line.issues.join("; ")) : "") + "</span></div>";
     }).join("");
   }
 
@@ -295,7 +349,7 @@
     if (failed) {
       failed.innerHTML = fails.length
         ? "<h3>失败/进行中 (" + fails.length + ")</h3>" + fails.map(function (f) {
-            return "<div>" + esc(f.channel_id) + "/" + esc(f.platform) + " — " + esc(f.status) + "</div>";
+            return "<div>" + esc(f.channel_id) + "/" + esc(f.platform) + " — " + esc(statusLabel(f.status)) + "</div>";
           }).join("")
         : "";
     }
@@ -360,6 +414,7 @@
         state.batch = batch;
         state.dirty = false;
         fillFormFromBatch(batch);
+        expandReleaseConfig();
         toast("发版批次已创建");
         return refreshBatchUi();
       })
@@ -450,6 +505,8 @@
     });
     document.getElementById("rcCreateBatchBtn").addEventListener("click", createBatch);
     document.getElementById("rcRefreshBtn").addEventListener("click", function () { loadConsole().catch(function (e) { toast(e.message); }); });
+    var expandBtn = document.getElementById("rcExpandConfigBtn");
+    if (expandBtn) expandBtn.addEventListener("click", expandReleaseConfig);
     document.getElementById("rcPrimaryAction").addEventListener("click", function () {
       runBatchAction(this.dataset.apiAction || "");
     });

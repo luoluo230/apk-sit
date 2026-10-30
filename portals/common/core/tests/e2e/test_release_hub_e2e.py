@@ -55,7 +55,9 @@ class ReleaseHubE2ETests(unittest.TestCase):
         self.assertIn("当前发版", html)
         self.assertNotIn("其它入口", html)
         self.assertIn("project_release_hub.js", html)
-        self.assertIn("交付发版", html)
+        self.assertIn("版本与管线", html)
+        self.assertIn("下载中心", html)
+        self.assertNotIn("项目管理", html)
 
     def test_release_console_page(self):
         resp = self.client.get(

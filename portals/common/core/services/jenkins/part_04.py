@@ -99,8 +99,17 @@ def get_instance_output_base(inst, project_id=''):
     return os.path.join(Config.APK_DIR, subdir) if subdir else Config.APK_DIR
 
 
-def _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, feishu_webhook='', dingtalk_webhook='', build_defaults=None):
-    """为管理内实例写入 .apk-site-env、.apk-site-feishu，并复制通知脚本；build_defaults 含 git_url、git_ssh_key_path 等时一并写入。"""
+def _write_instance_env_and_scripts(
+    jenkins_home,
+    port,
+    task_name,
+    output_base,
+    feishu_webhook='',
+    dingtalk_webhook='',
+    wecom_webhook='',
+    build_defaults=None,
+):
+    """为管理内实例写入 .apk-site-env 与各渠道 webhook 文件，并复制通知脚本。"""
     from services import startup
     base_url = startup.get_canonical_base_url()  # 与启动横幅一致：局域网 IP:PORT
     env_path = os.path.join(jenkins_home, '.apk-site-env')
@@ -161,19 +170,41 @@ def _write_instance_env_and_scripts(jenkins_home, port, task_name, output_base, 
         with open(feishu_path, 'w', encoding='utf-8') as f:
             f.write('export FEISHU_WEBHOOK="%s"\n' % webhook)
         logger.info("已写入 %s", feishu_path)
-    # 钉钉 webhook 写入 .apk-site-dingtalk
+    elif os.path.isfile(os.path.join(jenkins_home, '.apk-site-feishu')):
+        try:
+            os.remove(os.path.join(jenkins_home, '.apk-site-feishu'))
+        except OSError:
+            pass
     if (dingtalk_webhook or '').strip():
         dingtalk_path = os.path.join(jenkins_home, '.apk-site-dingtalk')
         webhook = (dingtalk_webhook or '').strip().replace('"', '\\"')
         with open(dingtalk_path, 'w', encoding='utf-8') as f:
             f.write('export DINGTALK_WEBHOOK="%s"\n' % webhook)
         logger.info("已写入 %s", dingtalk_path)
+    elif os.path.isfile(os.path.join(jenkins_home, '.apk-site-dingtalk')):
+        try:
+            os.remove(os.path.join(jenkins_home, '.apk-site-dingtalk'))
+        except OSError:
+            pass
+    if (wecom_webhook or '').strip():
+        wecom_path = os.path.join(jenkins_home, '.apk-site-wecom')
+        webhook = (wecom_webhook or '').strip().replace('"', '\\"')
+        with open(wecom_path, 'w', encoding='utf-8') as f:
+            f.write('export WECOM_WEBHOOK="%s"\n' % webhook)
+        logger.info("已写入 %s", wecom_path)
+    elif os.path.isfile(os.path.join(jenkins_home, '.apk-site-wecom')):
+        try:
+            os.remove(os.path.join(jenkins_home, '.apk-site-wecom'))
+        except OSError:
+            pass
     overlay_scripts = os.path.join(_resolve_overlay_root(), 'scripts')
     scripts_dst = os.path.join(jenkins_home, 'scripts')
     os.makedirs(scripts_dst, exist_ok=True)
     for name in (
         'jenkins_send_notify.sh',
         'feishu_send.py',
+        'dingtalk_send.py',
+        'wecom_send.py',
         'commercial_android_pipeline.sh',
         'archive_apk_after_build.py',
     ):
@@ -206,6 +237,7 @@ def refresh_instance_env_and_scripts(instance_id):
         output_base,
         inst.get('feishu_webhook') or '',
         inst.get('dingtalk_webhook') or '',
+        inst.get('wecom_webhook') or '',
         None,
     )
     return True

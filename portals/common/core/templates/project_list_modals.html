@@ -137,6 +137,28 @@
           <div class="p01-field p01-span-2"><label for="editProjectIntro">简介</label><textarea id="editProjectIntro" rows="2" placeholder="一句话介绍项目用途"></textarea></div>
         </div>
       </section>
+      <section class="p01-modal-panel p01-modal-panel--muted">
+        <div class="p01-modal-panel__head">
+          <h4>接入凭据</h4>
+          <span class="p01-hint">只读，客户端更新身份；丢失时可在此查看并复制</span>
+        </div>
+        <div class="p01-form-grid">
+          <div class="p01-field">
+            <label for="editProjectGameId">gameId</label>
+            <div class="p01-add-row">
+              <input type="text" id="editProjectGameId" class="p01-input-readonly" readonly placeholder="未配置">
+              <button type="button" class="pm-btn pm-btn--compact" data-copy-input="editProjectGameId">复制</button>
+            </div>
+          </div>
+          <div class="p01-field">
+            <label for="editProjectGameKey">gameKey</label>
+            <div class="p01-add-row">
+              <input type="text" id="editProjectGameKey" class="p01-input-readonly" readonly placeholder="未配置">
+              <button type="button" class="pm-btn pm-btn--compact" data-copy-input="editProjectGameKey">复制</button>
+            </div>
+          </div>
+        </div>
+      </section>
       <section class="p01-modal-panel">
         <div class="p01-modal-panel__head"><h4>协作与渠道</h4></div>
         <div class="p01-form-grid">

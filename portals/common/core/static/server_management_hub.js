@@ -169,11 +169,13 @@
 
   function renderLogs(item) {
     var logs = item.log_snippets || [];
-    if (!logs.length) return '<ul class="sm-hub-logs"><li>暂无告警日志</li></ul>';
-    return '<ul class="sm-hub-logs">' + logs.map(function (lg) {
+    if (!logs.length) return '';
+    var errors = logs.filter(function (lg) { return lg.level === 'error'; }).length;
+    var summary = errors ? ('告警 ' + logs.length + ' · 错误 ' + errors) : ('告警 ' + logs.length);
+    return '<details class="sm-hub-logs-wrap"><summary>' + esc(summary) + '</summary><ul class="sm-hub-logs">' + logs.map(function (lg) {
       var cls = lg.level === 'error' ? ' is-error' : '';
       return '<li class="' + cls + '">' + esc(lg.message || '') + '</li>';
-    }).join('') + '</ul>';
+    }).join('') + '</ul></details>';
   }
 
   function renderBindings(item) {
@@ -199,16 +201,16 @@
   function renderActions(item) {
     var btns = [];
     if (item.kind === 'topology') {
-      btns.push('<a class="matrix-btn build" href="' + esc(item.actions.canvas_url) + '">画布</a>');
-      btns.push('<a class="matrix-btn version" href="' + esc(item.actions.binding_url) + '">绑定</a>');
+      btns.push('<a class="pm-btn pm-btn--primary pm-btn--compact" href="' + esc(item.actions.canvas_url) + '">打开画布</a>');
+      btns.push('<a class="pm-btn pm-btn--compact" href="' + esc(item.actions.binding_url) + '">绑定</a>');
     } else {
-      btns.push('<a class="matrix-btn build" href="' + esc(item.actions.config_url) + '">配置</a>');
-      btns.push('<a class="matrix-btn version" href="' + esc(item.actions.gm_url) + '">GM</a>');
+      btns.push('<a class="pm-btn pm-btn--primary pm-btn--compact" href="' + esc(item.actions.config_url) + '">打开配置</a>');
+      btns.push('<a class="pm-btn pm-btn--compact" href="' + esc(item.actions.gm_url) + '">GM</a>');
     }
-    btns.push('<button type="button" class="matrix-btn server-test" data-edit="' + esc(item.id) + '">编辑</button>');
-    btns.push('<button type="button" class="matrix-btn release" data-toggle="' + esc(item.id) + '">' + (item.disabled ? '启用' : '禁用') + '</button>');
-    btns.push('<button type="button" class="matrix-btn topology" data-delete="' + esc(item.id) + '">删除</button>');
-    return '<div class="sm-hub-card-actions env-line-actions env-line-card-links">' + btns.join('') + '</div>';
+    btns.push('<button type="button" class="pm-btn pm-btn--compact" data-edit="' + esc(item.id) + '">编辑</button>');
+    btns.push('<button type="button" class="pm-btn pm-btn--compact sm-btn-warn" data-toggle="' + esc(item.id) + '">' + (item.disabled ? '启用' : '禁用') + '</button>');
+    btns.push('<button type="button" class="pm-btn pm-btn--compact pm-btn--danger" data-delete="' + esc(item.id) + '">删除</button>');
+    return '<div class="sm-hub-card-actions">' + btns.join('') + '</div>';
   }
 
   function renderCard(item) {

@@ -1,6 +1,7 @@
 # 管理台壳层
 
-视觉真源是现有运维工作台，不是新的一套皮肤。
+视觉真源是现有运维工作台，不是新的一套皮肤。  
+整站页面怎么组（工作台信息架构、列表骨架、Demo 改造波次）见 [workstation_ui_system.md](./workstation_ui_system.md)。
 
 - 壳模板：`portals/common/core/templates/ops_shell.html`
 - 色板：`portals/common/core/static/project_ui/design-tokens.css`

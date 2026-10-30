@@ -385,6 +385,24 @@
   margin-top: 8px;
 }
 
+.ops-actions-app .ops-exec-output {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e5eaf3;
+  background: #0b1220;
+  color: #e5e7eb;
+  max-height: 320px;
+  overflow: auto;
+}
+.ops-actions-app .ops-exec-output--ok { border-color: #b7eb8f; box-shadow: inset 3px 0 0 #52c41a; }
+.ops-actions-app .ops-exec-output--warn { border-color: #ffe58f; box-shadow: inset 3px 0 0 #faad14; }
+.ops-actions-app .ops-exec-output--error { border-color: #ffccc7; box-shadow: inset 3px 0 0 #ff4d4f; }
+
 .ops-actions-app .project-ops-queue-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 160px));

@@ -415,7 +415,7 @@
   function renderTable() {
     const rows = currentPageRows();
     if (!rows.length) {
-      nodes.list.innerHTML = '<div class="agent-empty">当前筛选条件下暂无 Agent</div>';
+      nodes.list.innerHTML = '<div class="agent-empty"><strong>暂无 Agent</strong><span>当前筛选条件下没有可显示的节点。可新建 Agent，或清除筛选后重试。</span><button type="button" class="pm-btn pm-btn--primary pm-btn--compact" data-agent-empty-create>新建 Agent</button></div>';
       return;
     }
     nodes.list.innerHTML = "" +
@@ -451,7 +451,7 @@
   function renderCards() {
     const rows = currentPageRows();
     if (!rows.length) {
-      nodes.cards.innerHTML = '<div class="agent-empty">当前筛选条件下暂无 Agent</div>';
+      nodes.cards.innerHTML = '<div class="agent-empty"><strong>暂无 Agent</strong><span>当前筛选条件下没有可显示的节点。可新建 Agent，或清除筛选后重试。</span><button type="button" class="pm-btn pm-btn--primary pm-btn--compact" data-agent-empty-create>新建 Agent</button></div>';
       return;
     }
     nodes.cards.innerHTML = rows.map(renderCard).join("");
@@ -488,6 +488,9 @@
     bindSummaryCards();
     bindRows(nodes.cards);
     bindRows(nodes.list);
+    document.querySelectorAll("[data-agent-empty-create]").forEach(function (btn) {
+      btn.onclick = openCreate;
+    });
   }
 
   function rowById(rowId) {

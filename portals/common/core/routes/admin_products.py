@@ -179,7 +179,9 @@ def _render_edit_page(product=None):
     store_links = _store_links_from_product(current)
     gallery_files = [item for item in _normalize_gallery(json.dumps(current.get("gallery") or []))] if current else []
     company_name = (get_company_profile().get("company_name") or "星云游戏站").strip()
-    return render_template(
+    from services.ops.helpers import _render_ops_page
+
+    content = render_template(
         "admin_product_edit.html",
         company_name=company_name,
         page_title="编辑产品" if product_id else "新增产品",
@@ -195,6 +197,12 @@ def _render_edit_page(product=None):
             {"name": filename, "url": _product_media_url(product_id, filename)}
             for filename in gallery_files
         ],
+    )
+    return _render_ops_page(
+        content,
+        "编辑产品" if product_id else "新增产品",
+        active_page="products",
+        breadcrumb_module="工作室",
     )
 
 
@@ -225,12 +233,15 @@ def list_page():
             }
         )
     company_name = (get_company_profile().get("company_name") or "星云游戏站").strip()
-    return render_template(
+    from services.ops.helpers import _render_ops_page
+
+    content = render_template(
         "admin_products_list.html",
         products=rows,
         csrf_token_value=_get_csrf_token(),
         company_name=company_name,
     )
+    return _render_ops_page(content, "产品管理", active_page="products", breadcrumb_module="工作室")
 
 
 @bp.route("/admin/products/new")

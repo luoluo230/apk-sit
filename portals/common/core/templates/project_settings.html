@@ -2,43 +2,93 @@
   <div class="pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_project_setting.svg" alt=""></span>
-      <div><h1>项目设置</h1></div>
+      <div>
+        <h1>项目设置</h1>
+        <p class="settings-lead">管理成员权限、服务器架构，以及交付范围入口。</p>
+      </div>
     </div>
     <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
   </div>
-  <div class="pm-filter-bar" style="margin-top:16px">
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=environments"><img src="/static/project_ui/svg/nav_environment.svg" alt="">环境与交付范围</a>
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=channels"><img src="/static/project_ui/svg/nav_binding.svg" alt="">渠道白名单</a>
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/overview?tab=platforms"><img src="/static/project_ui/svg/file_android.svg" alt="">平台白名单</a>
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/settings?tab=members"><img src="/static/project_ui/svg/nav_roles_member.svg" alt="">成员与权限</a>
-    <a class="pm-btn" href="/admin/projects/{{ project_id }}/settings?tab=architecture"><img src="/static/project_ui/svg/nav_project_setting.svg" alt="">服务器架构</a>
-  </div>
-  <section id="projectSettingsArchitecture" class="pm-rail-panel" style="margin-top:16px" {% if request.args.get('tab') != 'architecture' %}hidden{% endif %}>
-    <div class="p02-rail-head"><h2>服务器架构</h2><p>选择拓扑集群模式或轻度休闲 BaaS（Passport）模式</p></div>
-    <div class="pm-form-grid" style="max-width:520px">
+
+  <nav class="settings-tabs" aria-label="设置分区" data-settings-tabs>
+    <a class="settings-tab{% if request.args.get('tab', 'members') == 'members' %} is-active{% endif %}"
+       href="/admin/projects/{{ project_id }}/settings?tab=members"
+       data-settings-tab="members">成员与权限</a>
+    <a class="settings-tab{% if request.args.get('tab') == 'architecture' %} is-active{% endif %}"
+       href="/admin/projects/{{ project_id }}/settings?tab=architecture"
+       data-settings-tab="architecture">服务器架构</a>
+    <a class="settings-tab{% if request.args.get('tab') == 'delivery' %} is-active{% endif %}"
+       href="/admin/projects/{{ project_id }}/settings?tab=delivery"
+       data-settings-tab="delivery">交付范围</a>
+  </nav>
+
+  <section id="projectSettingsMembers" class="settings-panel pm-rail-panel" data-settings-panel="members"
+    {% if request.args.get('tab', 'members') != 'members' %}hidden{% endif %}>
+    <div class="settings-panel-head">
+      <div>
+        <h2>项目成员</h2>
+        <p>邀请成员并分配编辑者 / 查看者角色。</p>
+      </div>
+    </div>
+    <div id="settingsMemberList" class="p02-member-list"><div class="p02-empty">正在加载成员...</div></div>
+    <div class="settings-invite">
+      <label><span>用户名</span><input id="settingsInviteUsername" type="text" placeholder="系统内已有用户名" autocomplete="off"></label>
+      <label><span>角色</span>
+        <select id="settingsInviteRole">
+          <option value="viewer">查看者</option>
+          <option value="editor">编辑者</option>
+        </select>
+      </label>
+      <button id="settingsInviteBtn" class="pm-btn pm-btn--primary" type="button">邀请成员</button>
+    </div>
+  </section>
+
+  <section id="projectSettingsArchitecture" class="settings-panel pm-rail-panel" data-settings-panel="architecture"
+    {% if request.args.get('tab') != 'architecture' %}hidden{% endif %}>
+    <div class="settings-panel-head">
+      <div>
+        <h2>服务器架构</h2>
+        <p>选择拓扑集群或轻度 BaaS（Passport）。</p>
+      </div>
+    </div>
+    <div class="settings-arch-form">
       <label><span>架构模式</span>
         <select id="settingsServerMode">
           <option value="topology">拓扑集群（中重度）</option>
           <option value="casual_baas">轻度 BaaS（Passport）</option>
         </select>
       </label>
-      <div id="settingsCasualHint" class="wide" style="font-size:12px;color:#667085" hidden>启用后项目卡片将出现「休闲服务」入口，客户端通过 REST API 直连 Portal，无需拓扑/Agent。</div>
-      <div><button id="settingsSaveServerMode" class="pm-btn pm-btn--primary" type="button">保存架构设置</button></div>
+      <p id="settingsCasualHint" class="settings-hint" hidden>启用后项目侧栏会出现「休闲服务」入口；客户端经 REST API 直连 Portal，无需拓扑 / Agent。</p>
+      <button id="settingsSaveServerMode" class="pm-btn pm-btn--primary" type="button">保存架构设置</button>
     </div>
   </section>
-  <div class="pm-placeholder-page" style="margin-top:16px" {% if request.args.get('tab') in ('members', 'architecture') %}hidden{% endif %}>
-    <img src="/static/project_ui/svg/nav_project_setting.svg" alt="">
-    <h2>设置项已分散在项目总览</h2>
-    <a class="pm-btn pm-btn--primary" href="/admin/projects/{{ project_id }}/settings?tab=members">成员与权限</a>
-  </div>
-  <section id="projectSettingsMembers" class="pm-rail-panel" style="margin-top:16px" {% if request.args.get('tab') != 'members' %}hidden{% endif %}>
-    <div class="p02-rail-head"><h2>项目成员</h2></div>
-    <div id="settingsMemberList" class="p02-member-list"><div class="p02-empty">正在加载成员...</div></div>
-    <div class="pm-form-grid" style="margin-top:16px;max-width:520px">
-      <label><span>用户名</span><input id="settingsInviteUsername" type="text" placeholder="系统内已有用户名"></label>
-      <label><span>角色</span><select id="settingsInviteRole"><option value="viewer">查看者</option><option value="editor">编辑者</option></select></label>
-      <div><button id="settingsInviteBtn" class="pm-btn pm-btn--primary" type="button">邀请成员</button></div>
+
+  <section id="projectSettingsDelivery" class="settings-panel" data-settings-panel="delivery"
+    {% if request.args.get('tab') != 'delivery' %}hidden{% endif %}>
+    <div class="settings-panel-head">
+      <div>
+        <h2>交付范围</h2>
+        <p>环境、渠道与平台在项目总览维护；从这里进入对应面板。</p>
+      </div>
+    </div>
+    <div class="settings-dest-grid">
+      <a class="settings-dest" href="/admin/projects/{{ project_id }}/overview?tab=environments">
+        <img src="/static/project_ui/svg/nav_environment.svg" alt="">
+        <strong>环境与交付范围</strong>
+        <span>配置环境、绑定与交付边界</span>
+      </a>
+      <a class="settings-dest" href="/admin/projects/{{ project_id }}/overview?tab=channels">
+        <img src="/static/project_ui/svg/nav_binding.svg" alt="">
+        <strong>渠道白名单</strong>
+        <span>控制可发布渠道</span>
+      </a>
+      <a class="settings-dest" href="/admin/projects/{{ project_id }}/overview?tab=platforms">
+        <img src="/static/project_ui/svg/file_android.svg" alt="">
+        <strong>平台白名单</strong>
+        <span>控制 Android / iOS 等平台</span>
+      </a>
     </div>
   </section>
 </section>
-<script src="/static/project_settings.js?v=20260724-baas1"></script>
+<link rel="stylesheet" href="/static/project_settings.css?v=20261030-hub1">
+<script src="/static/project_settings.js?v=20261030-hub1"></script>

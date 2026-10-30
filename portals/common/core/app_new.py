@@ -298,9 +298,35 @@ if current_portal_mode() in ("admin", "forum"):
         return redirect("/login")
 
 
-ERROR_404_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>404</title><link rel="stylesheet" href="/static/tailwind.css"></head><body class="min-h-screen flex items-center justify-center bg-slate-50"><div class="text-center"><h1 class="text-2xl font-bold text-slate-800">页面不存在</h1><p class="mt-2 text-slate-500">请检查访问地址。</p><a href="/" class="inline-flex mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white">返回首页</a></div></body></html>"""
-ERROR_500_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>500</title><link rel="stylesheet" href="/static/tailwind.css"></head><body class="min-h-screen flex items-center justify-center bg-slate-50"><div class="text-center"><h1 class="text-2xl font-bold text-slate-800">服务异常</h1><p class="mt-2 text-slate-500">请稍后重试。</p><a href="/" class="inline-flex mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white">返回首页</a></div></body></html>"""
-ERROR_403_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>403</title><link rel="stylesheet" href="/static/tailwind.css"></head><body class="min-h-screen flex items-center justify-center bg-slate-50"><div class="text-center"><h1 class="text-2xl font-bold text-slate-800">无权限访问</h1><p class="mt-2 text-slate-500">请先登录或联系管理员。</p><a href="/login" class="inline-flex mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white">去登录</a></div></body></html>"""
+_ERROR_PAGE_CSS = (
+    "html,body{margin:0;min-height:100%;font-family:Segoe UI,PingFang SC,Microsoft YaHei,sans-serif;background:#f5f7fb;color:#1d2939}"
+    ".err-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}"
+    ".err-card{max-width:420px;width:100%;padding:32px 28px;border:1px solid #e5eaf3;border-radius:12px;background:#fff;"
+    "box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 24px rgba(16,24,40,.06)}"
+    ".err-card h1{margin:0;font-size:22px;line-height:30px;font-weight:700}"
+    ".err-card p{margin:10px 0 0;font-size:14px;line-height:22px;color:#667085}"
+    ".err-card a{display:inline-flex;align-items:center;justify-content:center;margin-top:20px;min-height:36px;padding:0 16px;"
+    "border-radius:8px;background:#1677ff;color:#fff;text-decoration:none;font-size:14px;font-weight:600}"
+    ".err-card a:hover{background:#0958d9}"
+)
+ERROR_404_HTML = (
+    '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    "<title>404</title><style>" + _ERROR_PAGE_CSS + "</style></head><body><div class=\"err-wrap\"><div class=\"err-card\">"
+    "<h1>页面不存在</h1><p>请检查访问地址，或返回工作台继续操作。</p>"
+    '<a href="/admin">返回工作台</a></div></div></body></html>'
+)
+ERROR_500_HTML = (
+    '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    "<title>500</title><style>" + _ERROR_PAGE_CSS + "</style></head><body><div class=\"err-wrap\"><div class=\"err-card\">"
+    "<h1>服务异常</h1><p>请稍后重试。若持续出现，请联系管理员并保留当前地址。</p>"
+    '<a href="/admin">返回工作台</a></div></div></body></html>'
+)
+ERROR_403_HTML = (
+    '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    "<title>403</title><style>" + _ERROR_PAGE_CSS + "</style></head><body><div class=\"err-wrap\"><div class=\"err-card\">"
+    "<h1>无权限访问</h1><p>请先登录，或联系管理员开通对应权限。</p>"
+    '<a href="/login">去登录</a></div></div></body></html>'
+)
 
 
 @app.errorhandler(404)

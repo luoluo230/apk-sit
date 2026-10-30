@@ -122,7 +122,13 @@ def _order_from_row(row, *, include_details: bool = False) -> Dict[str, Any]:
 
 
 
-def list_release_orders(project_id: str, filters: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+def list_release_orders(
+    project_id: str,
+    filters: Optional[Dict[str, str]] = None,
+    *,
+    sync_builds: bool = True,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     init_db()
     filters = filters or {}
     sql = "SELECT * FROM release_orders WHERE project_id=?"
@@ -133,11 +139,15 @@ def list_release_orders(project_id: str, filters: Optional[Dict[str, str]] = Non
             sql += f" AND {key}=?"
             params.append(value)
     sql += " ORDER BY updated_at DESC"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(str(max(1, int(limit))))
     with _db_lock:
         rows = _get_conn().execute(sql, params).fetchall()
-    _order_build_sync().sync_building_release_orders(project_id)
-    with _db_lock:
-        rows = _get_conn().execute(sql, params).fetchall()
+    if sync_builds:
+        _order_build_sync().sync_building_release_orders(project_id)
+        with _db_lock:
+            rows = _get_conn().execute(sql, params).fetchall()
     return [_order_from_row(row) for row in rows]
 
 

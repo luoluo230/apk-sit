@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""企业微信群机器人：发送 text 消息。"""
+import json
+import sys
+import urllib.request
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: wecom_send.py WEBHOOK_URL < message.txt")
+        sys.exit(0)
+    webhook = sys.argv[1].strip()
+    text = sys.stdin.read().strip()
+    if not webhook or not text:
+        sys.exit(0)
+    data = json.dumps(
+        {"msgtype": "text", "text": {"content": text}},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        webhook,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+    try:
+        r = urllib.request.urlopen(req, timeout=10)
+        if r.getcode() == 200:
+            print("企微通知已发送")
+        else:
+            print("企微返回状态:", r.getcode())
+    except Exception as e:
+        print("企微通知发送失败:", e)
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

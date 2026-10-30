@@ -232,6 +232,7 @@ def api_retention():
 
 
 @bp.route("/dashboard")
+@bp.route("/admin/dashboard")
 @admin_required("dashboard")
 def dashboard_page():
     from_d, to_d, from_date, to_date = _parse_date_range()
@@ -293,14 +294,20 @@ def dashboard_page():
         import traceback
 
         traceback.print_exc()
-        return render_template_string(
-            """<!DOCTYPE html><html><head><meta charset="UTF-8"><title>数据分析</title></head>
-            <body class="p-8"><h1>数据分析</h1><p class="text-red-600">数据加载出错，请查看控制台日志。错误: """
-            + str(exc)
-            + """</p><a href="/admin">返回管理中心</a></body></html>"""
-        )
+        from services.ops.helpers import _render_ops_page
 
-    return render_template(
+        err_html = (
+            '<section class="pm-page"><header class="pm-page-head"><div class="pm-page-head-text">'
+            "<h1>数据分析</h1><p>数据加载出错，请查看控制台日志。</p></div></header>"
+            '<div class="ops-workspace-empty"><strong>加载失败</strong><span>'
+            + str(exc)
+            + '</span><a class="pm-btn pm-btn--primary pm-btn--compact" href="/admin">返回工作台</a></div></section>'
+        )
+        return _render_ops_page(err_html, "数据分析", active_page="dashboard", breadcrumb_module="工作室")
+
+    from services.ops.helpers import _render_ops_page
+
+    content = render_template(
         "admin_dashboard.html",
         export_params=export_params,
         from_date=from_date,
@@ -315,6 +322,7 @@ def dashboard_page():
         total_packages=total_packages,
         total_size_mb=total_size / 1024 / 1024,
     )
+    return _render_ops_page(content, "数据分析", active_page="dashboard", breadcrumb_module="工作室")
 
 
 @bp.route("/dashboard/export")

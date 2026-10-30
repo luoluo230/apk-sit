@@ -166,24 +166,33 @@
     health = health || {};
     var client = health.client || health;
     var server = health.server || {};
+    function setMetric(el, text, empty) {
+      if (!el) return;
+      el.textContent = empty ? "暂无" : text;
+      el.classList.toggle("pm-empty-dash", !!empty);
+      if (empty) el.setAttribute("data-empty", "1");
+      else el.removeAttribute("data-empty");
+    }
     if (successRate) {
       var clientRate = client.success_rate_pct != null ? client.success_rate_pct : health.success_rate_pct;
-      successRate.textContent = clientRate != null ? clientRate + "%" : "—";
+      setMetric(successRate, clientRate != null ? clientRate + "%" : "暂无", clientRate == null);
     }
     if (serverSuccessRate) {
-      serverSuccessRate.textContent =
-        server.success_rate_pct != null ? server.success_rate_pct + "%" : "—";
+      setMetric(
+        serverSuccessRate,
+        server.success_rate_pct != null ? server.success_rate_pct + "%" : "暂无",
+        server.success_rate_pct == null
+      );
     }
     if (mttrEl) {
-      mttrEl.textContent = health.mttr_minutes != null ? health.mttr_minutes + " 分" : "—";
+      setMetric(mttrEl, health.mttr_minutes != null ? health.mttr_minutes + " 分" : "暂无", health.mttr_minutes == null);
     }
-    if (verifiedEl) verifiedEl.textContent = String(client.verified_count ?? health.verified_count ?? "—");
-    if (verifyFailedEl) {
-      verifyFailedEl.textContent = String(client.verify_failed_count ?? health.verify_failed_count ?? "—");
-    }
-    if (publishFailedEl) {
-      publishFailedEl.textContent = String(client.publish_failed_count ?? health.publish_failed_count ?? "—");
-    }
+    var verifiedVal = client.verified_count ?? health.verified_count;
+    setMetric(verifiedEl, String(verifiedVal ?? "暂无"), verifiedVal == null);
+    var verifyFailedVal = client.verify_failed_count ?? health.verify_failed_count;
+    setMetric(verifyFailedEl, String(verifyFailedVal ?? "暂无"), verifyFailedVal == null);
+    var publishFailedVal = client.publish_failed_count ?? health.publish_failed_count;
+    setMetric(publishFailedEl, String(publishFailedVal ?? "暂无"), publishFailedVal == null);
 
     if (healthBreakdown) {
       var envRows = health.by_env || [];
