@@ -107,6 +107,61 @@ def _ensure_runtime_for_scope(project_id: str, env_key: str, channel_id: str, pl
     return bool(_runtime_active_for_scope(project_id, env_key, topology_id).get("active"))
 
 
+def _ensure_local_apk_for_version(version_row: dict, project_id: str) -> str:
+    """Place a minimal APK under static so precheck HEAD can succeed (simulate, not real build)."""
+    import zipfile
+    from pathlib import Path
+    from urllib.parse import urlparse
+
+    apk_url = str(version_row.get("apk_url") or "").strip()
+    static_root = Path(ROOT) / "static"
+    target: Path | None = None
+    if apk_url:
+        path = urlparse(apk_url).path or ""
+        marker = "/static/"
+        idx = path.find(marker)
+        if idx >= 0:
+            rel = path[idx + len(marker) :].lstrip("/").replace("/", os.sep)
+            if rel:
+                target = static_root / rel
+    if target is None:
+        env = str(version_row.get("env_key") or "development").strip().lower()
+        env_dir = {
+            "development": "Development",
+            "testing": "Testing",
+            "staging": "Staging",
+            "production": "Production",
+        }.get(env, "Development")
+        channel = str(version_row.get("channel") or version_row.get("channel_id") or "wechat").strip() or "wechat"
+        # Prefer wechat path used by Development static tree when channel is numeric CDN id.
+        if channel.isdigit():
+            channel = "wechat"
+        platform = str(version_row.get("platform") or "android").strip() or "android"
+        vn = str(version_row.get("version_name") or "1.0.0")
+        vc = str(version_row.get("version_code") or "1")
+        name = f"{project_id}_{vn}_vc{vc}.apk"
+        target = static_root / env_dir / channel / platform / f"Version_{vn}" / vc / name
+        version_row["apk_url"] = (
+            f"http://127.0.0.1:5003/static/{env_dir}/{channel}/{platform}/Version_{vn}/{vc}/{name}"
+        )
+        try:
+            from models.data import save_project_versions
+
+            save_project_versions()
+        except Exception:
+            pass
+    assert target is not None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.is_file() or target.stat().st_size < 32:
+        with zipfile.ZipFile(target, "w") as zf:
+            zf.writestr(
+                "META-INF/SIMULATE.txt",
+                f"simulate_e2e_publish placeholder apk for {project_id}\n",
+            )
+        print(f"ensured placeholder apk: {target}")
+    return str(target)
+
+
 def _run_full(args: argparse.Namespace) -> int:
     from models.data import project_versions_db, projects_db
     from services.release.bundle_service import find_active_bundle
@@ -150,6 +205,8 @@ def _run_full(args: argparse.Namespace) -> int:
         print(f"FAIL: version {args.version_name}/{args.version_code} not found")
         return 1
 
+    _ensure_local_apk_for_version(version_row, project_id)
+
     order = create_release_order(
         project_id,
         {
@@ -176,11 +233,27 @@ def _run_full(args: argparse.Namespace) -> int:
     )
 
     pre = precheck_release_order(project_id, order_id, actor=args.actor)
-    if not pre.get("ok", True) and pre.get("blocking"):
-        print(json.dumps({"step": "precheck", "result": pre}, ensure_ascii=False, indent=2))
+    status = str(pre.get("status") or "")
+    latest = pre.get("latest_precheck") if isinstance(pre.get("latest_precheck"), dict) else {}
+    payload = latest.get("payload") if isinstance(latest.get("payload"), dict) else {}
+    precheck_ok = bool(payload.get("ok", pre.get("ok", status in {"ready", "awaiting_approval", "published"})))
+    if not precheck_ok or status == "precheck_failed":
+        print(
+            json.dumps(
+                {
+                    "step": "precheck",
+                    "status": status,
+                    "missing_artifact_fields": payload.get("missing_artifact_fields"),
+                    "artifact_checks": payload.get("artifact_checks"),
+                    "alignment_errors": payload.get("alignment_errors"),
+                    "runtime_active": payload.get("runtime_active"),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 3
 
-    status = str(pre.get("status") or "")
     if status == "awaiting_approval":
         approve_release_order(project_id, order_id, actor=args.actor, note="simulate_e2e_publish auto-approve")
     elif status not in {"ready", "published"}:

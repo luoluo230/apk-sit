@@ -72,6 +72,9 @@ def ensure_baas_server(portal: str) -> dict:
 
 
 def run_pytest() -> dict:
+    env = os.environ.copy()
+    env.setdefault("BAAS_STANDALONE", "1")
+    env.setdefault("PORTAL_SERVER_FRAMEWORKS", "baas")
     cmd = [
         sys.executable,
         "-m",
@@ -85,7 +88,7 @@ def run_pytest() -> dict:
         "-q",
         "--tb=line",
     ]
-    proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
+    proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env)
     return {"ok": proc.returncode == 0, "exit_code": proc.returncode, "output_tail": proc.stdout[-2000:] + proc.stderr[-2000:]}
 
 

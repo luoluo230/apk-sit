@@ -258,12 +258,29 @@ def _ensure_probe_bg_started() -> None:
 
 
 def _ws_handshake_probe(host: str = "127.0.0.1", port: int = 15050, path: str = "/ws/", timeout_sec: float = 3.0) -> Tuple[bool, str]:
+    # Prefer websocket-client: raw HttpListener handshakes often hang on Windows http.sys.
+    norm_path = "/" + str(path or "ws").strip("/") + "/"
+    ws_url = f"ws://{host}:{int(port)}{norm_path}"
+    try:
+        from websocket import create_connection
+
+        ws = create_connection(ws_url, timeout=timeout_sec)
+        try:
+            ws.close()
+        except Exception:
+            pass
+        return True, "ws_open"
+    except ImportError:
+        pass
+    except Exception as ex:
+        return False, "ws_connect_failed:" + str(ex)
+
     import base64
     import secrets
 
     key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
     req = (
-        f"GET {path} HTTP/1.1\r\n"
+        f"GET {norm_path} HTTP/1.1\r\n"
         f"Host: {host}:{port}\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"

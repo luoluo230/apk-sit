@@ -16,9 +16,28 @@ from pathlib import Path
 
 
 MACLIENT = Path(os.environ.get("MACLIENT_ROOT") or "E:/maclient")
-SMOKE_EXE = MACLIENT / "game-server/tools/SmokeTest/bin/Debug/SmokeTest.exe"
-SERVER_EXE = MACLIENT / "game-server/game-server/bin/Debug/GameServer.GameServerApp.exe"
-OUT_DIR = MACLIENT / "game-server/tools/SmokeTest/artifacts/pvp-fanout-latest"
+
+
+def _resolve_server_root(root: Path) -> Path:
+    for candidate in (root / "Server", root):
+        exe = candidate / "game-server" / "bin" / "Debug" / "GameServer.GameServerApp.exe"
+        if exe.is_file():
+            return candidate
+        # legacy nested layout
+        legacy = candidate / "game-server" / "game-server" / "bin" / "Debug" / "GameServer.GameServerApp.exe"
+        if legacy.is_file():
+            return candidate / "game-server"
+    return root / "Server"
+
+
+SERVER_ROOT = _resolve_server_root(MACLIENT)
+SMOKE_EXE = SERVER_ROOT / "tools/SmokeTest/bin/Debug/SmokeTest.exe"
+if not SMOKE_EXE.is_file():
+    SMOKE_EXE = MACLIENT / "Server/tools/SmokeTest/bin/Debug/SmokeTest.exe"
+SERVER_EXE = SERVER_ROOT / "game-server/bin/Debug/GameServer.GameServerApp.exe"
+if not SERVER_EXE.is_file():
+    SERVER_EXE = SERVER_ROOT / "game-server/game-server/bin/Debug/GameServer.GameServerApp.exe"
+OUT_DIR = SERVER_ROOT / "tools/SmokeTest/artifacts/pvp-fanout-latest"
 SERVER_ARGS = os.environ.get("GAME_SERVER_ARGS", "--servers=gateway-cn-1,auth-cn-1,game-cn-1,ops-cn-1")
 
 

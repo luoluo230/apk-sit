@@ -38,17 +38,20 @@ def _resolve_repo() -> Path:
     if env:
         return Path(env)
     for candidate in (
+        Path("E:/maclient/Server"),
         Path("E:/maclient/game-server"),
+        ROOT.parent / "maclient" / "Server",
         ROOT.parent / "maclient" / "game-server",
+        ROOT / ".." / "maclient" / "Server",
         ROOT / ".." / "maclient" / "game-server",
     ):
         try:
             p = candidate.resolve()
-            if (p / "game-server" / "GameServerApp.csproj").is_file():
+            if (p / "game-server" / "GameServerApp.csproj").is_file() or (p / "config" / "cluster.json").is_file():
                 return p
         except Exception:
             continue
-    return Path("E:/maclient/game-server")
+    return Path("E:/maclient/Server")
 
 
 def _resolve_exe(repo: Path) -> Tuple[str, str]:
@@ -163,19 +166,26 @@ def _launch_service(repo: Path, service_id: str, reason: str = "", timeout_sec: 
         return {"ok": False, "message": f"unsupported service_id: {sid}"}
     if _service_live(sid):
         return {"ok": True, "message": f"{sid} already running", "already_running": True}
-    exe, cwd = _prepare_instance(repo, sid)
-    if not exe:
+    # Prefer bin/Debug|Release cwd (full dependency set, same as MultiConsole).
+    src_exe, src_cwd = _resolve_exe(repo)
+    _prepare_instance(repo, sid)  # keep instance artifact staging folder warm
+    if not src_exe:
         return {"ok": False, "message": "GameServer.GameServerApp.exe not found"}
-    args = [exe, f"--servers={sid}", "--headless", "--headless-seconds=86400"]
+    exe, cwd = src_exe, src_cwd
+    args = [exe, f"--servers={sid}"]
+    # Keep agent-launched nodes aligned with MultiConsole (no forced headless exit).
     log_path = _instance_dir(repo, sid) / "agent-launch.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a", encoding="utf-8") as fp:
-        fp.write(f"\n[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] launch reason={reason} cmd={' '.join(args)}\n")
+        fp.write(f"\n[{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] launch reason={reason} cmd={' '.join(args)} cwd={cwd}\n")
+    # GameServer clean-exits when stdio is detached/DEVNULL; mirror MultiConsole with a real console.
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010))
     proc = subprocess.Popen(
         args,
         cwd=cwd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        creationflags=creationflags,
     )
     deadline = time.time() + max(20, int(timeout_sec))
     tcp_port = int(_TCP_PORTS.get(sid) or 0)
@@ -249,9 +259,15 @@ def _deploy_server_artifact(repo: Path, payload: Dict[str, Any], reason: str = "
     if not _verify_checksum(bundle, str(payload.get("checksum") or "")):
         return {"ok": False, "message": "checksum mismatch"}
 
+    was_live = _service_live(service_id)
     stop = _stop_service(service_id)
     if not stop.get("ok"):
         return stop
+
+    # Ensure a runnable instance baseline exists before overlaying the artifact.
+    prepared_exe, prepared_cwd = _prepare_instance(repo, service_id)
+    if not prepared_exe:
+        return {"ok": False, "message": "GameServer.GameServerApp.exe not found for deploy"}
 
     inst = _instance_dir(repo, service_id)
     inst.mkdir(parents=True, exist_ok=True)
@@ -268,10 +284,29 @@ def _deploy_server_artifact(repo: Path, payload: Dict[str, Any], reason: str = "
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
+    # Artifact overlays must not clobber runtime config/exe; restore baseline configs.
+    _prepare_instance(repo, service_id)
+    marker = inst / "deployed_artifact.json"
+    marker.write_text(
+        json.dumps(
+            {
+                "artifact_id": artifact_tag,
+                "version_label": str(payload.get("version_label") or ""),
+                "bundle_path": str(bundle),
+                "deployed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "was_live_before_deploy": was_live,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
     launch = _launch_service(repo, service_id, reason or "deploy_server_artifact")
     launch["instance_dir"] = str(inst)
     launch["artifact_id"] = artifact_tag
     launch["version_label"] = str(payload.get("version_label") or "")
+    launch["prepared_cwd"] = prepared_cwd
     return launch
 
 

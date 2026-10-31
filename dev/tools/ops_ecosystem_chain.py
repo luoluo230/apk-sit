@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Tuple
 import requests
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_GAME_SERVER = "/Users/wangling/Desktop/MyGame/GameClient/game-server"
+DEFAULT_GAME_SERVER = r"E:\maclient\Server"
 AGENT_TOKEN = "ops-write-key-2026"
 
 
@@ -41,9 +41,19 @@ def _resolve_game_server_repo(explicit: str) -> Path:
     env = os.getenv("GAME_SERVER_REPO", "").strip()
     if env and Path(env).is_dir():
         return Path(env).resolve()
-    for cand in (DEFAULT_GAME_SERVER, r"E:\maclient\game-server"):
+    maclient = os.getenv("MACLIENT_ROOT", "").strip()
+    candidates = [
+        DEFAULT_GAME_SERVER,
+        r"E:\maclient\Server",
+        r"E:\maclient\game-server",
+        str(Path(maclient) / "Server") if maclient else "",
+        "/Users/wangling/Desktop/MyGame/GameClient/game-server",
+    ]
+    for cand in candidates:
+        if not cand:
+            continue
         p = Path(cand)
-        if p.is_dir():
+        if p.is_dir() and (p / "config" / "cluster.json").is_file():
             return p.resolve()
     return Path(DEFAULT_GAME_SERVER)
 

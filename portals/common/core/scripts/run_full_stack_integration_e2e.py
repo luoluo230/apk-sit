@@ -21,7 +21,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MACLIENT = Path(os.environ.get("MACLIENT_ROOT") or "E:/maclient")
-SMOKE_RUNNER = MACLIENT / "game-server/tools/SmokeTest/run-business-test.py"
+_SERVER = MACLIENT / "Server"
+SMOKE_RUNNER = _SERVER / "tools/SmokeTest/run-business-test.py"
+if not SMOKE_RUNNER.is_file():
+    SMOKE_RUNNER = MACLIENT / "game-server/tools/SmokeTest/run-business-test.py"
+WS_LOGIN_SMOKE = ROOT / "scripts" / "ws_login_business_smoke.py"
+WS_FULL_LIFECYCLE = ROOT / "scripts" / "ws_full_lifecycle_e2e.py"
 
 
 def http_json(url: str, *, method: str = "GET", body: dict | None = None, headers: dict | None = None) -> dict:
@@ -42,7 +47,9 @@ def http_json(url: str, *, method: str = "GET", body: dict | None = None, header
 
 
 def probe_startup_gate(portal_base: str) -> dict:
-    url = portal_base.rstrip("/") + "/api/public/startup-gate"
+    # Require project identity (fail-closed gate rejects empty queries).
+    q = "project_id=GomeKu&env_key=development&channel=wechat&platform=android"
+    url = portal_base.rstrip("/") + "/api/public/startup-gate?" + q
     return http_json(url)
 
 
@@ -68,22 +75,58 @@ def main() -> int:
         report["verdict"] = "fail"
 
     if not args.skip_gameserver:
-        for plan in ("auth-login-lifecycle", "battle-room-pvp-flow", "match-queue-flow"):
-            code = run_business_plan(plan)
+        # Hard gate: sustained dual-client full lifecycle (login→select→role→game APIs→battle→PVP).
+        # Do NOT treat missing SmokeTest as pass.
+        if WS_FULL_LIFECYCLE.is_file():
+            hold = os.environ.get("E2E_HOLD_SEC", "16")
+            cmd = [sys.executable, str(WS_FULL_LIFECYCLE), "--hold-sec", hold]
+            print("[full-e2e] running", " ".join(cmd))
+            code = subprocess.call(cmd)
             ok = code == 0
-            report["checks"].append({"name": f"business::{plan}", "ok": ok, "exit_code": code})
+            report["checks"].append({"name": "business::ws-full-lifecycle", "ok": ok, "exit_code": code})
             if not ok:
                 report["verdict"] = "fail"
+        else:
+            report["checks"].append({
+                "name": "business::ws-full-lifecycle",
+                "ok": False,
+                "detail": f"missing {WS_FULL_LIFECYCLE}",
+            })
+            report["verdict"] = "fail"
+
+        if SMOKE_RUNNER.is_file():
+            for plan in ("auth-login-lifecycle", "battle-room-pvp-flow", "match-queue-flow"):
+                code = run_business_plan(plan)
+                ok = code == 0
+                report["checks"].append({"name": f"business::{plan}", "ok": ok, "exit_code": code})
+                if not ok:
+                    report["verdict"] = "fail"
+        else:
+            report["checks"].append({
+                "name": "business::smoke-plans",
+                "ok": False,
+                "skipped": True,
+                "detail": f"SmokeTest runner missing (not counted as pass): {SMOKE_RUNNER}",
+            })
+            # Not a hard fail if ws-full-lifecycle covered the path; record as gap only.
 
         fanout_script = ROOT / "scripts" / "run_battle_pvp_fanout_e2e.py"
-        if fanout_script.is_file():
-            cmd = [sys.executable, str(fanout_script)]
+        smoke_exe = _SERVER / "tools/SmokeTest/bin/Debug/SmokeTest.exe"
+        if fanout_script.is_file() and smoke_exe.is_file():
+            cmd = [sys.executable, str(fanout_script), "--no-start-server"]
             print("[full-e2e] running", " ".join(cmd))
             code = subprocess.call(cmd)
             ok = code == 0
             report["checks"].append({"name": "battle_pvp_fanout", "ok": ok, "exit_code": code})
             if not ok:
                 report["verdict"] = "fail"
+        else:
+            report["checks"].append({
+                "name": "battle_pvp_fanout_smoketest",
+                "ok": False,
+                "skipped": True,
+                "detail": "SmokeTest.exe missing; covered by business::ws-full-lifecycle PVP enqueue instead",
+            })
 
     baas_fanout_script = ROOT / "scripts" / "run_baas_pvp_fanout_e2e.py"
     if baas_fanout_script.is_file():

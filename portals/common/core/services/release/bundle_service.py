@@ -178,8 +178,21 @@ def _check_remote_artifact(url: str, *, timeout: float = 5.0) -> Dict[str, Any]:
 
 
 _DIRECTORY_PROBE_KEYS = frozenset({"resource_url", "config_url"})
-# Do NOT promote catalog/manifest success into resource/config URL success — that greened empty trees.
+# Static hosts often 404 directory URLs; only accept a child probe whose URL is under that directory.
+_DIRECTORY_CHILD_SENTINELS: Dict[str, tuple[str, ...]] = {
+    "resource_url": ("catalog_url", "code_manifest_url", "config_manifest_url"),
+    "config_url": ("config_manifest_url",),
+}
+# Do NOT promote unrelated catalog/manifest success into resource/config — empty trees must still fail.
 _PROBE_FALLBACKS: Dict[str, str] = {}
+
+
+def _url_is_under_directory(child_url: str, directory_url: str) -> bool:
+    child = str(child_url or "").strip()
+    base = str(directory_url or "").strip().rstrip("/")
+    if not child or not base:
+        return False
+    return child == base or child.startswith(base + "/")
 
 
 def _unity_project_path_from_version(version_row: Dict[str, Any]) -> str:
@@ -228,6 +241,25 @@ def _evaluate_artifact_checks(
                 "method": "fallback",
                 "verified_via": fallback_key,
             }
+    for dir_key, sentinel_keys in _DIRECTORY_CHILD_SENTINELS.items():
+        if dir_key not in checks or checks[dir_key].get("ok"):
+            continue
+        directory_url = str(targets.get(dir_key) or "").strip()
+        if not directory_url:
+            continue
+        for sentinel_key in sentinel_keys:
+            child_url = str(targets.get(sentinel_key) or "").strip()
+            if not child_url or not _url_is_under_directory(child_url, directory_url):
+                continue
+            child_check = checks.get(sentinel_key) or {}
+            if child_check.get("ok"):
+                checks[dir_key] = {
+                    "ok": True,
+                    "status": child_check.get("status", 200),
+                    "method": "directory_child",
+                    "verified_via": sentinel_key,
+                }
+                break
     apk_url = str(targets.get("apk_url") or "")
     if apk_url and not checks.get("apk_url", {}).get("ok"):
         oss_key = _resolve_apk_oss_key(version_row, apk_url)

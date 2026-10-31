@@ -117,9 +117,13 @@ def _register_agent_topology(base: str, project_id: str) -> None:
 def _make_artifact_bundle() -> str:
     fd, path = tempfile.mkstemp(suffix=".zip")
     os.close(fd)
+    # Only ship version markers — never overwrite live appsettings/cluster with empty stubs.
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("game-cn-1/version.txt", f"e2e-{int(time.time())}")
-        zf.writestr("game-cn-1/appsettings.json", "{}")
+        zf.writestr("game-cn-1/version.txt", f"e2e-{int(time.time())}\n")
+        zf.writestr(
+            "game-cn-1/DEPLOY_MARKER.txt",
+            "server_release_devstack_e2e artifact — overlay only\n",
+        )
     return path
 
 

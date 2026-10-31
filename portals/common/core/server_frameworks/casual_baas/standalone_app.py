@@ -89,6 +89,7 @@ def create_baas_app() -> Flask:
 
     @app.route("/health/detailed")
     def health_detailed():
+        import models.db as db_backend
         from models.db import get_cursor, init_db
 
         init_db()
@@ -96,7 +97,9 @@ def create_baas_app() -> Flask:
         tables = 0
         try:
             with get_cursor() as cur:
-                is_postgres = (os.getenv("DATABASE_URL") or "").strip().lower().startswith(("postgres://", "postgresql://"))
+                # Prefer actual imported backend: env DATABASE_URL can disagree after suite import order.
+                backend_name = getattr(db_backend, "__name__", "") or ""
+                is_postgres = "postgres" in backend_name
                 if is_postgres:
                     row = cur.execute(
                         "SELECT COUNT(*) AS cnt FROM information_schema.tables "
