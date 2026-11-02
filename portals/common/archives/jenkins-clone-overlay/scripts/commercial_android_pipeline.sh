@@ -11,6 +11,11 @@ if command -v chcp.com >/dev/null 2>&1; then
   chcp.com 65001 >/dev/null 2>&1 || true
 fi
 
+_ANDROID_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck disable=SC1091
+[ -f "${_ANDROID_SCRIPT_DIR}/jenkins_build_step_push.sh" ] && . "${_ANDROID_SCRIPT_DIR}/jenkins_build_step_push.sh"
+[ -n "$JENKINS_HOME" ] && [ -f "${JENKINS_HOME}/.apk-site-env" ] && . "${JENKINS_HOME}/.apk-site-env"
+
 _log_stage() {
   local step="$1"
   local title="$2"
@@ -21,6 +26,31 @@ _log_stage() {
   echo "说明: ${detail}"
   echo "时间: $(date '+%Y-%m-%d %H:%M:%S')"
   echo "=============================="
+  if type _pipeline_push_build_step >/dev/null 2>&1; then
+    if [ "$step" = "END" ]; then
+      _pipeline_push_build_step "END" "success" "$title" "$detail" || true
+    else
+      _pipeline_push_build_step "$step" "running" "$title" "$detail" || true
+    fi
+  fi
+}
+
+_finish_stage() {
+  local step="$1"
+  local title="$2"
+  local detail="${3:-完成}"
+  if type _pipeline_push_build_step >/dev/null 2>&1; then
+    _pipeline_push_build_step "$step" "success" "$title" "$detail" || true
+  fi
+}
+
+_fail_stage() {
+  local step="$1"
+  local title="$2"
+  local detail="${3:-失败}"
+  if type _pipeline_push_build_step >/dev/null 2>&1; then
+    _pipeline_push_build_step "$step" "failed" "$title" "$detail" || true
+  fi
 }
 
 echo "======================================="
@@ -60,6 +90,7 @@ if [ -n "$GIT_URL" ] && [ -n "$GIT_WORKSPACE" ]; then
   set -e
   echo "Git 拉取完成"
 fi
+_finish_stage "0" "环境准备" "环境准备完成"
 
 _resolve_apk_build_script() {
   local candidates=()
@@ -391,10 +422,11 @@ if [ "${CONFIG_EXPORT_ENABLED:-false}" = "true" ]; then
   if ! _run_unity "MAClient.ConfigContentTool.ConfigRemotePublishCli.ExecuteFromCommandLine" $CFG_ARGS; then
     _verify_step1_log "$UNITY_LOG" || { echo "FAIL: Step1 ConfigRemotePublish 退出"; exit 1; }
   fi
-  _verify_step1_log "$UNITY_LOG" || exit 1
+  _verify_step1_log "$UNITY_LOG" || { _fail_stage "1" "配置导出发布" "Step1 校验失败"; exit 1; }
   rm -f "$UNITY_LOG"
   unset UNITY_LOG UNITY_LOG_KEEP
   echo "Step 1 完成"
+  _finish_stage "1" "配置导出发布" "Step 1 完成"
 else
   echo "Step 1 (配置导出) 已跳过"
 fi
@@ -443,9 +475,11 @@ if [ "${RESOURCE_BUILD_ENABLED:-false}" = "true" ]; then
       _step2_attempt=$((_step2_attempt + 1))
       continue
     fi
+    _fail_stage "2" "资源打包" "Step2 退出码=${_step2_ec}"
     exit "$_step2_ec"
   done
   echo "Step 2 完成"
+  _finish_stage "2" "资源打包" "Step 2 完成"
 else
   echo "Step 2 (资源打包) 已跳过"
 fi
@@ -492,8 +526,12 @@ if [ "${HOT_RELEASE_ENABLED:-false}" = "true" ]; then
     _warmup_unity || echo "⚠ Step3 预热非零退出（可继续）"
     sleep 3
   fi
-  _run_unity CommercialReleaseCli.ExecuteFromCommandLine $HR_ARGS || exit $?
+  if ! _run_unity CommercialReleaseCli.ExecuteFromCommandLine $HR_ARGS; then
+    _fail_stage "3" "代码与热更发布" "CommercialReleaseCli 失败"
+    exit $?
+  fi
   echo "Step 3 完成"
+  _finish_stage "3" "代码与热更发布" "Step 3 完成"
 else
   echo "Step 3 (热更发布) 已跳过"
 fi
@@ -579,6 +617,7 @@ if [ "${APK_BUILD_ENABLED:-false}" = "true" ]; then
     exit 1
   fi
   echo "Step 4 完成（含 APK 上传与落盘）"
+  _finish_stage "4" "APK 打包与上传" "Step 4 完成"
 else
   echo "Step 4 (APK打包) 已跳过"
 fi

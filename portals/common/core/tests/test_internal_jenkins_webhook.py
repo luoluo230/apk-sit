@@ -83,6 +83,28 @@ class InternalJenkinsWebhookTests(unittest.TestCase):
         self.assertTrue(data.get("ok"))
         self.assertTrue((data.get("artifact") or {}).get("artifact_id"))
 
+    def test_build_step_push_records_progress(self):
+        payload = {
+            "instance_id": "8082",
+            "build_number": 9001,
+            "stage_key": "5",
+            "status": "running",
+            "label": "iOS Xcode 导出",
+            "platform": "ios",
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        resp = self.client.post(
+            "/api/internal/jenkins/build-step",
+            data=body,
+            headers={"Content-Type": "application/json", "X-Jenkins-Signature": _sign(body)},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("ok"))
+        steps = data.get("steps") or {}
+        self.assertIn("ios_xcode_export", steps)
+        self.assertEqual(steps["ios_xcode_export"].get("status"), "running")
+
 
 if __name__ == "__main__":
     unittest.main()

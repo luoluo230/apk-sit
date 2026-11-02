@@ -32,6 +32,45 @@ def _signature_header() -> str:
     )
 
 
+@bp.route("/api/internal/jenkins/build-step", methods=["POST"])
+def jenkins_build_step():
+    """Jenkins per-step progress push (Android / iOS packaging stages)."""
+    raw_body = request.get_data(cache=True) or b""
+    auth_error = assert_internal_webhook_request(
+        request,
+        raw_body,
+        _signature_header(),
+        "JENKINS_BUILD_WEBHOOK_SECRET",
+    )
+    if auth_error:
+        return jsonify({"ok": False, "error": auth_error}), 401
+
+    try:
+        payload = _parse_payload(raw_body)
+    except json.JSONDecodeError:
+        return jsonify({"ok": False, "error": "invalid json"}), 400
+
+    try:
+        from services.release.jenkins_step_push_store import record_step_push
+
+        snap = record_step_push(payload)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "instance_id": snap.get("instance_id"),
+            "build_number": snap.get("build_number"),
+            "platform": snap.get("platform"),
+            "steps": snap.get("steps") or {},
+            "updated_at": snap.get("updated_at"),
+        }
+    ), 200
+
+
 @bp.route("/api/internal/jenkins/build-complete", methods=["POST"])
 def jenkins_build_complete():
     """Jenkins post-build hook: HMAC body + instance_id/build_number → sync release order."""

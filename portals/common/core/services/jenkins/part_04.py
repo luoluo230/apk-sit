@@ -108,6 +108,7 @@ def _write_instance_env_and_scripts(
     dingtalk_webhook='',
     wecom_webhook='',
     build_defaults=None,
+    instance_id='',
 ):
     """为管理内实例写入 .apk-site-env 与各渠道 webhook 文件，并复制通知脚本。"""
     from services import startup
@@ -120,6 +121,8 @@ def _write_instance_env_and_scripts(
     apk_publish_esc = apk_publish_dir.replace('\\', '\\\\').replace('"', '\\"')
     def esc(s):
         return (s or '').replace('\\', '\\\\').replace('"', '\\"')
+    resolved_instance_id = str(instance_id or port or '').strip()
+    webhook_secret = str(os.getenv('JENKINS_BUILD_WEBHOOK_SECRET') or '').strip()
     lines = [
         '# 本实例环境，构建步骤会 source 此文件',
         'export JENKINS_CLONE="%s"' % esc(jenkins_home),
@@ -128,7 +131,12 @@ def _write_instance_env_and_scripts(
         'export APK_PUBLISH_DIR="%s"' % apk_publish_esc,
         'export JENKINS_JOB_DIR="%s"' % esc(job_builds),
         'export APKSITE_BASE_URL="%s"' % esc(base_url),
+        'export JENKINS_INSTANCE_ID="%s"' % esc(resolved_instance_id),
     ]
+    if webhook_secret:
+        lines.append('export JENKINS_BUILD_WEBHOOK_SECRET="%s"' % esc(webhook_secret))
+    if str(os.getenv('WEBHOOK_AUTH_DISABLED') or '').strip().lower() in {'1', 'true', 'yes'}:
+        lines.append('export WEBHOOK_AUTH_DISABLED="1"')
     # 兼容老实例：当本次 build_defaults 缺少 Git 配置时，尽量保留已有 .apk-site-env 中的值，避免“刷新后被清空”。
     existing_env = {}
     if os.path.isfile(env_path):
@@ -202,11 +210,17 @@ def _write_instance_env_and_scripts(
     os.makedirs(scripts_dst, exist_ok=True)
     for name in (
         'jenkins_send_notify.sh',
+        'jenkins_build_step_push.sh',
         'feishu_send.py',
         'dingtalk_send.py',
         'wecom_send.py',
+        'commercial_pipeline_common.sh',
+        'commercial_pipeline_unity.sh',
         'commercial_android_pipeline.sh',
+        'commercial_ios_pipeline.sh',
         'archive_apk_after_build.py',
+        'archive_build_artifact.py',
+        'upload_testflight.py',
     ):
         src = os.path.join(overlay_scripts, name)
         if os.path.isfile(src):
@@ -239,6 +253,7 @@ def refresh_instance_env_and_scripts(instance_id):
         inst.get('dingtalk_webhook') or '',
         inst.get('wecom_webhook') or '',
         None,
+        instance_id=str(instance_id or inst.get('id') or inst.get('port') or ''),
     )
     return True
 

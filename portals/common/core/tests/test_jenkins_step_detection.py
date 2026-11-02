@@ -83,6 +83,43 @@ FAIL: Step1 ConfigRemotePublish 退出
         by_id = {s["id"]: s for s in steps}
         self.assertEqual(by_id["config_export"]["status"], "failed")
 
+    def test_ios_catalog_includes_ipa_steps(self):
+        steps = parse_detection_steps(
+            "",
+            parameters={
+                "CONFIG_EXPORT_ENABLED": "true",
+                "RESOURCE_BUILD_ENABLED": "true",
+                "HOT_RELEASE_ENABLED": "true",
+                "APK_BUILD_ENABLED": "false",
+                "IOS_BUILD_ENABLED": "true",
+                "EXTERNAL_UPLOAD_TESTFLIGHT": "true",
+                "RELEASE_PLATFORM": "iOS",
+            },
+            building=True,
+            platform="ios",
+        )
+        ids = [s["id"] for s in steps]
+        self.assertIn("ios_xcode_export", ids)
+        self.assertIn("ios_ipa_archive", ids)
+        self.assertIn("ios_testflight", ids)
+        self.assertNotIn("apk_build", ids)
+
+    def test_push_overrides_log(self):
+        steps = parse_detection_steps(
+            "",
+            parameters={"CONFIG_EXPORT_ENABLED": "true", "RESOURCE_BUILD_ENABLED": "true"},
+            building=True,
+            platform="android",
+            pushed_steps={
+                "env_prep": {"status": "success"},
+                "config_export": {"status": "running"},
+            },
+        )
+        by_id = {s["id"]: s for s in steps}
+        self.assertEqual(by_id["env_prep"]["status"], "success")
+        self.assertEqual(by_id["config_export"]["status"], "running")
+        self.assertEqual(by_id["config_export"]["source"], "jenkins_push")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -244,11 +244,13 @@
         </div>
       </li>`;
     }).join("");
+    const plat = String(build.detection_platform || "").toLowerCase() === "ios" ? "iOS" : "Android";
+    const src = String(build.detection_source || "") === "jenkins_push" ? "Jenkins 步骤推送" : "日志解析（回退）";
     return `<section class="cj-detect" aria-label="打包步骤检测">
       <div class="cj-detect-head">
         <div>
-          <h3>打包步骤检测</h3>
-          <p>${current ? `当前：${esc(current)}。` : ""}按本次启用的 Jenkins 步骤显示进度，点击「查看日志」跳转构建工作台定位问题。</p>
+          <h3>打包步骤检测 · ${esc(plat)}</h3>
+          <p>${current ? `当前：${esc(current)}。` : ""}来源：${esc(src)}。按本次启用步骤显示进度（含后续 iOS 自动打包），点击「查看日志」跳转工作台定位问题。</p>
         </div>
         <div class="cj-detect-legend" aria-hidden="true">
           <span class="is-success">完成</span>

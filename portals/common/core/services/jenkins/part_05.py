@@ -207,6 +207,7 @@ def apply_project_build_env(instance_id, project_id='', build_defaults_override=
         inst.get('dingtalk_webhook') or '',
         inst.get('wecom_webhook') or '',
         bd,
+        instance_id=str(instance_id or inst.get('id') or inst.get('port') or ''),
     )
     return True, ''
 
@@ -275,6 +276,7 @@ def start_jenkins(
         dingtalk_webhook,
         wecom_webhook,
         None,
+        instance_id=str(port),
     )
     instances = load_jenkins_instances()
     for inst in instances:
