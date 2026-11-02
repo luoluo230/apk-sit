@@ -376,6 +376,17 @@ def resolve_channel_build_journey(
     if latest_build:
         latest_build = dict(latest_build)
         latest_build["progress_pct"] = _jenkins_progress_pct(latest_build)
+        try:
+            from services.release.jenkins_step_detection import load_detection_for_build
+
+            latest_build = load_detection_for_build(latest_build)
+            if latest_build.get("detection_progress_pct") is not None and latest_build.get("building"):
+                latest_build["progress_pct"] = max(
+                    int(latest_build.get("progress_pct") or 0),
+                    int(latest_build.get("detection_progress_pct") or 0),
+                )
+        except Exception:
+            latest_build.setdefault("detection_steps", [])
         state = dict(state)
         state["latest_build"] = latest_build
         per_platform = dict(per_platform)

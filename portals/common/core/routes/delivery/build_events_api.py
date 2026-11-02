@@ -30,6 +30,17 @@ def _build_snapshot(project_id: str, version_id: str, *, sync: bool = True) -> D
         if build:
             build = dict(build)
             build["progress_pct"] = _jenkins_progress_pct(build)
+            try:
+                from services.release.jenkins_step_detection import load_detection_for_build
+
+                build = load_detection_for_build(build)
+                if build.get("detection_progress_pct") is not None and build.get("building"):
+                    build["progress_pct"] = max(
+                        int(build.get("progress_pct") or 0),
+                        int(build.get("detection_progress_pct") or 0),
+                    )
+            except Exception:
+                build.setdefault("detection_steps", [])
     order_status = ""
     if vid and project_id in projects_db:
         try:

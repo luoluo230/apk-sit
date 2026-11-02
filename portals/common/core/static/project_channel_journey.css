@@ -152,6 +152,168 @@
   color: #a8071a;
 }
 .cj-activity-inner.is-empty .cj-activity-head p { max-width: 560px; }
+
+/* ---- 打包步骤检测（按启用的 Jenkins 阶段） ---- */
+.cj-detect {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--cj-line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.cj-detect-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cj-detect-head h3 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--cj-text);
+}
+.cj-detect-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--cj-muted);
+  max-width: 520px;
+}
+.cj-detect-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--cj-muted);
+}
+.cj-detect-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cj-detect-legend span::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #94a3b8;
+}
+.cj-detect-legend .is-success::before { background: #52c41a; }
+.cj-detect-legend .is-running::before { background: #1677ff; }
+.cj-detect-legend .is-failed::before { background: #ff4d4f; }
+.cj-detect-legend .is-stopped::before { background: #8c8c8c; }
+.cj-detect-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.cj-detect-step {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+.cj-detect-step-top,
+.cj-detect-step-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.cj-detect-step-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cj-detect-step-title strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--cj-text);
+}
+.cj-detect-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.cj-detect-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cj-detect-badge.is-success { color: #389e0d; background: #f6ffed; border-color: #b7eb8f; }
+.cj-detect-badge.is-running { color: #0958d9; background: #e6f4ff; border-color: #91caff; }
+.cj-detect-badge.is-failed { color: #cf1322; background: #fff1f0; border-color: #ffa39e; }
+.cj-detect-badge.is-stopped { color: #595959; background: #f5f5f5; border-color: #d9d9d9; }
+.cj-detect-badge.is-pending { color: #64748b; background: #f8fafc; border-color: #e2e8f0; }
+.cj-detect-badge.is-skipped { color: #94a3b8; background: #f8fafc; border-color: #e2e8f0; }
+.cj-detect-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef1f6;
+  overflow: hidden;
+}
+.cj-detect-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: #cbd5e1;
+  transition: width 0.28s ease;
+}
+.cj-detect-step.is-success .cj-detect-bar span {
+  background: linear-gradient(90deg, #52c41a, #95de64, #52c41a);
+  background-size: 200% 100%;
+  animation: cj-detect-green-flow 1.8s linear infinite;
+}
+.cj-detect-step.is-running .cj-detect-bar span {
+  background: linear-gradient(90deg, #1677ff, #69b1ff, #1677ff);
+  background-size: 200% 100%;
+  animation: cj-detect-blue-flow 1.4s linear infinite;
+}
+.cj-detect-step.is-failed .cj-detect-bar span { background: #ff4d4f; }
+.cj-detect-step.is-stopped .cj-detect-bar span { background: #8c8c8c; }
+.cj-detect-step.is-pending .cj-detect-bar span,
+.cj-detect-step.is-skipped .cj-detect-bar span { background: #cbd5e1; width: 0 !important; }
+.cj-detect-hint { font-size: 11px; color: var(--cj-muted); }
+.cj-detect-log {
+  font-size: 12px;
+  font-weight: 650;
+  color: #1677ff;
+  text-decoration: none;
+}
+.cj-detect-log:hover { text-decoration: underline; }
+@keyframes cj-detect-green-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes cj-detect-blue-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
 .cj-header-switch { display: none !important; }
 .cj-context { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .cj-context-chip {

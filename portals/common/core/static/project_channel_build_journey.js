@@ -204,17 +204,61 @@
     });
   };
 
-  const buildRecordHref = (build, links) => {
+  const buildRecordHref = (build, links, stepId = "") => {
     const base = links?.build_history || `/admin/projects/${encodeURIComponent(projectId)}/build-history`;
     try {
       const url = new URL(base, location.origin);
       if (build?.build_number) url.searchParams.set("build_number", String(build.build_number));
       if (versionId) url.searchParams.set("version_id", versionId);
       url.searchParams.set("scoped", "1");
+      if (stepId) url.searchParams.set("step", String(stepId));
+      url.searchParams.set("open_log", "1");
       return `${url.pathname}${url.search}`;
     } catch {
       return base;
     }
+  };
+
+  const detectionStepsHtml = (build, links) => {
+    const steps = Array.isArray(build?.detection_steps) ? build.detection_steps : [];
+    if (!steps.length) return "";
+    const current = String(build.detection_current_label || "").trim();
+    const rows = steps.map((step) => {
+      const status = String(step.status || "pending");
+      const pct = Math.max(0, Math.min(100, Number(step.progress_pct) || 0));
+      const href = buildRecordHref(build, links, step.id || "");
+      return `<li class="cj-detect-step is-${esc(status)}" data-step="${esc(step.id || "")}">
+        <div class="cj-detect-step-top">
+          <div class="cj-detect-step-title">
+            <span class="cj-detect-index">${esc(step.index || "")}</span>
+            <strong>${esc(step.label || step.id || "步骤")}</strong>
+          </div>
+          <span class="cj-detect-badge is-${esc(status)}">${esc(step.status_label || status)}</span>
+        </div>
+        <div class="cj-detect-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+          <span style="width:${pct}%"></span>
+        </div>
+        <div class="cj-detect-step-foot">
+          <span class="cj-detect-hint">${esc(step.stage_key ? `阶段 ${step.stage_key}` : "打包步骤")}</span>
+          <a class="cj-detect-log" href="${esc(href)}">查看日志</a>
+        </div>
+      </li>`;
+    }).join("");
+    return `<section class="cj-detect" aria-label="打包步骤检测">
+      <div class="cj-detect-head">
+        <div>
+          <h3>打包步骤检测</h3>
+          <p>${current ? `当前：${esc(current)}。` : ""}按本次启用的 Jenkins 步骤显示进度，点击「查看日志」跳转构建工作台定位问题。</p>
+        </div>
+        <div class="cj-detect-legend" aria-hidden="true">
+          <span class="is-success">完成</span>
+          <span class="is-running">进行中</span>
+          <span class="is-failed">失败</span>
+          <span class="is-stopped">停止</span>
+        </div>
+      </div>
+      <ol class="cj-detect-list">${rows}</ol>
+    </section>`;
   };
 
   const activityKvGrid = (build) => {
@@ -258,16 +302,18 @@
       ? `<div class="cj-activity-failure"><strong>失败摘要</strong><pre>${esc(build.failure_summary)}</pre></div>`
       : "";
 
+    const detectBlock = detectionStepsHtml(build, links);
     if (build.building) {
       inner.innerHTML = `<div class="cj-activity-inner is-building">
         <div class="cj-activity-head">
           <div>
             <h2>构建进行中</h2>
-            <p>Jenkins 正在构建 #${esc(num)}，可打开控制台查看实时日志或停止构建。</p>
+            <p>Jenkins 正在构建 #${esc(num)}。下方按启用步骤检测进度；任一步可跳转工作台查看对应日志。</p>
           </div>
           ${statusBadge(build)}
         </div>
         <div class="cj-activity-progress" aria-hidden="true"><span style="width:${progress}%"></span></div>
+        ${detectBlock}
         ${activityKvGrid(build)}
         ${failureBlock}
         <div class="cj-activity-actions">
@@ -284,11 +330,12 @@
       <div class="cj-activity-head">
         <div>
           <h2>最近构建</h2>
-          <p>当前 VersionCode 最近一次构建详情，可跳转至构建与产物页查看完整记录。</p>
+          <p>当前 VersionCode 最近一次构建的步骤检测结果，可跳转构建工作台查看完整日志定位问题。</p>
         </div>
         ${statusBadge(build)}
       </div>
       <div class="cj-activity-progress is-done" aria-hidden="true"><span style="width:${progress}%"></span></div>
+      ${detectBlock}
       ${activityKvGrid(build)}
       ${failureBlock}
       <div class="cj-activity-actions">
