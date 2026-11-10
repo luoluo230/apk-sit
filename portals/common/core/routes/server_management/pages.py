@@ -13,14 +13,22 @@ from server_frameworks.registry import is_module_enabled
 
 def _hub_page_context(locked_project_id: str = ""):
     locked = str(locked_project_id or "").strip()
-    show_topology = is_module_enabled("topology_server")
-    show_baas = False
-    tab = "topology" if show_topology else "baas"
+    from services.baas.project_nav_policy import hub_tab_flags
+
+    flags = hub_tab_flags(locked)
+    show_topology = bool(flags.get("show_topology_tab")) and is_module_enabled("topology_server")
+    show_baas = bool(flags.get("show_baas_tab")) and is_module_enabled("casual_baas_server")
+    if locked:
+        tab = str(flags.get("default_tab") or "topology")
+    else:
+        tab = "topology" if show_topology else "baas"
     return {
         "locked_project_id": locked,
         "default_tab": tab,
         "show_topology_tab": show_topology,
         "show_baas_tab": show_baas,
+        "server_mode": flags.get("server_mode") or "",
+        "monitor_only": bool(flags.get("monitor_only")),
         "filter_project_id": locked or str(request.args.get("project_id") or "").strip(),
         "filter_env_key": str(request.args.get("env_key") or "").strip(),
         "filter_status": str(request.args.get("status") or "").strip(),
@@ -40,7 +48,7 @@ def register_server_management_page_routes(bp) -> None:
         content = _render_local_template("server_management_hub.html", **ctx)
         css = '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260724-sm2">'
         css += '<link rel="stylesheet" href="/static/server_management_hub.css?v=20261030-sm3">'
-        js = '<script src="/static/server_management_hub.js?v=20261030-sm3"></script>'
+        js = '<script src="/static/server_management_hub.js?v=20261109-p401"></script>'
         return _render_ops_page(
             content,
             "服务器管理",
@@ -62,7 +70,7 @@ def register_server_management_page_routes(bp) -> None:
         content = _render_local_template("server_management_hub.html", **ctx)
         css = '<link rel="stylesheet" href="/static/project_environment_detail.css?v=20260724-sm2">'
         css += '<link rel="stylesheet" href="/static/server_management_hub.css?v=20261030-sm3">'
-        js = '<script src="/static/server_management_hub.js?v=20261030-sm3"></script>'
+        js = '<script src="/static/server_management_hub.js?v=20261109-p401"></script>'
         return _render_ops_page(
             content,
             "服务器管理",

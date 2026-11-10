@@ -4,7 +4,7 @@
 
 | 用户意图 | 唯一 URL | API | Service 模块 |
 |----------|----------|-----|--------------|
-| 看线上与下一步 | `/admin/projects/{id}/release-hub` | `GET /api/projects/{id}/release-hub` | `release_hub_bff` + `flow_storyline_service` |
+| 看线上与发布单详情 | `/admin/projects/{id}/release-hub` | `GET /api/projects/{id}/release-hub` | `release_hub_bff` + `flow_storyline_service`（七步为发布单详情；**四步主轨**见页顶步骤条与版本页） |
 | 执行发版 | `/admin/projects/{id}/release` | `GET /api/projects/{id}/release-console` | `release_console_bff` |
 | 管版本与管线 | `/admin/projects/{id}/versions?env_key=` | `GET /api/projects/{id}/version-delivery-matrix` | `version_delivery_matrix_service` |
 | 看构建与产物 | `/admin/projects/{id}/build-history` | 构建历史 API | `build_history_service` |
@@ -28,8 +28,9 @@
 
 | Legacy | 替代 |
 |--------|------|
-| `.../channels/{ch}/build` | `/versions?env_key&channel_id&platform&action=create_vc` |
+| `.../channels/{ch}/build` | 默认 302 → `/versions?...&action=focus_build`；`?detail=1` 仍渲染打包进度 Journey |
 | `.../channels/{ch}/release` | `/versions?...&action=edit_release` |
+| `POST .../commercial-release/trigger`（无 version） | **410 Gone**；有 `_project_id`+`_version_id` 时仍代理 quick-build 并标 deprecated |
 | `/admin/versions` | `/admin/projects` |
 | `/admin/build/commercial-release` | `/admin/projects/{id}/overview` |
 | `POST .../commercial-release/trigger` | `POST .../quick-build` |

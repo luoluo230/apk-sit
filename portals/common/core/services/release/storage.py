@@ -163,12 +163,40 @@ def _upsert_bundle(cur, row: Dict[str, Any]) -> None:
 
 
 def load_bundles() -> List[Dict[str, Any]]:
+    """Load bundles; prefer SQL publish_status column over stale payload field.
+
+    Seed/supersede paths update the column first. Filtering only on payload.publish_status
+    caused runtime-bootstrap to keep serving superseded commercial bundles and skip gate fixtures.
+    """
     init_db()
     with _db_lock:
         rows = _get_conn().execute(
-            "SELECT payload FROM release_bundles ORDER BY COALESCE(published_at, created_at) DESC"
+            """
+            SELECT bundle_id, publish_status, platform, version_name, version_code, payload,
+                   published_at, created_at
+            FROM release_bundles
+            ORDER BY COALESCE(published_at, created_at) DESC
+            """
         ).fetchall()
-    return [_decode(row["payload"]) for row in rows]
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        payload = _decode(row["payload"]) or {}
+        if not isinstance(payload, dict):
+            continue
+        merged = dict(payload)
+        col_status = str(row["publish_status"] or "").strip()
+        if col_status:
+            merged["publish_status"] = col_status
+        if not str(merged.get("bundle_id") or "").strip():
+            merged["bundle_id"] = str(row["bundle_id"] or "")
+        if not str(merged.get("platform") or "").strip() and row["platform"]:
+            merged["platform"] = str(row["platform"] or "")
+        if not str(merged.get("version_name") or "").strip() and row["version_name"]:
+            merged["version_name"] = str(row["version_name"] or "")
+        if not str(merged.get("version_code") or "").strip() and row["version_code"]:
+            merged["version_code"] = str(row["version_code"] or "")
+        out.append(merged)
+    return out
 
 
 def find_manifest(project_id: str) -> Dict[str, Any]:

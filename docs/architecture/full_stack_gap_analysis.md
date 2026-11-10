@@ -5,6 +5,11 @@
 > 目的：从 **Web 管理端 → Jenkins 构建 → 发布/Bundle → 游戏客户端 → 游戏服务器** 梳理完整闭环，结合日常迭代与商业发布场景，列出真实缺口、BUG 与伪实现，供后续排期使用。  
 > 关联真源：`docs/full_release_chain_architecture.md`（2026-06-11，部分接口描述已落后于代码）
 
+> **⚠ 与 closure 真源（2026-11-10）**  
+> 下文 §4「35/35 FIXED」指 **2026-07-22 迭代缺口清单结案**，不表示 P0 存储/安全/巨石/UI 债已清零。  
+> **未完成项 SSOT**：[plans/OPEN_ITEMS_MASTER.md](./plans/OPEN_ITEMS_MASTER.md)（含 Wave A–E、`W-P1-2` / `W-P2-2` 等 OPEN 债）。  
+> 发版前以 MASTER + `PLAN_CLOSURE_STATUS.md` 严格侧为准，勿读本文件表头「全绿」为生产就绪。
+
 ---
 
 ## 0. 结论摘要（能否支撑「快速迭代游戏」）
@@ -239,6 +244,8 @@ release_order_service.py   ← facade（25 行）
 ---
 
 ## 7. 日常 / 商业发布检查清单（给使用者）
+
+> **发版前严格门禁**：勾选是否满足生产/商业 closure 以 [`plans/OPEN_ITEMS_MASTER.md`](./plans/OPEN_ITEMS_MASTER.md) 为准；本节清单供日常操作核对，**不等价于 MASTER 全项 DONE**。
 
 ### Dev 发版前（5 项）
 

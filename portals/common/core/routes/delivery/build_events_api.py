@@ -12,21 +12,30 @@ from flask import Response, jsonify, make_response, request
 
 from models.data import projects_db
 from services.authz import admin_required
-from services.build_history_service import latest_build_for_version
+from services.build_history_service import latest_build_for_delivery_line
 from services.release.channel_journey_bff import _jenkins_progress_pct
 from services.release.release_order_service import find_release_order_for_version, sync_building_release_orders
 
 
 def _build_snapshot(project_id: str, version_id: str, *, sync: bool = True) -> Dict[str, Any]:
     vid = str(version_id or "").strip()
+    plat = str(request.args.get("platform") or "").strip().lower()
+    channel_id = str(request.args.get("channel_id") or "").strip()
+    version_name = str(request.args.get("version_name") or "").strip()
     if sync and project_id in projects_db:
         try:
             sync_building_release_orders(project_id, actor="build-events")
         except Exception:
             pass
     build: Dict[str, Any] = {}
-    if vid:
-        build = latest_build_for_version(vid, project_id) or {}
+    if vid or channel_id:
+        build = latest_build_for_delivery_line(
+            project_id,
+            version_id=vid,
+            channel_id=channel_id,
+            platform=plat,
+            version_name=version_name,
+        ) or {}
         if build:
             build = dict(build)
             build["progress_pct"] = _jenkins_progress_pct(build)
@@ -52,10 +61,12 @@ def _build_snapshot(project_id: str, version_id: str, *, sync: bool = True) -> D
     return {
         "project_id": project_id,
         "version_id": vid,
-        "platform": str(request.args.get("platform") or "").strip().lower(),
+        "platform": plat,
+        "channel_id": channel_id,
         "build": build or None,
         "building": building,
         "order_status": order_status,
+        "match_scope": str((build or {}).get("match_scope") or ""),
         "polled_at": time.time(),
     }
 

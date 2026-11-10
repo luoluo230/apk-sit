@@ -140,6 +140,25 @@ def main() -> int:
             "UPDATE release_bundles SET publish_status='superseded', updated_at=? WHERE scope_id=? AND publish_status='published'",
             (now, SCOPE_ID),
         )
+        # Keep payload.publish_status aligned with column (bootstrap filters historically read payload).
+        superseded = cur.execute(
+            "SELECT bundle_id, payload FROM release_bundles WHERE scope_id=? AND publish_status='superseded'",
+            (SCOPE_ID,),
+        ).fetchall()
+        for row in superseded:
+            try:
+                body = json.loads(row["payload"] or "{}")
+            except Exception:
+                body = {}
+            if not isinstance(body, dict):
+                continue
+            if str(body.get("publish_status") or "") == "superseded":
+                continue
+            body["publish_status"] = "superseded"
+            cur.execute(
+                "UPDATE release_bundles SET payload=?, updated_at=? WHERE bundle_id=?",
+                (json.dumps(body, ensure_ascii=False), now, row["bundle_id"]),
+            )
         cur.execute(
             """
             INSERT INTO release_bundles (

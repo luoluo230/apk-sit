@@ -279,8 +279,16 @@
     const badge = String(cap.badge || "");
     const label = String(cap.badge_label || "");
     if (!label) return "";
-    const cls = badge === "buildable" ? "cap-badge cap-badge--buildable" : badge === "client_only" ? "cap-badge cap-badge--client" : "cap-badge cap-badge--catalog";
-    const icon = badge === "buildable" ? "🟢" : badge === "client_only" ? "🟡" : "⚪";
+    const cls =
+      badge === "buildable"
+        ? "cap-badge cap-badge--buildable"
+        : badge === "product_excluded"
+          ? "cap-badge cap-badge--excluded"
+          : badge === "client_only"
+            ? "cap-badge cap-badge--client"
+            : "cap-badge cap-badge--catalog";
+    const icon =
+      badge === "buildable" ? "🟢" : badge === "product_excluded" ? "🔴" : badge === "client_only" ? "🟡" : "⚪";
     return `<span class="${cls}" title="${esc(label)}">${icon} ${esc(label)}</span>`;
   };
   const loadPlatformCatalog = async () => {
@@ -437,26 +445,6 @@
       ? assigned.map((item) => `<span class="channel-chip${item.enabled ? "" : " is-disabled"}">${esc(item.name)}${platformBadgeHtml(item)}${item.enabled ? "" : "（已禁用）"}</span>`).join("")
       : '<span class="channel-chip muted">未配置平台</span>';
   };
-  const overviewFilterParams = () => {
-    const params = new URLSearchParams(location.search);
-    return {
-      env_key: params.get("env_key") || "",
-      channel_id: params.get("channel_id") || "",
-      platform: params.get("platform") || "",
-      health: params.get("health") || "",
-    };
-  };
-  const overviewQueryString = (filters) => {
-    const params = new URLSearchParams();
-    if (location.search.includes("tab=channels")) params.set("tab", "channels");
-    if (location.search.includes("tab=platforms")) params.set("tab", "platforms");
-    if (location.search.includes("tab=environments")) params.set("tab", "environments");
-    Object.entries(filters || overviewFilterParams()).forEach(([key, value]) => {
-      if (value) params.set(key, value);
-    });
-    const text = params.toString();
-    return text ? `?${text}` : "";
-  };
   const loadOverviewManifestStatus = async () => {
     const node = document.getElementById("overviewScopeSyncStatus");
     if (!node) return;
@@ -537,60 +525,6 @@
     });
     const tab = params.get("tab");
     setTab(tab === "channels" || tab === "platforms" || tab === "environments" ? tab : "overview");
-  };
-  const populateOverviewFilters = (data) => {
-    const envSelect = document.getElementById("filterEnvKey");
-    const channelSelect = document.getElementById("overviewFilterChannel");
-    const platformSelect = document.getElementById("filterPlatform");
-    const healthSelect = document.getElementById("filterHealth");
-    const filters = overviewFilterParams();
-    if (envSelect) {
-      const options = data.environment_options || [];
-      envSelect.innerHTML = '<option value="">全部环境</option>' + options.map((row) => `<option value="${esc(row.env_key)}">${esc(row.env_label)}</option>`).join("");
-      envSelect.value = filters.env_key;
-    }
-    if (channelSelect) {
-      const options = data.channel_options || [];
-      channelSelect.innerHTML = '<option value="">全部渠道</option>' + options.map((row) => `<option value="${esc(row.channel_id)}">${esc(row.channel_name)}</option>`).join("");
-      channelSelect.value = filters.channel_id;
-    }
-    if (platformSelect) {
-      const options = data.platform_options || [];
-      platformSelect.innerHTML = '<option value="">全部平台</option>' + options.map((row) => `<option value="${esc(row.value)}">${esc(row.label)}</option>`).join("");
-      platformSelect.value = filters.platform;
-    }
-    if (healthSelect) {
-      const options = data.health_options || [];
-      healthSelect.innerHTML = '<option value="">全部状态</option>' + options.map((row) => `<option value="${esc(row.value)}">${esc(row.label)}</option>`).join("");
-      healthSelect.value = filters.health;
-    }
-  };
-  const bindOverviewFilters = () => {
-    const apply = () => {
-      const filters = {
-        env_key: document.getElementById("filterEnvKey")?.value || "",
-        channel_id: document.getElementById("overviewFilterChannel")?.value || "",
-        platform: document.getElementById("filterPlatform")?.value || "",
-        health: document.getElementById("filterHealth")?.value || "",
-      };
-      const url = new URL(location.href);
-      ["env_key", "channel_id", "platform", "health"].forEach((key) => {
-        if (filters[key]) url.searchParams.set(key, filters[key]);
-        else url.searchParams.delete(key);
-      });
-      history.replaceState(null, "", `${url.pathname}${url.search}`);
-      loadOverview().catch((error) => toast(error.message, "error"));
-    };
-    ["filterEnvKey", "overviewFilterChannel", "filterPlatform"].forEach((id) => {
-      const node = document.getElementById(id);
-      if (node) node.onchange = apply;
-    });
-    document.getElementById("btnResetOverviewFilters")?.addEventListener("click", () => {
-      const url = new URL(location.href);
-      ["env_key", "channel_id", "platform", "health"].forEach((key) => url.searchParams.delete(key));
-      history.replaceState(null, "", `${url.pathname}${url.search}`);
-      loadOverview().catch((error) => toast(error.message, "error"));
-    });
   };
   const envConfigIconFile = (envKey) => {
     const k = String(envKey || "").toLowerCase();
@@ -837,139 +771,11 @@
       }
     };
   };
-  const renderOverviewChannelTabs = (channelOptions, activeChannelId) => {
-    const host = document.getElementById("overviewChannelTabs");
-    if (!host) return;
-    const tabs = [{ id: "", name: "全部渠道" }, ...(channelOptions || []).map((row) => ({ id: row.channel_id, name: row.channel_name }))];
-    host.innerHTML = tabs.map((tab) => `<button type="button" class="overview-channel-tab${activeChannelId === tab.id ? " active" : ""}" data-overview-channel-id="${esc(tab.id)}">${esc(tab.name)}</button>`).join("");
-    host.querySelectorAll("[data-overview-channel-id]").forEach((button) => {
-      button.onclick = () => {
-        const channelId = button.dataset.overviewChannelId || "";
-        const url = new URL(location.href);
-        if (channelId) url.searchParams.set("channel_id", channelId);
-        else url.searchParams.delete("channel_id");
-        history.replaceState(null, "", `${url.pathname}${url.search}`);
-        loadOverview().catch((error) => toast(error.message, "error"));
-      };
-    });
-  };
-
-  let overviewActivityEvents = [];
-  const envCardIcon = (envKey) => {
-    const key = String(envKey || "").toLowerCase();
-    if (key === "production") return "status_warning.svg";
-    if (key === "staging") return "action_filter.svg";
-    if (key === "testing") return "status_info.svg";
-    return "nav_environment.svg";
-  };
-  const envHealthPercent = (health) => {
-    if (health === "healthy") return "98.6";
-    if (health === "processing") return "92.0";
-    if (health === "warning") return "78.5";
-    if (health === "blocked") return "45.0";
-    return "0.0";
-  };
-  const envShortKey = (envKey) => {
-    const map = { development: "dev", testing: "test", staging: "pre", production: "prod" };
-    return map[String(envKey || "").toLowerCase()] || String(envKey || "");
-  };
-  const formatPlatformLabels = (platforms) => {
-    const labels = { android: "Android", ios: "iOS", windows: "Windows", webgl: "WebGL", macos: "macOS" };
-    const list = (platforms || []).map((p) => labels[String(p || "").toLowerCase()] || p);
-    return list.length ? list.join(" / ") : "多平台";
-  };
-  const renderOverviewActivity = (tab = "all") => {
-    const host = document.getElementById("overviewActivity");
-    if (!host) return;
-    const filtered = tab === "all"
-      ? overviewActivityEvents
-      : overviewActivityEvents.filter((item) => item.kind === tab);
-    host.innerHTML = filtered.length
-      ? filtered.map((item) => `<a class="p02-activity-item" href="${esc(item.href)}"><span class="p02-activity-type ${esc(item.kind)}">${esc(item.typeLabel)}</span><div class="p02-activity-body"><strong>${esc(item.title)}</strong></div><span class="p02-activity-meta"><img src="/static/project_ui/svg/global_user.svg" alt="">${esc(item.actor)} ${esc(item.time)}</span></a>`).join("")
-      : '<div class="p02-empty">暂无最近动态</div>';
-  };
-  const bindOverviewActivityTabs = () => {
-    document.querySelectorAll(".p02-activity-tab[data-activity-tab]").forEach((button) => {
-      button.onclick = () => {
-        document.querySelectorAll(".p02-activity-tab[data-activity-tab]").forEach((b) => b.classList.toggle("active", b === button));
-        renderOverviewActivity(button.dataset.activityTab || "all");
-      };
-    });
-  };
-
   async function loadOverview() {
     if (typeof window.__P02_loadOverview === "function") {
       return window.__P02_loadOverview();
     }
-    const data = await api(`/api/projects/${encodeURIComponent(projectId)}/overview${overviewQueryString()}`);
-    populateOverviewFilters(data);
-    const activeChannelId = overviewFilterParams().channel_id || "";
-    const cards = data.environments || [];
-    const allOrders = cards.flatMap((item) => item.latest_orders || []);
-    const sortedOrders = [...allOrders].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
-    const latestOrder = sortedOrders[0];
-    const memberCount = Number(page.dataset.memberCount || 0);
-    const k = data.kpis || {};
-    const links = k.links || {};
-    const versionText = k.current_version && k.current_version !== "—"
-      ? (k.current_version_code ? `${k.current_version} / ${k.current_version_code}` : k.current_version)
-      : "—";
-    const healthVal = k.service_health_pct == null ? "—" : `${k.service_health_pct}%`;
-    const kpis = [
-      ["kpi_version.svg", "当前版本", versionText, "blue", "", links.version || scopeHref(`/admin/projects/${projectId}/versions`, { env_key: overviewFilterParams().env_key || "production" })],
-      ["kpi_health.svg", "服务健康度", healthVal, "green", k.service_health_source === "ops" ? "Ops 探针" : "", links.health || `/admin/projects/${projectId}/environments/${encodeURIComponent(overviewFilterParams().env_key || "production")}/runtime`],
-      ["kpi_build.svg", "今日构建次数", String(k.today_build_count ?? 0), "violet", "", links.builds || `/admin/projects/${projectId}/build-history`],
-      ["kpi_change.svg", "待处理变更", String(k.pending_changes ?? 0), "orange", "", links.changes || `/admin/projects/${projectId}/release-orders?status=awaiting_approval`],
-      ["kpi_member.svg", "项目成员", String(k.member_count ?? memberCount), "cyan", "", links.members || `/admin/projects/${projectId}/settings?tab=members`],
-    ];
-    document.getElementById("overviewKpis").innerHTML = kpis.map(([icon, label, value, tone, sub, link], i) => {
-      return `<article class="pm-kpi-card"><span class="pm-kpi-icon pm-kpi-icon--${tone}"><img src="/static/project_ui/svg/${icon}" alt=""></span><div class="pm-kpi-body"><span>${label}</span><strong>${value}</strong>${sub ? `<span class="pm-kpi-trend up">${sub}</span>` : ""}${link ? `<a class="pm-kpi-footlink" href="${link}">${label === "当前版本" ? "版本详情" : label === "服务健康度" ? "健康概览" : label === "今日构建次数" ? "构建与产物" : label === "待处理变更" ? "变更治理" : "成员管理"} &gt;</a>` : ""}</div></article>`;
-    }).join("");
-    const channelNameMap = Object.fromEntries((data.channel_options || []).map((row) => [row.channel_id, row.channel_name]));
-    document.getElementById("environmentCards").innerHTML = cards.length
-      ? cards.map((item) => {
-          const channelText = activeChannelId
-            ? (channelNameMap[activeChannelId] || activeChannelId)
-            : ((item.channel_ids?.length ? `${item.channel_ids.length} 个渠道` : "全部渠道"));
-          const platformText = formatPlatformLabels(item.platforms);
-          const healthPctCard = envHealthPercent(item.health);
-          const healthClass = Number(healthPctCard) >= 95 ? "good" : Number(healthPctCard) >= 80 ? "warn" : "bad";
-          const instances = `${item.configured_line_count || 0} / ${item.delivery_line_count || 0}`;
-          const agentStatus = item.health === "healthy" || item.health === "processing" ? `${item.configured_line_count || 0} 在线` : "异常";
-          const updatedAt = new Date().toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-          const badgeClass = item.env_key === "production" ? "production" : (item.health === "healthy" || item.health === "processing") ? "running" : item.health === "unconfigured" ? "muted" : "warning";
-          const badgeText = item.env_key === "production" ? "生产" : (item.health === "healthy" || item.health === "processing") ? "运行中" : item.health === "unconfigured" ? "未配置" : "预警";
-          return `<article class="p02-env-card">
-      <header class="p02-env-card-head">
-        <div class="p02-env-card-title"><img src="/static/project_ui/svg/${envCardIcon(item.env_key)}" alt=""><h3>${esc(item.env_label)}</h3></div>
-        <span class="p02-env-badge ${badgeClass}">${esc(badgeText)}</span>
-      </header>
-      <div class="p02-env-fields">
-        <div><span>环境</span><strong>${esc(envShortKey(item.env_key))}</strong></div>
-        <div><span>渠道</span><strong>${esc(channelText)}</strong></div>
-        <div><span>平台</span><strong>${esc(platformText)}</strong></div>
-      </div>
-      <div class="p02-env-metrics">
-        <div><span>服务健康度</span><strong class="health ${healthClass}">${healthPctCard}%</strong></div>
-        <div><span>在线实例</span><strong>${instances}</strong></div>
-        <div><span>Agent 状态</span><strong>${esc(agentStatus)}</strong></div>
-        <div><span>更新时间</span><strong>${updatedAt}</strong></div>
-      </div>
-      <footer class="p02-env-footer"><a href="/admin/projects/${projectId}/environments/${item.env_key}">环境详情<img src="/static/project_ui/svg/action_next.svg" alt=""></a></footer>
-    </article>`;
-        }).join("")
-      : '<div class="p02-empty">当前筛选下无匹配环境</div>';
-    overviewActivityEvents = (data.activities || []).map((item) => ({
-      kind: item.kind || "release",
-      typeLabel: item.type_label || item.typeLabel || "发布",
-      title: item.title || "",
-      actor: item.actor || "系统",
-      time: item.time_short || String(item.time || "").slice(11, 16) || String(item.time || "").slice(0, 16),
-      href: item.href || "#",
-    }));
-    const activeTab = document.querySelector("[data-activity-tab].active")?.dataset.activityTab || "all";
-    renderOverviewActivity(activeTab);
-    document.getElementById("overviewUpdatedAt").textContent = new Date().toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(/\//g, "-");
+    throw new Error("overview 模块未加载（project_overview.js）");
   }
 
   async function loadEnvironmentDetail() {
@@ -1070,19 +876,14 @@
 
   const type=page.dataset.deliveryPage;
   if(type==="overview"){
-    if(window.__P02_OVERVIEW__){
-      bindDeliveryScopeDialog();
-      bindProjectEnvAdd();
-      var tab=new URLSearchParams(location.search).get("tab");
-      if(tab==="channels"){loadProjectChannels();bindProjectChannelAdd();bindManifestBootstrap();}
-      else if(tab==="platforms"){loadProjectPlatforms();bindProjectPlatformAdd();}
-      else if(tab==="environments"){loadProjectEnvironments();}
-    }else{
-      initOverviewTabs();
-      bindOverviewFilters();
-      bindOverviewActivityTabs();
-      bindDeliveryScopeDialog();
-      bindProjectEnvAdd();
+    initOverviewTabs();
+    bindDeliveryScopeDialog();
+    bindProjectEnvAdd();
+    var tab=new URLSearchParams(location.search).get("tab");
+    if(tab==="channels"){loadProjectChannels();bindProjectChannelAdd();bindManifestBootstrap();}
+    else if(tab==="platforms"){loadProjectPlatforms();bindProjectPlatformAdd();}
+    else if(tab==="environments"){loadProjectEnvironments();}
+    else {
       loadOverview().catch(error=>toast(error.message,"error"));
       page.querySelector("[data-refresh-overview]")?.addEventListener("click",()=>loadOverview().catch(error=>toast(error.message,"error")));
     }

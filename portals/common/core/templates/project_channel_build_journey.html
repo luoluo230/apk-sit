@@ -1,6 +1,6 @@
 <section class="delivery-app channel-journey-app" data-journey="build" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-channel-id="{{ channel_id }}">
   <header class="cj-header">
-    <a class="cj-back" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}"><img src="/static/project_ui/svg/action_back.svg" alt="">返回环境详情</a>
+    <a class="cj-back" id="cjBackLink" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key }}"><img src="/static/project_ui/svg/action_back.svg" alt="">返回版本与管线</a>
     <div class="cj-header-copy">
       <h1 id="cjBuildTitle">构建流程</h1>
       <p id="cjBuildSubtitle">选择版本组与 VersionCode，触发 Jenkins 构建并验收产物</p>

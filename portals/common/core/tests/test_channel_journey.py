@@ -47,7 +47,10 @@ class ChannelBuildJourneyTests(unittest.TestCase):
         }):
             data = ros.resolve_channel_build_journey("p1", "development", "wechat", platform="android")
         self.assertEqual(len(data["steps"]), 6)
-        self.assertIn("/admin/projects/p1/versions?", data["links"]["build_journey"])
+        self.assertIn(
+            "/admin/projects/p1/environments/development/channels/wechat/build",
+            data["links"]["build_journey"],
+        )
 
 
 class ChannelReleaseJourneyTests(unittest.TestCase):

@@ -127,10 +127,12 @@ def _version_row_labels(channel_id: str, stage_id: str) -> dict[str, str]:
     }
     cid = (channel_id or "").strip()
     sid = (stage_id or "dev").strip() or "dev"
+    env_display = STAGE_LABEL_MAP.get(sid, sid)
     return {
         "channel_label": (ch_map.get(cid) or {}).get("label") or cid or "-",
         "channel_key": (ch_map.get(cid) or {}).get("key") or cid or "-",
-        "stage_label": STAGE_LABEL_MAP.get(sid, sid),
+        "stage_label": env_display,
+        "env_label": env_display,
     }
 
 

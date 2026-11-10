@@ -3,10 +3,18 @@ from __future__ import annotations
 
 import unittest
 
-from services.release.jenkins_step_detection import parse_detection_steps
+from services.release.jenkins_step_detection import parse_detection_steps, skeleton_detection_steps
 
 
 class JenkinsStepDetectionTests(unittest.TestCase):
+    def test_skeleton_steps_are_pending(self):
+        steps = skeleton_detection_steps("android")
+        self.assertGreaterEqual(len(steps), 4)
+        self.assertTrue(all(s["status"] == "pending" for s in steps))
+        self.assertIn("apk_build", [s["id"] for s in steps])
+        ios = skeleton_detection_steps("ios")
+        self.assertIn("ios_testflight", [s["id"] for s in ios])
+
     def test_selected_steps_follow_params(self):
         steps = parse_detection_steps(
             "",

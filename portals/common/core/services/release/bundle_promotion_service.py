@@ -214,10 +214,18 @@ def promote_bundle_to_env(
             f"目标环境 {project_env_label(project_id, target_env)} 缺少匹配的 VersionCode "
             f"({source['version_name']} / {source['version_code']})，请先在版本与管线中创建"
         )
+    from services.release.artifact_identity import (
+        require_matching_artifact_identity,
+        stamp_identity_on_client,
+    )
+
     client = dict(source.get("client") or {})
-    for field in ("apk_url", "resource_url", "config_url", "apk_version", "resource_version", "config_version"):
+    identity = require_matching_artifact_identity(source, version)
+    client = stamp_identity_on_client(client, identity)
+    for field in ("apk_url", "resource_url", "config_url", "apk_version", "resource_version", "config_version", "artifact_id", "sha256", "apk_sha256"):
         if client.get(field) and not version.get(field):
             version[field] = client.get(field)
+    version = stamp_identity_on_client(version, identity)
     scope = resolve_scope(project_id, target_env, channel_id, platform=platform, auto_create=True)
     binding = resolve_topology_binding_for_scope(scope, str(version.get("version_name") or ""))
     order_id = _order_id()
@@ -229,12 +237,16 @@ def promote_bundle_to_env(
         "promotion_note": str(note or "").strip(),
         "promoted_at": now,
         "promoted_by": actor,
+        "artifact_id": identity.get("artifact_id") or "",
+        "sha256": identity.get("sha256") or "",
     }
     record_payload = {
         "reason": note or f"制品晋级 — 自 {project_env_label(project_id, source['env_key'])} 晋级",
         "version_snapshot": version,
         "topology_binding_snapshot": binding,
         "promotion": promotion_meta,
+        "artifact_id": identity.get("artifact_id") or "",
+        "sha256": identity.get("sha256") or "",
     }
     artifacts = _artifact_rows(version)
     has_artifacts = all(url or path for _, url, path in artifacts[:3])

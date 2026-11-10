@@ -42,12 +42,71 @@
     if (btn) btn.click();
   };
 
+  const clearFieldErrors = () => {
+    form.querySelectorAll(".is-field-error").forEach((node) => node.classList.remove("is-field-error"));
+    const banner = document.getElementById("versionReleaseBlockers");
+    if (banner) {
+      banner.hidden = true;
+      banner.textContent = "";
+    }
+  };
+
+  const markFieldError = (name) => {
+    const el = form.elements.namedItem(name);
+    if (!el) return;
+    const label = el.closest("label");
+    if (label) label.classList.add("is-field-error");
+    else el.classList.add("is-field-error");
+    const pane = el.closest("[data-release-pane]");
+    if (pane) {
+      const tab = pane.getAttribute("data-release-pane");
+      if (tab) activateTab(tab);
+    }
+  };
+
+  const highlightCompliance = (options = {}) => {
+    clearFieldErrors();
+    const fields = Array.isArray(options.highlightFields) ? options.highlightFields.filter(Boolean) : [];
+    const blockers = Array.isArray(options.blockers) ? options.blockers : [];
+    fields.forEach((name) => markFieldError(name));
+    // Always surface empty HTML5-required fields when highlighting.
+    if (fields.length || blockers.length) {
+      form.querySelectorAll("[required]").forEach((el) => {
+        if (!String(el.value || "").trim()) {
+          const label = el.closest("label");
+          if (label) label.classList.add("is-field-error");
+          else el.classList.add("is-field-error");
+        }
+      });
+    }
+    let banner = document.getElementById("versionReleaseBlockers");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "versionReleaseBlockers";
+      banner.className = "version-release-blockers";
+      const tabs = modal.querySelector(".version-release-tabs");
+      if (tabs) tabs.insertAdjacentElement("afterend", banner);
+      else form.insertBefore(banner, form.firstChild);
+    }
+    if (blockers.length) {
+      banner.hidden = false;
+      banner.textContent = `准备未通过：${blockers.map((b) => b.label || b).join("；")}`;
+    } else if (fields.length) {
+      banner.hidden = false;
+      banner.textContent = "请补全标红的必填项后保存，准备通过后才会点亮「打包」。";
+    } else {
+      banner.hidden = true;
+      banner.textContent = "";
+    }
+  };
+
   const closeModal = () => {
     modal.classList.add("is-hidden");
     modal.setAttribute("aria-hidden", "true");
     currentRow = null;
     currentOrderId = "";
     setStatus("");
+    clearFieldErrors();
   };
 
   const readPayload = () => {
@@ -130,12 +189,16 @@
     modal.classList.remove("is-hidden");
     modal.setAttribute("aria-hidden", "false");
     setStatus("加载中…");
+    clearFieldErrors();
     try {
       const order = await ensureOrder(row);
       currentOrderId = order.release_order_id || "";
       fillForm(order, row);
       activateTab(options.tab || "");
       setStatus(order.status ? `发布单状态：${order.status}` : "");
+      if (options.highlightFields?.length || options.blockers?.length) {
+        highlightCompliance(options);
+      }
     } catch (error) {
       setStatus(error.message || "加载失败");
       toast(error.message || "加载失败", "error");

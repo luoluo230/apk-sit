@@ -267,12 +267,26 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
     from services.release.release_policy_service import apply_release_defaults_to_payload
 
     payload = apply_release_defaults_to_payload(project_id, env_key, dict(payload or {}))
+    baseline = str(
+        payload.get("rollback_baseline_bundle_id")
+        or payload.get("rollback_baseline")
+        or ""
+    ).strip()
     order_id = _order_id()
     now = _now_iso()
     artifacts = _artifact_rows(version)
     has_artifacts = all(url or path for _, url, path in artifacts[:3])
     status = "artifacts_ready" if has_artifacts else "draft"
     scope = resolve_scope(project_id, env_key, channel_id, platform=platform, auto_create=True)
+    ek_norm = normalize_release_env_key(env_key)
+    if ek_norm != "development" and not baseline:
+        baseline = str((scope or {}).get("active_bundle_id") or "").strip()
+        # production 必须有可回滚基线；testing/staging 首次发布允许空（尚无活跃 Bundle）
+        if ek_norm == "production" and not baseline:
+            raise ValueError(
+                "production 创建发布单必须指定 rollback_baseline_bundle_id（回滚基线 Bundle）；"
+                "当前交付线尚无活跃 Bundle，请先从低环境晋级或显式传入基线"
+            )
     binding = resolve_topology_binding_for_scope(scope, str(version.get("version_name") or ""))
     record_payload = {
         "reason": str(payload.get("reason") or ""),
@@ -281,6 +295,7 @@ def create_release_order(project_id: str, payload: Dict[str, Any], actor: str) -
         # build_job_id = Jenkins 构建号；勿把 Job 名(jenkins_job_id)写进来
         "build_job_id": "",
         "jenkins_job": str(version.get("jenkins_job_id") or version.get("jenkins_job") or ""),
+        "rollback_baseline_bundle_id": baseline,
     }
     batch_id = str(payload.get("batch_id") or "").strip()
     for key in EDITABLE_PLAN_FIELDS:

@@ -22,6 +22,15 @@ powershell -ExecutionPolicy Bypass -File scripts\Start-BaaSStack.ps1 -UsePostgre
 
 默认地址：`http://127.0.0.1:5004`
 
+## 本机验收清单（P5-01 Wave1）
+
+| 项 | 状态 | 证据 / 说明 |
+|----|------|-------------|
+| Portal 联合模式 `:5003` | PASS | 与拓扑共用；`deploy_architecture.md` |
+| BaaS 独立栈 `:5004` | PASS | `Start-BaaSStack.ps1 -Background`；`GET /health` → casual_baas ok（2026-11-10） |
+| `client-bootstrap` BaaS 分支 | PARTIAL | `:5004` 可达；无合法 game_key 时 401（需项目 `server_mode=casual_baas` + 密钥） |
+| 生产 compose + 密钥 | BLOCKED | 本机无 Docker；见 `Test-BaasProductionReadiness.ps1` + OPS |
+
 ## 生产部署
 
 生产环境使用 `docker-compose.baas.production.yml`，不接受仓库中的默认口令。将

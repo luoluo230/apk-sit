@@ -217,14 +217,13 @@ def request_build(project_id: str, order_id: str, actor: str) -> Dict[str, Any]:
     resolved_job = str(jenkins_binding.get("jenkins_job_id") or "").strip()
     if not resolved_job:
         resolved_job = resolve_jenkins_job_for_platform(platform)
-    from services.commercial_release_plan import narrowed_step_notes, normalize_release_channel
+    from services.commercial_release_plan import narrowed_step_notes
+    from services.release.jenkins_channel_params import apply_jenkins_channel_params
 
     channel_id = resolve_channel_id(project_id, str(order.get("channel_id") or "")) or str(order.get("channel_id") or "")
-    channel_key = normalize_release_channel(channel_id)
+    channel_key = str(order.get("channel_key") or channel_id)
     version_name = str(order.get("version_name") or "")
-    params["CHANNEL"] = channel_id
-    params["VERSION_CHANNEL_ID"] = channel_id
-    params["RELEASE_CHANNEL"] = channel_key
+    apply_jenkins_channel_params(params, channel_id)
     params["VERSION_NAME"] = version_name
     params["RELEASE_VERSION"] = version_name
     params["CONFIG_CLIENT_VERSION"] = version_name

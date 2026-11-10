@@ -344,11 +344,11 @@ def plan_to_jenkins_params(
             version_channel_id = resolve_channel_id(pid, version_channel_raw) or version_channel_raw
         except Exception:
             version_channel_id = version_channel_raw
-    if version_channel_id and not params.get("CHANNEL"):
-        # Jenkins CHANNEL historically carries catalog id; path slug goes to RELEASE_CHANNEL.
-        params["CHANNEL"] = version_channel_id
     if version_channel_id:
-        params["VERSION_CHANNEL_ID"] = version_channel_id
+        from services.release.jenkins_channel_params import apply_jenkins_channel_params
+
+        # Prefer version catalog channel; RELEASE_CHANNEL slug may already be set from plan.
+        apply_jenkins_channel_params(params, version_channel_id)
 
     saved = version_obj.get("jenkins_params") if isinstance(version_obj.get("jenkins_params"), dict) else {}
     for key in ("VERSION_CODE", "UNITY_VERSION", "GIT_BRANCH", "UNITY_PROJECT_PATH", "CHANNEL"):

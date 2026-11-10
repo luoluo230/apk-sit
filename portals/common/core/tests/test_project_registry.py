@@ -96,6 +96,7 @@ def test_project_service_create_uses_registry(registry_db, monkeypatch):
         'name': 'Service Create',
         'game_id': f'game-{uuid.uuid4().hex[:8]}',
         'game_key': uuid.uuid4().hex,
+        'server_mode': 'topology',
     }
     with app.test_request_context():
         with app.test_client() as client:

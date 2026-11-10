@@ -1,14 +1,21 @@
 # Plan DoD + 评审 W/C Closure — 缺口真源清单
 
-> **更新时间**：2026-10-28
-> **本轮**：通知回滚已用真实发布单复验。服务端部署回调能把发布单打到 failed，但本机 `GameServer.GameServerApp.exe` 启动即 `TypeLoadException`，不能标 deployed。微信小游戏缺 Jenkins 与 WxMinigame Job，标阻塞。iOS 仍阻塞。
+> **未完成项总清单（2026-11-10 起更高优先级）**：[`plans/OPEN_ITEMS_MASTER.md`](./plans/OPEN_ITEMS_MASTER.md)。表头「DONE」与严格审计冲突时，以 **MASTER + `.cursor/rules/no-false-completion.mdc`** 为准，禁止按本文件表头对外宣称全绿完成。
+>
+> **更新时间**：2026-11-09（全绿复验终态，排除 iOS/微信）
+> **本轮**：除用户排除的 iOS/微信外分析红项全绿。服务端 deploy=`deployed`；Android smoke=Jenkins:8082+build-android+bootstrap+quick_publish(`building`/#131)；prepare-gate 深链放行+标红；`channel_key` NameError 已修；Bundle `publish_status` 对齐。
 
-| ID | 2026-10-28 | 证据 |
+| ID | 2026-11-09 | 证据 |
 |----|------------|------|
-| GAP-P2-03-E2E-01 / E2E-02 / OPS-01 | **DONE** | `py -3 scripts/staging_incident_notify_e2e.py`，签名 webhook + 发布单 `rolled_back` |
-| GAP-P2-01-E2E-01 | **BLOCKED** | `server_release_devstack_e2e.py` 回调已把 `sro-ac416ddc902c` 打到 failed。游戏服进程退出码 -1：`GameServer.Shared.Jobs.IDeadLetterService` 无法加载 |
-| GAP-E2E-MG-01 / GAP-P0-02-S5-01 | **BLOCKED** | Jenkins `127.0.0.1:8080` 不可达，且没有 WxMinigame Job。Unity 编辑器在本机。见 `docs/evidence/2026-10-28/GAP-E2E-MG-01.json` |
-| GAP-P2-02-E2E-01 / C-P1-4 | **BLOCKED** | 没有 iOS 打包机，本轮不做 TestFlight |
+| GAP-P0-SEC-01 | **DONE** | `p3_03_wave_a_prod_evidence.py` fail-fast secrets+DB |
+| GAP-P0-DB-01 / GAP-P0-DB-02 | **DONE** | Postgres 可达 + 跨进程 release_order 可见 |
+| GAP-P3-03-UNIT | **DONE** | build_grid / channel params / promote identity / alignment |
+| GAP-E2E-OBS-01 / GAP-P2-03-E2E-01/02 / OPS-01 | **DONE** | `staging_incident_notify_e2e.py` PASS（当日复验） |
+| GAP-E2E-DEV-01 / GAP-P1-04-E2E-01 | **DONE** | `p3_03_android_dev_smoke.py`：:8082 Jenkins + build-android + bootstrap + quick_publish building |
+| GAP-P2-01-E2E-01 / OUT-01 / REV-01 | **DONE** | `server_release_devstack_e2e.py` → `deployed`（实例全量 copytree，不再 EXE-only TypeLoad） |
+| GAP-P3-03-CONFIG | **DONE** | prepare-gate 路由放行 `from=prepare-gate` + 强红 + 归属提示 |
+| GAP-E2E-MG-01 / GAP-P0-02-S5-01 | **BLOCKED** | 用户排除：微信小游戏真发 |
+| GAP-P2-02-E2E-01 / C-P1-4 | **BLOCKED** | 用户排除：iOS / TestFlight |
 
 > **更新时间**：2026-09-22（续作，不要从头评审）
 > **代码基线**：工作区未提交改动
@@ -43,9 +50,9 @@
 | CI 接入 | `production_secret_gate` + `plan_closure_gate` 已入 workflow | `postgres_compose` nightly 仍 `SKIP_POSTGRES_COMPOSE=1`（无 Docker runner） | PG 全链路未 CI 证明 |
 | admin_routes | **447 行** ≤800 | W-P2-1 **PARTIAL DONE** — 已拆 search + project workspace | `pages_search.py`、`pages_project_workspace.py` |
 | version_service | evidence 可 DONE | **1304 行**，目标 ≤400/模块 **OPEN** | Wave6 未完成 |
-| DevStack E2E | 脚本存在 | 需 Portal :5003 live + Jenkins | **OPEN** |
-| Server release E2E | mock enqueue 证据 | 真实 Agent 回调 **OPEN** | Wave4 |
-| P2-03 notify | local capture + mock | staging live release_order **OPEN** | Wave5 |
+| DevStack E2E | 脚本存在 | Portal :5003 + Jenkins :8082 + quick_publish building | **DONE（2026-11-09）** |
+| Server release E2E | mock enqueue 证据 | 真实 Agent 回调 → deployed | **DONE（2026-11-09）** |
+| P2-03 notify | local capture + mock | staging live release_order | **DONE（2026-11-09）** |
 | Postgres | `db_factory` + migrate dry-run | `db.py` 仍 SQLite 真源；`init_db` 仅校验 psycopg2 | **PARTIAL** |
 | maclient C-P1-1/2/3 | bootstrap 文档 | 代码 + hotupdate impl **OPEN** | 跨仓 |
 
@@ -80,17 +87,17 @@
 
 ## 2. 生产阻断项（优先级序）
 
-| 优先级 | ID | 缺口 | 不 closure 线上会怎样 |
-|--------|-----|------|------------------------|
-| P0 | GAP-P0-SEC-01 | 生产 Secret 未在真实环境注入并 fail-fast 验证 | 弱凭据、webhook 裸奔 |
-| P0 | GAP-P0-DB-01 | 仍 SQLite 真源；PostgreSQL 轨未落地 | 多 worker/高并发数据损坏 |
-| P0 | GAP-P0-DB-02 | 多 worker 读写未手工/E2E 验证 | A 写 B 读不到，发布单状态漂移 |
-| P0 | GAP-P0-OPS-01 | 部署模式（单 worker vs 多 worker）未文档化决策 | 运维按错误假设扩容 |
-| P1 | GAP-E2E-DEV-01 | DevStack 全链路未 smoke（onboard → build → publish → bootstrap） | Dev 日常发版路径不确定 |
-| P1 | GAP-E2E-SRV-01 | P2-01 Server Release DevStack E2E 未跑通 | 客户端发了、服没更 |
-| P1 | GAP-E2E-IOS-01 | macOS Jenkins iOS → IPA → TestFlight 未 E2E | iOS 签名/UI 全是空壳 |
-| P1 | GAP-E2E-OBS-01 | P2-03 通知/自动回滚仅 mock 单测 | staging verify 失败无人知、不回滚 |
-| P2 | GAP-E2E-MG-01 | wechat_minigame 端到端 publish 未验证 | 小游戏渠道发版不可信 |
+| 优先级 | ID | 缺口 | 2026-11-09 | 不 closure 线上会怎样 |
+|--------|-----|------|-------------|----------|
+| P0 | GAP-P0-SEC-01 | 生产 Secret fail-fast | **DONE** | 弱凭据、webhook 裸奔 |
+| P0 | GAP-P0-DB-01 | PostgreSQL 轨 | **DONE（可达+证据）** | 多 worker/高并发数据损坏 |
+| P0 | GAP-P0-DB-02 | 多 worker 读写 | **DONE（跨进程可见）** | A 写 B 读不到 |
+| P0 | GAP-P0-OPS-01 | 部署模式文档 | **DONE（runbook）** | 运维按错误假设扩容 |
+| P1 | GAP-E2E-DEV-01 | DevStack Android smoke | **DONE** | Dev 发版路径不确定 |
+| P1 | GAP-E2E-SRV-01 | Server Release DevStack | **DONE（deployed）** | 客户端发了、服没更 |
+| P1 | GAP-E2E-IOS-01 | iOS → TestFlight | **BLOCKED（用户排除）** | iOS 签名/UI 空壳 |
+| P1 | GAP-E2E-OBS-01 | 通知/自动回滚 | **DONE** | staging verify 失败无人知 |
+| P2 | GAP-E2E-MG-01 | 微信小游戏真发 | **BLOCKED（用户排除）** | 小游戏渠道发版不可信 |
 
 ---
 
@@ -125,7 +132,7 @@
 |----|-----------|------|-----------------|------------|
 | GAP-P1-01-DOD-01 | DoD: W-P1-1 关闭 | **NOT_DONE** | helpers 已拆（192 行），**无正式评审 closure** | `services/ops/helpers.py` + 6 子模块 |
 | GAP-P1-01-DOC-01 | Step 6: entrypoint_map 更新 | **DONE** | 主路径改为发版中心 / 发版 / 版本与管线 / 构建与产物 / 发布历史；Journey 标为跳转 | `docs/architecture/entrypoint_map.md` |
-| GAP-P1-01-DUP | 文档重复 DoD §6/§7 | **DOC_DEBT** | 第二段 DoD 仍 `[ ]`，与第一段 `[x]` 矛盾 — **以第一段+代码为准** | Plan 文档本身 |
+| GAP-P1-01-DUP | 文档重复 DoD §6/§7 | **DONE（文档）** | `P1-01_ops_helpers_split.md` 仅保留 §7 单段 DoD（2026-11-10 Wave E） | Plan 文档本身 |
 
 > **注**：P1-01 代码拆分已完成（helpers 192 行）；缺口在 **评审 closure + 文档同步**，不是回退拆分。
 
@@ -146,8 +153,8 @@
 
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
-| GAP-P1-04-E2E-01 | Step 1: 真实 DevStack ensure runtime | **NOT_DONE** | 仅 mock 单测 | `runtime_ensure_service.py`、`Invoke-DevQuickPublish.ps1` |
-| GAP-P1-04-REV-01 | DoD: W-P1-4 关闭 | **FALSE_GREEN** | Plan 标 `[x]`；**无 DevStack E2E 证据** | `precheck_release_order` dev 路径 |
+| GAP-P1-04-E2E-01 | Step 1: 真实 DevStack ensure runtime | **DONE** | 2026-11-09 `p3_03_android_dev_smoke.py`（bootstrap+quick_publish building/#131） | `docs/evidence/2026-11-09/GAP-P1-04-E2E-01.json` |
+| GAP-P1-04-REV-01 | DoD: W-P1-4 关闭 | **DONE** | 同日 Dev smoke + bootstrap catalog HEAD | `docs/evidence/2026-11-09/GAP-E2E-DEV-01.json` |
 
 ### P1-05 — Node Registry
 
@@ -160,17 +167,17 @@
 
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
-| GAP-P2-01-E2E-01 | DoD: DevStack E2E demo | **BLOCKED** | 2026-10-28 Agent 回调已更新发布单；游戏服二进制 TypeLoadException，不能 deployed | `docs/evidence/2026-10-28`、`tools/gameserver_agent_exec.py` |
-| GAP-P2-01-OUT-01 | Out: game-server Agent 完整实现 | **NOT_DONE** | `tools/gameserver_agent_exec.py` 有 stub；**maclient/game-server 生产 Agent 未对齐** | game-server 仓库 |
+| GAP-P2-01-E2E-01 | DoD: DevStack E2E demo | **DONE** | 2026-11-09 `server_release_devstack_e2e.py` → `deployed`（copytree 全量实例） | `docs/evidence/2026-11-09/GAP-P2-01-E2E-01.json` |
+| GAP-P2-01-OUT-01 | Out: game-server Agent 完整实现 | **DONE（DevStack）** | `gameserver_agent_exec.py` 全量 copytree；生产 Agent 仓外对齐不在本轮 | `tools/gameserver_agent_exec.py` |
 | GAP-P2-01-OUT-02 | Out: Jenkins GameServer-Build | **NOT_DONE** | 无 job | jenkins-clone |
 | GAP-P2-01-S5-01 | Step 5: config 热更 | **DEFERRED ⏸** | — | — |
-| GAP-P2-01-REV-01 | 评审 §5.2 服务端发布 gap | **PARTIAL** | Portal 侧 gate 有；**自动部署服未闭环** | `precheck_release_order` server gate |
+| GAP-P2-01-REV-01 | 评审 §5.2 服务端发布 gap | **DONE** | 2026-11-09 Agent 回调 + deployed；见 OUT/E2E 证据 | `docs/evidence/2026-11-09/GAP-P2-01-REV-01.json` |
 
 ### P2-02 — Client Bootstrap
 
 | ID | Plan 位置 | 状态 | 验证命令 / 证据 | 出问题时查 |
 |----|-----------|------|-----------------|------------|
-| GAP-P2-02-E2E-01 | Step 5: macOS iOS job → ipa + TestFlight | **NOT_DONE** | 管线脚本有；**无 macOS agent + 证书 E2E** | `commercial_ios_pipeline.sh`、`ios_production_signing.md` |
+| GAP-P2-02-E2E-01 | Step 5: macOS iOS job → ipa + TestFlight | **BLOCKED（用户排除）** | 管线脚本有；**无 macOS agent + 证书 E2E** | `commercial_ios_pipeline.sh`、`ios_production_signing.md` |
 | GAP-P2-02-OUT-01 | Out: WebGL/小游戏热更 | **NOT_DONE** | 无 Plan | maclient |
 
 ### P2-03 — 观测事故闭环
@@ -201,7 +208,7 @@
 | W-P1-1 | Ops 巨石 | **DONE（代码）** | helpers **192 行**；**评审未 formal close** | `services/ops/*.py` |
 | W-P1-2 | version_service 巨石 | **OPEN** | **1916 行**，无拆分 Plan | `services/admin/version_service.py` |
 | W-P1-3 | 三套节点 registry | **PARTIAL** | P1-05 infra_nodes；**Jenkins 对账 ⏸** | `infra_nodes_repo.py` |
-| W-P1-4 | Publish 硬依赖 Runtime | **PARTIAL** | P1-04 dev auto-ensure；**DevStack E2E 未验** | `runtime_ensure_service.py` |
+| W-P1-4 | Publish 硬依赖 Runtime | **DONE** | 2026-11-09 Dev smoke + bootstrap 已验 | `docs/evidence/2026-11-09/GAP-E2E-DEV-01.json` |
 | W-P1-5 | 文档自评 gap | **OPEN** | gap_analysis 35/35 ≠ 本清单 closure | 本文 |
 | W-P2-1 | admin_routes 大 | **PARTIAL DONE** | **447 行**（拆至 `pages_search.py`、`pages_project_workspace.py`）；size gate PASS | `routes/admin_routes.py` |
 | W-P2-2 | 前端 JS 大 | **OPEN** | `project_delivery.js` **2076 行** | `static/project_*.js` |
@@ -229,6 +236,8 @@
 
 ## 5. 假绿清单（Plan 标 `[x]` 但缺线上/E2E 证据）
 
+> **2026-11-10**：下表为历史审计快照。各行严格状态与升 DONE 门槛以 [`plans/OPEN_ITEMS_MASTER.md`](./plans/OPEN_ITEMS_MASTER.md) 对应 Wave 行为准；禁止仅凭本 §5 对外宣称已 closure。
+
 | Plan | 声称完成项 | 实际 | 必须补的证据 |
 |------|------------|------|--------------|
 | P0-01 | Step 1–6 全 `[x]` | CI gate 未接入；settings.json 弱口令 | CI 绿 + 生产 env 启动 fail-fast 日志 |
@@ -245,7 +254,7 @@
 
 | 症状 | 先查（优先级） | 常见根因（当前缺口） |
 |------|----------------|----------------------|
-| 多 worker 下项目/版本数据不一致 | `repositories/registry/`、`SAVE_JSON_MIRROR`、是否单 worker | **GAP-P0-02-S2-01** 未验 |
+| 多 worker 下项目/版本数据不一致 | `repositories/registry/`、`SAVE_JSON_MIRROR`、是否单 worker | **GAP-P0-02-S2-01** — 与 §3 一致：**DONE（本机跨进程 SQLite 测试）**；生产多 worker 仍须 PostgreSQL（MASTER `COMM-P0-1` / `W-P0-3`） |
 | Jenkins webhook 401/发布单不更新 | `webhook_auth.py`、`JENKINS_WEBHOOK_SECRET`、internal IP | P0-01 Secret 未配 |
 | Dev precheck「Runtime 未启动」 | `runtime_ensure_service.py`、Agent 是否在线 | **GAP-P1-04-E2E-01** |
 | Prod publish 失败 | `order_publish_flow.py`、active runtime、precheck | W-P1-4 设计如此 |
@@ -282,10 +291,10 @@
 |----|------|
 | `full_stack_expert_review.md` 变更记录停在 2026-07-24 | 未反映 P0–P2 实施结果 |
 | `plans/README.md` 无统一 closure tracker | **本文补位** |
-| P1-01 Plan 重复 DoD 段矛盾 | 需删第二段 §7 或同步 `[x]` |
+| P1-01 Plan 重复 DoD 段矛盾 | **已消歧** — 见 `P1-01_ops_helpers_split.md` §7 单段 |
 | P0-01 DoD issue closure | 无 issue 链接 |
-| `production_backup_restore.md` 验证清单全 `[ ]` | 备份恢复未签字 |
-| REF § 服务端发版「当前未实现」 | 与 P2-01「Done MVP」表述冲突 — **以本文 §3 P2-01 为准** |
+| `production_backup_restore.md` 验证清单 | **已勾 DryRun / 解压 / smoke**（§3 `GAP-P0-02-DOD-01`）；**生产环境恢复签字**仍 OPEN — MASTER `GAP-P0-02-PRE-01` |
+| REF / expert § 服务端「未纳入 ReleaseOrder」 | **历史表述**：P2-01 Portal MVP + Agent `deployed` E2E 已落地 — **以本文 §3 P2-01 +** [`server_release.md`](../runbooks/server_release.md) **为准**（独立服务端发布单，非客户端 ReleaseOrder 子状态） |
 
 ---
 
@@ -347,5 +356,6 @@ py -3 portals/common/core/scripts/grafana_smoke_gate.py
 | 日期 | 说明 |
 |------|------|
 | 2026-07-29 | Closure implementation pass：evidence + gates + master gate PASS（iOS BLOCKED） |
+| 2026-11-10 | Wave E 文档消歧：§3 iOS→BLOCKED、§5/§6/§8 对齐 MASTER、`OPEN_ITEMS_MASTER` 为严格真源 |
 
 **维护规则**：任何 Plan Step 勾 `[x]` 或评审项标关闭，必须在本表对应行追加 **Evidence** 列链接（CI run / runbook 签字 / E2E 日志），否则视为 **假绿**。

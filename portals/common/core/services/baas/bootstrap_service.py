@@ -42,6 +42,18 @@ def build_baas_bootstrap(
     endpoints = public_endpoints_for_features(flags)
     base = f"/api/baas/v1/{svc['service_id']}"
     from services.release.baas_bootstrap_contract import CONTRACT_VERSION
+    from services.baas import realm_service
+
+    default_realm = realm_service.ensure_default_realm(svc["service_id"])
+    realms = [
+        {
+            "realm_id": r.get("realm_id"),
+            "name": r.get("name"),
+            "status": r.get("status"),
+            "open_at": r.get("open_at"),
+        }
+        for r in realm_service.list_realms(svc["service_id"], include_closed=False)
+    ]
 
     return {
         "ok": True,
@@ -56,4 +68,7 @@ def build_baas_bootstrap(
         "public_api_base": base,
         "auth_header_service": "X-Baas-Service-Id",
         "auth_header_key": "X-Baas-Api-Key",
+        "realms": realms,
+        "default_realm_id": default_realm.get("realm_id") or "",
+        "realm_header": "X-Baas-Realm-Id",
     }

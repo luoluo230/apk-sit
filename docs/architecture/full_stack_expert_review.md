@@ -7,6 +7,8 @@
 
 **可执行落地计划**：已拆分为 [`plans/README.md`](./plans/README.md)（10 份分步 Plan + 1 份 REF）。排期 / Cursor Plan 请直接引用子文档。
 
+**W/C 与 P0–P4 严格 closure**：2026-11-10 起以 [`plans/OPEN_ITEMS_MASTER.md`](./plans/OPEN_ITEMS_MASTER.md) 为进度真源；本报告 W/C 表为 **2026-07-24 基线**，关闭状态见 [`PLAN_CLOSURE_STATUS.md`](./PLAN_CLOSURE_STATUS.md) §4，勿仅凭本报告勾选对外宣称 DONE。
+
 **实现规范**：执行 Plan 时使用 Skill `architecture-plan-implementation` 与 Rules `architecture-plan-*.mdc`（见 [`plans/README.md §3.1`](./plans/README.md)）。
 
 ---
@@ -435,7 +437,7 @@ ReleaseOrder publish  →  更新 Bundle + network_profile  →  客户端连 ga
 | 制品 | Puffer CDN + 多渠道包 | CDN + NPK | OSS + 整包/差分 | OSS + local APK 落盘 |
 | 发布 | 发布单 + 灰度 + 审批 | 发布系统 + 回滚 | 分阶段 + 强制更新 gate | ReleaseOrder 状态机 ✅ |
 | 客户端拉包 | MSDK + Puffer | 渠道 SDK | launcher bootstrap | runtime-bootstrap ✅ |
-| 服务端发布 | K8s + 配置热更 | 独立管线 | 独立 rolling | **未纳入 ReleaseOrder** ❌ |
+| 服务端发布 | K8s + 配置热更 | 独立管线 | 独立 rolling | **独立 Server Release 单 + Agent**（P2-01 MVP；不并进客户端 ReleaseOrder 状态机） |
 | 环境隔离 | 正式/体验/测试服 | 多环境集群 | 区服 + env | env_key 四维 Scope ✅ |
 | 观测 | Galileo / 自研 | 自研 APM | 自研 | Agent 探针 + 局部 Prometheus |
 | 权限 | RBAC + 审计 | 工单 + 审批 | 内部 SSO | 项目级 can_edit + 审批 API |
@@ -583,3 +585,4 @@ ReleaseOrder publish  →  更新 Bundle + network_profile  →  客户端连 ga
 | 2026-07-24 | 初版：全栈架构专家评审报告落地 |
 | 2026-07-24 | 拆分为 `plans/` 下 10 份 Plan + REF + README 索引 |
 | 2026-07-29 | 增加 [`PLAN_CLOSURE_STATUS.md`](./PLAN_CLOSURE_STATUS.md)：Plan DoD + W/C 缺口真源；**W/C 项尚未 formal closure** |
+| 2026-11-10 | Wave E：W/C formal closure 进度迁入 [`plans/OPEN_ITEMS_MASTER.md`](./plans/OPEN_ITEMS_MASTER.md)；本报告 §0–§9 为审计基线，不重写全表 |

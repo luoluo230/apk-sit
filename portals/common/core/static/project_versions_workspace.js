@@ -5,6 +5,17 @@
   const canEdit = root.dataset.canEdit === "true";
   const envKey = root.dataset.envKey;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const withReturnTo = (href) => {
+    try {
+      const url = new URL(String(href || ""), location.origin);
+      if (!url.searchParams.get("return_to")) {
+        url.searchParams.set("return_to", `${location.pathname}${location.search || ""}`);
+      }
+      return `${url.pathname}${url.search}`;
+    } catch {
+      return String(href || "");
+    }
+  };
   const envLabels = { development: "开发环境", testing: "测试环境", staging: "预发环境", production: "生产环境" };
   const statusLabels = { active: "有效", testing: "测试中", draft: "草稿", disabled: "失效", archived: "归档" };
   const groupModeLabels = { general: "通用", commercial: "商业化" };
@@ -22,7 +33,10 @@
   let filterVersionName = urlParams.get("version_name") || "";
   let activePlatformKey = lockPlatform || "";
   let selectedChannelId = lockChannelId || "";
-  const collapsedGroups = new Set();
+  // 默认折叠：仅当用户点开时加入 expanded 集合
+  const expandedPipelines = new Set();
+  const expandedVcGroups = new Set();
+  let matrixExpanded = false;
   let listPage = 1;
   const listPageSize = 20;
   let loadSeq = 0;
@@ -176,6 +190,18 @@
     link.href = scopeHref(`/admin/projects/${projectId}/build-history`, scope, { scoped: "1" });
   };
 
+  const updateBuildJourneyLink = () => {
+    const link = document.getElementById("versionBuildJourneyLink");
+    if (!link) return;
+    const scope = currentScope();
+    const env = scope.env_key || envKey || "development";
+    const channel = scope.channel_id || lockChannelId || "1001";
+    const qs = new URLSearchParams();
+    if (scope.platform) qs.set("platform", scope.platform);
+    const query = qs.toString();
+    link.href = withReturnTo(`/admin/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(env)}/channels/${encodeURIComponent(channel)}/build${query ? `?${query}` : ""}`);
+  };
+
   const scopeSummaryText = () => {
     const env = activeEnvKey();
     const platform = activePlatform();
@@ -322,7 +348,13 @@
       : primary.href
         ? `<a class="pm-btn pm-btn--primary" href="${esc(primary.href)}">${esc(primary.label || "继续发版")}</a>`
         : `<a class="pm-btn pm-btn--primary" href="${releaseOrderDetailHref(row, releaseOrderByVersion.get(String(row.id || "")))}">继续发版</a>`;
+    const journeyQs = new URLSearchParams({
+      platform: String(row.platform || "android").toLowerCase(),
+      version_id: String(row.id || ""),
+    });
+    const journeyHref = withReturnTo(`/admin/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(normalizedEnv(row))}/channels/${encodeURIComponent(channelIdOf(row) || "1001")}/build?${journeyQs}`);
     foot.innerHTML = `${drawerPrimary}
+      <a class="pm-btn" href="${esc(journeyHref)}">构建流程</a>
       <button class="pm-btn" type="button" data-download-apk="${esc(row.id)}">查看产物</button>
       <a class="pm-btn" href="${scopeHref(`/admin/projects/${projectId}/build-history`, { env_key: normalizedEnv(row), channel_id: channelIdOf(row), platform: row.platform || "", version_id: row.id }, { scoped: "1" })}">构建历史</a>`;
   };
@@ -469,90 +501,503 @@
     }));
   };
 
-  const TABLE_COLS = "pm-table-cols-7";
-
-  const readinessBarHtml = (row, group) => {
-    const pipelineOk = pipelineReadyOf(row, group);
-    const artifactOk = row.apk_status === "found";
-    const order = releaseOrderByVersion.get(String(row.id || ""));
-    const releaseText = row.active_bundle_id ? "已发布" : (order ? (releaseStatusLabels[order.status] || order.status) : "无发布单");
-    return `<div class="version-readiness-bar"><span class="${pipelineOk ? "ok" : "no"}">管线${pipelineOk ? "✓" : "✗"}</span><span class="${artifactOk ? "ok" : "no"}">产物${artifactOk ? "✓" : "✗"}</span><span class="muted">${esc(releaseText)}</span></div>`;
+  const pickPrimaryVc = (children) => {
+    if (!children.length) return null;
+    const ranked = [...children].sort((a, b) => {
+      const score = (row) => {
+        let n = 0;
+        if (row.active_bundle_id) n += 40;
+        if (row.apk_status === "found") n += 20;
+        if (isBuildInProgress(row)) n += 15;
+        return n;
+      };
+      const diff = score(b) - score(a);
+      if (diff) return diff;
+      return String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
+    });
+    return ranked[0];
   };
 
-  const childRowHtml = (row, group) => `<div class="version-row version-row-child ${TABLE_COLS}" data-version-id="${esc(row.id || "")}" data-open-vc="${esc(row.id || "")}">
-      <div class="version-vc-cell"><span class="version-vc-code">${esc(row.version_code || "-")}</span><span class="version-vc-label">${esc(row.version_name || "")}</span></div>
-      <div>${versionNameTagHtml(row, group)}</div>
-      <div class="version-status-stack">${versionStatusHtml(row)}${artifactStatusHtml(row)}</div>
-      <div>${readinessBarHtml(row, group)}</div>
-      <div>${latestBuildHtml(row)}</div>
-      <div class="version-updated-at">${esc(formatUpdatedAt(row))}</div>
-      ${rowActionsHtml(row, group)}
-    </div>`;
+  const groupBuildConfigHref = (group, children, options = {}) => {
+    const params = new URLSearchParams();
+    params.set("from", options.highlightGate ? "prepare-gate" : "version-group");
+    params.set("version_name", group.version_name || "");
+    if (group.env_key) params.set("env_key", group.env_key);
+    if (group.platform) params.set("platform", group.platform);
+    if (options.highlightGate) {
+      const readiness = group.pipeline_readiness || {};
+      const checks = readiness.checks || {};
+      const fields = [];
+      if (checks.jenkins_instance === false || !String(group.jenkins_instance_id || readiness.jenkins_instance_id || "").trim()) {
+        fields.push("jenkins_instance_id");
+      }
+      if (checks.jenkins_job === false || !String(group.jenkins_job_id || readiness.jenkins_job_id || "").trim()) {
+        fields.push("jenkins_job_id");
+      }
+      if (
+        checks.pipeline === false
+        || (Array.isArray(readiness.missing_pipeline_steps) && readiness.missing_pipeline_steps.length)
+      ) {
+        fields.push("config_export_enabled", "resource_build_enabled", "hot_release_enabled", "apk_build_enabled");
+      }
+      // 打包实操常用必填：空着一并标红，避免进来后不知道改哪里
+      ["git_branch", "unity_version", "app_name", "unity_project_path", "output_base_dir"].forEach((name) => fields.push(name));
+      params.set("highlight", [...new Set(fields)].join(","));
+      params.set("section", "jenkins");
+      params.set(
+        "focus_reason",
+        readiness.blocker_hint
+          || (Array.isArray(readiness.missing) && readiness.missing.length
+            ? `待完善：${readiness.missing.join("、")}`
+            : "请补全红色高亮的必填项并保存配置，准备通过后才会点亮「打包」。"),
+      );
+    }
+    const anchorId = children[0]?.id || group.anchor_version_id || "";
+    return anchorId
+      ? `/admin/projects/${projectId}/versions/${encodeURIComponent(anchorId)}/build-config?${params}`
+      : `/admin/projects/${projectId}/version-groups/build-config?${params}`;
+  };
+
+  const acceptanceOf = (row) => {
+    const raw = row?.client_acceptance;
+    if (!raw || typeof raw !== "object") return { status: "pending" };
+    const status = String(raw.status || "pending").toLowerCase();
+    return { status: ["passed", "failed", "pending"].includes(status) ? status : "pending", ...raw };
+  };
+
+  const planFieldLabels = {
+    owner: "负责人",
+    reason: "发布原因",
+    release_window: "发布窗口",
+    release_description: "对内说明",
+    validation_plan: "验证计划",
+    rollback_plan: "回滚计划",
+  };
+
+  const collectPrepareBlockers = (group, primary, order) => {
+    const readiness = group?.pipeline_readiness || primary?.pipeline_readiness || {};
+    const blockers = [];
+    const missing = Array.isArray(readiness.missing) ? readiness.missing.filter(Boolean) : [];
+    missing.forEach((item) => blockers.push({ kind: "pipeline", label: String(item), field: "" }));
+    if (!Boolean(group?.pipeline_ready || readiness.ready || (primary && pipelineReadyOf(primary, group)))) {
+      if (!missing.length) blockers.push({ kind: "pipeline", label: "管线未配置完整", field: "" });
+    }
+    if (readiness.can_trigger_build === false && readiness.checks && readiness.checks.build_node === false) {
+      if (!blockers.some((b) => String(b.label).includes("构建节点"))) {
+        blockers.push({ kind: "jenkins", label: "构建节点离线，无法触发打包", field: "" });
+      }
+    }
+    if (!primary) {
+      blockers.push({ kind: "vc", label: "当前交付线缺少 VersionCode", field: "" });
+    }
+    const payload = order?.payload || {};
+    const planVals = {
+      owner: String(payload.owner || order?.created_by || "").trim(),
+      reason: String(order?.reason || payload.reason || "").trim(),
+      release_window: String(payload.release_window || "").trim(),
+      release_description: String(payload.release_description || "").trim(),
+    };
+    const env = String(primary?.env_key || group?.env_key || activeEnvKey() || "development");
+    const required = ["owner", "reason"];
+    if (["staging", "production", "canary"].includes(env)) required.push("release_window", "release_description");
+    required.forEach((field) => {
+      if (!planVals[field]) {
+        blockers.push({ kind: "plan", label: `${planFieldLabels[field] || field}未填写`, field });
+      }
+    });
+    return blockers;
+  };
+
+  const buildJourneyHref = (group, primary) => {
+    const env = group.env_key || activeEnvKey() || envKey || "development";
+    const channel = channelFilterValue() || (primary ? channelIdOf(primary) : "") || "1001";
+    const platform = group.platform || activePlatform() || (primary?.platform || "android");
+    const qs = new URLSearchParams({ platform, detail: "1" });
+    if (primary?.id) qs.set("version_id", primary.id);
+    return withReturnTo(`/admin/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(env)}/channels/${encodeURIComponent(channel)}/build?${qs}`);
+  };
+
+  const deriveGroupPipeline = (group, children) => {
+    const channelGate = channelFilterValue();
+    const scoped = channelGate ? children.filter((row) => channelIdOf(row) === channelGate) : children;
+    const primary = pickPrimaryVc(scoped);
+    const readiness = group?.pipeline_readiness || {};
+    const pipelineOk = Boolean(group.pipeline_ready) || (primary ? pipelineReadyOf(primary, group) : false);
+    const canTriggerBuild = readiness.can_trigger_build !== undefined
+      ? Boolean(readiness.can_trigger_build)
+      : (Boolean(group.can_trigger_build) || pipelineOk);
+    const hasVc = scoped.length > 0;
+    const order = primary ? releaseOrderByVersion.get(String(primary.id || "")) : null;
+    const orderStatus = String(order?.status || "");
+    const building = primary ? isBuildInProgress(primary) : false;
+    const artifactOk = Boolean(primary && primary.apk_status === "found") || orderStatus === "artifacts_ready";
+    const buildFailed = Boolean(
+      primary && !building && !artifactOk && (orderStatus === "failed" || orderStatus === "build_failed" || primary.version_status === "disabled"),
+    );
+    const published = Boolean(primary?.active_bundle_id) || ["published", "verified"].includes(orderStatus);
+    const accept = acceptanceOf(primary);
+    const accepted = published || accept.status === "passed";
+    const acceptFailed = !published && accept.status === "failed";
+    const prepareBlockers = collectPrepareBlockers(group, primary, order);
+    const prepareReady = prepareBlockers.length === 0 && canTriggerBuild && hasVc && pipelineOk;
+    const prepareStatus = prepareReady ? "success" : "failed";
+    const buildComplete = Boolean(published || artifactOk);
+    let buildStatus = "pending";
+    if (building) buildStatus = "running";
+    else if (buildFailed) buildStatus = "failed";
+    else if (buildComplete) buildStatus = "success";
+    else if (prepareReady) buildStatus = "current";
+    let verifyStatus = "pending";
+    if (accepted) verifyStatus = "success";
+    else if (acceptFailed) verifyStatus = "failed";
+    else if (buildStatus === "success") verifyStatus = "current";
+    let releaseStatus = "pending";
+    if (published) releaseStatus = "success";
+    else if (verifyStatus === "success") releaseStatus = "current";
+    const prepareDesc = prepareReady
+      ? "准备完成，可进入打包"
+      : (prepareBlockers.slice(0, 2).map((b) => b.label).join("；") || "请完善管线、Jenkins 与发版必填项");
+    const steps = [
+      {
+        id: "prepare",
+        label: "准备",
+        status: prepareStatus,
+        desc: prepareDesc,
+        blockers: prepareBlockers,
+      },
+      {
+        id: "build",
+        label: "打包",
+        status: buildStatus,
+        desc: building
+          ? "Jenkins 构建中，需完整跑完准备阶段启用的步骤"
+          : (buildFailed
+            ? "打包未完整成功，请修复后重试"
+            : (buildComplete ? "产物已就绪，可进入验收" : "触发并完成完整打包流程")),
+      },
+      {
+        id: "verify",
+        label: "验收",
+        status: verifyStatus,
+        desc: accepted
+          ? "已通过验收"
+          : (acceptFailed ? "验收未通过，请修复后重验" : (buildComplete ? "基于完整产物进行测试并标记结果" : "等待完整打包产物")),
+      },
+      {
+        id: "release",
+        label: "上线",
+        status: releaseStatus,
+        desc: published ? "已发布到线上" : (verifyStatus === "success" ? "填写上线信息并发布" : "验收通过后可上线"),
+      },
+    ];
+    // 上一步未完成则锁定；已有进度的节点仍可回看。
+    const openIndex = steps.findIndex((step) => step.status !== "success");
+    const currentIndex = openIndex < 0 ? steps.length - 1 : openIndex;
+    steps.forEach((step, index) => {
+      if (index === 0) {
+        step.locked = false;
+        return;
+      }
+      const prevOk = steps[index - 1].status === "success";
+      step.locked = !prevOk && step.status === "pending";
+    });
+    const current = steps[currentIndex] || steps[steps.length - 1];
+    return {
+      steps,
+      current,
+      primary,
+      scoped,
+      pipelineOk,
+      canTriggerBuild,
+      prepareReady,
+      prepareBlockers,
+      hasVc,
+      building,
+      artifactOk,
+      buildFailed,
+      published,
+      accepted,
+      acceptFailed,
+      order,
+    };
+  };
+
+  const groupPrimaryAction = (group, children, pipe) => {
+    const { current, primary, pipelineOk, hasVc, building, buildFailed, published, accepted, prepareBlockers } = pipe;
+    if (current.id === "prepare") {
+      const needPipeline = !pipelineOk || prepareBlockers.some((b) => b.kind === "pipeline" || b.kind === "jenkins");
+      if (needPipeline) {
+        return {
+          label: canEdit ? "去修正配置" : "查看管线",
+          href: groupBuildConfigHref(group, children, { highlightGate: true }),
+          warn: true,
+        };
+      }
+      if (!hasVc) return { label: "添加 VersionCode", action: "add_vc", version_name: group.version_name };
+      return { label: "修正发版信息", action: "edit_release", version_id: primary.id, highlight: true, warn: true };
+    }
+    if (current.id === "build") {
+      if (building && primary) return { label: "查看打包进度", href: buildJourneyHref(group, primary) };
+      if (buildFailed && primary) return { label: "进入打包流程", href: buildJourneyHref(group, primary), warn: true };
+      if (primary) return { label: "进入打包流程", href: buildJourneyHref(group, primary) };
+      return { label: "添加 VersionCode", action: "add_vc", version_name: group.version_name };
+    }
+    if (current.id === "verify") {
+      if (primary) return { label: accepted ? "查看验收" : "产物验收", action: "open_accept", version_id: primary.id };
+      return { label: "添加 VersionCode", action: "add_vc", version_name: group.version_name };
+    }
+    if (published && primary) return { label: "查看上线信息", action: "edit_release", version_id: primary.id };
+    if (primary) return { label: "填写上线信息", action: "edit_release", version_id: primary.id };
+    return { label: "添加 VersionCode", action: "add_vc", version_name: group.version_name };
+  };
+
+  const openAcceptDialog = (versionId) => {
+    const row = rows.find((item) => String(item.id) === String(versionId));
+    const mask = document.getElementById("vgpAcceptMask");
+    const body = document.getElementById("vgpAcceptBody");
+    if (!row || !mask || !body) return toast("请先选择 VersionCode", "error");
+    const env = normalizedEnv(row);
+    const historyHref = scopeHref(`/admin/projects/${projectId}/build-history`, {
+      env_key: env,
+      channel_id: channelIdOf(row),
+      platform: row.platform || "",
+      version_id: row.id,
+    }, { scoped: "1" });
+    const accept = acceptanceOf(row);
+    const artifactOk = row.apk_status === "found";
+    body.innerHTML = `<div class="vgp-vc-row">
+        <div class="vgp-vc-main">
+          <strong>${esc(row.version_name || "")} / VC ${esc(row.version_code || "-")}</strong>
+          ${versionStatusHtml(row)}
+          ${artifactStatusHtml(row)}
+          ${latestBuildHtml(row)}
+        </div>
+      </div>
+      <p>当前验收状态：<strong>${esc({ pending: "待验收", passed: "已通过", failed: "未通过" }[accept.status] || accept.status)}</strong>${accept.updated_at ? ` · ${esc(String(accept.updated_at).replace("T", " ").slice(0, 19))}` : ""}</p>
+      <div class="vgp-accept-actions" style="justify-content:flex-start">
+        <a class="vgp-link" href="${esc(historyHref)}">打开构建与产物</a>
+        <a class="vgp-link" href="${esc(buildJourneyHref({ env_key: env, platform: row.platform }, row))}">打包流程</a>
+        ${artifactOk ? `<button type="button" class="vgp-link" data-download-apk="${esc(row.id)}">下载产物</button>` : '<span class="vgp-hint">暂无产物可下载</span>'}
+      </div>`;
+    mask.hidden = false;
+    mask.dataset.versionId = String(row.id || "");
+    document.getElementById("vgpAcceptPass").disabled = !canEdit || (!artifactOk && !row.active_bundle_id);
+    document.getElementById("vgpAcceptFail").disabled = !canEdit;
+  };
+
+  const closeAcceptDialog = () => {
+    const mask = document.getElementById("vgpAcceptMask");
+    if (mask) {
+      mask.hidden = true;
+      delete mask.dataset.versionId;
+    }
+  };
+
+  const submitAcceptance = async (status) => {
+    const mask = document.getElementById("vgpAcceptMask");
+    const vid = mask?.dataset.versionId || "";
+    if (!vid) return;
+    try {
+      const data = await request(`/api/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(vid)}/client-acceptance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (data?.ok === false) throw new Error(data.error || "验收提交失败");
+      const row = rows.find((item) => String(item.id) === String(vid));
+      if (row) row.client_acceptance = data?.data?.client_acceptance || { status };
+      toast(status === "passed" ? "已标记验收通过" : status === "failed" ? "已标记验收不通过" : "已更新验收状态");
+      closeAcceptDialog();
+      render();
+    } catch (error) {
+      toast(error.message || "验收提交失败", "error");
+    }
+  };
+
+  const enterPipelineStep = (groupName, stepId) => {
+    const group = versionGroups.find((item) => item.version_name === groupName);
+    if (!group) return;
+    const platformGate = activePlatform();
+    const children = rows.filter((row) => {
+      if ((row.version_name || "") !== groupName) return false;
+      if (platformGate && row.platform !== platformGate) return false;
+      const channelGate = channelFilterValue();
+      if (channelGate && channelIdOf(row) !== channelGate) return false;
+      const envGate = lockEnvKey || document.getElementById("versionEnv")?.value || "";
+      if (envGate && normalizedEnv(row) !== envGate) return false;
+      return true;
+    });
+    const pipe = deriveGroupPipeline(group, children);
+    const step = pipe.steps.find((item) => item.id === stepId);
+    if (!step) return;
+    if (step.locked) {
+      toast("请先完成上一步，再进入该流程", "error");
+      return;
+    }
+    if (stepId === "prepare") {
+      const needPipelineFix = !pipe.pipelineOk || pipe.prepareBlockers.some((b) => b.kind === "pipeline" || b.kind === "jenkins");
+      if (needPipelineFix) {
+        if (pipe.prepareBlockers.length) {
+          toast(`准备未就绪：${pipe.prepareBlockers.slice(0, 3).map((b) => b.label).join("；")}`, "error");
+        }
+        location.href = groupBuildConfigHref(group, children, { highlightGate: true });
+        return;
+      }
+      if (!pipe.primary) return openVersionDialog(groupName);
+      if (window.VersionReleaseEditor) {
+        window.VersionReleaseEditor.open(pipe.primary, {
+          highlightFields: pipe.prepareBlockers.filter((b) => b.field).map((b) => b.field),
+          blockers: pipe.prepareBlockers,
+        });
+      } else openVcDrawer(pipe.primary);
+      return;
+    }
+    if (stepId === "build") {
+      if (pipe.prepareReady === false) {
+        toast("请先完成准备节点全部校验，再进入打包", "error");
+        return;
+      }
+      if (!pipe.primary) return openVersionDialog(groupName);
+      location.href = buildJourneyHref(group, pipe.primary);
+      return;
+    }
+    if (stepId === "verify") {
+      if (pipe.steps.find((s) => s.id === "build")?.status !== "success") {
+        toast("请先完成完整打包并产出可测产物，再进入验收", "error");
+        return;
+      }
+      if (!pipe.primary) return openVersionDialog(groupName);
+      openAcceptDialog(pipe.primary.id);
+      return;
+    }
+    if (stepId === "release") {
+      if (!pipe.primary) return openVersionDialog(groupName);
+      if (pipe.steps.find((s) => s.id === "verify")?.status !== "success") {
+        toast("请先完成验收，再进入上线", "error");
+        return;
+      }
+      if (window.VersionReleaseEditor) window.VersionReleaseEditor.open(pipe.primary);
+      else openVcDrawer(pipe.primary);
+    }
+  };
 
   const groupRowHtml = (group, children) => {
     const groupName = group.version_name;
-    const collapsed = collapsedGroups.has(groupName);
-    const buildConfigParams = new URLSearchParams();
-    buildConfigParams.set("from", "version-group");
-    buildConfigParams.set("version_name", groupName);
-    if (group.env_key) buildConfigParams.set("env_key", group.env_key);
-    if (group.platform) buildConfigParams.set("platform", group.platform);
-    const anchorId = children[0]?.id || group.anchor_version_id || "";
-    const buildConfigHref = anchorId
-      ? `/admin/projects/${projectId}/versions/${encodeURIComponent(anchorId)}/build-config?${buildConfigParams}`
-      : `/admin/projects/${projectId}/version-groups/build-config?${buildConfigParams}`;
-    const pipelineBadge = group.pipeline_ready
-      ? `<span class="version-pill pipeline-ready">管线就绪</span>`
-      : `<span class="version-pill pipeline-missing">管线未配置</span>`;
-    const downloadable = children.filter((row) => row.apk_status === "found");
-    const groupDownloadBtn = downloadable.length === 1
-      ? `<button class="version-btn neutral compact" type="button" data-download-apk="${esc(downloadable[0].id || "")}">下载</button>`
-      : downloadable.length > 1
-        ? `<button class="version-btn neutral compact" type="button" data-download-pick="${esc(groupName)}">下载</button>`
-        : "";
-    const groupActions = canEdit
-      ? `${groupDownloadBtn}<a class="version-btn build compact" href="${buildConfigHref}">配置管线</a>
-         <button class="version-btn neutral compact" type="button" data-add-vc="${esc(groupName)}">添加 VC</button>
-         <button class="version-btn neutral compact" type="button" data-edit-group="${esc(groupName)}">编辑</button>
-         <button class="version-btn warn compact" type="button" data-delete-group="${esc(groupName)}">删除</button>`
-      : `${groupDownloadBtn}<a class="version-btn build compact" href="${buildConfigHref}">查看管线</a>`;
-    const channelGate = channelFilterValue();
-    const emptyHint = children.length
-      ? ""
-      : `<div class="version-empty-inline ${TABLE_COLS}">${
-          channelGate
-            ? `该渠道尚无构建 · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">为 ${esc(channelNameOf(channelGate))} 添加 VC</button>`
-            : `尚无 VersionCode · <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button>`
-        }</div>`;
-    return `<section class="version-group-card${collapsed ? " is-collapsed" : ""}" data-group="${esc(groupName)}">
-      <div class="version-row version-row-group ${TABLE_COLS}">
-        <div class="version-group-title">
-          <button class="version-group-toggle" type="button" data-toggle-group="${esc(groupName)}" aria-expanded="${collapsed ? "false" : "true"}">
-            <img src="/static/project_ui/svg/action_next.svg" alt="">
-          </button>
-          <div class="version-group-head">
-            <div class="version-group-name-line"><strong>${esc(groupName)}</strong><span class="pm-tag pm-tag--muted">版本组</span></div>
+    const pipe = deriveGroupPipeline(group, children);
+    const primaryAct = groupPrimaryAction(group, children, pipe);
+    const buildConfigHref = groupBuildConfigHref(group, children);
+    const env = group.env_key || activeEnvKey() || envKey || "development";
+    const channel = channelFilterValue() || (pipe.primary ? channelIdOf(pipe.primary) : "") || "";
+    const platform = group.platform || activePlatform() || "android";
+    const historyHref = scopeHref(`/admin/projects/${projectId}/build-history`, {
+      env_key: env,
+      channel_id: channel,
+      platform,
+      version_id: pipe.primary?.id || "",
+      version_name: groupName,
+    }, { scoped: "1" });
+    const stepsHtml = pipe.steps.map((step, index) => {
+      const cls = ["success", "running", "failed", "current", "pending"].includes(step.status) ? step.status : "pending";
+      const lockedCls = step.locked ? " is-locked" : "";
+      return `<button type="button" class="vgp-step is-${esc(cls)}${lockedCls}" data-vgp-step="${esc(step.id)}" data-group="${esc(groupName)}" ${step.locked ? 'aria-disabled="true"' : ""}>
+        <span class="vgp-step-index">0${index + 1}</span>
+        <strong class="vgp-step-name">${esc(step.label)}</strong>
+        <span class="vgp-step-desc">${esc(step.desc)}</span>
+        <span class="vgp-step-status">${esc({
+          success: "已完成",
+          running: "进行中",
+          failed: step.id === "prepare" ? "待修正" : (step.id === "verify" ? "未通过" : "失败"),
+          current: "当前 · 可进入",
+          pending: step.locked ? "未解锁" : "未开始",
+        }[step.status] || step.status)}</span>
+      </button>`;
+    }).join("");
+    let primaryBtn = "";
+    if (primaryAct.href) {
+      primaryBtn = `<a class="vgp-primary${primaryAct.warn ? " is-warn" : ""}" href="${esc(primaryAct.href)}">${esc(primaryAct.label)}</a>`;
+    } else if (primaryAct.action === "quick_build" && primaryAct.version_id) {
+      primaryBtn = `<button type="button" class="vgp-primary${primaryAct.warn ? " is-warn" : ""}" data-quick-build="${esc(primaryAct.version_id)}">${esc(primaryAct.label)}</button>`;
+    } else {
+      primaryBtn = `<button type="button" class="vgp-primary${primaryAct.warn ? " is-warn" : ""}" data-vgp-action="${esc(primaryAct.action || "")}" data-version-id="${esc(primaryAct.version_id || "")}" data-version-name="${esc(primaryAct.version_name || groupName)}" data-group="${esc(groupName)}" data-highlight="${primaryAct.highlight ? "1" : "0"}">${esc(primaryAct.label)}</button>`;
+    }
+    const vcCollapsed = !expandedVcGroups.has(groupName);
+    const vcRows = pipe.scoped.length
+      ? pipe.scoped.slice(0, 6).map((row) => `<div class="vgp-vc-row">
+          <div class="vgp-vc-main">
+            <strong>VC ${esc(row.version_code || "-")}</strong>
+            ${versionStatusHtml(row)}
+            ${latestBuildHtml(row)}
+          </div>
+          <div class="vgp-vc-actions">
+            <button type="button" class="version-btn neutral compact" data-open-vc-row="${esc(row.id || "")}">详情</button>
+            ${canEdit ? `<button type="button" class="version-btn build compact" data-quick-build="${esc(row.id || "")}">构建</button>` : ""}
+            <button type="button" class="version-btn release compact" data-edit-release="${esc(row.id || "")}">发版</button>
+          </div>
+        </div>`).join("")
+      : `<div class="version-empty-inline">该交付线尚无 VersionCode。<button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">立即添加</button></div>`;
+    const metaParts = [
+      statusLabels[group.status] || group.status || "有效",
+      platformLabelOf(platform),
+      channel ? channelNameOf(channel) : "全部渠道",
+      `${pipe.scoped.length} 个 VC`,
+    ];
+    const cardCollapsed = !expandedPipelines.has(groupName);
+    const currentHint = `${pipe.current.label} · ${pipe.current.desc}`;
+    return `<article class="vgp-card${cardCollapsed ? " is-collapsed" : ""}" data-group="${esc(groupName)}">
+      <div class="vgp-side" aria-hidden="true">客户端</div>
+      <div class="vgp-main">
+        <div class="vgp-top">
+          <div class="vgp-title">
+            <div class="vgp-title-row">
+              <button type="button" class="vgp-card-toggle" data-toggle-pipeline="${esc(groupName)}" aria-expanded="${cardCollapsed ? "false" : "true"}" aria-label="${cardCollapsed ? "展开管线" : "折叠管线"}">
+                <img src="/static/project_ui/svg/action_next.svg" alt="">
+              </button>
+              <strong>${esc(groupName)}</strong>
+              <span class="pm-tag pm-tag--muted">版本组</span>
+              ${group.pipeline_ready ? '<span class="version-pill pipeline-ready">管线就绪</span>' : '<span class="version-pill pipeline-missing">管线未配置</span>'}
+              ${cardCollapsed ? `<span class="vgp-hint">当前：${esc(currentHint)}</span>` : ""}
+            </div>
+            <div class="vgp-meta">${esc(metaParts.join(" · "))}</div>
+          </div>
+          <div class="vgp-links">
+            <a class="vgp-link" href="${esc(buildConfigHref)}">配置管线</a>
+            <a class="vgp-link" href="${esc(historyHref)}">发版记录</a>
+            <a class="vgp-link" href="${esc(historyHref)}">产物</a>
+            ${canEdit ? `<button type="button" class="vgp-link" data-edit-group="${esc(groupName)}">编辑</button>
+            <button type="button" class="vgp-link is-danger" data-delete-group="${esc(groupName)}">删除</button>` : ""}
           </div>
         </div>
-        <div>${versionNameTagHtml(children[0] || {}, group)}</div>
-        <div><span class="version-pill ${esc(group.status || "active")}">${esc(statusLabels[group.status] || group.status || "有效")}</span></div>
-        <div>${pipelineBadge}</div>
-        <div class="version-group-dash">—</div>
-        <div class="version-group-dash">—</div>
-        <div class="version-row-actions version-group-actions">${groupActions}</div>
+        <div class="vgp-body">
+          <div class="vgp-track" aria-label="发版四步">${stepsHtml}</div>
+          <div class="vgp-foot">
+            ${primaryBtn}
+            <span class="vgp-hint">当前：${esc(currentHint)}</span>
+          </div>
+          <div class="vgp-vc${vcCollapsed ? " is-collapsed" : ""}" data-vc-panel="${esc(groupName)}">
+            <div class="vgp-vc-head">
+              <div class="vgp-vc-head-left">
+                <button type="button" class="vgp-vc-toggle" data-toggle-vc-panel="${esc(groupName)}" aria-expanded="${vcCollapsed ? "false" : "true"}">
+                  <img src="/static/project_ui/svg/action_next.svg" alt="">本交付线 VersionCode
+                </button>
+                <span class="vgp-hint">${pipe.scoped.length} 个</span>
+              </div>
+              <button type="button" class="version-link-btn" data-add-vc="${esc(groupName)}">添加 VC</button>
+            </div>
+            <div class="vgp-vc-list">${vcRows}</div>
+          </div>
+        </div>
       </div>
-      <div class="version-group-children">${emptyHint}${children.map((child) => childRowHtml(child, group)).join("")}</div>
-    </section>`;
+    </article>`;
   };
 
   const emptyListHtml = (platformGate, channelGate) => {
     if (channelGate && platformGate) {
-      return `<div class="version-empty">当前交付线（${esc(channelNameOf(channelGate))} · ${esc(platformLabelOf(platformGate))}）还没有版本组。请先「新建版本组」配置该平台管线，再「添加 VC」创建该渠道构建。</div>`;
+      return `<div class="vgp-empty">当前交付线（${esc(channelNameOf(channelGate))} · ${esc(platformLabelOf(platformGate))}）还没有版本组。<br>请先「新建版本组」，再按 准备 → 打包 → 验收 → 上线 推进。</div>`;
     }
     if (envScoped) {
-      return `<div class="version-empty">本环境${platformGate ? ` · ${esc(platformLabelOf(platformGate))}` : ""}尚无版本组。请先「新建版本组」，再在版本组行点击「添加 VC」。</div>`;
+      return `<div class="vgp-empty">本环境${platformGate ? ` · ${esc(platformLabelOf(platformGate))}` : ""}尚无版本组。请先「新建版本组」。</div>`;
     }
-    return '<div class="version-empty">当前筛选条件下暂无版本数据。</div>';
+    return '<div class="vgp-empty">当前筛选条件下暂无版本组。</div>';
   };
 
   const render = () => {
@@ -618,21 +1063,6 @@
     document.getElementById("versionGroups").innerHTML = groups.length
       ? groups.join("")
       : emptyListHtml(platformGate, document.getElementById("versionChannel")?.value || "");
-    document.querySelectorAll("[data-toggle-group]").forEach((button) => {
-      button.onclick = () => {
-        const name = button.dataset.toggleGroup;
-        const card = button.closest(".version-group-card");
-        if (card?.classList.contains("is-collapsed")) {
-          collapsedGroups.delete(name);
-          card.classList.remove("is-collapsed");
-          button.setAttribute("aria-expanded", "true");
-        } else {
-          collapsedGroups.add(name);
-          card?.classList.add("is-collapsed");
-          button.setAttribute("aria-expanded", "false");
-        }
-      };
-    });
     document.querySelectorAll("[data-edit-group]").forEach((button) => {
       button.onclick = () => openGroupDialog(button.dataset.editGroup);
     });
@@ -641,6 +1071,53 @@
     });
     document.querySelectorAll("[data-add-vc]").forEach((button) => {
       button.onclick = () => openVersionDialog(button.dataset.addVc);
+    });
+    document.querySelectorAll("[data-vgp-action]").forEach((button) => {
+      button.onclick = () => {
+        const action = button.getAttribute("data-vgp-action") || "";
+        const vid = button.getAttribute("data-version-id") || "";
+        const vname = button.getAttribute("data-version-name") || "";
+        if (action === "add_vc") return openVersionDialog(vname);
+        if (action === "open_accept") return openAcceptDialog(vid);
+        if (action === "edit_release") {
+          const row = rows.find((item) => String(item.id) === vid);
+          const gname = button.getAttribute("data-group") || row?.version_name || "";
+          const group = versionGroups.find((item) => item.version_name === gname);
+          const children = rows.filter((item) => (item.version_name || "") === gname);
+          const pipe = group ? deriveGroupPipeline(group, children) : null;
+          const opts = button.getAttribute("data-highlight") === "1" || (pipe && !pipe.prepareReady)
+            ? {
+                highlightFields: (pipe?.prepareBlockers || []).filter((b) => b.field).map((b) => b.field),
+                blockers: pipe?.prepareBlockers || [],
+              }
+            : {};
+          if (row && window.VersionReleaseEditor) window.VersionReleaseEditor.open(row, opts);
+          else if (row) openVcDrawer(row);
+        }
+      };
+    });
+    document.querySelectorAll("[data-vgp-step]").forEach((button) => {
+      button.onclick = () => {
+        enterPipelineStep(button.getAttribute("data-group") || "", button.getAttribute("data-vgp-step") || "");
+      };
+    });
+    document.querySelectorAll("[data-toggle-vc-panel]").forEach((button) => {
+      button.onclick = () => {
+        const name = button.getAttribute("data-toggle-vc-panel") || "";
+        if (!name) return;
+        if (expandedVcGroups.has(name)) expandedVcGroups.delete(name);
+        else expandedVcGroups.add(name);
+        render();
+      };
+    });
+    document.querySelectorAll("[data-toggle-pipeline]").forEach((button) => {
+      button.onclick = () => {
+        const name = button.getAttribute("data-toggle-pipeline") || "";
+        if (!name) return;
+        if (expandedPipelines.has(name)) expandedPipelines.delete(name);
+        else expandedPipelines.add(name);
+        render();
+      };
     });
     document.querySelectorAll("[data-download-apk]").forEach((button) => {
       button.onclick = (event) => {
@@ -693,6 +1170,7 @@
       };
     });
     updateBuildHistoryLink();
+    updateBuildJourneyLink();
     updateScopeBanner();
   };
 
@@ -1176,6 +1654,26 @@
     panel.insertBefore(banner, panel.firstChild);
   };
 
+  document.getElementById("vgpAcceptClose")?.addEventListener("click", closeAcceptDialog);
+  document.getElementById("vgpAcceptPass")?.addEventListener("click", () => submitAcceptance("passed"));
+  document.getElementById("vgpAcceptFail")?.addEventListener("click", () => submitAcceptance("failed"));
+  document.getElementById("vgpAcceptMask")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeAcceptDialog();
+  });
+
+  const syncMatrixCollapse = () => {
+    const section = document.getElementById("vwMatrixSection");
+    const toggle = document.getElementById("vwMatrixToggle");
+    if (!section || !toggle) return;
+    section.classList.toggle("is-collapsed", !matrixExpanded);
+    toggle.setAttribute("aria-expanded", matrixExpanded ? "true" : "false");
+  };
+  document.getElementById("vwMatrixToggle")?.addEventListener("click", () => {
+    matrixExpanded = !matrixExpanded;
+    syncMatrixCollapse();
+  });
+  syncMatrixCollapse();
+
   applyEnvScopedUi();
   showJourneyHint();
 
@@ -1275,6 +1773,26 @@
           const qs = urlParams.toString();
           history.replaceState({}, "", qs ? `${location.pathname}?${qs}` : location.pathname);
         }
+      }
+      if (urlParams.get("action") === "open_build" || urlParams.get("action") === "focus_build") {
+        const buildId = urlParams.get("version_id") || "";
+        const row = buildId
+          ? rows.find((item) => String(item.id) === buildId)
+          : rows[0];
+        if (row) {
+          const card = root.querySelector(`.vgp-card[data-group="${CSS.escape(String(row.version_name || ""))}"]`)
+            || root.querySelector(".vgp-card");
+          if (card) {
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            card.classList.add("is-focus-build");
+            const buildNode = card.querySelector('[data-step="build"], .vgp-step[data-id="build"]');
+            if (buildNode) buildNode.classList.add("is-pulse");
+          }
+          toast("已定位到打包节点；需要进度详情时再点「进入打包流程」", "info");
+        }
+        urlParams.delete("action");
+        const qs = urlParams.toString();
+        history.replaceState({}, "", qs ? `${location.pathname}?${qs}` : location.pathname);
       }
       const drawerId = urlParams.get("vc_drawer");
       if (drawerId) {

@@ -2,6 +2,13 @@
 
 These rules apply to the entire repository.
 
+## Completion honesty (all tasks)
+
+- Before claiming any work finished, follow `.cursor/rules/no-false-completion.mdc` (`alwaysApply`).
+- Unfinished inventory SSOT: `docs/architecture/plans/OPEN_ITEMS_MASTER.md`. Plan `[x]` alone is never DONE.
+- Allowed status words only: DONE / PARTIAL / BLOCKED. Never「基本完成」「差不多」without evidence gates.
+- **Do not stop** while the user’s In still has locally actionable PARTIAL items; leave only DONE or irresistible BLOCKED (or the user explicitly allows a pause). Always list every incomplete ID with the bar to DONE / block reason.
+
 ## Scope
 
 - These rules are not only for the Agent module.

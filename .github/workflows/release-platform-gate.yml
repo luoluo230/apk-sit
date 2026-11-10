@@ -61,8 +61,6 @@ jobs:
 
       - name: postgres compose pytest gate
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        env:
-          SKIP_POSTGRES_COMPOSE: "1"
         run: py -3 scripts/postgres_compose_pytest_gate.py
 
       - name: version module size gate

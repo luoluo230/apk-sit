@@ -13,6 +13,25 @@
           <div class="p01-field"><label for="newProjectId">项目 ID（英文）</label><input type="text" id="newProjectId" placeholder="如 MyGame" required></div>
           <div class="p01-field"><label for="newProjectName">项目名称</label><input type="text" id="newProjectName" placeholder="显示名称" required></div>
           <div class="p01-field"><label for="newProjectPhase">项目阶段</label><select id="newProjectPhase">{% for value, label in project_phases %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+          <div class="p01-field p01-span-2">
+            <span class="p01-field-label">服务器类型（创建后不可更改）</span>
+            <p class="p01-hint" style="margin:0 0 8px;">创建后不可更改，请按玩法体量选择。</p>
+            <select id="newProjectServerMode" required hidden aria-hidden="true" tabindex="-1">
+              <option value="" selected disabled>请选择</option>
+              <option value="topology">中重度 GameServer（拓扑 / Agent）</option>
+              <option value="casual_baas">轻度 BaaS（REST / GM）</option>
+            </select>
+            <div class="p01-server-mode-cards" role="radiogroup" aria-label="服务器类型">
+              <button type="button" class="p01-server-mode-card" data-server-mode="topology" aria-pressed="false">
+                <strong>中重度 GameServer</strong>
+                <span>拓扑 + Agent + 游戏服工作台；适合长连接与复杂服务端。</span>
+              </button>
+              <button type="button" class="p01-server-mode-card" data-server-mode="casual_baas" aria-pressed="false">
+                <strong>轻度 BaaS</strong>
+                <span>Portal 托管 REST + GM；客户端直连 API，无需部署拓扑。</span>
+              </button>
+            </div>
+          </div>
           <div class="p01-field p01-field--icon">
             <label for="newProjectIconFile">项目图标</label>
             <div class="p01-icon-upload">
@@ -30,7 +49,7 @@
       <section class="p01-modal-panel p01-modal-panel--muted">
         <div class="p01-modal-panel__head">
           <h4>接入凭据</h4>
-          <button type="button" class="pm-btn pm-btn--compact" id="btnGenerateCredentials">重新生成</button>
+          <button type="button" class="pm-btn pm-btn--compact" id="btnGenerateCredentials">系统生成凭据</button>
         </div>
         <div class="p01-form-grid">
           <div class="p01-field"><label for="newProjectGameId">gameId</label><input type="text" id="newProjectGameId" class="p01-input-readonly" readonly placeholder="打开弹窗后自动生成"></div>

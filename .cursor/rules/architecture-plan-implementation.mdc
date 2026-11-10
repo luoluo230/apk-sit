@@ -31,5 +31,7 @@ User mentions `docs/architecture/plans/`, P0/P1/P2 Plan IDs, or expert review re
 
 ## Also apply
 
+- `.cursor/rules/no-false-completion.mdc` — **每次任务必读**；无证据门禁禁止说「完成」
+- `docs/architecture/plans/OPEN_ITEMS_MASTER.md` — 未完成项真源；冲突时高于 Plan `[x]`
 - `.cursor/rules/safe-change-workflow.md` — compile/test/restart gates
 - Design-pixel tasks → `design-faithful-ui` skill (overrides minimal-diff for UI only)

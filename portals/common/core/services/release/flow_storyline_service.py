@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Human-facing release storyline: map order status to one pipeline, expose live Runtime."""
+"""Release order progress (detail view). Main track is the四步步骤条 on versions/build/release pages."""
 
 from __future__ import annotations
 
@@ -146,14 +146,28 @@ def build_runtime_snapshot(project_id: str, env_key: str) -> Dict[str, Any]:
     }
 
 
+def _main_track(project_id: str, env_key: str) -> Dict[str, str]:
+    ek = str(env_key or "development").strip() or "development"
+    base = f"/admin/projects/{project_id}"
+    return {
+        "label": "发版四步主轨",
+        "href": f"{base}/versions?env_key={ek}",
+        "hint": "版本与管线 → 构建与产物 → 去发版 → 发布历史（见页顶步骤条）",
+    }
+
+
 def build_storyline(
     project_id: str,
     env_key: str,
     pending_actions: List[Dict[str, Any]],
     *,
     release_href: str,
+    versions_href: str = "",
 ) -> Dict[str, Any]:
     ek = str(env_key or "")
+    main_track = _main_track(project_id, ek or "development")
+    if versions_href:
+        main_track = {**main_track, "href": versions_href}
     current = None
     for row in pending_actions or []:
         if ek and str(row.get("env_key") or "") != ek:
@@ -171,10 +185,17 @@ def build_storyline(
             "status": "",
             "status_label": "",
             "title": "当前没有进行中的发版",
-            "detail": "从发版工作台勾选交付线开始；生产请走预检与审批，不要直接覆盖线上。",
+            "detail": "日常发版请走页顶四步主轨；下方七步仅展示发布单内部进度（详情）。",
+            "track_role": "order_detail",
+            "track_title": "发布单进度（详情）",
+            "main_track": main_track,
             "steps": steps,
             "primary": {
-                "label": "去发版",
+                "label": "版本与管线",
+                "href": main_track["href"],
+            },
+            "secondary": {
+                "label": "详情 · 去发版执行",
                 "href": release_href,
             },
         }
@@ -184,6 +205,11 @@ def build_storyline(
     nxt = current.get("next_action") if isinstance(current.get("next_action"), dict) else {}
     href = str(nxt.get("href") or current.get("href") or release_href)
     label = str(nxt.get("label") or "继续发版")
+    order_href = ""
+    if current.get("release_order_id"):
+        order_href = (
+            f"/admin/projects/{project_id}/release-orders/{current.get('release_order_id')}"
+        )
     return {
         "has_in_flight": status in _IN_FLIGHT,
         "current_stage": stage,
@@ -197,6 +223,11 @@ def build_storyline(
             f"{status_label(status)}"
         ).strip(" ·"),
         "release_order_id": current.get("release_order_id"),
+        "track_role": "order_detail",
+        "track_title": "发布单进度（详情）",
+        "main_track": main_track,
+        "order_detail_href": order_href,
         "steps": pipeline_steps(stage),
-        "primary": {"label": label, "href": href},
+        "primary": {"label": "版本与管线（主轨）", "href": main_track["href"]},
+        "secondary": {"label": f"详情 · {label}", "href": href},
     }

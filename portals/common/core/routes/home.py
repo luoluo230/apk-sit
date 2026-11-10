@@ -245,7 +245,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             html += row("包名", escHtml(d.package_name || d.app_name || "—"));
             html += row("文件", escHtml(d.file_name || "—"));
             html += row("大小", escHtml(d.size_label || "—"));
-            html += row("渠道/阶段", escHtml((d.channel_label || d.channel || "-") + " / " + (d.stage_label || d.stage || "-")));
+            html += row("渠道/环境", escHtml((d.channel_label || d.channel || "-") + " / " + (d.env_label || d.stage_label || d.env_key || d.stage || "-")));
             html += "<div class=\\"grid md:grid-cols-2 gap-4 pt-2\\">";
             html += qrBlock("本地下载", d.local_download_url, d.local_qr_dataurl);
             html += qrBlock("远端下载", d.oss_download_url, d.oss_qr_dataurl);

@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token_value|default('') }}">
     <title>构建管理 - APK 下载中心</title>
-    <link rel="stylesheet" href="/static/tailwind.css">
+    <link rel="stylesheet" href="/static/project_ui/design-tokens.css?v=20261110-ab1">
+    <link rel="stylesheet" href="/static/admin/admin_build_utils.css?v=20261110-ab1">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -27,7 +28,7 @@
                 项目：{{ version_info.project_id }}{% if version_info.version_name or version_info.version_code %} / 版本：{{ version_info.version_name or version_info.version_code }}{% endif %}
             </span>
             <span class="text-gray-500">渠道：{{ version_info.channel_name or version_info.channel or '-' }}</span>
-            {% if version_info.stage_name %}<span class="text-gray-500">阶段：{{ version_info.stage_name }}</span>{% endif %}
+            {% if version_info.stage_name %}<span class="text-gray-500">环境：{{ version_info.stage_name }}</span>{% endif %}
         </div>
         {% endif %}
 

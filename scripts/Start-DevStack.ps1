@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  One-command local dev stack: Mongo/Redis + GameServer --all + Portal :5003 + client config sync.
+  DEV-ONLY: local dev stack (Mongo/Redis + GameServer + Portal :5003). Do not use in production deploy.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\Start-DevStack.ps1

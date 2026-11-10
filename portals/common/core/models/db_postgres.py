@@ -55,12 +55,40 @@ class _PGRow:
         return len(self._vals)
 
 
+_pg_pool = None
+
+
+def _ensure_pg_pool():
+    """Wave B：ThreadedConnectionPool，按 BAAS_WORKERS 放大 maxconn。"""
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+    if not DATABASE_URL:
+        raise RuntimeError('DATABASE_URL is required for PostgreSQL backend')
+    from psycopg2 import pool as pg_pool
+
+    try:
+        from services.baas.capacity import postgres_pool_settings
+
+        cfg = postgres_pool_settings()
+        maxconn = int(cfg.get("max_conn_hint") or 8)
+    except Exception:
+        maxconn = 8
+    minconn = 1
+    _pg_pool = pg_pool.ThreadedConnectionPool(minconn, max(minconn, maxconn), DATABASE_URL)
+    return _pg_pool
+
+
 def _get_conn():
     conn = getattr(_local, 'conn', None)
     if conn is None:
         if not DATABASE_URL:
             raise RuntimeError('DATABASE_URL is required for PostgreSQL backend')
-        raw = psycopg2.connect(DATABASE_URL)
+        use_pool = str(__import__("os").environ.get("BAAS_PG_POOL") or "1").strip() != "0"
+        if use_pool:
+            raw = _ensure_pg_pool().getconn()
+        else:
+            raw = psycopg2.connect(DATABASE_URL)
         conn = _PGConn(raw)
         _local.conn = conn
     return conn
@@ -142,6 +170,26 @@ class _PGConn:
 
 def _split_sql_script(script: str):
     return [part.strip() for part in script.split(";") if part.strip()]
+
+
+def _ensure_unique_index(conn, index_name: str, create_sql: str) -> None:
+    """Create unique index safely under concurrent Portal/E2E init_db callers.
+
+    PostgreSQL can raise UniqueViolation on pg_class when two sessions race
+    CREATE UNIQUE INDEX IF NOT EXISTS for the same name.
+    """
+    try:
+        conn.execute(f"DROP INDEX IF EXISTS {index_name}")
+        conn.execute(create_sql)
+    except Exception as exc:  # noqa: BLE001
+        text = f"{type(exc).__name__}: {exc}".lower()
+        if "uniqueviolation" in text or "already exists" in text or "duplicate" in text:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return
+        raise
 
 
 def _translate_sql(sql: str) -> str:
@@ -806,10 +854,11 @@ def init_db():
             conn.execute("ALTER TABLE release_scopes ADD COLUMN active_bundle_id TEXT DEFAULT ''")
         if "platform" not in scope_columns:
             conn.execute("ALTER TABLE release_scopes ADD COLUMN platform TEXT DEFAULT ''")
-        conn.execute("DROP INDEX IF EXISTS idx_release_scope_target")
-        conn.execute(
+        _ensure_unique_index(
+            conn,
+            "idx_release_scope_target",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_release_scope_target "
-            "ON release_scopes(project_id, env_key, channel_id, platform)"
+            "ON release_scopes(project_id, env_key, channel_id, platform)",
         )
         _migrate_config_registry(conn)
         if not _migration_applied(conn, 'release_scopes_platform_v2'):
@@ -818,10 +867,11 @@ def init_db():
         binding_columns = {row["name"] for row in conn.execute("PRAGMA table_info(topology_bindings)").fetchall()}
         if "platform" not in binding_columns:
             conn.execute("ALTER TABLE topology_bindings ADD COLUMN platform TEXT DEFAULT ''")
-        conn.execute("DROP INDEX IF EXISTS idx_topology_binding_target")
-        conn.execute(
+        _ensure_unique_index(
+            conn,
+            "idx_topology_binding_target",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_topology_binding_target "
-            "ON topology_bindings(project_id, env_key, channel_id, platform, version_name)"
+            "ON topology_bindings(project_id, env_key, channel_id, platform, version_name)",
         )
         if not _migration_applied(conn, "release_batches_v1"):
             conn.executescript(
@@ -1222,6 +1272,11 @@ def init_db():
 
             conn.executescript(BAAS_DUNGEON_TIER_V1_SQL)
             _mark_migration(conn, "baas_dungeon_tier_v1")
+        if not _migration_applied(conn, "baas_realms_v1"):
+            from models.baas_migrations import BAAS_REALMS_V1_SQL
+
+            conn.executescript(BAAS_REALMS_V1_SQL)
+            _mark_migration(conn, "baas_realms_v1")
         # Restore / seed can leave SERIAL sequences behind MAX(id); resync every boot.
         _resync_pg_serial_sequences(conn)
         conn.commit()

@@ -9,7 +9,7 @@
   var devices = [];
   var editingId = "";
 
-  var STAGE_LABELS = { dev: "开发", test: "测试", production: "线上" };
+  var ENV_BIND_LABELS = { dev: "开发", test: "测试", production: "线上" };
   var PLATFORM_LABELS = { android: "Android", ios: "iOS" };
 
   function esc(s) {
@@ -39,7 +39,7 @@
     if (!tbody) return;
     if (count) count.textContent = "共 " + devices.length + " 台";
     if (!devices.length) {
-      tbody.innerHTML = '<tr><td colspan="6">暂无测试设备，点击「添加设备」绑定 device_id 与阶段。</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6">暂无测试设备，点击「添加设备」绑定 device_id 与环境。</td></tr>';
       return;
     }
     tbody.innerHTML = devices
@@ -63,7 +63,7 @@
           esc(PLATFORM_LABELS[row.platform] || row.platform || "android") +
           "</td>" +
           "<td>" +
-          esc(STAGE_LABELS[row.stage] || row.stage || "dev") +
+          esc(ENV_BIND_LABELS[row.stage] || row.stage || "dev") +
           "</td>" +
           "<td>" +
           esc((row.notes || "").slice(0, 40) || "-") +

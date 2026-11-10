@@ -1,14 +1,16 @@
-<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20260921-flow-final">
+<link rel="stylesheet" href="/static/project_versions_workspace.css?v=20261103-gate">
+<link rel="stylesheet" href="/static/version_group_pipeline.css?v=20261103-gate">
 {% include "_release_steps.html" %}
-<section class="version-workspace" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-server-mode="{{ server_mode }}" data-env-scoped="true"{% if platform_filter %} data-platform-filter="{{ platform_filter }}"{% endif %}{% if channel_filter %} data-channel-filter="{{ channel_filter }}"{% endif %}>
+<section class="version-workspace is-vgp" data-project-id="{{ project_id }}" data-env-key="{{ env_key }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-server-mode="{{ server_mode }}" data-env-scoped="true"{% if platform_filter %} data-platform-filter="{{ platform_filter }}"{% endif %}{% if channel_filter %} data-channel-filter="{{ channel_filter }}"{% endif %}>
   <header class="version-head pm-page-head">
     <div class="pm-page-head-copy">
       <span class="pm-page-head-icon"><img src="/static/project_ui/svg/nav_version_code.svg" alt=""></span>
-      <div><h1>版本与管线</h1><p class="version-head-sub">先选环境里的一条交付线，再看该平台的大版本（管线）和该渠道的构建。上线请去发版中心。</p></div>
+      <div><h1>版本与管线</h1><p class="version-head-sub">每个版本组是一条客户端发版管线：准备 → 打包 → 验收 → 上线。先选交付线，再按当前步骤推进。</p></div>
     </div>
     <div class="version-head-actions pm-page-head-actions">
       <button class="pm-page-star" type="button" aria-label="收藏页面"><img src="/static/project_ui/svg/action_favorite.svg" alt=""></button>
       <button id="btnExportVersions" class="version-btn pm-btn" type="button"><img src="/static/project_ui/svg/action_export.svg" alt="">导出</button>
+      <a class="version-btn pm-btn" id="versionBuildJourneyLink" href="/admin/projects/{{ project_id }}/environments/{{ env_key }}/channels/{{ channel_filter or '1001' }}/build"><img src="/static/project_ui/svg/kpi_build.svg" alt="">构建流程</a>
       <a class="version-btn pm-btn" id="versionBuildHistoryLink" href="/admin/projects/{{ project_id }}/build-history?env_key={{ env_key }}&scoped=1&channel_id={{ channel_filter }}{% if platform_filter %}&platform={{ platform_filter }}{% endif %}"><img src="/static/project_ui/svg/nav_build_artifact.svg" alt="">构建与产物</a>
       {% if can_edit %}
       <button id="btnCreateVersionGroup" class="version-btn pm-btn" type="button"><img src="/static/project_ui/svg/action_add.svg" alt="">新建版本组</button>
@@ -16,15 +18,20 @@
       {% endif %}
     </div>
   </header>
-  <section class="vw-matrix" aria-label="交付线矩阵">
+  <section class="vw-matrix is-collapsed" id="vwMatrixSection" aria-label="交付线矩阵">
     <div class="vw-matrix-head">
-      <div>
-        <h2>交付线</h2>
-        <p class="vw-matrix-hint">环境 × 渠道 × 平台。点一格后，下方只显示该平台的版本组，并过滤到该渠道的 VersionCode。</p>
+      <div class="vw-matrix-head-copy">
+        <button type="button" class="vw-matrix-toggle" id="vwMatrixToggle" aria-expanded="false" aria-controls="vwMatrixBody">
+          <img src="/static/project_ui/svg/action_next.svg" alt="">
+          <h2>交付线</h2>
+        </button>
+        <p class="vw-matrix-hint">先点选环境 × 渠道 × 平台。下方每个版本组显示为一条客户端发版管线。</p>
       </div>
       <button type="button" class="version-btn pm-btn" id="vwMatrixClear">查看本环境全部</button>
     </div>
-    <div id="vwMatrixTable" class="vw-matrix-table"><div class="version-empty">正在加载交付线…</div></div>
+    <div class="vw-matrix-body" id="vwMatrixBody">
+      <div id="vwMatrixTable" class="vw-matrix-table"><div class="version-empty">正在加载交付线…</div></div>
+    </div>
     <p class="vw-matrix-caption" id="vwLineCaption"></p>
   </section>
   <section class="version-panel pm-table-panel">
@@ -42,14 +49,26 @@
       <button id="btnResetVersionFilters" class="version-btn pm-btn" type="button">重置</button>
       <button id="btnRefreshVersions" class="version-btn pm-btn" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
     </div>
-    <div class="version-table-head pm-table-cols-7"><span>版本组 / VersionCode</span><span>版本名</span><span>状态</span><span>就绪</span><span>最新构建</span><span>更新时间</span><span>操作</span></div>
-    <div id="versionGroups" class="version-group-list"><div class="version-empty">正在加载版本数据...</div></div>
+    <div class="version-table-head pm-table-cols-7" hidden><span>版本组 / VersionCode</span><span>版本名</span><span>状态</span><span>就绪</span><span>最新构建</span><span>更新时间</span><span>操作</span></div>
+    <div id="versionGroups" class="version-group-list vgp-list"><div class="version-empty">正在加载版本数据...</div></div>
     <footer class="pm-table-pagination" id="versionPagination" hidden>
       <span data-version-count>共 0 条</span>
       <nav><button type="button" data-version-prev disabled><img src="/static/project_ui/svg/action_back.svg" alt=""></button><span data-version-page-text>1 / 1</span><button type="button" data-version-next disabled><img src="/static/project_ui/svg/action_next.svg" alt=""></button></nav>
     </footer>
   </section>
 </section>
+<div id="vgpAcceptMask" class="vgp-accept-mask" hidden>
+  <div class="vgp-accept-card" role="dialog" aria-modal="true" aria-labelledby="vgpAcceptTitle">
+    <h3 id="vgpAcceptTitle">产物验收</h3>
+    <p id="vgpAcceptSubtitle">查看本 VersionCode 产物，测试后标记是否通过验收。通过后才能进入上线。</p>
+    <div id="vgpAcceptBody" class="vgp-vc-list"></div>
+    <div class="vgp-accept-actions">
+      <button type="button" class="version-btn pm-btn" id="vgpAcceptClose">关闭</button>
+      <button type="button" class="version-btn warn compact" id="vgpAcceptFail">验收不通过</button>
+      <button type="button" class="vgp-primary" id="vgpAcceptPass">通过验收</button>
+    </div>
+  </div>
+</div>
 <div id="versionVcDrawer" class="pm-drawer-root is-hidden" aria-hidden="true">
   <div class="pm-drawer-mask" data-vc-drawer-close></div>
   <aside class="pm-drawer pm-drawer--480" role="dialog" aria-labelledby="versionVcDrawerTitle">
@@ -103,6 +122,7 @@
       <button type="button" data-release-tab="strategy">策略</button>
       <button type="button" data-release-tab="server" id="versionReleaseServerTab">服务端</button>
     </div>
+    <div id="versionReleaseBlockers" class="version-release-blockers" hidden></div>
     <div class="version-form-grid pm-modal-body">
       <div class="version-release-pane is-active" data-release-pane="meta">
         <label><span>发版类型</span><select name="release_reason_type"><option value="regular">常规发版</option><option value="hotfix">热修复</option><option value="rollback">回滚</option><option value="emergency">紧急发版</option></select></label>
@@ -143,6 +163,6 @@
   </form>
 </div>
 <script src="/static/delivery_scope.js?v=20260921-flow-final"></script>
-<script src="/static/project_version_release_editor.js?v=20260921-flow-final"></script>
-<script src="/static/project_versions_workspace.js?v=20260921-flow-final"></script>
+<script src="/static/project_version_release_editor.js?v=20261103-gate"></script>
+<script src="/static/project_versions_workspace.js?v=20261103-gate-hl"></script>
 <script src="/static/project_version_delivery_matrix.js?v=20260921-flow-final"></script>

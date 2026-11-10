@@ -154,12 +154,14 @@
 
 ---
 
-## 7. 完成定义（DoD）
+## 6. 回滚
 
-- [x] helpers.py ≤450 行（当前 156）
-- [x] 6 个子模块存在且职责文档化（模块 docstring）
-- [ ] W-P1-1 关闭（待评审）
-- [x] P1-04 / P2-01 可依赖 `runtime_orchestrator` 公开 API
+- 每 PR 独立 revert
+- facade 保留旧函数名至 1 个 release cycle
+
+---
+
+## 7. 完成定义（DoD）
 
 | PR | 内容 | 风险 |
 |----|------|------|
@@ -170,20 +172,7 @@
 
 每 PR 必须：**pytest 0 fail + 无行为变更声明**
 
----
-
-## 6. 回滚
-
-- 每 PR 独立 revert
-- facade 保留旧函数名至 1 个 release cycle
-
----
-
-## 7. 完成定义（DoD）— 唯一有效段
-
 - [x] helpers.py ≤450 行（当前 156）
 - [x] 6 个子模块存在且职责文档化（模块 docstring）
-- [x] W-P1-1 关闭（evidence + entrypoint_map）
+- [x] W-P1-1 关闭（code closure：[`docs/evidence/2026-07-29/GAP-P1-01-DOD-01.json`](../../evidence/2026-07-29/GAP-P1-01-DOD-01.json) + [`docs/evidence/2026-11-10/GAP-P1-01-DOD-01.json`](../../evidence/2026-11-10/GAP-P1-01-DOD-01.json)；`entrypoint_map.md`）
 - [x] P1-04 / P2-01 可依赖 `runtime_orchestrator` 公开 API
-
-> 原 §7 重复 DoD 已删除（2026-07-29 closure pass）。

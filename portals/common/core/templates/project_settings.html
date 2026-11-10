@@ -48,18 +48,19 @@
     <div class="settings-panel-head">
       <div>
         <h2>服务器架构</h2>
-        <p>选择拓扑集群或轻度 BaaS（Passport）。</p>
+        <p>创建项目时已选定；此处只读展示，不可更改。</p>
       </div>
     </div>
     <div class="settings-arch-form">
-      <label><span>架构模式</span>
-        <select id="settingsServerMode">
-          <option value="topology">拓扑集群（中重度）</option>
+      <label><span>架构模式（已锁定）</span>
+        <select id="settingsServerMode" disabled>
+          <option value="topology">拓扑集群（中重度 GameServer）</option>
           <option value="casual_baas">轻度 BaaS（Passport）</option>
         </select>
       </label>
-      <p id="settingsCasualHint" class="settings-hint" hidden>启用后项目侧栏会出现「休闲服务」入口；客户端经 REST API 直连 Portal，无需拓扑 / Agent。</p>
-      <button id="settingsSaveServerMode" class="pm-btn pm-btn--primary" type="button">保存架构设置</button>
+      <p id="settingsCasualHint" class="settings-hint" hidden>本项目为轻度 BaaS：侧栏显示功能配置与 GM；客户端经 REST 直连，无需拓扑 / Agent。</p>
+      <p id="settingsTopologyHint" class="settings-hint" hidden>本项目为中重度拓扑：侧栏显示游戏服/代理；不含 BaaS GM。</p>
+      <button id="settingsSaveServerMode" class="pm-btn" type="button" disabled hidden>已锁定</button>
     </div>
   </section>
 

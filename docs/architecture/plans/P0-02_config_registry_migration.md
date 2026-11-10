@@ -39,8 +39,8 @@
 
 ## 3. 前置条件
 
-- [ ] 现有 `data/apk_site.db` 与 JSON 已备份
-- [ ] 明确部署模式：单实例 vs 多 worker（决定轨 A/B）
+- [ ] 现有 `data/apk_site.db` 与 JSON 已备份（运维签字 — 严格项见 MASTER `GAP-P0-02-PRE-01`）
+- [x] 明确部署模式：单实例 vs 多 worker（决定轨 A/B）— 已写入 [`deployment_topology.md`](../../runbooks/deployment_topology.md)；与 `PLAN_CLOSURE_STATUS.md` §3 `GAP-P0-02-PRE-02` 一致
 
 ---
 

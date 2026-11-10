@@ -377,12 +377,31 @@ def assess_pipeline_readiness(
 
     has_pipeline = _pipeline_has_content(effective_pipeline)
     missing_steps = _missing_pipeline_steps(effective_pipeline) if has_pipeline else []
+    plat = str(
+        version.get("platform")
+        or group_meta.get("platform")
+        or ""
+    ).strip().lower()
+    build_node_ok = True
+    build_node_hint = ""
+    if plat:
+        try:
+            from services.infra.infra_node_registry import recommended_build_node_for_platform
+
+            rec = recommended_build_node_for_platform(plat) or {}
+            build_node_ok = bool(rec.get("available"))
+            build_node_hint = str(rec.get("hint") or "")
+        except Exception:
+            build_node_ok = False
+            build_node_hint = "无法检测构建节点在线状态"
     checks = {
         "jenkins_instance": bool(jenkins_instance),
         "jenkins_job": bool(jenkins_job),
         "pipeline": has_pipeline,
+        "build_node": build_node_ok if plat else True,
     }
-    ready = all(checks.values())
+    ready = all(bool(checks.get(k)) for k in ("jenkins_instance", "jenkins_job", "pipeline"))
+    can_trigger_build = bool(ready and checks.get("build_node") and not missing_steps)
 
     if _pipeline_has_content(template):
         source = "version_group"
@@ -395,7 +414,7 @@ def assess_pipeline_readiness(
 
     if not checks["jenkins_instance"] and not checks["jenkins_job"] and not has_pipeline:
         status = "unconfigured"
-    elif ready and not missing_steps:
+    elif can_trigger_build:
         status = "ready"
     else:
         status = "partial"
@@ -409,9 +428,12 @@ def assess_pipeline_readiness(
         missing.append("管线四步配置")
     elif missing_steps:
         missing.extend(missing_steps)
+    if plat and not checks["build_node"]:
+        missing.append(build_node_hint or "构建节点离线")
 
     return {
         "ready": ready,
+        "can_trigger_build": can_trigger_build,
         "status": status,
         "checks": checks,
         "jenkins_instance_id": jenkins_instance,
@@ -422,7 +444,7 @@ def assess_pipeline_readiness(
         "source": source,
         "blocker_hint": (
             ""
-            if ready and not missing_steps
+            if can_trigger_build
             else ("待完善：" + "、".join(missing) if missing else "请检查版本组管线模板")
         ),
     }

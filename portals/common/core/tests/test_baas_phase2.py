@@ -13,6 +13,7 @@ if _CORE not in sys.path:
 
 os.environ.setdefault("APK_DEBUG", "false")
 os.environ.setdefault("FORCE_LOGIN", "false")
+os.environ["BAAS_ALLOW_DEV_IAP"] = "1"
 
 from config import load_dotenv
 

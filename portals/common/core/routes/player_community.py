@@ -239,8 +239,10 @@ def _display_text(value, fallback=""):
     text = "" if value is None else str(value).strip()
     if not text:
         return fallback
+    from services.ops.encoding import text_has_mojibake
+
     question_ratio = text.count("?") / max(len(text), 1)
-    if question_ratio >= 0.35 or "锟" in text or "�" in text:
+    if question_ratio >= 0.35 or text_has_mojibake(text):
         return fallback or text.replace("?", "").strip() or fallback
     return text
 

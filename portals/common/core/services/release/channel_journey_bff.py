@@ -135,11 +135,11 @@ def _channel_entry_urls(project_id: str, env_key: str, channel_id: str) -> Dict[
 
     ek = normalize_release_env_key(env_key, project_id=project_id)
     cid = str(channel_id or "").strip()
-    base = f"/admin/projects/{project_id}/versions"
-    qs = urlencode({"env_key": ek, "channel_id": cid})
+    qs_versions = urlencode({"env_key": ek, "channel_id": cid})
     qs_release = urlencode({"env_key": ek})
     return {
-        "build": f"{base}?{qs}",
+        "build": f"/admin/projects/{project_id}/environments/{ek}/channels/{cid}/build",
+        "versions": f"/admin/projects/{project_id}/versions?{qs_versions}",
         "release": f"/admin/projects/{project_id}/release?{qs_release}",
     }
 
@@ -366,13 +366,25 @@ def resolve_channel_build_journey(
         per_platform = dict(per_platform)
         per_platform[plat] = state
     latest_build: Dict[str, Any] = {}
-    if selected_vid:
-        try:
-            from services.build_history_service import latest_build_for_version
+    try:
+        from services.build_history_service import latest_build_for_delivery_line
 
-            latest_build = latest_build_for_version(selected_vid, project_id) or {}
-        except Exception:
-            latest_build = {}
+        latest_build = latest_build_for_delivery_line(
+            project_id,
+            version_id=selected_vid or str(state.get("version_id") or ""),
+            channel_id=cid,
+            platform=plat,
+            version_name=str(state.get("version_name") or ""),
+        ) or {}
+    except Exception:
+        latest_build = {}
+    detection_skeleton: list = []
+    try:
+        from services.release.jenkins_step_detection import skeleton_detection_steps
+
+        detection_skeleton = skeleton_detection_steps(plat or "android")
+    except Exception:
+        detection_skeleton = []
     if latest_build:
         latest_build = dict(latest_build)
         latest_build["progress_pct"] = _jenkins_progress_pct(latest_build)
@@ -386,7 +398,7 @@ def resolve_channel_build_journey(
                     int(latest_build.get("detection_progress_pct") or 0),
                 )
         except Exception:
-            latest_build.setdefault("detection_steps", [])
+            latest_build.setdefault("detection_steps", list(detection_skeleton))
         state = dict(state)
         state["latest_build"] = latest_build
         per_platform = dict(per_platform)
@@ -406,6 +418,7 @@ def resolve_channel_build_journey(
         "current_step": current_step,
         "per_platform": per_platform,
         "selected_version_id": str(selected_vid or state.get("version_id") or ""),
+        "detection_skeleton": detection_skeleton,
         "links": {
             "build_journey": urls["build"],
             "release_journey": urls["release"],
@@ -524,7 +537,7 @@ def resolve_channel_journey_entries(project_id: str, env_key: str, channel_id: s
         return {
             "channel_id": cid,
             "channel_name": cid,
-            "build_entry": {"label": "版本与管线", "href": urls["build"], "enabled": False, "reason": "渠道未配置"},
+            "build_entry": {"label": "构建流程", "href": urls["build"], "enabled": False, "reason": "渠道未配置"},
             "release_entry": {"label": "发版", "href": urls["release"], "enabled": False, "reason": "渠道未配置"},
             "platform_lines": [],
         }
@@ -541,7 +554,7 @@ def resolve_channel_journey_entries(project_id: str, env_key: str, channel_id: s
         "channel_id": cid,
         "channel_name": channel_name,
         "build_entry": {
-            "label": "版本与管线",
+            "label": "构建流程",
             "href": urls["build"],
             "enabled": True,
             "reason": "" if any_pipeline or platform_lines else "请先配置平台",
@@ -573,6 +586,9 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
             continue
         for plat in platforms:
             plat_value = str(plat["value"])
+            from services.build.platform_capability import resolve_platform_capability
+
+            plat_cap = resolve_platform_capability(plat_value)
             scope = resolve_scope(project_id, env_key, cid, platform=plat_value, auto_create=False)
             scope_id = str(scope.get("scope_id") or build_scope_id(project_slug(project_id), env_key, cid, plat_value))
             bundle = find_active_bundle(scope_id) if scope else {}
@@ -589,6 +605,10 @@ def _delivery_lines_for_env(project_id: str, env_key: str) -> List[Dict[str, Any
                     "channel_name": channel.get("channel_name") or cid,
                     "platform": plat_value,
                     "platform_label": plat["label"],
+                    "can_build": bool(plat_cap.get("can_build")),
+                    "build_block_reason": str(plat_cap.get("build_block_reason") or ""),
+                    "platform_badge": str(plat_cap.get("badge") or ""),
+                    "platform_badge_label": str(plat_cap.get("badge_label") or ""),
                     "scope_id": scope_id,
                     "configured": configured,
                     "version_name": version_name,

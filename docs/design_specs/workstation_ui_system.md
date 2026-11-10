@@ -53,7 +53,7 @@ pm-filter-bar         搜索 + ≤4 个筛选 + 重置
 ## 5. Demo 页盘点与改造波次
 
 判定：自建 HTML 壳 / 仍引 Tailwind·CDN / 裸表单 / 与侧栏两套导航 → **必须改**。  
-**产品级结案不以「已进壳」为准**，以 [product_ui_scorecard.md](../qa/product_ui_scorecard.md) 八维 PASS 为准。
+**产品级结案不以「已进壳」为准**，以 [product_ui_scorecard.md](./product_ui_scorecard.md) 八维 PASS 为准。
 
 | 波次 | 页面 | 路径 | 问题 | 状态 |
 |---|---|---|---|---|

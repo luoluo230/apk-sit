@@ -2,7 +2,7 @@
   <header class="rh-header">
     <div>
       <h1>发版中心</h1>
-      <p>先看当前环境线上版本，再按 构建 → 预检 → 发布 推进。这里负责定向，发版负责执行。</p>
+      <p>页顶步骤条是发版四步主轨；本页展示线上现状与发布单进度（详情），执行发版请按主轨进入版本与管线或去发版。</p>
     </div>
     <div class="rh-header-actions">
       <button type="button" class="rh-btn rh-btn--ghost" id="rhRefreshBtn">刷新</button>
@@ -12,19 +12,24 @@
 
   <div class="rh-layout">
     <div class="rh-main">
-    <section class="rh-panel rh-panel--storyline" aria-label="当前发版进度">
+    <section class="rh-panel rh-panel--storyline" aria-label="发布单进度详情">
       <div class="rh-storyline-head">
         <div>
-          <h2>当前发版</h2>
+          <h2 id="rhStorylineTitle">发布单进度（详情）</h2>
+          <p class="rh-hint rh-hint--main-track" id="rhMainTrackHint">发版主轨见页顶步骤条。</p>
           <p class="rh-hint" id="rhStorylineDetail">加载中…</p>
         </div>
-        <a class="rh-btn rh-btn--primary" id="rhStorylineCta" href="/admin/projects/{{ project_id }}/release?env_key={{ env_key or 'development' }}">去发版</a>
+        <div class="rh-storyline-ctas">
+          <a class="rh-btn rh-btn--primary" id="rhStorylineCta" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'development' }}">版本与管线</a>
+          <a class="rh-btn rh-btn--ghost rh-btn--detail" id="rhStorylineDetailCta" href="/admin/projects/{{ project_id }}/release?env_key={{ env_key or 'development' }}">详情 · 去发版</a>
+        </div>
       </div>
-      <ol class="rh-storyline" id="rhStoryline"></ol>
+      <p class="rh-storyline-legend">以下为发布单内部七步进度，非发版主轨；主轨始终为页顶四步。</p>
+      <ol class="rh-storyline rh-storyline--detail" id="rhStoryline" aria-label="发布单内部进度"></ol>
     </section>
 
     <section class="rh-panel rh-panel--pending" aria-label="待处理发布单">
-      <h2>待处理</h2>
+      <h2>待处理 <small>点「详情」查看发布单</small></h2>
       <div class="rh-pending-list" id="rhPendingList"><div class="rh-empty">加载中…</div></div>
     </section>
     </div>

@@ -29,7 +29,9 @@
 |----------|------|
 | `CLUSTER_RELAY_TOKEN` | 集群 relay 鉴权；**不要**写入 `cluster.json` 提交仓库 |
 
-Dev 栈：`scripts/Start-DevStack.ps1` 从 `.env.devstack`（gitignore）加载或生成 `CLUSTER_RELAY_TOKEN`。
+**生产禁止**：不得使用字面量 `ma-cluster-relay-dev` 或任何仓库内 dev 默认 token；`APP_ENV=production` 时 `CLUSTER_RELAY_TOKEN` 必须为随机值且与 game-server 进程 env 一致。
+
+**仅本地开发**：`scripts/Start-DevStack.ps1` 为 **DEV-ONLY**（从 `.env.devstack` gitignore 加载或生成 `CLUSTER_RELAY_TOKEN`）。**禁止**在生产部署脚本、systemd、K8s manifest 中调用 `Start-DevStack.ps1`。
 
 ## 生产首次启动签字
 

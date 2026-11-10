@@ -301,12 +301,32 @@
     });
     var phaseEl = el("newProjectPhase");
     if (phaseEl) phaseEl.selectedIndex = 0;
+    var modeEl = el("newProjectServerMode");
+    if (modeEl) {
+      modeEl.selectedIndex = 0;
+      modeEl.value = "";
+    }
+    document.querySelectorAll(".p01-server-mode-card").forEach(function (card) {
+      card.classList.remove("is-selected");
+      card.setAttribute("aria-pressed", "false");
+    });
     var iconFile = el("newProjectIconFile");
     if (iconFile) iconFile.value = "";
     setIconPreview("newProjectIconPreview", "");
     newParticipants = [];
     renderNewParticipants();
     setAddFeedback("", false);
+  }
+
+  function selectServerMode(mode) {
+    var value = String(mode || "").trim();
+    var modeEl = el("newProjectServerMode");
+    if (modeEl) modeEl.value = value;
+    document.querySelectorAll(".p01-server-mode-card").forEach(function (card) {
+      var on = card.getAttribute("data-server-mode") === value;
+      card.classList.toggle("is-selected", on);
+      card.setAttribute("aria-pressed", on ? "true" : "false");
+    });
   }
 
   function openCreateModal() {
@@ -676,6 +696,8 @@
       newParticipants.forEach(function (p) {
         member_roles[p.user] = p.role || "其他";
       });
+      var serverModeEl = el("newProjectServerMode");
+      var serverMode = serverModeEl ? String(serverModeEl.value || "").trim() : "";
       var payload = {
         id: String((el("newProjectId") || {}).value || "").trim(),
         name: String((el("newProjectName") || {}).value || "").trim(),
@@ -687,12 +709,21 @@
         member_roles: member_roles,
         game_id: String((el("newProjectGameId") || {}).value || "").trim(),
         game_key: String((el("newProjectGameKey") || {}).value || "").trim(),
+        server_mode: serverMode,
       };
       if (!payload.id || !payload.name) {
         setAddFeedback("请填写项目ID和名称", true);
         if (btn) {
           btn.disabled = false;
-          btn.textContent = "添加项目";
+          btn.textContent = "创建项目";
+        }
+        return;
+      }
+      if (payload.server_mode !== "topology" && payload.server_mode !== "casual_baas") {
+        setAddFeedback("请选择服务器类型（GameServer 或 BaaS）", true);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "创建项目";
         }
         return;
       }
@@ -700,7 +731,7 @@
         setAddFeedback("请先点击“系统生成凭据”", true);
         if (btn) {
           btn.disabled = false;
-          btn.textContent = "添加项目";
+          btn.textContent = "创建项目";
         }
         return;
       }
@@ -725,7 +756,7 @@
         .then(function (res) {
           if (btn) {
             btn.disabled = false;
-            btn.textContent = "添加项目";
+            btn.textContent = "创建项目";
           }
           var d = res.data;
           if (!res.ok || d.error) {
@@ -739,14 +770,14 @@
         .catch(function (err) {
           if (btn) {
             btn.disabled = false;
-            btn.textContent = "添加项目";
+            btn.textContent = "创建项目";
           }
           setAddFeedback("网络错误: " + (err.message || ""), true);
         });
     } catch (e) {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "添加项目";
+        btn.textContent = "创建项目";
       }
       setAddFeedback("错误: " + (e.message || String(e)), true);
     }
@@ -1344,6 +1375,11 @@
     if (el("p01ClearFilters")) el("p01ClearFilters").onclick = resetFilters;
     if (el("p01ResetFilters")) el("p01ResetFilters").onclick = resetFilters;
     if (el("btnGenerateCredentials")) el("btnGenerateCredentials").onclick = generateProjectCredentials;
+    document.querySelectorAll(".p01-server-mode-card").forEach(function (card) {
+      card.onclick = function () {
+        selectServerMode(card.getAttribute("data-server-mode") || "");
+      };
+    });
     if (el("addProjectBtn")) el("addProjectBtn").onclick = addProject;
     if (el("btnAddNewParticipant")) el("btnAddNewParticipant").onclick = addNewParticipant;
     if (el("btnAddEditParticipant")) el("btnAddEditParticipant").onclick = addEditParticipant;

@@ -60,14 +60,57 @@ def find_rollback_target_order(project_id: str, scope_id: str, failed_order_id: 
     }
 
 
+def _baseline_target_from_order(failed_order: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Prefer create-time rollback_baseline_bundle_id when present."""
+    payload = failed_order.get("payload") if isinstance(failed_order.get("payload"), dict) else {}
+    baseline = str(
+        (payload or {}).get("rollback_baseline_bundle_id")
+        or failed_order.get("rollback_baseline_bundle_id")
+        or ""
+    ).strip()
+    if not baseline:
+        return None
+    init_db()
+    with get_cursor() as cur:
+        row = cur.execute(
+            """
+            SELECT release_order_id, bundle_id, version_name, version_code, published_at
+            FROM release_orders
+            WHERE bundle_id=? AND status IN ('verified', 'published', 'rolled_back')
+            ORDER BY published_at DESC
+            LIMIT 1
+            """,
+            (baseline,),
+        ).fetchone()
+    if not row:
+        return {
+            "release_order_id": "",
+            "bundle_id": baseline,
+            "version_name": "",
+            "version_code": "",
+            "published_at": "",
+            "baseline_only": True,
+        }
+    return {
+        "release_order_id": str(row["release_order_id"] or ""),
+        "bundle_id": str(row["bundle_id"] or baseline),
+        "version_name": str(row["version_name"] or ""),
+        "version_code": str(row["version_code"] or ""),
+        "published_at": str(row["published_at"] or ""),
+        "baseline_only": False,
+    }
+
+
 def attempt_auto_rollback_after_verify_fail(
     project_id: str,
     failed_order: Dict[str, Any],
     actor: str,
 ) -> Dict[str, Any]:
     order_id = str(failed_order.get("release_order_id") or "")
-    target = find_rollback_target_order(project_id, str(failed_order.get("scope_id") or ""), order_id)
-    if not target:
+    target = _baseline_target_from_order(failed_order)
+    if not target or not target.get("release_order_id"):
+        target = find_rollback_target_order(project_id, str(failed_order.get("scope_id") or ""), order_id)
+    if not target or not target.get("release_order_id"):
         return {"ok": False, "reason": "no_previous_bundle", "target_order_id": ""}
     from services.release.order_publish_flow import rollback_release_order
 
@@ -80,6 +123,7 @@ def attempt_auto_rollback_after_verify_fail(
             "rollback_target_order": target["release_order_id"],
             "rollback_target_bundle": target.get("bundle_id") or "",
             "actor": actor or "system:auto-rollback",
+            "used_create_baseline": bool((failed_order.get("payload") or {}).get("rollback_baseline_bundle_id")),
         },
     )
     return {

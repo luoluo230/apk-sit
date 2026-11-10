@@ -15,6 +15,7 @@
   let buildEventsEtag = "";
   let latestBuild = null;
   let journeyLinks = {};
+  let detectionSkeleton = [];
 
   const toast = JC.toast || ((msg, type = "info") => {
     if (window.DeliveryScopeToast) window.DeliveryScopeToast(msg, type);
@@ -36,12 +37,17 @@
 
   const dateText = (value) => (value ? String(value).replace("T", " ").slice(0, 19) : "—");
 
-  const syncUrl = JC.syncUrl || (() => {
+  const syncUrl = () => {
     const qs = new URLSearchParams({ env_key: envKey, channel_id: channelId });
     if (platform) qs.set("platform", platform);
     if (versionId) qs.set("version_id", versionId);
-    history.replaceState(null, "", `${location.pathname}?${qs}`);
-  });
+    const withReturn = JC.preserveReturnTo ? JC.preserveReturnTo(qs) : qs;
+    history.replaceState(null, "", `${location.pathname}?${withReturn}`);
+  };
+
+  if (typeof JC.applyEntryBack === "function") {
+    JC.applyEntryBack("#cjBackLink", { projectId, envKey });
+  }
 
   const statusKey = (item) => (item?.building ? "building" : String(item?.result || "UNKNOWN").toUpperCase());
   const statusText = (item) => ({
@@ -219,47 +225,118 @@
     }
   };
 
-  const detectionStepsHtml = (build, links) => {
-    const steps = Array.isArray(build?.detection_steps) ? build.detection_steps : [];
-    if (!steps.length) return "";
-    const current = String(build.detection_current_label || "").trim();
-    const rows = steps.map((step) => {
+  const detectionOverallPct = (build, steps) => {
+    if (!steps.length) return 0;
+    const done = steps.filter((step) => {
       const status = String(step.status || "pending");
-      const pct = Math.max(0, Math.min(100, Number(step.progress_pct) || 0));
-      const href = buildRecordHref(build, links, step.id || "");
-      return `<li class="cj-detect-step is-${esc(status)}" data-step="${esc(step.id || "")}">
-        <div class="cj-detect-step-top">
-          <div class="cj-detect-step-title">
-            <span class="cj-detect-index">${esc(step.index || "")}</span>
-            <strong>${esc(step.label || step.id || "步骤")}</strong>
+      return status === "success" || status === "skipped";
+    }).length;
+    const failed = steps.some((step) => {
+      const status = String(step.status || "pending");
+      return status === "failed" || status === "stopped";
+    });
+    const running = steps.some((step) => String(step.status || "") === "running");
+    let pct = Math.round((done / steps.length) * 100);
+    if (running) {
+      const fromBuild = Number(build?.detection_progress_pct);
+      if (Number.isFinite(fromBuild) && fromBuild >= 0) {
+        pct = Math.max(pct, Math.min(99, Math.round(fromBuild)));
+      } else {
+        pct = Math.min(99, pct + Math.round(100 / steps.length / 2));
+      }
+    }
+    if (failed && !running) pct = Math.min(pct, 99);
+    if (done === steps.length) pct = 100;
+    return Math.max(0, Math.min(100, pct));
+  };
+
+  const defaultSkeletonSteps = (plat) => {
+    const isIos = String(plat || "").toLowerCase() === "ios";
+    const shared = [
+      { id: "env_prep", stage_key: "0", label: "环境准备" },
+      { id: "config_export", stage_key: "1", label: "配置导出" },
+      { id: "resource_build", stage_key: "2", label: "资源打包" },
+      { id: "hot_release", stage_key: "3", label: "热更发布" },
+    ];
+    const tail = isIos
+      ? [
+          { id: "ios_xcode_export", stage_key: "5", label: "iOS Xcode 导出" },
+          { id: "ios_ipa_archive", stage_key: "6", label: "IPA 归档导出" },
+          { id: "ios_artifact_land", stage_key: "7", label: "IPA 落盘/OSS" },
+          { id: "ios_testflight", stage_key: "8", label: "TestFlight 上传" },
+        ]
+      : [{ id: "apk_build", stage_key: "4", label: "APK 打包" }];
+    return [...shared, ...tail].map((row, idx) => ({
+      ...row,
+      index: idx + 1,
+      status: "pending",
+      status_label: "待开始",
+      source: "skeleton",
+    }));
+  };
+
+  const detectionStepsHtml = (build, links, { skeleton = false } = {}) => {
+    const steps = Array.isArray(build?.detection_steps) && build.detection_steps.length
+      ? build.detection_steps
+      : (skeleton ? (detectionSkeleton.length ? detectionSkeleton : defaultSkeletonSteps(platform || build?.detection_platform)) : []);
+    if (!steps.length) return "";
+    const hasBuildNumber = Boolean(build?.build_number || build?.number);
+    const isSkeleton = Boolean(skeleton) || (!hasBuildNumber && steps.every((step) => {
+      const src = String(step.source || "");
+      const st = String(step.status || "pending");
+      return src === "skeleton" || st === "pending";
+    }));
+    const current = build?.building ? String(build.detection_current_label || "").trim() : "";
+    const overall = isSkeleton ? 0 : detectionOverallPct(build, steps);
+    const plat = String(build?.detection_platform || platform || "").toLowerCase() === "ios" ? "iOS" : "Android";
+    const srcKey = String(build?.detection_source || (isSkeleton ? "skeleton" : ""));
+    const src = srcKey === "jenkins_push" ? "步骤推送" : (srcKey === "skeleton" ? "待触发" : "日志解析");
+    const srcTone = srcKey === "jenkins_push" ? "is-live" : (srcKey === "skeleton" ? "is-skeleton" : "is-fallback");
+    const rows = steps.map((step, idx) => {
+      const status = String(step.status || "pending");
+      const href = (!isSkeleton && build) ? buildRecordHref(build, links, step.id || "") : "";
+      const stage = step.stage_key != null && step.stage_key !== "" ? `阶段 ${step.stage_key}` : `步骤 ${step.index || idx + 1}`;
+      const isLast = idx === steps.length - 1;
+      const logHtml = href
+        ? `<a class="cj-pipe-log" href="${esc(href)}">日志</a>`
+        : `<span class="cj-pipe-log is-disabled">日志</span>`;
+      return `<li class="cj-pipe-node is-${esc(status)}" data-step="${esc(step.id || "")}">
+        <div class="cj-pipe-rail" aria-hidden="true">
+          <span class="cj-pipe-dot"></span>
+          ${isLast ? "" : `<span class="cj-pipe-line"></span>`}
+        </div>
+        <div class="cj-pipe-body">
+          <div class="cj-pipe-main">
+            <strong class="cj-pipe-name">${esc(step.label || step.id || "步骤")}</strong>
+            <span class="cj-pipe-stage">${esc(stage)}</span>
           </div>
-          <span class="cj-detect-badge is-${esc(status)}">${esc(step.status_label || status)}</span>
-        </div>
-        <div class="cj-detect-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
-          <span style="width:${pct}%"></span>
-        </div>
-        <div class="cj-detect-step-foot">
-          <span class="cj-detect-hint">${esc(step.stage_key ? `阶段 ${step.stage_key}` : "打包步骤")}</span>
-          <a class="cj-detect-log" href="${esc(href)}">查看日志</a>
+          <div class="cj-pipe-aside">
+            <span class="cj-pipe-status">${esc(step.status_label || status)}</span>
+            ${logHtml}
+          </div>
         </div>
       </li>`;
     }).join("");
-    const plat = String(build.detection_platform || "").toLowerCase() === "ios" ? "iOS" : "Android";
-    const src = String(build.detection_source || "") === "jenkins_push" ? "Jenkins 步骤推送" : "日志解析（回退）";
-    return `<section class="cj-detect" aria-label="打包步骤检测">
-      <div class="cj-detect-head">
-        <div>
-          <h3>打包步骤检测 · ${esc(plat)}</h3>
-          <p>${current ? `当前：${esc(current)}。` : ""}来源：${esc(src)}。按本次启用步骤显示进度（含后续 iOS 自动打包），点击「查看日志」跳转工作台定位问题。</p>
+    const buildingClass = build?.building ? " is-building" : "";
+    const skeletonClass = isSkeleton ? " is-skeleton" : "";
+    return `<section class="cj-pipe${buildingClass}${skeletonClass}" aria-label="流水线步骤检测">
+      <header class="cj-pipe-head">
+        <div class="cj-pipe-head-copy">
+          <h3>流水线步骤</h3>
+          <div class="cj-pipe-chips">
+            <span class="cj-pipe-chip">${esc(plat)}</span>
+            <span class="cj-pipe-chip ${srcTone}">${esc(src)}</span>
+            ${current ? `<span class="cj-pipe-chip is-current">当前 · ${esc(current)}</span>` : ""}
+          </div>
         </div>
-        <div class="cj-detect-legend" aria-hidden="true">
-          <span class="is-success">完成</span>
-          <span class="is-running">进行中</span>
-          <span class="is-failed">失败</span>
-          <span class="is-stopped">停止</span>
+        <div class="cj-pipe-overall" title="整体进度">
+          <div class="cj-pipe-overall-track" role="progressbar" aria-valuenow="${overall}" aria-valuemin="0" aria-valuemax="100" aria-label="流水线整体进度">
+            <span style="width:${overall}%"></span>
+          </div>
+          <strong>${overall}%</strong>
         </div>
-      </div>
-      <ol class="cj-detect-list">${rows}</ol>
+      </header>
+      <ol class="cj-pipe-track">${rows}</ol>
     </section>`;
   };
 
@@ -276,6 +353,15 @@
     </dl>`;
   };
 
+  const matchScopeNote = (build) => {
+    if (String(build?.match_scope || "") !== "channel") return "";
+    const otherVid = String(build.version_id || "").trim();
+    const label = build.version_name && build.version_code
+      ? `${build.version_name} / ${build.version_code}`
+      : (otherVid || "其他 VersionCode");
+    return `<p class="cj-activity-note">当前 VersionCode 暂无本机构建记录，已自动带上同渠道最近一次 Jenkins 任务（${esc(label)}）。触发本 VC 构建后将切换为实时进度。</p>`;
+  };
+
   const renderBuildActivity = (build, links, state) => {
     const host = document.getElementById("cjBuildActivity");
     const inner = document.getElementById("cjBuildActivityInner");
@@ -288,8 +374,21 @@
     host.hidden = false;
 
     if (!build) {
+      const detectBlock = detectionStepsHtml({ detection_steps: detectionSkeleton, detection_platform: platform, detection_source: "skeleton" }, links, { skeleton: true });
       inner.innerHTML = `<div class="cj-activity-inner is-empty">
-        <div class="cj-activity-head"><div><h2>构建活动</h2><p>当前 VersionCode 暂无构建记录，触发构建后将在此显示进度与日志入口。</p></div></div>
+        <div class="cj-activity-head">
+          <div>
+            <h2>构建活动</h2>
+            <p>本 VersionCode 尚未触发 Jenkins 构建。下方为流水线步骤骨架，触发后将实时更新进度与日志入口。</p>
+          </div>
+          <span class="cj-badge pending">待触发</span>
+        </div>
+        ${detectBlock}
+        <div class="cj-activity-actions">
+          <button type="button" class="cj-btn build" id="cjActivityTriggerBuild">触发构建</button>
+          <button type="button" class="cj-btn neutral" id="cjRefreshActivity">刷新</button>
+          <a class="cj-btn neutral" href="${esc(links?.build_history || "#")}">构建与产物</a>
+        </div>
       </div>`;
       return;
     }
@@ -303,18 +402,23 @@
     const failureBlock = statusKey(build) === "FAILURE" && build.failure_summary
       ? `<div class="cj-activity-failure"><strong>失败摘要</strong><pre>${esc(build.failure_summary)}</pre></div>`
       : "";
+    const scopeNote = matchScopeNote(build);
 
     const detectBlock = detectionStepsHtml(build, links);
+    const coarseProgress = detectBlock
+      ? ""
+      : `<div class="cj-activity-progress${build.building ? "" : " is-done"}" aria-hidden="true"><span style="width:${progress}%"></span></div>`;
     if (build.building) {
       inner.innerHTML = `<div class="cj-activity-inner is-building">
         <div class="cj-activity-head">
           <div>
-            <h2>构建进行中</h2>
-            <p>Jenkins 正在构建 #${esc(num)}。下方按启用步骤检测进度；任一步可跳转工作台查看对应日志。</p>
+            <h2>构建 #${esc(num)} · 进行中</h2>
+            <p>按本次启用的流水线步骤跟踪进度；任一步可打开对应日志。</p>
           </div>
           ${statusBadge(build)}
         </div>
-        <div class="cj-activity-progress" aria-hidden="true"><span style="width:${progress}%"></span></div>
+        ${scopeNote}
+        ${coarseProgress}
         ${detectBlock}
         ${activityKvGrid(build)}
         ${failureBlock}
@@ -331,12 +435,13 @@
     inner.innerHTML = `<div class="cj-activity-inner is-history">
       <div class="cj-activity-head">
         <div>
-          <h2>最近构建</h2>
-          <p>当前 VersionCode 最近一次构建的步骤检测结果，可跳转构建工作台查看完整日志定位问题。</p>
+          <h2>构建 #${esc(num)} · 最近一次</h2>
+          <p>展示最近一次构建的流水线步骤结果，失败时可按步骤打开日志定位。</p>
         </div>
         ${statusBadge(build)}
       </div>
-      <div class="cj-activity-progress is-done" aria-hidden="true"><span style="width:${progress}%"></span></div>
+      ${scopeNote}
+      ${coarseProgress}
       ${detectBlock}
       ${activityKvGrid(build)}
       ${failureBlock}
@@ -349,8 +454,13 @@
     </div>`;
   };
 
-  const bindActivityActions = () => {
+  const bindActivityActions = (_state = {}) => {
     document.getElementById("cjRefreshActivity")?.addEventListener("click", () => load(true));
+    document.getElementById("cjActivityTriggerBuild")?.addEventListener("click", () => {
+      const trigger = document.getElementById("cjTriggerBuild") || document.getElementById("cjRebuildBuild");
+      if (trigger) trigger.click();
+      else toast("请先在下方产物区触发构建", "error");
+    });
     document.getElementById("cjStopBuild")?.addEventListener("click", async (event) => {
       const btn = event.currentTarget;
       const build = latestBuild;
@@ -379,8 +489,13 @@
     });
   };
 
-  const fetchBuildActivity = async (vid, fallbackBuild = null) => {
-    const qs = new URLSearchParams({ version_id: vid, platform: platform || "" });
+  const fetchBuildActivity = async (vid, fallbackBuild = null, state = {}) => {
+    const qs = new URLSearchParams({
+      version_id: vid,
+      platform: platform || "",
+      channel_id: channelId || "",
+      version_name: String(state.version_name || ""),
+    });
     const headers = {};
     if (buildEventsEtag) headers["If-None-Match"] = buildEventsEtag;
     const resp = await fetch(`/api/projects/${encodeURIComponent(projectId)}/build-events?${qs}`, {
@@ -414,7 +529,12 @@
   const startBuildEventStream = (vid, state, links) => {
     stopBuildEventStream();
     if (!vid || typeof EventSource === "undefined") return false;
-    const qs = new URLSearchParams({ version_id: vid, platform: platform || "" });
+    const qs = new URLSearchParams({
+      version_id: vid,
+      platform: platform || "",
+      channel_id: channelId || "",
+      version_name: String(state?.version_name || ""),
+    });
     const es = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/build-events/stream?${qs}`);
     buildEventSource = es;
     es.addEventListener("build", (event) => {
@@ -587,6 +707,7 @@
       const data = await api(`/api/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envKey)}/channels/${encodeURIComponent(channelId)}/build-journey?${qs}`);
       platform = data.platform || platform;
       journeyLinks = data.links || {};
+      detectionSkeleton = Array.isArray(data.detection_skeleton) ? data.detection_skeleton : [];
       if (!versionId && data.selected_version_id) versionId = data.selected_version_id;
       let state = (data.per_platform || {})[platform] || {};
       if (ensureDefaultVersionId(state)) return load(polling);
@@ -594,7 +715,7 @@
 
       if (versionId && platform) {
         try {
-          latestBuild = await fetchBuildActivity(versionId, state.latest_build || null);
+          latestBuild = await fetchBuildActivity(versionId, state.latest_build || null, state);
         } catch (e) {
           latestBuild = state.latest_build || null;
           if (!polling) toast(e.message, "error");
@@ -609,10 +730,10 @@
       renderContext(data, state);
       renderVersionPicker(state, data.links || {});
       bindVersionPicker(state);
-      renderBuildActivity(latestBuild, journeyLinks, state);
-      bindActivityActions();
       if (main) main.innerHTML = renderWorkspace(data, state);
       bindPanelActions(state);
+      renderBuildActivity(latestBuild, journeyLinks, state);
+      bindActivityActions(state);
 
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = null;

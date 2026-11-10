@@ -42,7 +42,7 @@
 **验收**
 
 - [x] 单元测试 mock Agent
-- [ ] development env 可调通真实 DevStack（manual）
+- [x] development env 可调通真实 DevStack（证据 [`docs/evidence/2026-11-09/GAP-P1-04-E2E-01.json`](../../evidence/2026-11-09/GAP-P1-04-E2E-01.json)）
 
 ---
 

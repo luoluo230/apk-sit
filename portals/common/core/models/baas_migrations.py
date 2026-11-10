@@ -303,3 +303,52 @@ CREATE TABLE IF NOT EXISTS baas_dungeon_tier (
     PRIMARY KEY (service_id, player_id, dungeon_id)
 );
 """
+
+BAAS_REALMS_V1_SQL = """
+CREATE TABLE IF NOT EXISTS baas_realms (
+    realm_id TEXT PRIMARY KEY,
+    service_id TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    open_at TEXT NOT NULL DEFAULT '',
+    target_merge_realm_id TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_baas_realms_service ON baas_realms(service_id, status);
+
+CREATE TABLE IF NOT EXISTS baas_player_realm (
+    service_id TEXT NOT NULL,
+    player_id TEXT NOT NULL,
+    realm_id TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (service_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS idx_baas_player_realm ON baas_player_realm(service_id, realm_id);
+
+CREATE TABLE IF NOT EXISTS baas_realm_merge_jobs (
+    job_id TEXT PRIMARY KEY,
+    service_id TEXT NOT NULL,
+    source_realm_id TEXT NOT NULL,
+    target_realm_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    finished_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS baas_nodes (
+    node_id TEXT PRIMARY KEY,
+    service_id TEXT NOT NULL DEFAULT '',
+    host TEXT NOT NULL DEFAULT '',
+    port INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'online',
+    last_heartbeat TEXT NOT NULL DEFAULT '',
+    meta_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_baas_nodes_service ON baas_nodes(service_id, status);
+"""

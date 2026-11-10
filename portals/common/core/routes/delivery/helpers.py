@@ -8,7 +8,7 @@ from flask import render_template, request, session
 from models.data import projects_db
 from services.ops.helpers import _render_ops_page
 
-DELIVERY_ASSET_VER = "20261102-pack-push-ios"
+DELIVERY_ASSET_VER = "20261110-cap-exclude"
 
 BREADCRUMB_BY_PAGE = {
     "project-home": "总览",

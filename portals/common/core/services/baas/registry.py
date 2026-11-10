@@ -186,7 +186,29 @@ def _merge_afk_shared_configs(configs: Dict[str, Dict[str, Any]]) -> None:
         from services.baas.afk.afk_config_loader import afk_feature_configs
 
         for key, val in afk_feature_configs().items():
-            configs[key] = val
+            if key not in configs:
+                configs[key] = val
+                continue
+            # 勿整表覆盖：AFK 导出的 iap/inventory 可能不含默认测试商品
+            base = dict(configs[key] or {})
+            incoming = dict(val or {})
+            if key in ("iap", "inventory", "economy"):
+                for list_key in ("products", "item_defs", "currencies"):
+                    if list_key in base or list_key in incoming:
+                        by_id = {}
+                        for row in list(base.get(list_key) or []) + list(incoming.get(list_key) or []):
+                            rid = str((row or {}).get("id") or "")
+                            if rid:
+                                by_id[rid] = dict(row)
+                        incoming[list_key] = list(by_id.values()) or list(incoming.get(list_key) or base.get(list_key) or [])
+                # 保留默认开发验单开关，避免 AFK 导出把测试路径关掉
+                keep_dev = bool(base.get("dev_verify_always_ok"))
+                base.update(incoming)
+                if keep_dev:
+                    base["dev_verify_always_ok"] = True
+                configs[key] = base
+            else:
+                configs[key] = val
     except Exception:
         pass
 

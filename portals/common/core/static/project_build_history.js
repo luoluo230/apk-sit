@@ -14,6 +14,19 @@
   const scopeBuildNumber = (pageQuery.get('build_number') || '').trim();
   const isScoped = pageQuery.get('scoped') === '1' || scopeVersionId || scopeEnvKey;
 
+  (() => {
+    const link = document.getElementById('buildJourneyEntryLink');
+    if (!link) return;
+    const env = scopeEnvKey || 'development';
+    const channel = scopeChannelId || '1001';
+    const qs = new URLSearchParams();
+    if (scopePlatform) qs.set('platform', scopePlatform);
+    if (scopeVersionId) qs.set('version_id', scopeVersionId);
+    qs.set('return_to', `${location.pathname}${location.search || ''}`);
+    const query = qs.toString();
+    link.href = `/admin/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(env)}/channels/${encodeURIComponent(channel)}/build?${query}`;
+  })();
+
   const envLabels = {
     development: '开发环境',
     testing: '测试环境',

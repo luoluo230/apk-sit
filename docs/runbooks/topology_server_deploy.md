@@ -25,6 +25,16 @@ powershell -ExecutionPolicy Bypass -File scripts\Sync-DevStackClientConfig.ps1 -
 
 Bootstrap：`GET /api/public/runtime-bootstrap`
 
+## 本机验收清单（P5-01 Wave1）
+
+| 项 | 状态 | 证据 / 说明 |
+|----|------|-------------|
+| Portal `:5003` 可启动 | PASS | `scripts/Start-Portal5003.ps1 -Background` |
+| `bootstrap_gate_e2e.py` | PASS | `docs/evidence/2026-11-10/OPEN-2026-11-10-08.json` |
+| DevStack 全栈（含 GameServer） | PASS | `server_release_devstack_e2e` deployed；证据 `OPEN-2026-11-10-09.json` |
+| `runtime-bootstrap` 200 | PARTIAL | 缺完整 topology scope 时 400；有 scope 的 bootstrap_gate 已 PASS |
+| 生产拓扑独立栈 | BLOCKED | 目标机 env + TLS（OPS） |
+
 ## Portal 管理
 
 - 服务器管理 → **中重度服务器** Tab

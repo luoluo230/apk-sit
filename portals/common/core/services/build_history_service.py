@@ -464,7 +464,9 @@ def latest_build_for_version(version_id: str, project_id: str = "", instance_id:
         return {}
     builds = builds_for_version_enriched(vid, instance_id=instance_id)
     if builds:
-        return dict(builds[0])
+        out = dict(builds[0])
+        out["match_scope"] = "version"
+        return out
     pid = (project_id or "").strip()
     if not pid:
         for rec in list_records_for_version(vid, instance_id=instance_id):
@@ -507,7 +509,69 @@ def latest_build_for_version(version_id: str, project_id: str = "", instance_id:
     item["env_key"] = stage_to_env_key(order.get("env_key") or "development")
     item["platform"] = str(order.get("platform") or "")
     item["channel_id"] = str(order.get("channel_id") or "")
+    item["match_scope"] = "version"
     return item
+
+
+def latest_build_for_delivery_line(
+    project_id: str,
+    *,
+    version_id: str = "",
+    channel_id: str = "",
+    platform: str = "",
+    version_name: str = "",
+) -> dict:
+    """Prefer VersionCode build; else newest project build matching channel/platform."""
+    pid = (project_id or "").strip()
+    vid = (version_id or "").strip()
+    cid = (channel_id or "").strip()
+    plat = (platform or "").strip().lower()
+    vn = (version_name or "").strip()
+    if vid:
+        hit = latest_build_for_version(vid, pid)
+        if hit:
+            return hit
+    if not pid:
+        return {}
+    records = list_records_for_project(pid, limit=120)
+    if not records:
+        return {}
+    cache: dict = {}
+    ranked: list = []
+    for rec in records:
+        item = _resolve_build_status(rec, cache, detail_mode=False)
+        item_vid = str(item.get("version_id") or "").strip()
+        meta = _version_meta(pid, item_vid) if item_vid else {}
+        item_ch = str(meta.get("channel") or item.get("channel_id") or "").strip()
+        item_plat = str(meta.get("platform") or item.get("platform") or "").strip().lower()
+        item_vn = str(meta.get("version_name") or item.get("version_name") or "").strip()
+        if cid and item_ch and item_ch != cid:
+            continue
+        if plat and item_plat and item_plat != plat:
+            continue
+        score = 0
+        if vid and item_vid == vid:
+            score += 100
+        if vn and item_vn == vn:
+            score += 20
+        if cid and item_ch == cid:
+            score += 5
+        if plat and item_plat == plat:
+            score += 5
+        ranked.append((score, str(item.get("started_at") or ""), int(item.get("build_number") or 0), item))
+    if not ranked:
+        return {}
+    ranked.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    best = dict(ranked[0][3])
+    if vid and str(best.get("version_id") or "").strip() == vid:
+        best["match_scope"] = "version"
+    else:
+        best["match_scope"] = "channel"
+        if not best.get("channel_id") and cid:
+            best["channel_id"] = cid
+        if not best.get("platform") and plat:
+            best["platform"] = plat
+    return best
 
 
 def builds_grouped_by_project(project_id: str) -> dict:

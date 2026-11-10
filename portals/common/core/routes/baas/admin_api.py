@@ -123,15 +123,112 @@ def register_baas_admin_routes(bp) -> None:
         if not can_edit_project(project_id, _actor()):
             return baas_fail_exc(Exception("无权限"))
         payload = request.get_json(silent=True) or {}
-        mode = str(payload.get("server_mode") or proj.get("server_mode") or "topology").strip().lower()
+        current = str(proj.get("server_mode") or "topology").strip().lower()
+        mode = str(payload.get("server_mode") or current).strip().lower()
         if mode not in ("topology", "casual_baas"):
             return baas_fail_exc(Exception("server_mode 无效"))
+        # P4-01：创建后锁定，禁止在设置里切换架构
+        if current in ("topology", "casual_baas") and mode != current:
+            return jsonify({
+                "ok": False,
+                "error": "服务器类型在创建项目时已选定，不可更改。如需另一架构请新建项目。",
+            }), 400
         proj["server_mode"] = mode
-        if mode == "casual_baas":
+        if mode == "casual_baas" and not str(proj.get("baas_service_id") or "").strip():
             env_key = str(payload.get("env_key") or "development")
             svc, secret = ensure_service(project_id, env_key, actor=_actor())
             proj["baas_service_id"] = svc.get("service_id") or ""
             projects_repo.upsert_project(project_id, proj)
-            return jsonify({"ok": True, "data": {"server_mode": mode, "baas_service_id": proj["baas_service_id"], "api_secret": secret}})
+            return jsonify({"ok": True, "data": {"server_mode": mode, "baas_service_id": proj["baas_service_id"], "api_secret": secret, "locked": True}})
         projects_repo.upsert_project(project_id, proj)
-        return jsonify({"ok": True, "data": {"server_mode": mode, "baas_service_id": proj.get("baas_service_id") or ""}})
+        return jsonify({"ok": True, "data": {"server_mode": mode, "baas_service_id": proj.get("baas_service_id") or "", "locked": True}})
+
+    @bp.route("/api/projects/<project_id>/baas/runtime-status", methods=["GET"])
+    @admin_required("projects")
+    def baas_runtime_status_api(project_id: str):
+        if project_id not in projects_db:
+            return baas_fail_exc(Exception("项目不存在"))
+        if not is_casual_baas_project(project_id):
+            return jsonify({"ok": False, "error": "仅轻度 BaaS 项目可用"}), 400
+        from services.baas.runtime_monitor import project_runtime_status
+        from services.baas.capacity import postgres_pool_settings, redis_ping
+
+        data = project_runtime_status(project_id)
+        data["capacity"] = postgres_pool_settings()
+        data["redis_ping"] = redis_ping()
+        return jsonify({"ok": True, "data": data})
+
+    @bp.route("/api/projects/<project_id>/baas/services/<service_id>/realms", methods=["GET", "POST"])
+    @admin_required("projects")
+    def baas_realms_api(project_id: str, service_id: str):
+        if project_id not in projects_db or not is_casual_baas_project(project_id):
+            return baas_fail_exc(Exception("项目不存在或非 BaaS"))
+        svc = get_service(service_id)
+        if not svc or str(svc.get("project_id")) != project_id:
+            return baas_fail_exc(Exception("服务不存在"))
+        from services.baas import realm_service
+
+        if request.method == "GET":
+            realm_service.ensure_default_realm(service_id, actor=_actor())
+            return jsonify({"ok": True, "data": {"items": realm_service.list_realms(service_id, include_closed=True)}})
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        payload = request.get_json(silent=True) or {}
+        try:
+            row = realm_service.open_realm(
+                service_id,
+                name=str(payload.get("name") or "新区"),
+                actor=_actor(),
+                status=str(payload.get("status") or "new"),
+            )
+            return jsonify({"ok": True, "data": row}), 201
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route(
+        "/api/projects/<project_id>/baas/services/<service_id>/realms/merge",
+        methods=["POST"],
+    )
+    @admin_required("projects")
+    def baas_realms_merge_api(project_id: str, service_id: str):
+        if project_id not in projects_db or not is_casual_baas_project(project_id):
+            return baas_fail_exc(Exception("项目不存在或非 BaaS"))
+        if not can_edit_project(project_id, _actor()):
+            return baas_fail_exc(Exception("无权限"))
+        svc = get_service(service_id)
+        if not svc or str(svc.get("project_id")) != project_id:
+            return baas_fail_exc(Exception("服务不存在"))
+        payload = request.get_json(silent=True) or {}
+        from services.baas import realm_service
+
+        try:
+            result = realm_service.start_merge(
+                service_id,
+                str(payload.get("source_realm_id") or ""),
+                str(payload.get("target_realm_id") or ""),
+                actor=_actor(),
+            )
+            return jsonify({"ok": True, "data": result})
+        except ValueError as exc:
+            return baas_fail_exc(exc)
+
+    @bp.route("/api/projects/<project_id>/baas/nodes", methods=["GET", "POST"])
+    @admin_required("projects")
+    def baas_nodes_api(project_id: str):
+        if project_id not in projects_db or not is_casual_baas_project(project_id):
+            return baas_fail_exc(Exception("项目不存在或非 BaaS"))
+        from services.baas import node_registry
+
+        proj = projects_db.get(project_id) or {}
+        sid = str(proj.get("baas_service_id") or "")
+        if request.method == "GET":
+            return jsonify({"ok": True, "data": {"items": node_registry.list_nodes(sid)}})
+        payload = request.get_json(silent=True) or {}
+        row = node_registry.heartbeat(
+            service_id=sid,
+            node_id=str(payload.get("node_id") or ""),
+            host=str(payload.get("host") or ""),
+            port=int(payload.get("port") or 0),
+            meta=payload.get("meta") if isinstance(payload.get("meta"), dict) else {},
+        )
+        return jsonify({"ok": True, "data": row})

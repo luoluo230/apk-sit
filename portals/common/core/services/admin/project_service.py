@@ -146,11 +146,17 @@ def create_project(data: Dict[str, Any], created_by: str, tenant_id: str = "defa
         "default_server_profile": str((data.get("default_server_profile") or "default")).strip() or "default",
         "default_env": str((data.get("default_env") or "dev")).strip() or "dev",
         "default_channel": str((data.get("default_channel") or "")).strip(),
-        "server_mode": str(data.get("server_mode") or "topology").strip().lower(),
+        "server_mode": str(data.get("server_mode") or "").strip().lower(),
     }
     mode = payload["server_mode"]
     if mode not in ("topology", "casual_baas"):
-        payload["server_mode"] = "topology"
+        return attach_legacy_error(
+            fail(
+                "请选择服务器类型：中重度 GameServer（topology）或轻度 BaaS（casual_baas）",
+                code="validation_error",
+                legacy={"error": "请选择服务器类型"},
+            )
+        ), 400
     apply_build_config_to_project_payload(payload, data)
     projects_repo.upsert_project(project_id, payload)
     if payload["server_mode"] == "casual_baas":

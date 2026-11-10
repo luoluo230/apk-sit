@@ -17,6 +17,9 @@
   var storylineEl = document.getElementById("rhStoryline");
   var storylineDetail = document.getElementById("rhStorylineDetail");
   var storylineCta = document.getElementById("rhStorylineCta");
+  var storylineDetailCta = document.getElementById("rhStorylineDetailCta");
+  var storylineTitle = document.getElementById("rhStorylineTitle");
+  var mainTrackHint = document.getElementById("rhMainTrackHint");
   var successRate = document.getElementById("rhSuccessRate");
   var serverSuccessRate = document.getElementById("rhServerSuccessRate");
   var mttrEl = document.getElementById("rhMttr");
@@ -112,15 +115,15 @@
           ? '<span class="rh-status rh-status--ok">线上</span>'
           : '<span class="rh-status rh-status--warn">空</span>';
         return (
-          '<a class="rh-runtime-row" href="' +
-          esc(row.href || "#") +
-          '"><div class="rh-runtime-main"><strong>' +
+          '<div class="rh-runtime-row"><div class="rh-runtime-main"><strong>' +
           live +
           "</strong><small>" +
           meta +
-          "</small></div>" +
+          '</small></div><div class="rh-runtime-actions">' +
           badge +
-          "</a>"
+          '<a class="rh-btn rh-btn--sm rh-btn--ghost" href="' +
+          esc(row.href || "#") +
+          '">详情</a></div></div>'
         );
       })
       .join("");
@@ -128,14 +131,30 @@
 
   function renderStoryline(story) {
     story = story || {};
+    if (storylineTitle) {
+      storylineTitle.textContent = story.track_title || "发布单进度（详情）";
+    }
+    if (mainTrackHint && story.main_track) {
+      mainTrackHint.textContent = story.main_track.hint || "发版主轨见页顶步骤条。";
+    }
     if (storylineDetail) {
       var title = story.title || "";
       var detail = story.detail || "";
       storylineDetail.textContent = title && detail ? title + " — " + detail : title || detail || "";
     }
     if (storylineCta && story.primary) {
-      storylineCta.textContent = story.primary.label || "去发版";
+      storylineCta.textContent = story.primary.label || "版本与管线";
       storylineCta.href = story.primary.href || storylineCta.href;
+    }
+    if (storylineDetailCta) {
+      var secondary = story.secondary || {};
+      var detailHref =
+        secondary.href ||
+        story.order_detail_href ||
+        (storylineDetailCta.getAttribute("href") || "#");
+      storylineDetailCta.textContent = secondary.label || "详情 · 去发版";
+      storylineDetailCta.href = detailHref;
+      storylineDetailCta.hidden = !detailHref || detailHref === "#";
     }
     if (!storylineEl) return;
     storylineEl.innerHTML = (story.steps || [])
@@ -466,7 +485,7 @@
         var actions =
           '<a class="rh-btn rh-btn--sm rh-btn--ghost" href="' +
           esc(row.order_href) +
-          '">发布单</a>';
+          '">详情</a>';
         if (row.server_release_id) {
           actions +=
             '<a class="rh-btn rh-btn--sm rh-btn--ghost" href="' +
@@ -528,9 +547,7 @@
             "</span>";
         }
         return (
-          '<a class="rh-pending-row" href="' +
-          esc(row.href) +
-          '"><div class="rh-pending-main"><strong>' +
+          '<div class="rh-pending-row"><div class="rh-pending-main"><strong>' +
           esc(row.version_name) +
           " / " +
           esc(row.version_code) +
@@ -545,8 +562,10 @@
           '<span class="rh-status' +
           statusCls +
           '">' +
-          esc(action.label || row.status_label || row.status) +
-          "</span></div></a>"
+          esc(row.status_label || row.status) +
+          '</span><a class="rh-btn rh-btn--sm rh-btn--ghost" href="' +
+          esc(row.href) +
+          '">详情</a></div></div>'
         );
       })
       .join("");

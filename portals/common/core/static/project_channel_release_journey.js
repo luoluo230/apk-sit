@@ -29,8 +29,13 @@
     if (platform) qs.set("platform", platform);
     if (versionId) qs.set("version_id", versionId);
     if (bundleId) qs.set("bundle_id", bundleId);
-    history.replaceState(null, "", `${location.pathname}?${qs}`);
+    const withReturn = JC.preserveReturnTo ? JC.preserveReturnTo(qs) : qs;
+    history.replaceState(null, "", `${location.pathname}?${withReturn}`);
   };
+
+  if (typeof JC.applyEntryBack === "function") {
+    JC.applyEntryBack("#cjBackLink", { projectId, envKey });
+  }
 
   const promptReason = (title) => {
     const reason = window.prompt(`${title}\n请填写原因：`);

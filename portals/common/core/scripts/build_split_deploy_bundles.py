@@ -1094,6 +1094,9 @@ def main():
 
     out_root = Path(args.out).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
+    readme_tpl = Path(__file__).resolve().parent / "templates" / "release_bundles_README.md"
+    if readme_tpl.is_file():
+        shutil.copy2(readme_tpl, out_root / "README.md")
 
     if args.profile == "admin":
         admin_dir = out_root / "admin-only"

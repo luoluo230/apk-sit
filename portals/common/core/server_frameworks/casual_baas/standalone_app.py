@@ -87,6 +87,19 @@ def create_baas_app() -> Flask:
         init_db()
         return jsonify({"ok": True, "service": "casual_baas_standalone", "framework": "casual_baas"})
 
+    @app.route("/health/ready")
+    def health_ready():
+        """Liveness for deploy scripts / LB: DB reachable."""
+        from models.db import get_cursor, init_db
+
+        try:
+            init_db()
+            with get_cursor() as cur:
+                cur.execute("SELECT 1")
+            return jsonify({"ok": True, "ready": True, "service": "casual_baas_standalone"})
+        except Exception as exc:
+            return jsonify({"ok": False, "ready": False, "error": str(exc)}), 503
+
     @app.route("/health/detailed")
     def health_detailed():
         import models.db as db_backend

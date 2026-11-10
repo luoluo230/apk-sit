@@ -38,10 +38,24 @@
 1. Jenkins 脚本 `_pipeline_push_build_step` → `POST /api/internal/jenkins/build-step`（近实时）  
 2. 回退：解析控制台 `[阶段 N]` / `Step N`  
 
-状态色：绿=完成（流动动画）/ 蓝=进行中 / 红=失败 / 灰=手动停止。  
-每步「查看日志」→ 构建与产物工作台（`build-history?build_number=&open_log=1&step=`）。
+### 进度 UI（流水线时间轴）
+
+- 头部：平台 chip + 来源 chip（步骤推送 / 日志解析）+ 当前步骤 + **整体进度条**
+- 主体：左侧状态节点 + 竖向连线；右侧步骤名 / 阶段号 / 状态文案 /「日志」链接
+- 状态语义：绿勾=完成 · 蓝脉冲点=进行中 · 红叉=失败 · 灰方块=停止 · 空心=等待 · 虚线=跳过
+- 不做「每步彩虹进度条」；进行中仅节点脉冲 + 行浅底强调
+- 每步「日志」→ 构建与产物（`build-history?build_number=&open_log=1&step=`）
 
 API：`build-events` / journey BFF 的 `latest_build.detection_steps`（`jenkins_step_detection.py` + `jenkins_step_push_store.py`）。
+
+## 产品入口（后续可回看）
+
+| 入口 | 位置 |
+|------|------|
+| 版本与管线顶栏 | 「构建流程」→ `/environments/{env}/channels/{channel}/build` |
+| VersionCode 抽屉 | 「构建流程」带 `platform` + `version_id` |
+| 构建与产物顶栏 | 「构建流程 / 步骤检测」 |
+| 直达 URL | `/admin/projects/{pid}/environments/{env}/channels/{cid}/build?platform=&version_id=` |
 
 ## 跳转关系
 

@@ -5,12 +5,14 @@
   var lockedProject = root.dataset.lockedProject || '';
   var showTopology = root.dataset.showTopology === 'true';
   var showBaas = root.dataset.showBaas === 'true';
+  var monitorOnly = root.dataset.monitorOnly === 'true';
   var state = {
     tab: root.dataset.defaultTab || (showTopology ? 'topology' : 'baas'),
     items: [],
     projects: [],
     editing: null,
     pollTimer: null,
+    runtime: null,
   };
 
   var envNames = { development: '开发', testing: '测试', staging: '预发', production: '生产' };
@@ -43,10 +45,14 @@
   }
 
   function queryParams() {
-    var q = (document.getElementById('smSearch').value || '').trim();
-    var project = lockedProject || (document.getElementById('smProject').value || '');
-    var env = document.getElementById('smEnv').value || '';
-    var status = document.getElementById('smStatus').value || '';
+    var searchEl = document.getElementById('smSearch');
+    var projectEl = document.getElementById('smProject');
+    var envEl = document.getElementById('smEnv');
+    var statusEl = document.getElementById('smStatus');
+    var q = ((searchEl && searchEl.value) || '').trim();
+    var project = lockedProject || ((projectEl && projectEl.value) || '');
+    var env = (envEl && envEl.value) || '';
+    var status = (statusEl && statusEl.value) || '';
     var parts = ['tab=' + encodeURIComponent(state.tab)];
     if (project) parts.push('project_id=' + encodeURIComponent(project));
     if (env) parts.push('env_key=' + encodeURIComponent(env));
@@ -104,10 +110,14 @@
   }
 
   function filtersQuery() {
-    var q = (document.getElementById('smSearch').value || '').trim();
-    var project = lockedProject || (document.getElementById('smProject').value || '');
-    var env = document.getElementById('smEnv').value || '';
-    var status = document.getElementById('smStatus').value || '';
+    var searchEl = document.getElementById('smSearch');
+    var projectEl = document.getElementById('smProject');
+    var envEl = document.getElementById('smEnv');
+    var statusEl = document.getElementById('smStatus');
+    var q = ((searchEl && searchEl.value) || '').trim();
+    var project = lockedProject || ((projectEl && projectEl.value) || '');
+    var env = (envEl && envEl.value) || '';
+    var status = (statusEl && statusEl.value) || '';
     var qs = new URLSearchParams();
     if (project) qs.set('project_id', project);
     if (env) qs.set('env_key', env);
@@ -134,8 +144,10 @@
       });
       if (current) host.value = current;
     });
-    if (root.dataset.filterEnv) document.getElementById('smEnv').value = root.dataset.filterEnv;
-    if (root.dataset.filterStatus) document.getElementById('smStatus').value = root.dataset.filterStatus;
+    var envEl = document.getElementById('smEnv');
+    var statusEl = document.getElementById('smStatus');
+    if (envEl && root.dataset.filterEnv) envEl.value = root.dataset.filterEnv;
+    if (statusEl && root.dataset.filterStatus) statusEl.value = root.dataset.filterStatus;
   }
 
   function endpointList() {
@@ -365,11 +377,16 @@
       el.addEventListener('change', function () { loadCards(); });
       if (id === 'smSearch') el.addEventListener('input', debounce(function () { loadCards(); }, 300));
     });
-    document.getElementById('smRefresh').addEventListener('click', function () { loadCards(); });
-    document.getElementById('smCreateBtn').addEventListener('click', function () { openDialog('create', null); });
-    document.getElementById('smForm').addEventListener('submit', submitForm);
-    document.getElementById('smDialogClose').addEventListener('click', closeDialog);
-    document.getElementById('smDialogCancel').addEventListener('click', closeDialog);
+    var refresh = document.getElementById('smRefresh');
+    if (refresh) refresh.addEventListener('click', function () { loadCards(); });
+    var createBtn = document.getElementById('smCreateBtn');
+    if (createBtn) createBtn.addEventListener('click', function () { openDialog('create', null); });
+    var form = document.getElementById('smForm');
+    if (form) form.addEventListener('submit', submitForm);
+    var dialogClose = document.getElementById('smDialogClose');
+    if (dialogClose) dialogClose.addEventListener('click', closeDialog);
+    var dialogCancel = document.getElementById('smDialogCancel');
+    if (dialogCancel) dialogCancel.addEventListener('click', closeDialog);
     var iconFile = document.getElementById('smIconFile');
     if (iconFile) {
       iconFile.addEventListener('change', function () {
@@ -397,9 +414,73 @@
     state.pollTimer = setInterval(function () { loadCards(true); }, 25000);
   }
 
+  function loadBaasMonitor() {
+    var panel = document.getElementById('smBaasMonitor');
+    if (!panel || !monitorOnly || !lockedProject) {
+      if (panel) panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+    var body = document.getElementById('smBaasMonitorBody');
+    api('/api/projects/' + encodeURIComponent(lockedProject) + '/baas/runtime-status')
+      .then(function (data) {
+        state.runtime = data;
+        if (body) {
+          body.textContent = [
+            '模式: ' + (data.server_mode || ''),
+            '监听: ' + ((data.listen && data.listen.host) || '') + ':' + ((data.listen && data.listen.port) || ''),
+            'Health: ' + (data.health && data.health.ok ? 'OK' : 'FAIL') + '  Ready: ' + (data.ready && data.ready.ok ? 'OK' : 'FAIL'),
+            '数据库: ' + (data.database && data.database.ok ? 'OK' : 'FAIL'),
+            'Redis: ' + (data.redis_ping && data.redis_ping.ok ? 'OK' : (data.redis && data.redis.configured ? '配置了但不通' : '未配置')),
+            'Workers: ' + (data.workers_env || '1'),
+            'Service: ' + (data.service_id || '—'),
+            '更新: ' + (data.at || ''),
+          ].join('\n');
+        }
+        var gm = document.getElementById('smOpenGm');
+        var casual = document.getElementById('smOpenCasual');
+        if (gm) gm.href = data.gm_href || '#';
+        if (casual) casual.href = data.casual_href || '#';
+        return data.service_id
+          ? api('/api/projects/' + encodeURIComponent(lockedProject) + '/baas/services/' + encodeURIComponent(data.service_id) + '/realms')
+          : null;
+      })
+      .then(function (realmData) {
+        var host = document.getElementById('smRealmPanel');
+        if (!host || !realmData) return;
+        var items = realmData.items || [];
+        host.innerHTML = '<strong>逻辑区服</strong><ul style="margin:6px 0 0 18px;">' +
+          items.map(function (r) {
+            return '<li>' + esc(r.name || r.realm_id) + ' · ' + esc(r.status) + ' · ' + esc(r.realm_id) + '</li>';
+          }).join('') + '</ul>' +
+          '<button type="button" class="pm-btn pm-btn--compact" id="smOpenRealm">新开区（滚服）</button>';
+        var btn = document.getElementById('smOpenRealm');
+        if (btn && state.runtime && state.runtime.service_id) {
+          btn.onclick = function () {
+            var name = window.prompt('新区名称', '新区');
+            if (!name) return;
+            api('/api/projects/' + encodeURIComponent(lockedProject) + '/baas/services/' + encodeURIComponent(state.runtime.service_id) + '/realms', {
+              method: 'POST',
+              body: JSON.stringify({ name: name, status: 'new' }),
+            }).then(function () { loadBaasMonitor(); }).catch(function (e) { alert(e.message || e); });
+          };
+        }
+      })
+      .catch(function (e) {
+        if (body) body.textContent = '状态加载失败: ' + (e.message || e);
+      });
+  }
+
+  var monRefresh = document.getElementById('smMonitorRefresh');
+  if (monRefresh) monRefresh.onclick = function () { loadBaasMonitor(); };
+
+  var cardsMode = !(monitorOnly && lockedProject);
   loadProjects();
-  bindEvents();
-  syncDeployPackBtn();
-  loadCards();
-  startPoll();
+  if (cardsMode) {
+    bindEvents();
+    syncDeployPackBtn();
+    loadCards();
+    startPoll();
+  }
+  loadBaasMonitor();
 })();

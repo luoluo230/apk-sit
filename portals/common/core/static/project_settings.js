@@ -37,34 +37,18 @@
     var row = data.data || {};
     var sel = document.getElementById("settingsServerMode");
     var hint = document.getElementById("settingsCasualHint");
-    if (sel) sel.value = row.server_mode === "casual_baas" ? "casual_baas" : "topology";
-    if (hint) hint.hidden = !(sel && sel.value === "casual_baas");
+    var mode = row.server_mode === "casual_baas" ? "casual_baas" : "topology";
     if (sel) {
-      sel.onchange = function () {
-        if (hint) hint.hidden = sel.value !== "casual_baas";
-      };
+      sel.value = mode;
+      sel.disabled = true;
     }
+    if (hint) hint.hidden = mode !== "casual_baas";
+    var topoHint = document.getElementById("settingsTopologyHint");
+    if (topoHint) topoHint.hidden = mode === "casual_baas";
   }
 
   async function saveServerMode() {
-    var sel = document.getElementById("settingsServerMode");
-    if (!sel) return;
-    var response = await fetch("/api/projects/" + encodeURIComponent(projectId) + "/server-mode", {
-      method: "PATCH",
-      headers: Object.assign({ "Content-Type": "application/json" }, (function () {
-        var token = document.querySelector('meta[name="csrf-token"]');
-        return token && token.content ? { "X-CSRFToken": token.content } : {};
-      })()),
-      credentials: "same-origin",
-      body: JSON.stringify({ server_mode: sel.value, env_key: "development" }),
-    });
-    var data = await response.json();
-    if (!response.ok || data.error) throw new Error(data.error || "保存失败");
-    if (data.data && data.data.api_secret) {
-      toast("已切换为轻度 BaaS。API Secret: " + data.data.api_secret, "success");
-    } else {
-      toast("架构设置已保存", "success");
-    }
+    toast("服务器类型在创建项目时已锁定，不可更改", "error");
   }
 
   function renderMembers(members) {

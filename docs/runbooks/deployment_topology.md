@@ -24,3 +24,8 @@
 ## 入口
 
 人用的页面见 [entrypoint_map.md](../architecture/entrypoint_map.md)。渠道 Journey 的旧 URL 会跳转，不是主路径。
+
+## 发版与 runtime（W-P1-4）
+
+生产环境若交付线尚无 **active runtime / 活跃 Bundle**，创建 `production` 发布单会被硬拦截（必须提供 `rollback_baseline_bundle_id` 或先从低环境晋级）。这是有意行为，不是静默成功。  
+运维例外须书面记录在当次发布说明；默认不得跳过基线门禁。证据见 `docs/evidence/2026-11-10/COMM-P1-4.json` 与 `W-P1-4.json`。

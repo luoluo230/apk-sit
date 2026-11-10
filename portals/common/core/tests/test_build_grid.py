@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """Tests for distributed build grid routing."""
 
 import unittest
@@ -11,6 +11,7 @@ from services.build.build_grid import (
     resolve_jenkins_job_for_platform,
 )
 from services.build.build_node_service import build_grid_summary, register_or_heartbeat
+from services.build.platform_capability import can_build, resolve_platform_capability
 
 
 class BuildGridTests(unittest.TestCase):
@@ -18,11 +19,17 @@ class BuildGridTests(unittest.TestCase):
         self.assertEqual(normalize_build_platform("iOS"), "ios")
         self.assertEqual(normalize_build_platform("wxminigame"), "wechat_minigame")
         self.assertEqual(normalize_build_platform("Android"), "android")
+        with self.assertRaises(ValueError):
+            normalize_build_platform("not-a-real-platform")
+        with self.assertRaises(ValueError):
+            normalize_build_platform("")
 
     def test_job_routing(self):
         self.assertEqual(resolve_jenkins_job_for_platform("android"), "Android")
         self.assertEqual(resolve_jenkins_job_for_platform("ios"), "iOS")
         self.assertEqual(resolve_jenkins_job_for_platform("wechat_minigame"), "WxMinigame")
+        with self.assertRaises(ValueError):
+            resolve_jenkins_job_for_platform("switch")
         server_job = resolve_gameserver_job()
         self.assertEqual(server_job["job_name"], "GameServer-Build")
         self.assertEqual(server_job["pipeline_script"], "gameserver_build_pipeline.sh")
@@ -36,6 +43,14 @@ class BuildGridTests(unittest.TestCase):
     def test_artifact_types(self):
         self.assertEqual(artifact_type_for_platform("ios"), "ipa")
         self.assertEqual(artifact_type_for_platform("wechat_minigame"), "wxgame_bundle")
+
+    def test_capability_blocks_excluded_platforms_despite_grid_jobs(self):
+        """Jenkins job mapping may exist, but capability must not offer commercial build."""
+        self.assertEqual(resolve_jenkins_job_for_platform("ios"), "iOS")
+        ios_cap = resolve_platform_capability("ios")
+        self.assertFalse(ios_cap["can_build"])
+        self.assertFalse(can_build("ios"))
+        self.assertIn("用户排除", str(ios_cap.get("build_block_reason") or ""))
 
     def test_node_heartbeat(self):
         node = register_or_heartbeat({

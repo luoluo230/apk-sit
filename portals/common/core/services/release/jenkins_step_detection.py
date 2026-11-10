@@ -337,6 +337,27 @@ def parse_detection_steps(
     return steps
 
 
+def skeleton_detection_steps(platform: str = "android") -> List[Dict[str, Any]]:
+    """Pending-only step rail for journey UI when no Jenkins build is available yet."""
+    catalog = selected_detection_catalog({}, platform=platform)
+    steps: List[Dict[str, Any]] = []
+    for index, row in enumerate(catalog, start=1):
+        steps.append(
+            {
+                "id": str(row["id"]),
+                "index": index,
+                "stage_key": str(row.get("stage_key") or ""),
+                "label": str(row.get("label") or row["id"]),
+                "status": STATUS_PENDING,
+                "status_label": _STATUS_LABELS[STATUS_PENDING],
+                "progress_pct": 0,
+                "enabled": True,
+                "source": "skeleton",
+            }
+        )
+    return steps
+
+
 def attach_detection_to_build(
     build: Dict[str, Any],
     *,

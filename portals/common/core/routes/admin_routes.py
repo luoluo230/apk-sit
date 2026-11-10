@@ -43,6 +43,7 @@ from routes.admin.api_build_nodes import register_routes as register_build_nodes
 from routes.admin.pages_infra_nodes import register_routes as register_infra_nodes_page_routes
 from routes.admin.pages_search import register_routes as register_search_page_routes
 from routes.admin.pages_project_workspace import register_routes as register_project_workspace_page_routes
+from routes.admin.pages_projects_list import register_routes as register_projects_list_page_routes
 from routes.admin.api_projects_misc import register_routes as register_project_misc_api_routes
 from routes.admin.api_approval import register_routes as register_approval_api_routes
 from routes.admin.api_channels import register_routes as register_channel_api_routes
@@ -258,94 +259,17 @@ def admin_api_docs_page():
     return _admin_layout(render_api_docs_page(), 'API 文档')
 
 
-# ---------- 项目管理 ----------
-def _safe_json_for_script(s):
-    """防止 JSON 中的 </script> 提前关闭 script 标签"""
-    if not isinstance(s, str):
-        return s
-    return re.sub(r'(?i)</script>', r'<\\u002fscript>', s)
 
 from routes.admin.views.api_docs import render_api_docs_page
-from routes.admin.views.projects import projects_page_context, onboarding_wizard_page_context
 
 
 def _current_username():
-    return session.get('user') or ''
-
-
-PROJECT_LIST_ASSET_VER = "20261030-edit-creds-ro"
-ONBOARDING_WIZARD_ASSET_VER = "20260728-p102"
-
-
-@bp.route('/admin/projects/new/wizard')
-@admin_required('projects')
-def admin_project_onboarding_wizard_page():
-    from flask import render_template
-    from services.ops.helpers import _render_ops_page
-
-    content = render_template('project_onboarding_wizard.html', **onboarding_wizard_page_context())
-    js = f'<script src="/static/project_onboarding.js?v={ONBOARDING_WIZARD_ASSET_VER}"></script>'
-    return _render_ops_page(
-        content,
-        '新建项目向导',
-        active_page='projects',
-        breadcrumb_module='项目',
-        extra_js=js,
-    )
-
-
-@bp.route('/admin/projects')
-@admin_required('projects')
-def admin_projects_page():
-    from flask import render_template
-    from services.ops.helpers import _render_ops_page
-
-    content = render_template('project_list.html', **projects_page_context())
-    css = (
-        f'<link rel="stylesheet" href="/static/project_ui/pm-modal.css?v={PROJECT_LIST_ASSET_VER}">'
-        f'<link rel="stylesheet" href="/static/project_ui/pm-project-card.css?v={PROJECT_LIST_ASSET_VER}">'
-        f'<link rel="stylesheet" href="/static/project_ui/pm-right-rail.css?v={PROJECT_LIST_ASSET_VER}">'
-        f'<link rel="stylesheet" href="/static/project_list.css?v={PROJECT_LIST_ASSET_VER}">'
-    )
-    js = (
-        f'<script src="/static/user_favorites_sync.js?v={PROJECT_LIST_ASSET_VER}"></script>'
-        f'<script src="/static/project_ui/pm-display-labels.js?v={PROJECT_LIST_ASSET_VER}"></script>'
-        f'<script src="/static/project_list.js?v={PROJECT_LIST_ASSET_VER}"></script>'
-    )
-    return _render_ops_page(
-        content,
-        '项目列表',
-        active_page='projects',
-        breadcrumb_module='总览',
-        extra_css=css,
-        extra_js=js,
-    )
-
-
-def _user_project_role(project_id, username):
-    """当前用户在该项目中的角色（仅编辑者有角色）。"""
-    if not username or project_id not in projects_db:
-        return None
-    p = projects_db[project_id]
-    return (p.get('member_roles') or {}).get(username)
-
-
-
-
-def _parse_task_date(t, key):
-    """Return date or None from task start_time/end_time."""
-    s = (t.get(key) or '')[:10]
-    if len(s) < 10:
-        return None
-    try:
-        return date(int(s[:4]), int(s[5:7]), int(s[8:10]))
-    except (ValueError, TypeError):
-        return None
-
+    return session.get("user") or ""
 
 
 def _password_min_length():
     return password_min_length()
+
 
 
 def _register_split_api_routes():
@@ -378,6 +302,7 @@ def _register_split_api_routes():
     register_infra_nodes_page_routes(bp)
     register_search_page_routes(bp, admin_layout=_admin_layout, current_username=_current_username)
     register_project_workspace_page_routes(bp, current_username=_current_username)
+    register_projects_list_page_routes(bp)
     register_channel_api_routes(bp)
     register_notification_api_routes(bp, _current_username)
     register_audit_api_routes(bp)

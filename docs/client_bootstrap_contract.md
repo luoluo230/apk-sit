@@ -98,11 +98,24 @@ Portal → Jenkins → Publish (activate Bundle) → client runtime-bootstrap
 3. `#if DEVELOPMENT` only: OSS `version_metadata` when `AllowOssMetadataFallback=true`
 4. Failure → explicit error UI (no silent OSS fallback in production)
 
-## Verification chain
+## Verification chain（C-P1-1 本仓 gate）
+
+**本仓可闭环（apk-site）**
+
+| Gate | 命令 | 说明 |
+|------|------|------|
+| Contract pytest | `py -3 -m pytest portals/common/core/tests/e2e/test_bootstrap_contract.py -q` | v2 fixture 字段漂移 fail |
+| Live bootstrap | `py -3 portals/common/core/scripts/bootstrap_gate_e2e.py` | 运行中 Portal bootstrap + scope |
+
+**跨仓 Out（maclient — C-P1-1 不得单方 DONE）**
+
+- 仓库：`E:\maclient`（或 CI 子模块路径）
+- Gate：`Assets/Editor/Tests/BootstrapContractTests.cs`、`Main.cs` 生产路径移除 resolve/OSS（P2-02 Step 2–4）
+- 本仓证据仅记 **PARTIAL**；全关需 maclient PR + 双端 CI 绿
 
 1. `tests/e2e/test_bootstrap_contract.py` — fixture contract
 2. `bootstrap_gate_e2e.py` — live bootstrap + catalog HEAD + scope API
-3. `Assets/Editor/Tests/BootstrapContractTests.cs` — maclient JSON parse gate
+3. `Assets/Editor/Tests/BootstrapContractTests.cs` — maclient JSON parse gate（跨仓）
 
 ## Related APIs
 

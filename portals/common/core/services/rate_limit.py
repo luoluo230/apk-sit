@@ -24,11 +24,34 @@ def _clean_old(entries, window):
     return [(t, c) for t, c in entries if now - t < window]
 
 
+def _check_rate_limit_redis(key, limit, window):
+    """Wave B：有 REDIS_URL 时用 Redis 做跨进程限流。"""
+    try:
+        from services.baas.capacity import get_redis_client
+
+        client = get_redis_client()
+        if client is None:
+            return None
+        rkey = f"rl:{key}"
+        n = int(client.incr(rkey))
+        if n == 1:
+            client.expire(rkey, int(window))
+        if n > int(limit):
+            ttl = int(client.ttl(rkey) or window)
+            return False, max(1, ttl)
+        return True, 0
+    except Exception:
+        return None
+
+
 def check_rate_limit(key, limit, window):
     """
     检查是否超限。返回 (allowed, retry_after_seconds)。
     key 通常为 ip 或 ip:username
     """
+    redis_hit = _check_rate_limit_redis(key, limit, window)
+    if redis_hit is not None:
+        return redis_hit
     with _lock:
         entries = _store[key]
         entries = _clean_old(entries, window)

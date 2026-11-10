@@ -137,7 +137,13 @@ def register_page_routes(bp) -> None:
     def project_runtime_overview_redirect(project_id: str):
         if project_id not in projects_db:
             return "项目不存在", 404
-        env_key = normalize_release_env_key(str(request.args.get("env_key") or "production"), project_id=project_id)
+        from services.ops.topology_registry import _resolve_ops_env_key
+
+        raw_env = str(request.args.get("env_key") or "").strip()
+        env_key = normalize_release_env_key(
+            raw_env or _resolve_ops_env_key(""),
+            project_id=project_id,
+        )
         parts = []
         for key in ("channel_id", "platform"):
             val = str(request.args.get(key) or "").strip()
@@ -231,12 +237,23 @@ def register_page_routes(bp) -> None:
             return "项目不存在", 404
         ek = normalize_release_env_key(env_key, project_id=project_id)
         cid = _normalize_channel_route_id(project_id, channel_id)
+        # detail=1：四步轨「打包」节点详情（进度）；默认入口收敛到版本页
+        if str(request.args.get("detail") or "").strip() in ("1", "true", "yes"):
+            return _page(
+                "project_channel_build_journey.html",
+                "构建流程",
+                project_id,
+                "project-home",
+                breadcrumb_module="交付管理",
+                page_env_key=ek,
+                channel_id=cid,
+            )
         qs = urlencode({
             "env_key": ek,
             "channel_id": cid,
             "platform": str(request.args.get("platform") or "android").strip().lower(),
             "version_id": str(request.args.get("version_id") or "").strip(),
-            "action": "create_vc",
+            "action": str(request.args.get("action") or "focus_build").strip() or "focus_build",
         })
         return redirect(f"/admin/projects/{project_id}/versions?{qs}")
 

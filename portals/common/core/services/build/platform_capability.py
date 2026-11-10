@@ -24,12 +24,51 @@ STORE_WX_BACKEND = "wx_backend"
 _BADGE_BUILDABLE = "buildable"
 _BADGE_CLIENT_ONLY = "client_only"
 _BADGE_CATALOG_ONLY = "catalog_only"
+_BADGE_PRODUCT_EXCLUDED = "product_excluded"
 
 _BADGE_LABELS = {
     _BADGE_BUILDABLE: "可构建",
     _BADGE_CLIENT_ONLY: "仅客户端",
     _BADGE_CATALOG_ONLY: "目录项",
+    _BADGE_PRODUCT_EXCLUDED: "产品排除",
 }
+
+# User-excluded platforms (OPEN_ITEMS_MASTER BLOCKED) — must not advertise commercial build.
+_USER_EXCLUDED_BUILD: frozenset[str] = frozenset({"ios", "wechat_minigame"})
+
+_HOTUPDATE_DEFERRED: frozenset[str] = frozenset({"webgl", "wechat_minigame"})
+
+
+def _user_exclusion_build_reason(platform_id: str) -> str:
+    names = {"ios": "iOS", "wechat_minigame": "微信小游戏"}
+    label = names.get(platform_id, platform_id)
+    return (
+        f"{label} 为产品用户排除平台，当前不提供商业真发与 quick-build；"
+        "Capability/UI 已锁定，解阻前勿经构建网格发起构建（见 OPEN_ITEMS_MASTER BLOCKED）。"
+    )
+
+
+def _hotupdate_deferred_reason(platform_id: str) -> str:
+    if platform_id == "webgl":
+        return "WebGL 热更方案未交付（C-P1-3 / GAP-P2-02-OUT-01），产品面 capability 关闭。"
+    if platform_id == "wechat_minigame":
+        return "微信小游戏热更随真发排除，暂不开放热更 capability。"
+    return ""
+
+
+def _product_excluded_profile(platform_id: str) -> Dict[str, Any]:
+    return {
+        "can_build": False,
+        "can_hotupdate": False,
+        "store_backend": "",
+        "can_scope": True,
+        "catalog_only": False,
+        "badge": _BADGE_PRODUCT_EXCLUDED,
+        "build_block_reason": _user_exclusion_build_reason(platform_id),
+        "hotupdate_block_reason": _hotupdate_deferred_reason(platform_id)
+        or _user_exclusion_build_reason(platform_id),
+    }
+
 
 _EXPLICIT: Dict[str, Dict[str, Any]] = {
     "android": {
@@ -40,22 +79,14 @@ _EXPLICIT: Dict[str, Dict[str, Any]] = {
         "catalog_only": False,
         "badge": _BADGE_BUILDABLE,
     },
-    "ios": {
-        "can_build": True,
-        "can_hotupdate": True,
-        "store_backend": STORE_TESTFLIGHT,
-        "can_scope": True,
-        "catalog_only": False,
-        "badge": _BADGE_BUILDABLE,
-    },
-    "wechat_minigame": {
-        "can_build": True,
-        "can_hotupdate": False,
-        "store_backend": STORE_WX_BACKEND,
-        "can_scope": True,
-        "catalog_only": False,
-        "badge": _BADGE_BUILDABLE,
-    },
+    "ios": dict(
+        _product_excluded_profile("ios"),
+        store_backend=STORE_TESTFLIGHT,
+    ),
+    "wechat_minigame": dict(
+        _product_excluded_profile("wechat_minigame"),
+        store_backend=STORE_WX_BACKEND,
+    ),
     "webgl": {
         "can_build": False,
         "can_hotupdate": False,
@@ -64,6 +95,8 @@ _EXPLICIT: Dict[str, Dict[str, Any]] = {
         "scope_mode": "optional",
         "catalog_only": False,
         "badge": _BADGE_CLIENT_ONLY,
+        "build_block_reason": "WebGL 未接入构建网格，仅作客户端目录项。",
+        "hotupdate_block_reason": _hotupdate_deferred_reason("webgl"),
     },
 }
 
@@ -78,7 +111,10 @@ def _normalize_platform_id(raw: Any) -> str:
         return ""
     if get_platform_by_id(text):
         return text
-    aliased = normalize_build_platform(text)
+    try:
+        aliased = normalize_build_platform(text)
+    except ValueError:
+        return text
     return aliased if get_platform_by_id(aliased) else text
 
 
@@ -103,18 +139,31 @@ def resolve_platform_capability(platform_id: str) -> Dict[str, Any]:
     if pid in _EXPLICIT:
         flags = dict(_EXPLICIT[pid])
     elif pid in PLATFORM_TO_JOB:
-        flags = {
-            "can_build": True,
-            "can_hotupdate": pid in ("android", "ios"),
-            "store_backend": STORE_APK if pid == "android" else (STORE_TESTFLIGHT if pid == "ios" else STORE_WX_BACKEND),
-            "can_scope": True,
-            "catalog_only": False,
-            "badge": _BADGE_BUILDABLE,
-        }
+        if pid in _USER_EXCLUDED_BUILD:
+            flags = dict(_product_excluded_profile(pid))
+            if pid == "ios":
+                flags["store_backend"] = STORE_TESTFLIGHT
+            elif pid == "wechat_minigame":
+                flags["store_backend"] = STORE_WX_BACKEND
+        else:
+            flags = {
+                "can_build": True,
+                "can_hotupdate": pid == "android",
+                "store_backend": STORE_APK if pid == "android" else "",
+                "can_scope": True,
+                "catalog_only": False,
+                "badge": _BADGE_BUILDABLE,
+            }
     else:
         flags = _catalog_only_profile(pid)
 
     badge = str(flags.get("badge") or _BADGE_CATALOG_ONLY)
+    can_build = bool(flags.get("can_build"))
+    can_hotupdate = bool(flags.get("can_hotupdate"))
+    if pid in _HOTUPDATE_DEFERRED and not can_hotupdate and not flags.get("hotupdate_block_reason"):
+        flags["hotupdate_block_reason"] = _hotupdate_deferred_reason(pid)
+    build_block_reason = str(flags.get("build_block_reason") or "").strip()
+    hotupdate_block_reason = str(flags.get("hotupdate_block_reason") or "").strip()
     return {
         "platform_id": pid,
         "id": pid,
@@ -122,19 +171,21 @@ def resolve_platform_capability(platform_id: str) -> Dict[str, Any]:
         "description": str(catalog.get("description") or ""),
         "unity_build_target": str(catalog.get("unity_build_target") or ""),
         "order": int(catalog.get("order") or 0),
-        "can_build": bool(flags.get("can_build")),
-        "can_hotupdate": bool(flags.get("can_hotupdate")),
+        "can_build": can_build,
+        "can_hotupdate": can_hotupdate,
         "can_scope": bool(flags.get("can_scope")),
         "catalog_only": bool(flags.get("catalog_only")),
         "scope_mode": str(flags.get("scope_mode") or ("enabled" if flags.get("can_scope") else "disabled")),
         "store_backend": str(flags.get("store_backend") or ""),
-        "artifact_type": artifact_type_for_platform(pid) if flags.get("can_build") else "",
-        "jenkins_job": PLATFORM_TO_JOB.get(pid, ""),
+        "artifact_type": artifact_type_for_platform(pid) if can_build else "",
+        "jenkins_job": PLATFORM_TO_JOB.get(pid, "") if can_build else "",
         "badge": badge,
         "badge_label": _BADGE_LABELS.get(badge, badge),
+        "build_block_reason": build_block_reason,
+        "hotupdate_block_reason": hotupdate_block_reason,
         "capabilities": {
-            CAPABILITY_BUILD: bool(flags.get("can_build")),
-            CAPABILITY_HOTUPDATE: bool(flags.get("can_hotupdate")),
+            CAPABILITY_BUILD: can_build,
+            CAPABILITY_HOTUPDATE: can_hotupdate,
             CAPABILITY_STORE: bool(flags.get("store_backend")),
             CAPABILITY_SCOPE: bool(flags.get("can_scope") or flags.get("scope_mode") == "optional"),
         },
@@ -179,10 +230,18 @@ def assert_platform_build_allowed(platform_id: str) -> None:
     cap = resolve_platform_capability(platform_id)
     if cap.get("can_build"):
         return
+    blocked = str(cap.get("build_block_reason") or "").strip()
+    if blocked:
+        raise ValueError(blocked)
     label = str(cap.get("name") or cap.get("platform_id") or platform_id)
     raise ValueError(
-        f"平台 {label} 未接入构建网格，暂不支持 quick-build；请选择 android / ios / 微信小游戏，或见 P1-05 构建节点安装。"
+        f"平台 {label} 未接入构建网格，暂不支持 quick-build；请选择已开放构建的 Android 平台，或见 P1-05 构建节点安装。"
     )
+
+
+def assert_buildable_delivery_platform(platform_id: str) -> None:
+    """Block selecting a non-buildable platform as the delivery/build primary."""
+    assert_platform_build_allowed(platform_id)
 
 
 def assert_scope_creation_allowed(platform_id: str) -> None:

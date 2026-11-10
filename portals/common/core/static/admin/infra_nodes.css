@@ -1,0 +1,36 @@
+/* Infra nodes page — replaces Tailwind utilities (P3-01 / OPEN-11 slice) */
+.bn-page{max-width:72rem;margin:0 auto;padding:1.25rem;display:flex;flex-direction:column;gap:1.25rem}
+.bn-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.bn-head h1{margin:0;font-size:1.5rem;font-weight:700;color:var(--color-text,#0f172a)}
+.bn-head p{margin:.35rem 0 0;font-size:.875rem;color:var(--color-text-secondary,#64748b)}
+.bn-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.bn-tabs{display:inline-flex;border:1px solid var(--color-border,#e2e8f0);border-radius:.5rem;background:#fff;padding:.2rem;font-size:.875rem}
+.bn-tabs button{border:0;background:transparent;padding:.35rem .75rem;border-radius:.375rem;color:#475569;cursor:pointer}
+.bn-tabs button.is-active{background:var(--color-primary,#4f46e5);color:#fff}
+.bn-btn{border:0;border-radius:.5rem;padding:.5rem 1rem;background:var(--color-primary,#4f46e5);color:#fff;font-size:.875rem;cursor:pointer}
+.bn-role-grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:1rem}
+@media (min-width:768px){.bn-role-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1280px){.bn-role-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.bn-panel{background:#fff;border:1px solid var(--color-border,#e2e8f0);border-radius:.75rem;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden}
+.bn-panel-head{padding:.75rem 1rem;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b}
+.bn-table-wrap{overflow-x:auto}
+.bn-table{width:100%;border-collapse:collapse;font-size:.875rem}
+.bn-table th,.bn-table td{padding:.5rem 1rem;text-align:left;border-bottom:1px solid #f1f5f9}
+.bn-table thead{background:#f8fafc;color:#475569}
+.bn-help{background:#f8fafc;border:1px solid var(--color-border,#e2e8f0);border-radius:.75rem;padding:1rem;font-size:.875rem;color:#475569}
+.bn-help strong{display:block;color:#1e293b;margin-bottom:.5rem}
+.bn-help pre{margin:0;white-space:pre-wrap;font-size:.75rem;background:#fff;border:1px solid #e2e8f0;border-radius:.5rem;padding:.75rem}
+.bn-role-card{border:1px solid #e2e8f0;border-radius:.75rem;padding:1rem;background:#fff}
+.bn-role-card.is-ok{border-color:#a7f3d0;background:#ecfdf5}
+.bn-role-card.is-bad{border-color:#fecaca;background:#fff1f2}
+.bn-role-card__top{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.bn-role-card__title{font-weight:600;color:#0f172a}
+.bn-role-card__meta,.bn-role-card__count{margin-top:.35rem;font-size:.75rem;color:#475569}
+.bn-badge{font-size:.75rem;padding:.15rem .5rem;border-radius:.35rem}
+.bn-badge.is-ok{background:#d1fae5;color:#065f46}
+.bn-badge.is-bad{background:#fee2e2;color:#9f1239}
+.bn-empty{padding:1.5rem 1rem;text-align:center;color:#64748b}
+.bn-muted{font-size:.75rem;color:#64748b}
+.bn-online{color:#047857}
+.bn-offline{color:#64748b}
+.bn-del{border:0;background:transparent;color:#e11d48;font-size:.75rem;cursor:pointer}

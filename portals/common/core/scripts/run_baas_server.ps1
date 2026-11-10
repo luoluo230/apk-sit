@@ -33,10 +33,16 @@ $env:BAAS_ACCESS_LOG = "1"
 $env:BAAS_VERBOSE = "1"
 $env:APP_PORTAL_MODE = "admin"
 
+$threads = 4
+if ($env:BAAS_WORKERS -match '^\d+$' -and [int]$env:BAAS_WORKERS -gt 0) {
+    # Wave B：Windows 用 waitress threads 近似多 worker
+    $threads = [Math]::Max(4, [int]$env:BAAS_WORKERS * 4)
+}
 $python = Join-Path $root "venv\Scripts\python.exe"
 $listen = "${BindHost}:$Port"
+Write-Host "[baas] waitress listen=$listen threads=$threads"
 if (Test-Path $python) {
-    & $python -u -m waitress --listen=$listen app_baas:app
+    & $python -u -m waitress --listen=$listen --threads=$threads app_baas:app
     exit $LASTEXITCODE
 }
-& py -3 -u -m waitress --listen=$listen app_baas:app
+& py -3 -u -m waitress --listen=$listen --threads=$threads app_baas:app

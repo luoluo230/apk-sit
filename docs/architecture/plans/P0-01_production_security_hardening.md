@@ -197,4 +197,19 @@ CI 新增 job：`production_secret_gate` — 扫描 repo 中 `admin123`、`ma-cl
 
 - [x] 6 个 Step 验收项全勾
 - [x] runbook 两份已提交
-- [ ] 评审项 W-P0-1 / W-P0-2 / W-P0-5 在 issue 中关闭并链到本 Plan
+- [x] 无 GitHub Issue 时，W-P0  closure 以 [`OPEN_ITEMS_MASTER.md`](./OPEN_ITEMS_MASTER.md) 为真源（见 §6.1）
+
+### 6.1 W-P0 关闭追踪（无 Issue tracker）
+
+| 评审项 | MASTER ID | 证据 / 脚本 |
+|--------|-----------|-------------|
+| 默认弱凭据 | W-P0-1 | `production_secret_gate.py`；`docs/evidence/*/GAP-P0-01-SEC-02.json` |
+| CSRF / Webhook HMAC | W-P0-2 | runbook + staging 签字；`W-P0-2.json` |
+| Cluster relay token 外置 | W-P0-5 | `docs/runbooks/production_secrets.md`；`verify_production_secrets.ps1`；**禁止** `ma-cluster-relay-dev` 生产 |
+| （关联）多 worker 读 | W-P0-4 | `wave_a_pg_multi_worker_gate.py` → `W-P0-4.json` |
+
+闭环状态以 MASTER 列 `DONE`/`PARTIAL` 为准；本表不替代证据 JSON。
+
+## 6.2 原 Issue 勾选项（归档）
+
+- [ ] 评审项 W-P0-1 / W-P0-2 / W-P0-5 在 issue 中关闭并链到本 Plan — **不适用**（无远程 issue）；以 §6.1 + MASTER 代替（`GAP-P0-01-DOD-01`）

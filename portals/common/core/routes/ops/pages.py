@@ -22,6 +22,12 @@ def _page_scope(project_id_override: str = ""):
     env_key = ops_helpers._resolve_ops_env_key(request.args.get("env_key") or "")
     return project_id, env_key, None, None
 
+
+def _guard_topology_page(project_id: str, active_page: str, env_key: str):
+    from services.baas.server_mode_route_guard import redirect_if_server_mode_blocks_page
+
+    return redirect_if_server_mode_blocks_page(project_id, active_page, env_key)
+
 @bp.route("/ops-assets/workbench.js")
 def ops_platform_workbench_js():
     from services.ops.workbench_script import workbench_javascript
@@ -53,6 +59,9 @@ def ops_platform_actions_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "actions", env_key)
+    if blocked is not None:
+        return blocked
     content = ops_helpers._render_local_template("ops_actions_page.html", project_id=project_id, env_key=env_key)
     return ops_helpers._render_ops_page(content, "动作执行中心", active_page="actions", project_id=project_id, env_key=env_key, breadcrumb_module="运行管理")
 
@@ -63,6 +72,9 @@ def ops_platform_topology_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "topology", env_key)
+    if blocked is not None:
+        return blocked
     topology_id = ops_helpers._resolve_ops_topology_id(project_id, env_key, request.args.get("topology_id") or "")
     content = ops_helpers._render_local_template(
         "ops_topology_workspace_page.html",
@@ -105,6 +117,9 @@ def ops_platform_topology_canvas_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "topology", env_key)
+    if blocked is not None:
+        return blocked
     topology_id = ops_helpers._resolve_ops_topology_id(project_id, env_key, request.args.get("topology_id") or "")
     content = ops_helpers._render_local_template(
         "ops_topology_workbench.html",
@@ -130,6 +145,9 @@ def ops_platform_diagnostics_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "diagnostics", env_key)
+    if blocked is not None:
+        return blocked
     content = ops_helpers._render_local_template("ops_diagnostics_page.html", project_id=project_id, env_key=env_key)
     return ops_helpers._render_ops_page(content, "节点诊断中心", active_page="diagnostics", project_id=project_id, env_key=env_key, breadcrumb_module="运行管理")
 
@@ -140,6 +158,9 @@ def ops_platform_agent_control_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "agent-control", env_key)
+    if blocked is not None:
+        return blocked
     content = ops_helpers._render_local_template("ops_agent_control_page.html", project_id=project_id, env_key=env_key)
     return ops_helpers._render_ops_page(content, "Agent 控制面", active_page="agent-control", project_id=project_id, env_key=env_key, breadcrumb_module="运行管理")
 
@@ -151,6 +172,9 @@ def ops_platform_agent_device_local_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "agent-device-local", env_key)
+    if blocked is not None:
+        return blocked
     device_id = str(request.args.get("device_id") or "").strip()
     content = ops_helpers._render_local_template("ops_agent_device_local_page.html", project_id=project_id, env_key=env_key, device_id=device_id)
     return ops_helpers._render_ops_page(content, "设备 Agent 组", active_page="agent-device-local", project_id=project_id, env_key=env_key)
@@ -163,6 +187,9 @@ def ops_platform_agent_detail_page(project_id: str = ""):
     project_id, env_key, _, redirect_resp = _page_scope(project_id)
     if redirect_resp is not None:
         return redirect_resp
+    blocked = _guard_topology_page(project_id, "agent-detail", env_key)
+    if blocked is not None:
+        return blocked
     agent_id = str(request.args.get("agent_id") or "").strip()
     from flask import session
 

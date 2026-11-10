@@ -50,8 +50,13 @@
         const cardVersionLink = scopeApi.renderCardVersionEntry
           ? scopeApi.renderCardVersionEntry(projectId, envKey, cid, line.platform)
           : `<a class="matrix-btn version env-line-version-btn" href="${esc(scopeApi.versionsPageHref ? scopeApi.versionsPageHref(projectId, { env_key: envKey, channel_id: cid, platform: line.platform }) : scopeHref(`/admin/projects/${projectId}/versions`, { env_key: envKey, channel_id: cid, platform: line.platform }))}">版本与管线</a>`;
-        const cardBuildHref = scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "build", line.platform) : "#";
+        const buildAllowed = line.can_build !== false;
+        const buildBlockReason = String(line.build_block_reason || "该产品面不支持构建");
+        const cardBuildHref = buildAllowed && scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "build", line.platform) : "#";
         const cardReleaseHref = scopeApi.channelJourneyHref ? scopeApi.channelJourneyHref(projectId, envKey, cid, "release", line.platform) : "#";
+        const buildBtn = buildAllowed
+          ? `<a class="matrix-btn build" href="${esc(cardBuildHref)}">构建</a>`
+          : `<span class="matrix-btn build is-blocked" title="${esc(buildBlockReason)}" aria-disabled="true">不可构建</span>`;
         const gmHref = scopeHref(`/admin/projects/${projectId}/actions`, { env_key: envKey, channel_id: cid, platform: line.platform });
         const testHref = scopeHref(`/admin/projects/${projectId}/diagnostics`, { env_key: envKey, channel_id: cid, platform: line.platform });
         const topoName = line.topology_name || line.topology_id || "-";
@@ -76,7 +81,7 @@
               <button type="button" class="env-line-tab" data-card-tab="server">服务端</button>
             </div>
             <div class="env-line-tab-pane is-active" data-card-pane="client">
-              <div class="env-line-actions env-line-card-links"><a class="matrix-btn build" href="${esc(cardBuildHref)}">构建</a><a class="matrix-btn release" href="${esc(cardReleaseHref)}">发版</a></div>
+              <div class="env-line-actions env-line-card-links">${buildBtn}<a class="matrix-btn release" href="${esc(cardReleaseHref)}">发版</a></div>
             </div>
             <div class="env-line-tab-pane" data-card-pane="server">
               <div class="env-line-actions env-line-card-links"><button type="button" class="matrix-btn topology" data-open-topology-drawer>拓扑</button><a class="matrix-btn server-gm" href="${esc(gmHref)}">GM</a><a class="matrix-btn server-test" href="${esc(testHref)}">测试</a></div>

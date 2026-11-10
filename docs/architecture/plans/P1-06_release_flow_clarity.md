@@ -6,7 +6,7 @@
 | 预估 | 4–6 周（分 Step；本轮只做 Step 1） |
 | 依赖 | 现有 `release_hub` / `release_console` / `order_state_machine` |
 | 参考 | Nexus Release Platform 设计 v1.0（只借模型，不换栈） |
-| 状态 | **In Progress**（Step 1–2 已落地，Step 3+ 后续） |
+| 状态 | **代码 DoD 已达成**（Step 1–4）；产品面「单主轨」签字见 MASTER **`COMM-P2-7`**（Hub 七步已标为发布单详情，主轨为页顶四步） |
 
 ---
 
@@ -69,13 +69,18 @@
 - [x] 矩阵 API 返回 cells
 - [x] 点格后列表按平台加载版本组、按渠道过滤 VC（前端）
 
-### Step 3：Bundle 硬化（后续）
+### Step 3：Bundle 硬化（P3-03 Wave C）
 
-PROD promote 与 QA 同 `artifact_id + sha256`；BLOCK 非法组合。
+PROD promote 与源 Bundle 同 `artifact_id + sha256`；缺失或不等 BLOCK。
 
-### Step 4：灰度观测与回滚基线（后续）
+- [x] `services/release/artifact_identity.py` + `bundle_promotion_service` 门禁
+- [x] 单测 `test_artifact_promote_identity.py`
 
-批次 metrics 快照；创建 Release 必选 rollback baseline。
+### Step 4：灰度观测与回滚基线（P3-03 Wave C）
+
+灰度 expand/pause 写 `gray_metrics_snapshots`；production 创建必有 rollback baseline（可从 active_bundle 自动填充）；verify 失败优先用创建时 baseline。
+
+- [x] `gray_metrics_service.py` + `order_crud` / `incident_loop_service`
 
 ---
 

@@ -11,39 +11,34 @@ import sys
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 REPO_DOCS = os.path.abspath(os.path.join(ROOT, "..", "..", "docs"))
 
+# Generated / vendor trees — never scan (binary junk, mojibake from export, huge maps).
+SKIP_DIR_NAMES = frozenset(
+    {
+        "__pycache__",
+        "node_modules",
+        "venv",
+        ".venv",
+        ".git",
+        "release_bundles",  # split-deploy output; see release_bundles/README.md — DO NOT SHIP as UTF-8 source
+        "jenkins-clone",
+        "archives",
+    }
+)
+
 SCAN_PATHS = [
-    os.path.join(ROOT, "routes", "delivery"),
-    os.path.join(ROOT, "routes", "internal_jenkins.py"),
-    os.path.join(ROOT, "routes", "approval_webhooks.py"),
-    os.path.join(ROOT, "routes", "gm_ops_release.py"),
-    os.path.join(ROOT, "routes", "project_delivery.py"),
-    os.path.join(ROOT, "services", "release"),
-    os.path.join(ROOT, "services", "ops", "runtime_service.py"),
-    os.path.join(ROOT, "services", "ops", "topology_service.py"),
-    os.path.join(ROOT, "services", "ops", "agent_service.py"),
-    os.path.join(ROOT, "services", "release", "client_health_service.py"),
-    os.path.join(ROOT, "static", "delivery_order_detail.js"),
-    os.path.join(ROOT, "static", "delivery_common.js"),
-    os.path.join(ROOT, "static", "project_delivery.js"),
-    os.path.join(ROOT, "static", "project_delivery_env.js"),
-    os.path.join(ROOT, "static", "project_channel_build_journey.js"),
-    os.path.join(ROOT, "static", "project_channel_release_journey.js"),
-    os.path.join(ROOT, "static", "project_test_devices.js"),
-    os.path.join(ROOT, "static", "project_environment_runtime.js"),
-    os.path.join(ROOT, "templates", "release_order_form.html"),
-    os.path.join(ROOT, "templates", "release_order_detail.html"),
-    os.path.join(ROOT, "templates", "project_test_devices.html"),
-    os.path.join(ROOT, "templates", "project_docs_embed.html"),
-    os.path.join(ROOT, "templates", "project_environment_runtime.html"),
+    os.path.join(ROOT, "routes"),
+    os.path.join(ROOT, "services"),
+    os.path.join(ROOT, "templates"),
+    os.path.join(ROOT, "static"),
     os.path.join(ROOT, "scripts", "encoding_gate.py"),
     os.path.join(ROOT, "scripts", "bootstrap_gate_e2e.py"),
     os.path.join(ROOT, "scripts", "seed_release_gate_fixture.py"),
     os.path.join(ROOT, "scripts", "commercial_startup_sequence_gate.py"),
     os.path.join(REPO_DOCS, "architecture"),
     os.path.join(REPO_DOCS, "runbooks"),
+    os.path.join(REPO_DOCS, "design_specs"),
     os.path.join(REPO_DOCS, "client_bootstrap_contract.md"),
     os.path.join(REPO_DOCS, "full_release_chain_architecture.md"),
-    os.path.join(REPO_DOCS, "design_specs", "release_pipeline_audit.md"),
 ]
 
 EXTENSIONS = {".py", ".js", ".html", ".css", ".md", ".json", ".yml", ".yaml", ".sh"}
@@ -60,6 +55,11 @@ MOJIBAKE_PATTERNS = [
 ]
 
 
+def _walk_skip(dirpath: str, dirnames: list[str]) -> None:
+    """Prune os.walk in place — quarantine release_bundles and vendor trees."""
+    dirnames[:] = [d for d in dirnames if d not in SKIP_DIR_NAMES]
+
+
 def _iter_files():
     seen: set[str] = set()
     for entry in SCAN_PATHS:
@@ -70,7 +70,8 @@ def _iter_files():
                 seen.add(entry)
                 yield entry
             continue
-        for dirpath, _, filenames in os.walk(entry):
+        for dirpath, dirnames, filenames in os.walk(entry):
+            _walk_skip(dirpath, dirnames)
             for name in filenames:
                 if name.startswith("._"):
                     continue

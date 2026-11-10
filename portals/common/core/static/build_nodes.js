@@ -15,7 +15,7 @@
     currentPlane = plane;
     document.querySelectorAll('#bnTabs [data-plane]').forEach(function (btn) {
       var active = btn.getAttribute('data-plane') === plane;
-      btn.className = 'px-3 py-1.5 rounded-md ' + (active ? 'bg-indigo-600 text-white' : 'text-slate-600');
+      btn.classList.toggle('is-active', active);
     });
     var buildSection = document.getElementById('bnBuildSection');
     var installHelp = document.getElementById('bnInstallHelp');
@@ -30,10 +30,10 @@
     var head = document.getElementById('bnTableHead');
     if (!head) return;
     if (plane === 'runtime') {
-      head.innerHTML = '<tr><th class="px-4 py-2 text-left">节点</th><th class="px-4 py-2 text-left">角色</th><th class="px-4 py-2 text-left">Host</th><th class="px-4 py-2 text-left">Port</th><th class="px-4 py-2 text-left">状态</th><th class="px-4 py-2 text-left">最近心跳</th></tr>';
+      head.innerHTML = '<tr><th>节点</th><th>角色</th><th>Host</th><th>Port</th><th>状态</th><th>最近心跳</th></tr>';
       return;
     }
-    head.innerHTML = '<tr><th class="px-4 py-2 text-left">节点</th><th class="px-4 py-2 text-left">角色</th><th class="px-4 py-2 text-left">OS</th><th class="px-4 py-2 text-left">Unity</th><th class="px-4 py-2 text-left">状态</th><th class="px-4 py-2 text-left">最近心跳</th><th class="px-4 py-2 text-left">操作</th></tr>';
+    head.innerHTML = '<tr><th>节点</th><th>角色</th><th>OS</th><th>Unity</th><th>状态</th><th>最近心跳</th><th>操作</th></tr>';
   }
 
   async function loadSummary() {
@@ -65,16 +65,14 @@
       .filter(function (r) { return r.role_id !== 'control'; })
       .map(function (r) {
         var ok = r.healthy;
-        var badge = ok ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800';
-        var label = ok ? '可用' : '不可用';
         return (
-          '<div class="rounded-xl border p-4 ' + (ok ? 'border-emerald-200 bg-emerald-50/40' : 'border-rose-200 bg-rose-50/40') + '">' +
-          '<div class="flex items-center justify-between">' +
-          '<div class="font-semibold text-slate-900">' + esc(r.display_name) + '</div>' +
-          '<span class="text-xs px-2 py-0.5 rounded ' + badge + '">' + label + '</span></div>' +
-          '<div class="mt-2 text-xs text-slate-600">label: ' + esc(r.label) + '</div>' +
-          '<div class="text-xs text-slate-600">job: ' + esc(r.job_name) + '</div>' +
-          '<div class="mt-2 text-sm">在线 ' + esc(r.online_count) + ' / 注册 ' + esc(r.total_count) + '</div>' +
+          '<div class="bn-role-card ' + (ok ? 'is-ok' : 'is-bad') + '">' +
+          '<div class="bn-role-card__top">' +
+          '<div class="bn-role-card__title">' + esc(r.display_name) + '</div>' +
+          '<span class="bn-badge ' + (ok ? 'is-ok' : 'is-bad') + '">' + (ok ? '可用' : '不可用') + '</span></div>' +
+          '<div class="bn-role-card__meta">label: ' + esc(r.label) + '</div>' +
+          '<div class="bn-role-card__meta">job: ' + esc(r.job_name) + '</div>' +
+          '<div class="bn-role-card__count">在线 ' + esc(r.online_count) + ' / 注册 ' + esc(r.total_count) + '</div>' +
           '</div>'
         );
       })
@@ -88,19 +86,19 @@
       var empty = currentPlane === 'runtime'
         ? '暂无 Runtime 节点，请执行 cluster 同步'
         : '暂无注册节点，请在各构建机运行 Install-ReleasePlatform';
-      tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-6 text-center text-slate-500">' + esc(empty) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="bn-empty">' + esc(empty) + '</td></tr>';
       return;
     }
     if (currentPlane === 'runtime') {
       tbody.innerHTML = nodes.map(function (n) {
         return (
           '<tr>' +
-          '<td class="px-4 py-2">' + esc(n.display_name || n.id) + '</td>' +
-          '<td class="px-4 py-2">' + esc(n.role_display_name || n.role) + '</td>' +
-          '<td class="px-4 py-2">' + esc(n.host || '-') + '</td>' +
-          '<td class="px-4 py-2">' + esc(n.port || '-') + '</td>' +
-          '<td class="px-4 py-2">' + esc(n.status || '-') + '</td>' +
-          '<td class="px-4 py-2 text-xs">' + esc(n.last_heartbeat_at || '-') + '</td>' +
+          '<td>' + esc(n.display_name || n.id) + '</td>' +
+          '<td>' + esc(n.role_display_name || n.role) + '</td>' +
+          '<td>' + esc(n.host || '-') + '</td>' +
+          '<td>' + esc(n.port || '-') + '</td>' +
+          '<td>' + esc(n.status || '-') + '</td>' +
+          '<td class="bn-muted">' + esc(n.last_heartbeat_at || '-') + '</td>' +
           '</tr>'
         );
       }).join('');
@@ -108,16 +106,16 @@
     }
     tbody.innerHTML = nodes.map(function (n) {
       var st = n.online ? '在线' : '离线';
-      var cls = n.online ? 'text-emerald-700' : 'text-slate-500';
+      var cls = n.online ? 'bn-online' : 'bn-offline';
       return (
         '<tr>' +
-        '<td class="px-4 py-2">' + esc(n.agent_name || n.hostname || n.id) + '</td>' +
-        '<td class="px-4 py-2">' + esc(n.role_display_name || n.role) + '</td>' +
-        '<td class="px-4 py-2">' + esc(n.os) + '</td>' +
-        '<td class="px-4 py-2">' + esc(n.unity_version || '-') + '</td>' +
-        '<td class="px-4 py-2 ' + cls + '">' + st + '</td>' +
-        '<td class="px-4 py-2 text-xs">' + esc(n.last_heartbeat || n.last_heartbeat_at || '-') + '</td>' +
-        '<td class="px-4 py-2"><button type="button" class="text-rose-600 text-xs" data-del="' + esc(n.id) + '">移除</button></td>' +
+        '<td>' + esc(n.agent_name || n.hostname || n.id) + '</td>' +
+        '<td>' + esc(n.role_display_name || n.role) + '</td>' +
+        '<td>' + esc(n.os) + '</td>' +
+        '<td>' + esc(n.unity_version || '-') + '</td>' +
+        '<td class="' + cls + '">' + st + '</td>' +
+        '<td class="bn-muted">' + esc(n.last_heartbeat || n.last_heartbeat_at || '-') + '</td>' +
+        '<td><button type="button" class="bn-del" data-del="' + esc(n.id) + '">移除</button></td>' +
         '</tr>'
       );
     }).join('');
@@ -138,9 +136,12 @@
     });
   });
 
-  document.getElementById('bnRefresh')?.addEventListener('click', function () {
-    refreshAll().catch(function (e) { alert(e.message || e); });
-  });
+  var refreshBtn = document.getElementById('bnRefresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function () {
+      refreshAll().catch(function (e) { alert(e.message || e); });
+    });
+  }
 
   setActiveTab('build');
   refreshAll().catch(function (e) { alert(e.message || e); });

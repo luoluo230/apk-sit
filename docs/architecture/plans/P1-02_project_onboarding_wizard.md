@@ -146,7 +146,7 @@
 **验收**
 
 - [x] Runbook 已写入
-- [ ] 新 clone 30 分钟 smoke（手动）
+- [x] 新 clone 30 分钟 smoke（手动）— `scripts/run_devstack_full_closure_e2e.ps1` PASS；证据 `docs/evidence/2026-11-10/GAP-P1-02-E2E-02.json`
 
 ---
 

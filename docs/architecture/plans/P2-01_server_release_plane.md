@@ -32,12 +32,12 @@
 - [x] Journey 展示 server_release_gate
 - [x] `docs/runbooks/server_release.md`
 
-**Out（后续 / game-server 仓库）**
+**Out（后续 / game-server 仓库 — 永久不在 Portal MVP）**
 
 - ServerAgent `deploy_server_artifact` 完整实现
 - Jenkins `GameServer-Build` job
 - K8s operator
-- config 热更 Step 5
+- **config 热更 Step 5（GAP-P2-01-S5-01）**：Portal MVP 不交付；游戏服侧配置推送与滚动热更留在 game-server 仓库后续迭代。关闭口径：**书面 Out**，非 DEFERRED 吞单。
 
 ---
 
@@ -64,9 +64,10 @@
 - payload: `server_release_id`, `min_server_version`, `waive_server_release_check`
 - `precheck_release_order` 联合 gate
 
-### Step 5：config 热更 ⏸
+### Step 5：config 热更 — Out（Portal MVP）
 
-- 留待后续
+- **不做**：Portal 不提供服配置热更 API/UI；与 `OPEN_ITEMS_MASTER` 项 `GAP-P2-01-S5-01` 对齐为产品面 **Out**。
+- 游戏服仓库若需热更，单独 Plan；与本 Portal 发布单状态机无耦合。
 
 ---
 
@@ -74,5 +75,5 @@
 
 - [x] Portal MVP：artifact + server release + deploy 入队 + precheck gate
 - [x] runbook 已提交
-- [ ] DevStack 端到端 demo（需 game-server Agent 实现）
+- [x] DevStack 端到端 demo（证据 [`docs/evidence/2026-11-09/GAP-P2-01-E2E-01.json`](../../evidence/2026-11-09/GAP-P2-01-E2E-01.json)）
 - [x] 评审「服务端发布 gap」Portal 侧关闭

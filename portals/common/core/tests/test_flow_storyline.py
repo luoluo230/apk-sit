@@ -32,8 +32,9 @@ class FlowStorylineTests(unittest.TestCase):
 
         data = build_storyline("p1", "development", [], release_href="/admin/projects/p1/release")
         self.assertFalse(data["has_in_flight"])
-        self.assertEqual(data["primary"]["href"], "/admin/projects/p1/release")
-        self.assertEqual(data["primary"]["label"], "去发版")
+        self.assertEqual(data["track_role"], "order_detail")
+        self.assertIn("/versions", data["primary"]["href"])
+        self.assertEqual(data["secondary"]["href"], "/admin/projects/p1/release")
 
     def test_in_flight_storyline_uses_next_action(self):
         from services.release.flow_storyline_service import build_storyline
@@ -54,7 +55,8 @@ class FlowStorylineTests(unittest.TestCase):
         data = build_storyline("p1", "production", pending, release_href="/release")
         self.assertTrue(data["has_in_flight"])
         self.assertEqual(data["current_stage"], "approval")
-        self.assertEqual(data["primary"]["href"], "/approval")
+        self.assertIn("/versions", data["primary"]["href"])
+        self.assertEqual(data["secondary"]["href"], "/approval")
         self.assertEqual(data["status_label"], "待审批")
 
 

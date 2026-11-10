@@ -1240,6 +1240,11 @@ def init_db():
 
             conn.executescript(BAAS_DUNGEON_TIER_V1_SQL)
             _mark_migration(conn, "baas_dungeon_tier_v1")
+        if not _migration_applied(conn, "baas_realms_v1"):
+            from models.baas_migrations import BAAS_REALMS_V1_SQL
+
+            conn.executescript(BAAS_REALMS_V1_SQL)
+            _mark_migration(conn, "baas_realms_v1")
         conn.commit()
         _schema_initialized = True
 

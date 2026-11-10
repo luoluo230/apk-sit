@@ -1275,6 +1275,11 @@
   const FIELD_SECTION_MAP = {
     jenkins_instance_id: "jenkins",
     jenkins_job_id: "jenkins",
+    git_branch: "jenkins",
+    unity_version: "jenkins",
+    app_name: "jenkins",
+    unity_project_path: "jenkins",
+    output_base_dir: "jenkins",
     config_export_enabled: "config_export",
     resource_build_enabled: "resource_build",
     hot_release_enabled: "hot_release",
@@ -1285,21 +1290,51 @@
 
   function applyReleaseOrderFocus() {
     const params = new URLSearchParams(location.search);
-    if (params.get("from") !== "release-order") return;
-    const highlights = (params.get("highlight") || "").split(",").map((x) => x.trim()).filter(Boolean);
-    const reason = params.get("focus_reason") || "请填写下方红色高亮字段并点击「保存配置」。";
+    const from = String(params.get("from") || "").trim();
+    const isPrepareGate = from === "prepare-gate";
+    const isReleaseOrder = from === "release-order";
+    let highlights = (params.get("highlight") || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (!isPrepareGate && !isReleaseOrder && !highlights.length) return;
+
+    // 准备门禁进入时：即使未显式列出，也自动标红 Jenkins 关键空项
+    if (isPrepareGate) {
+      ["jenkins_instance_id", "jenkins_job_id", "git_branch", "unity_version", "app_name", "unity_project_path", "output_base_dir"].forEach((name) => {
+        if (!highlights.includes(name)) highlights.push(name);
+      });
+      const anyStepOn = ["config_export_enabled", "resource_build_enabled", "hot_release_enabled", "apk_build_enabled"].some((name) => {
+        const el = form.querySelector(`[name="${name}"]`);
+        return el && el.type === "checkbox" && el.checked;
+      });
+      if (!anyStepOn) {
+        ["config_export_enabled", "resource_build_enabled", "hot_release_enabled", "apk_build_enabled"].forEach((name) => {
+          if (!highlights.includes(name)) highlights.push(name);
+        });
+      }
+    }
+
+    const reason = params.get("focus_reason")
+      || (isPrepareGate
+        ? "请补全红色高亮的必填项并点击「保存配置」。保存后返回版本与管线，准备通过才会点亮「打包」。"
+        : "请填写下方红色高亮字段并点击「保存配置」。");
     const releaseOrderId = params.get("release_order_id") || "";
     let banner = root.querySelector(".release-focus-banner");
     if (!banner) {
       banner = document.createElement("div");
       banner.className = "release-focus-banner";
-      const anchor = root.querySelector(".build-config-journey-banner") || root.querySelector(".workflow-heading");
-      anchor?.insertAdjacentElement("afterend", banner);
+      const anchor = root.querySelector(".build-config-journey-banner") || root.querySelector(".workflow-heading") || root.querySelector(".bc-identity");
+      (anchor || root).insertAdjacentElement(anchor ? "afterend" : "afterbegin", banner);
     }
     const returnHref = releaseOrderId
       ? `/admin/projects/${encodeURIComponent(projectId)}/release-orders/${encodeURIComponent(releaseOrderId)}`
+      : (isPrepareGate
+        ? `/admin/projects/${encodeURIComponent(projectId)}/versions?env_key=${encodeURIComponent(groupEnvKey || "development")}${groupPlatform ? `&platform=${encodeURIComponent(groupPlatform)}` : ""}`
+        : "");
+    const title = isPrepareGate ? "来自版本管线 · 准备待修正" : "来自发布单 · 待补充配置";
+    const returnLabel = isPrepareGate ? "返回版本与管线" : "返回发布单";
+    const ownershipHint = isPrepareGate
+      ? "<p style=\"margin-top:6px\">归属提示：Jenkins/四步管线在<strong>版本组</strong>改；Git/Unity 路径以项目基线为准；渠道 Job 绑定在项目渠道；发版窗口与灰度在发布单。</p>"
       : "";
-    banner.innerHTML = `<div><strong>来自发布单 · 待补充配置</strong><p>${esc(reason)}</p></div>${returnHref ? `<a class="release-focus-return" href="${returnHref}">返回发布单</a>` : ""}`;
+    banner.innerHTML = `<div><strong>${esc(title)}</strong><p>${esc(reason)}</p>${ownershipHint}</div>${returnHref ? `<a class="release-focus-return" href="${returnHref}">${esc(returnLabel)}</a>` : ""}`;
     const rssField = form.querySelector('[name="resource_server_url"]');
     const rssFilled = rssField && String(rssField.value || "").trim();
     const allHighlightsFilled = highlights.every((name) => {
@@ -1307,9 +1342,12 @@
       if (!field) return true;
       return field.type === "checkbox" ? field.checked : Boolean(String(field.value || "").trim());
     });
-    if (rssFilled && allHighlightsFilled) {
+    if (isReleaseOrder && rssFilled && allHighlightsFilled) {
       banner.classList.add("release-focus-banner-ready");
       banner.innerHTML = `<div><strong>来自发布单 · 客户端策略已填写</strong><p>请确认资源服务器 URL 无误后点击「保存配置」，再返回发布单点「重新预检」。剩余阻断项通常是：code 包未构建、OSS 产物未上传、Runtime 未启动。</p></div>${returnHref ? `<a class="release-focus-return" href="${returnHref}">返回发布单</a>` : ""}`;
+    } else if (isPrepareGate && allHighlightsFilled) {
+      banner.classList.add("release-focus-banner-ready");
+      banner.innerHTML = `<div><strong>来自版本管线 · 必填项已填写</strong><p>请点击「保存配置」，然后返回版本与管线确认「准备」已点亮。</p></div>${returnHref ? `<a class="release-focus-return" href="${returnHref}">返回版本与管线</a>` : ""}`;
     } else {
       banner.classList.remove("release-focus-banner-ready");
     }
@@ -1317,12 +1355,17 @@
     highlights.forEach((name) => {
       const field = form.querySelector(`[name="${name}"]`) || document.getElementById(name);
       if (!field) return;
-      const label = field.closest("label") || field.closest(".build-config-strategy-panel");
-      const alreadyFilled = field.type === "checkbox" ? field.checked : String(field.value || "").trim();
+      const label = field.closest("label") || field.closest(".build-config-strategy-panel") || field.closest(".path-field");
+      const rawVal = String(field.value || "").trim();
+      const looksUnbound = !rawVal
+        || rawVal === "0"
+        || /未绑定|未选择|请选择|请填写/.test(rawVal)
+        || (field.tagName === "SELECT" && field.selectedOptions?.[0] && /未绑定|请选择/.test(String(field.selectedOptions[0].textContent || "")));
+      const alreadyFilled = field.type === "checkbox" ? field.checked : !looksUnbound;
       if (alreadyFilled) return;
       label?.classList.add("field-highlight-required");
       field.classList.add("field-highlight-required");
-      const section = FIELD_SECTION_MAP[name] || params.get("section");
+      const section = FIELD_SECTION_MAP[name] || params.get("section") || "jenkins";
       if (section) touchedSections.add(section);
       const clearHighlight = () => {
         const filled = field.type === "checkbox" ? field.checked : String(field.value || "").trim();
@@ -1337,6 +1380,8 @@
     touchedSections.forEach((section) => {
       root.querySelector(`[data-section-tab="${section}"]`)?.classList.add("field-highlight-step");
     });
+    const firstSection = [...touchedSections][0] || params.get("section") || "jenkins";
+    activateSection(firstSection);
     requestAnimationFrame(() => {
       const first = form.querySelector(".field-highlight-required");
       first?.scrollIntoView({ behavior: "smooth", block: "center" });

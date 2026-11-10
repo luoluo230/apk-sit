@@ -74,24 +74,38 @@ def _instance_dir(repo: Path, service_id: str) -> Path:
 
 
 def _prepare_instance(repo: Path, service_id: str) -> Tuple[str, str]:
+    """Stage a runnable instance with the full build output tree (not EXE-only).
+
+    Copying only the EXE caused TypeLoadException for GameServer.Shared.Jobs.IDeadLetterService
+    because sibling DLLs were missing from the instance cwd.
+    """
+    import shutil
+
     src_exe, src_dir = _resolve_exe(repo)
     if not src_exe:
         return "", ""
     inst = _instance_dir(repo, service_id)
-    inst.mkdir(parents=True, exist_ok=True)
+    src_root = Path(src_dir)
+    need_refresh = True
     dst_exe = inst / Path(src_exe).name
-    if not dst_exe.is_file() or dst_exe.stat().st_mtime < Path(src_exe).stat().st_mtime:
-        import shutil
-
-        shutil.copy2(src_exe, dst_exe)
+    if inst.is_dir() and dst_exe.is_file():
+        try:
+            need_refresh = dst_exe.stat().st_mtime < Path(src_exe).stat().st_mtime
+        except OSError:
+            need_refresh = True
+    if need_refresh:
+        if inst.exists():
+            shutil.rmtree(inst, ignore_errors=True)
+        shutil.copytree(src_root, inst)
     for name in ("cluster.json", "appsettings.json"):
         src = repo / "config" / name
         if src.is_file():
-            import shutil
-
             for dst in (inst / name, inst / "config" / name):
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dst)
+    dst_exe = inst / Path(src_exe).name
+    if not dst_exe.is_file():
+        return "", ""
     return str(dst_exe), str(inst)
 
 

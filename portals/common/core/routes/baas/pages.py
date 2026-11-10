@@ -23,6 +23,11 @@ def register_baas_pages(bp) -> None:
         if not can_view_project(project_id, username):
             abort(403)
         env_key = str(request.args.get("env_key") or "development").strip() or "development"
+        from services.baas.server_mode_route_guard import redirect_if_server_mode_blocks_page
+
+        blocked = redirect_if_server_mode_blocks_page(project_id, "casual-services", env_key)
+        if blocked is not None:
+            return blocked
         sid = str(
             service_id
             or request.args.get("service_id")

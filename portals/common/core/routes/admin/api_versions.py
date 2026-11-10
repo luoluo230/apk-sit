@@ -186,6 +186,20 @@ def register_routes(bp, current_username_getter):
     def _version_effective_pipeline(project_id: str, version_id: str):
         return version_effective_pipeline_response(project_id, version_id, current_username_getter())
 
+    @admin_required("projects")
+    def _version_client_acceptance(project_id: str, version_id: str):
+        from services.release.client_acceptance_service import set_client_acceptance
+
+        body = request.get_json(silent=True) or {}
+        payload, status = set_client_acceptance(
+            project_id,
+            version_id,
+            status=str(body.get("status") or ""),
+            username=current_username_getter(),
+            note=str(body.get("note") or ""),
+        )
+        return jsonify(payload), status
+
     bp.add_url_rule("/api/projects/<project_id>/download-stats", endpoint="project_download_stats", view_func=_project_download_stats)
     bp.add_url_rule("/admin/projects/<project_id>/versions/list", endpoint="project_versions_list", view_func=_versions_list)
     bp.add_url_rule(
@@ -252,5 +266,11 @@ def register_routes(bp, current_username_getter):
         "/admin/projects/<project_id>/version-groups/update",
         endpoint="project_version_groups_update",
         view_func=_version_groups_update,
+        methods=["POST"],
+    )
+    bp.add_url_rule(
+        "/api/projects/<project_id>/versions/<version_id>/client-acceptance",
+        endpoint="api_version_client_acceptance",
+        view_func=_version_client_acceptance,
         methods=["POST"],
     )

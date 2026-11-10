@@ -37,9 +37,12 @@ def write_evidence(
     notes: str = "",
 ) -> str:
     path = evidence_path(gap_id)
+    resolved_status = status
+    if exit_code != 0 and status == "DONE":
+        resolved_status = "FAIL"
     payload: Dict[str, Any] = {
         "gap_id": gap_id,
-        "status": status if exit_code == 0 else "FAIL",
+        "status": resolved_status,
         "timestamp": datetime.now(timezone.utc).astimezone().isoformat(),
         "command": command,
         "exit_code": exit_code,

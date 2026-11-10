@@ -28,3 +28,5 @@
 ## 门禁
 
 每 Step：`py_compile` 改过的 Python；改过的 JS `node --check`；浏览器验证该波主路径无 tailwind/cdnjs、空态有主操作、主按钮可用。
+
+**产品级验收真源**：[product_ui_scorecard.md](../../design_specs/product_ui_scorecard.md)（八维矩阵；全页 PASS 前 P3-02 保持 PARTIAL）。

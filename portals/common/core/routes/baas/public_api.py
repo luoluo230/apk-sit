@@ -14,6 +14,7 @@ from routes.baas.public.compliance import register as register_compliance
 from routes.baas.public.content import register as register_content
 from routes.baas.public.growth import register as register_growth
 from routes.baas.public.realtime import register as register_realtime
+from routes.baas.public.realms import register as register_realms
 from routes.baas.public.retention import register as register_retention
 from routes.baas.public.social import register as register_social
 
@@ -21,6 +22,7 @@ from routes.baas.public.social import register as register_social
 def register_baas_public_routes(bp=None) -> None:
     target = bp or baas_public_bp
     register_auth(target)
+    register_realms(target)
     register_content(target)
     register_retention(target)
     register_social(target)

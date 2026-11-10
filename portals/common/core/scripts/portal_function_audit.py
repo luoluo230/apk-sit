@@ -127,11 +127,36 @@ def main() -> int:
     }
     for row in rows:
         report["status_counts"][str(row["status"])] = report["status_counts"].get(str(row["status"]), 0) + 1
-    out = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "docs", "evidence", "2026-10-28", "portal-function-audit.json")
-    out = os.path.abspath(out)
+    from datetime import datetime
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+    day = os.environ.get("EVIDENCE_DAY") or datetime.now().strftime("%Y-%m-%d")
+    out = os.path.join(root, "docs", "evidence", day, "portal-function-audit.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as handle:
         json.dump(report, handle, ensure_ascii=False, indent=2)
+    exit_code = 1 if five or post_bad else 0
+    try:
+        from scripts.closure_evidence import write_evidence
+
+        write_evidence(
+            "OPEN-2026-11-10-10",
+            command="portal_function_audit.py",
+            exit_code=exit_code,
+            status="DONE" if exit_code == 0 else "PARTIAL",
+            artifact_paths=[os.path.relpath(out, root).replace("\\", "/")],
+            notes=json.dumps(
+                {
+                    "get_count": report["get_count"],
+                    "get_500_count": len(five),
+                    "post_bad_count": len(post_bad),
+                    "status_counts": report["status_counts"],
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception as exc:
+        print("write_evidence skip:", exc, file=sys.stderr)
     print(json.dumps({
         "get_count": report["get_count"],
         "get_bad": len(five),

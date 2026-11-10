@@ -228,7 +228,10 @@ def build_grid_summary() -> Dict[str, Any]:
 def resolve_online_build_node(platform: str) -> Optional[Dict[str, Any]]:
     from services.build.build_grid import resolve_build_role_for_platform
 
-    role = resolve_build_role_for_platform(normalize_build_platform(platform))
+    try:
+        role = resolve_build_role_for_platform(normalize_build_platform(platform))
+    except ValueError:
+        return None
     label = str((BUILD_ROLES.get(role) or {}).get("label") or "")
     online = [
         n
@@ -239,8 +242,17 @@ def resolve_online_build_node(platform: str) -> Optional[Dict[str, Any]]:
 
 
 def recommended_build_node_for_platform(platform: str) -> Dict[str, Any]:
-    node = resolve_online_build_node(platform)
-    plat = normalize_build_platform(platform)
+    try:
+        plat = normalize_build_platform(platform)
+    except ValueError:
+        return {
+            "platform": str(platform or "").strip().lower(),
+            "available": False,
+            "label": "",
+            "display_name": "",
+            "hint": "不支持的构建平台",
+        }
+    node = resolve_online_build_node(plat)
     role = str((node or {}).get("role") or "")
     meta = BUILD_ROLES.get(role) or {}
     if not node:

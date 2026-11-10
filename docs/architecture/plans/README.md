@@ -5,8 +5,10 @@
 
 **用法**：在 Cursor Plan 或排期表中引用 `docs/architecture/plans/Px-xx_*.md` 作为任务真源。
 
-> **Closure 真源（必读）**：Plan 里的 `[x]` **不等于线上可用**。未完成项、假绿项、评审 W/C closure 状态见 **[`PLAN_CLOSURE_STATUS.md`](../PLAN_CLOSURE_STATUS.md)** — 排查线上问题从该文档 §6 入手。
-
+> **未完成项可执行 Plan（必读）**：**[`P5-01_remaining_open_closure.md`](./P5-01_remaining_open_closure.md)** — 全部非 DONE 的 Step/命令/证据路径。  
+> **进度表**：**[`OPEN_ITEMS_MASTER.md`](./OPEN_ITEMS_MASTER.md)** — DONE/BLOCKED/DEFERRED 状态；升 DONE 须证据门禁。  
+> **禁止假完成**：`.cursor/rules/no-false-completion.mdc`（`alwaysApply`，每次任务必读）。  
+> **Closure 辅源**：Plan 里的 `[x]` **不等于线上可用**。假绿对照见 **[`PLAN_CLOSURE_STATUS.md`](../PLAN_CLOSURE_STATUS.md)** — 与 MASTER/P5-01 冲突时以 **P5-01 + MASTER + 禁止假完成 rule** 为准。
 ---
 
 ## 1. 计划总览
@@ -25,6 +27,9 @@
 | P2-01 | [P2-01_server_release_plane.md](./P2-01_server_release_plane.md) | P2 | 4–8 周 | P1-01, P1-05 | 服务端发布 gap |
 | P2-02 | [P2-02_client_bootstrap_consolidation.md](./P2-02_client_bootstrap_consolidation.md) | P2 | 3–4 周 | P0-01 | C-P1-1, C-P1-2 |
 | P2-03 | [P2-03_observability_incident_loop.md](./P2-03_observability_incident_loop.md) | P2 | 2–4 周 | P2-01 可选 | Prod 事故、自动回滚 |
+| P3-03 | [P3-03_commercial_release_hardening.md](./P3-03_commercial_release_hardening.md) | P3 | 3–5 周 | P0/P1-06/P2-03 | 商业发版缺口收口（排除 iOS/微信） |
+| P4-01 | [P4-01_baas_ops_scale_realms.md](./P4-01_baas_ops_scale_realms.md) | P4 | 分期 Wave A→C | P3-03 可选 | BaaS 选型分流/一键部署/容量/逻辑区服 |
+| P5-01 | [P5-01_remaining_open_closure.md](./P5-01_remaining_open_closure.md) | P5 | 持续 | MASTER 非 DONE | 未完成项正式闭环（纠正空延期） |
 
 ---
 

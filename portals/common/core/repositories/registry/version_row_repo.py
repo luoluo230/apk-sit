@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from data._store import PROJECT_VERSIONS_FILE
 from repositories.registry._db import get_cursor, init_db
 from repositories.registry._mirror import write_json_mirror
 

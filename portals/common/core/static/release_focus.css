@@ -10,14 +10,31 @@
 label.field-highlight-required>span:first-child{color:#cf1322!important;font-weight:700}
 label.field-highlight-required>span:first-child::after{content:" *";color:#cf1322}
 .field-highlight-required:not(label){outline:none}
+input.field-highlight-required,
+select.field-highlight-required,
+textarea.field-highlight-required,
 .field-highlight-required input,
 .field-highlight-required select,
 .field-highlight-required textarea,
 label.field-highlight-required input,
 label.field-highlight-required select,
-label.field-highlight-required textarea{border-color:#ff4d4f!important;background:#fffafa!important;box-shadow:0 0 0 2px rgba(255,77,79,.18)!important}
+label.field-highlight-required textarea,
+.path-field.field-highlight-required input,
+.path-field.field-highlight-required .path-field-row input{
+  border:2px solid #ff4d4f!important;
+  background:#fff1f0!important;
+  box-shadow:0 0 0 3px rgba(255,77,79,.22)!important;
+}
+label.field-highlight-required,
+.path-field.field-highlight-required{
+  border-radius:8px;
+  background:rgba(255,77,79,.04);
+  padding:6px 8px;
+  box-shadow:inset 0 0 0 1px rgba(255,77,79,.25);
+}
 .build-config-steps button.field-highlight-step{box-shadow:inset 0 0 0 2px #ff4d4f;background:#fff2f0}
 .build-config-steps button.field-highlight-step b{background:#ff4d4f;color:#fff}
+select.field-highlight-required option[value=""]{color:#cf1322}
 
 .p16-runtime .release-focus-banner{margin-top:8px}
 .p16-runtime .field-highlight-target{outline:2px solid #ff4d4f;outline-offset:2px;border-radius:8px}

@@ -82,13 +82,15 @@ Portal「服务器管理」页 → Tab 右侧 **下载架构部署包**：
 
 ## 上线检查清单
 
-- [ ] `PORTAL_SERVER_FRAMEWORKS` 与目标模式一致
-- [ ] `init_db()` / 数据库迁移已执行
-- [ ] 项目 `server_mode` 与所选框架匹配
-- [ ] Bootstrap `/api/public/client-bootstrap` 返回 200
-- [ ] 服务器管理页卡片状态正常
-- [ ] 客户端已导入 PortalHttp + 对应 NetworkModule
-- [ ] 运行 `py scripts/encoding_gate.py` 与相关单元测试
+状态：`PASS` = 本仓已复验 | `NOT_DONE` = 需目标环境执行 | 详见 [OPEN_ITEMS_MASTER.md](../architecture/plans/OPEN_ITEMS_MASTER.md)
+
+- [ ] `PORTAL_SERVER_FRAMEWORKS` 与目标模式一致 — **BLOCKED**（生产/预发 env 签字；本机默认 `all` 不算生产签 off）
+- [x] `init_db()` 本机 SQLite — **PASS**（`py -3 -c "from models.db import init_db; init_db()"` @ `portals/common/core`；2026-11-10 Wave1）
+- [x] 项目 `server_mode` 与所选框架匹配 — **PASS**（`project_nav_policy` + 深链 `server_mode_route_guard`；证据 `docs/evidence/2026-11-10/OPEN-2026-11-10-13.json`）
+- [x] Bootstrap 发布链 gate — **PASS**（`bootstrap_gate_e2e.py` @ `:5003`；证据 `docs/evidence/2026-11-10/OPEN-2026-11-10-08.json`；裸 `client-bootstrap` 需 scope 参数）
+- [x] 服务器管理页路由可达 — **PASS**（本机 `/admin` shell 路由无 500；卡片 Agent 态随 OPEN-09 DevStack；浏览器像素随 P3-02）
+- [ ] 客户端已导入 PortalHttp + 对应 NetworkModule — **BLOCKED**（客户端仓 / Annex Out）
+- [x] 运行 `py scripts/encoding_gate.py` 与相关单元测试 — **PASS**（本机；证据 `docs/evidence/2026-11-10/OPEN-2026-11-10-17.json`）
 
 ## 相关文档
 

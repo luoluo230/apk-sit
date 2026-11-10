@@ -67,6 +67,34 @@ def _prod_wizard_steps(project_id: str) -> List[Dict[str, Any]]:
     ]
 
 
+def _plane_alignment_for_env(
+    project_id: str,
+    env_key: str,
+    pending: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Surface client×server alignment for the selected env (P3-03 Wave E)."""
+    from services.release.client_server_alignment import assess_client_server_alignment
+    from services.release.server_release_service import get_server_release
+
+    order = None
+    for row in pending or []:
+        if str(row.get("env_key") or "") == env_key and row.get("release_order_id"):
+            order = row
+            break
+    if not order:
+        orders = list_release_orders(project_id, {"env_key": env_key}, sync_builds=False, limit=5)
+        order = orders[0] if orders else {}
+    plan = order.get("payload") if isinstance((order or {}).get("payload"), dict) else {}
+    sid = str(
+        (plan or {}).get("linked_server_release_id")
+        or (plan or {}).get("server_release_id")
+        or order.get("linked_server_release_id")
+        or ""
+    ).strip()
+    server = get_server_release(project_id, sid) if sid else {}
+    return assess_client_server_alignment(order or {}, server or {}, env_key=env_key)
+
+
 def _coordinated_deploy_summary(order: Dict[str, Any]) -> Dict[str, Any] | None:
     plan = order.get("payload") if isinstance(order.get("payload"), dict) else {}
     if not plan.get("deploy_server_with_client"):
@@ -233,6 +261,8 @@ def build_release_hub(project_id: str, *, env_key: str = "") -> Dict[str, Any]:
     health = build_release_health_summary(project_id, days=7)
     pending = _pending_actions(project_id)
     console_href = f"/admin/projects/{project_id}/release?env_key={selected_env}"
+    versions_href = f"/admin/projects/{project_id}/versions?env_key={selected_env}"
+    plane_alignment = _plane_alignment_for_env(project_id, selected_env, pending)
     return {
         "project_id": project_id,
         "selected_env": selected_env,
@@ -241,8 +271,13 @@ def build_release_hub(project_id: str, *, env_key: str = "") -> Dict[str, Any]:
         "prod_wizard_steps": _prod_wizard_steps(project_id),
         "runtime_snapshot": build_runtime_snapshot(project_id, selected_env),
         "storyline": build_storyline(
-            project_id, selected_env, pending, release_href=console_href
+            project_id,
+            selected_env,
+            pending,
+            release_href=console_href,
+            versions_href=versions_href,
         ),
+        "plane_alignment": plane_alignment,
         "promotion_candidates": list_promotion_candidates(project_id),
         "server_promotion_candidates": list_server_promotion_candidates(project_id),
         "coordinated_deploy_feed": _coordinated_deploy_feed(project_id),

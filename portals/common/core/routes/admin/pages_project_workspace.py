@@ -122,7 +122,7 @@ def register_routes(bp, *, current_username):
         from services.release.env_registry import normalize_release_env_key
 
         entry_from = (request.args.get("from") or "").strip().lower()
-        if entry_from not in ("version-group", "release-order"):
+        if entry_from not in ("version-group", "release-order", "prepare-gate"):
             entry_from = "version-group"
 
         version_name = (request.args.get("version_name") or "").strip()
@@ -214,8 +214,8 @@ def register_routes(bp, *, current_username):
             env_key=env_key,
             extra_css=(
                 '<link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">'
-                '<link rel="stylesheet" href="/static/release_focus.css?v=20260706-focus-v1">'
-                '<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260625-bc-layered1">'
+                '<link rel="stylesheet" href="/static/release_focus.css?v=20261109-prepare-gate-strong">'
+                '<link rel="stylesheet" href="/static/project_version_build_config.css?v=20261109-prepare-gate-strong">'
             ),
         )
 
@@ -245,7 +245,8 @@ def register_routes(bp, *, current_username):
         )
 
         entry_from = (request.args.get("from") or "").strip().lower()
-        if entry_from not in ("version-group", "release-order"):
+        # prepare-gate：版本四步「去修正配置」深链，必须放行才能标红必填项
+        if entry_from not in ("version-group", "release-order", "prepare-gate"):
             return redirect(
                 f"/admin/projects/{project_id}/versions?"
                 + urlencode(
@@ -331,8 +332,8 @@ def register_routes(bp, *, current_username):
             env_key=env_key,
             extra_css=(
                 '<link rel="stylesheet" href="/static/project_delivery.css?v=20260625-layered1">'
-                '<link rel="stylesheet" href="/static/release_focus.css?v=20260706-focus-v1">'
-                '<link rel="stylesheet" href="/static/project_version_build_config.css?v=20260625-bc-layered1">'
+                '<link rel="stylesheet" href="/static/release_focus.css?v=20261109-prepare-gate-strong">'
+                '<link rel="stylesheet" href="/static/project_version_build_config.css?v=20261109-prepare-gate-strong">'
             ),
         )
 

@@ -1,8 +1,19 @@
-.rh-app{padding:20px 24px 32px;max-width:1280px;margin:0 auto}
+/* P5-01 OPEN-2026-11-10-14: bind rh-* to design-tokens (pm / --color-*) */
+.rh-app{
+  --rh-text:var(--color-text,#1d2939);
+  --rh-muted:var(--color-text-secondary,#667085);
+  --rh-border:var(--color-border,#e4e7ec);
+  --rh-primary:var(--color-primary,#1677ff);
+  --rh-primary-weak:var(--color-primary-weak,#e8f1ff);
+  --rh-success:var(--color-success,#027a48);
+  --rh-success-bg:var(--color-success-weak,#ecfdf3);
+  --rh-surface:var(--color-surface,#fff);
+  padding:20px 24px 32px;max-width:1280px;margin:0 auto
+}
 .rh-app [hidden]{display:none !important}
 .rh-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
-.rh-header h1{margin:0 0 4px;font-size:22px;font-weight:600;color:#1d2939}
-.rh-header p{margin:0;font-size:14px;color:#667085}
+.rh-header h1{margin:0 0 4px;font-size:22px;font-weight:600;color:var(--rh-text)}
+.rh-header p{margin:0;font-size:14px;color:var(--rh-muted)}
 .rh-header-actions{display:flex;align-items:center;gap:12px}
 .rh-env-select{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#667085}
 .rh-env-select select{min-width:140px;padding:6px 10px;border:1px solid #d0d5dd;border-radius:8px;background:#fff}
@@ -15,6 +26,11 @@
 .rh-panel--storyline .rh-storyline{grid-template-columns:repeat(4,minmax(0,1fr))}
 .rh-storyline-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px}
 .rh-storyline-head h2{margin:0 0 4px}
+.rh-storyline-ctas{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
+.rh-hint--main-track{margin:0 0 4px;font-size:12px;color:#475467}
+.rh-storyline-legend{margin:0 0 10px;font-size:12px;color:#98a2b3}
+.rh-storyline--detail{opacity:.98}
+.rh-runtime-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .rh-storyline{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;list-style:none;margin:0;padding:0}
 .rh-storyline__step{padding:10px;border:1px solid #eaecf0;border-radius:8px;background:#fcfcfd;min-height:72px}
 .rh-storyline__step strong{display:block;font-size:13px;color:#344054;margin-bottom:4px}
@@ -45,14 +61,14 @@
 .rh-health-trend h3{margin:0 0 8px;font-size:13px;font-weight:600;color:#475467}
 .rh-trend-bars{display:flex;align-items:flex-end;gap:8px;min-height:72px;padding:8px 0}
 .rh-trend-bar{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:28px}
-.rh-trend-bar__fill{display:block;width:100%;max-width:28px;border-radius:4px 4px 0 0;background:#1677ff}
+.rh-trend-bar__fill{display:block;width:100%;max-width:28px;border-radius:4px 4px 0 0;background:var(--rh-primary)}
 .rh-trend-bar small{font-size:10px;color:#98a2b3}
 .rh-kpi-grid article{padding:12px;border:1px solid #e4e7ec;border-radius:8px;background:#fafcff}
 .rh-kpi-grid span{display:block;font-size:12px;color:#667085;margin-bottom:4px}
 .rh-kpi-grid strong{font-size:20px;color:#1d2939}
 .rh-flow{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
 .rh-flow a{height:32px;padding:0 12px;display:inline-flex;align-items:center;border:1px solid #dce4f2;border-radius:7px;background:#fff;color:#344054;text-decoration:none;font-size:13px;font-weight:600}
-.rh-flow a:hover,.rh-flow a.is-current{border-color:#1677ff;color:#1677ff;background:#e8f1ff}
+.rh-flow a:hover,.rh-flow a.is-current{border-color:var(--rh-primary);color:var(--rh-primary);background:var(--rh-primary-weak)}
 .rh-stepper{margin:0 0 14px;padding:0 0 0 20px;color:#475467;font-size:13px;line-height:1.6}
 .rh-stepper li{margin-bottom:6px}
 .rh-hint{margin:0 0 10px;font-size:12px;color:#667085}
@@ -66,7 +82,7 @@
 .rh-promotion-actions,.rh-coordinated-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .rh-pending-badges{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .rh-btn{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:8px;font-size:13px;border:1px solid transparent;cursor:pointer;text-decoration:none;background:#fff;color:#344054}
-.rh-btn--primary{background:#1677ff;border-color:#1677ff;color:#fff}
+.rh-btn--primary{background:var(--rh-primary);border-color:var(--rh-primary);color:#fff}
 .rh-btn--ghost{border-color:#d0d5dd;background:#fff}
 .rh-btn--sm{padding:4px 10px;font-size:12px}
 .rh-btn:disabled{opacity:.5;cursor:not-allowed}

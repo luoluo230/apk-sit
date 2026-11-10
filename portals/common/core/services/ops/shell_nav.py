@@ -26,10 +26,79 @@ def shell_groups(project_id: str = "", env_key: str = "", active_page: str = "",
     env = str(env_key or "").strip() or "development"
     page = str(active_page or "").strip()
     current = str(path or "").strip()
+    # 发版相关页：侧栏只保留发版导航，避免无关模块干扰主流程
+    if project and (page in _RELEASE_PAGES or _path_is_release(current, project)):
+        return [_release_only_group(project, env, page, current)]
     groups = [_studio(page, current)]
     if project:
         groups.extend(_project_groups(project, env, page, current))
+        from services.baas.project_nav_policy import filter_shell_groups
+
+        groups = filter_shell_groups(groups, project)
     return groups
+
+
+def _path_is_release(path: str, project: str) -> bool:
+    pid = quote(str(project or "").strip(), safe="")
+    if not pid or not path:
+        return False
+    base = f"/admin/projects/{pid}"
+    if path.startswith(f"{base}/versions"):
+        return True
+    if path.startswith(f"{base}/build-history") or path.startswith(f"{base}/builds"):
+        return True
+    if path.startswith(f"{base}/release"):
+        return True
+    if path.startswith(f"{base}/download-center"):
+        return True
+    # 渠道构建/发版详情页
+    if path.startswith(f"{base}/environments/") and "/channels/" in path:
+        return "/build" in path or "/release" in path
+    return False
+
+
+def _release_only_group(project: str, env: str, page: str, path: str) -> dict:
+    pid = quote(project, safe="")
+    base = f"/admin/projects/{pid}"
+    link = lambda href: _with_env(href, env)
+    return {
+        "id": "release",
+        "label": "发版",
+        "items": [
+            _item("versions", "版本与管线", link(f"{base}/versions"), "nav_version_code", page, path, pages=("versions",), prefixes=(f"{base}/versions",)),
+            _item("builds", "构建与产物", link(f"{base}/build-history"), "nav_build_artifact", page, path, pages=("builds",), prefixes=(f"{base}/build-history", f"{base}/builds")),
+            _item(
+                "release-hub",
+                "发版中心",
+                link(f"{base}/release-hub"),
+                "nav_release",
+                page,
+                path,
+                pages=("release-hub", "release-console", "release-orders"),
+                prefixes=(f"{base}/release-hub", f"{base}/release", f"{base}/release-orders"),
+            ),
+            _item(
+                "download-center",
+                "下载中心",
+                link(f"{base}/download-center"),
+                "nav_download_center",
+                page,
+                path,
+                pages=("download-center",),
+                prefixes=(f"{base}/download-center",),
+            ),
+            _item("jenkins", "打包机", "/admin/jenkins", "nav_build_artifact", page, path, pages=("jenkins",), prefixes=("/admin/jenkins",)),
+            _item(
+                "project-home",
+                "返回项目总览",
+                link(f"{base}/overview"),
+                "nav_project_overview",
+                page,
+                path,
+                pages=("project-home",),
+            ),
+        ],
+    }
 
 
 def _studio(page: str, path: str) -> dict:

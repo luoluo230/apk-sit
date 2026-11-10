@@ -3,6 +3,8 @@
   data-default-tab="{{ default_tab }}"
   data-show-topology="{{ 'true' if show_topology_tab else 'false' }}"
   data-show-baas="{{ 'true' if show_baas_tab else 'false' }}"
+  data-monitor-only="{{ 'true' if monitor_only else 'false' }}"
+  data-server-mode="{{ server_mode or '' }}"
   data-filter-project="{{ filter_project_id }}"
   data-filter-env="{{ filter_env_key }}"
   data-filter-status="{{ filter_status }}"
@@ -12,16 +14,19 @@
       <span class="ops-page-head-icon"><img src="/static/project_ui/svg/nav_agent_server.svg" alt=""></span>
       <div class="ops-page-head-text">
         <h1>服务器管理</h1>
-        <p class="sm-hub-sub">游戏服拓扑。休闲服务从功能配置和 GM 进入。</p>
+        <p class="sm-hub-sub">{% if monitor_only %}BaaS 运行监听与 GM 入口。安装扩容请用 Deploy-BaasOneClick。{% else %}游戏服拓扑。休闲服务从功能配置和 GM 进入。{% endif %}</p>
       </div>
     </div>
+    {% if not monitor_only %}
     <div class="ops-page-head-actions">
       <button class="pm-btn pm-btn--primary pm-btn--compact" id="smCreateBtn" type="button">
         <img src="/static/project_ui/svg/action_add.svg" alt="">新建
       </button>
     </div>
+    {% endif %}
   </header>
 
+  {% if not monitor_only %}
   <div class="sm-hub-tabs" role="tablist">
     {% if show_topology_tab and show_baas_tab %}
     <button class="sm-hub-tab{% if default_tab == 'topology' %} is-active{% endif %}" type="button" data-tab="topology" role="tab">游戏服</button>
@@ -33,8 +38,10 @@
       </a>
     </div>
   </div>
+  {% endif %}
 
   <section class="env-panel ops-panel">
+    {% if not monitor_only %}
     <div class="ops-filter-bar pm-filter-bar sm-hub-filters">
       <label class="pm-filter-search"><img src="/static/project_ui/svg/global_search.svg" alt=""><input id="smSearch" type="search" placeholder="搜索名称 / ID" value="{{ filter_query }}"></label>
       <select id="smProject" aria-label="项目"{% if locked_project_id %} disabled{% endif %}>
@@ -59,11 +66,25 @@
       <button class="pm-btn pm-btn--compact" id="smRefresh" type="button"><img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新</button>
     </div>
     <div class="sm-hub-meta" id="smMeta"></div>
+    {% endif %}
+    <div class="sm-baas-monitor env-panel" id="smBaasMonitor"{% if not monitor_only %} hidden{% endif %}>
+      <div class="ops-panel-head"><strong>BaaS 运行状态</strong></div>
+      <pre id="smBaasMonitorBody" class="sm-baas-monitor-body" style="white-space:pre-wrap;font-size:13px;margin:8px 0;">加载中…</pre>
+      <div class="ops-page-head-actions" style="gap:8px;display:flex;flex-wrap:wrap;">
+        <a class="pm-btn pm-btn--primary pm-btn--compact" id="smOpenGm" href="#">打开 GM</a>
+        <a class="pm-btn pm-btn--compact" id="smOpenCasual" href="#">功能配置</a>
+        <button class="pm-btn pm-btn--compact" type="button" id="smMonitorRefresh">刷新状态</button>
+      </div>
+      <div id="smRealmPanel" style="margin-top:12px;"></div>
+    </div>
+    {% if not monitor_only %}
     <div class="env-line-cards-wrap">
       <div class="env-line-cards sm-hub-grid" id="smGrid"><div class="ops-workspace-empty">正在加载…</div></div>
     </div>
+    {% endif %}
   </section>
 
+  {% if not monitor_only %}
   <div class="ops-dialog" id="smDialog" hidden>
     <form class="ops-dialog-card sm-hub-dialog" id="smForm">
       <div class="ops-dialog-head">
@@ -98,5 +119,6 @@
       </div>
     </form>
   </div>
+  {% endif %}
 </section>
 <script type="application/json" id="smProjectsJson">{{ projects_json | tojson }}</script>

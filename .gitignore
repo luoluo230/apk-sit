@@ -62,8 +62,9 @@ data/afk_shared/*report*.json
 data/afk_shared/afk_live_*.json
 portals/common/core/data/*.db
 portals/common/core/scripts/baas-database.env
-docs/evidence/*credentials*.json
-portals/common/core/docs/evidence/*credentials*.json
+# Closure evidence removed from delivery tree (2C); ignore if recreated locally
+docs/evidence/
+portals/common/core/docs/evidence/
 reports/
 *.db-wal
 *.db-shm
@@ -108,3 +109,6 @@ portals/common/tmp/
 /release_bundles/
 /release_bundles_*/
 /jenkins-clone-overlay/
+
+# Local Prometheus (not part of delivery tree)
+tools/prometheus/

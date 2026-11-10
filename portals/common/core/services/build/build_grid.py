@@ -86,19 +86,39 @@ ARTIFACT_TYPES: Dict[str, str] = {
 
 
 def normalize_build_platform(value: str) -> str:
+    """Map aliases to canonical build platform ids. Never silent-fallback to android.
+
+    Unknown ids raise ValueError. Catalog-only platforms that are already canonical
+    (present in PLATFORM_TO_JOB aliases or exact keys) are returned as-is only when
+    they map through PLATFORM_ALIASES / PLATFORM_TO_JOB; otherwise raise.
+    """
     raw = str(value or "").strip().lower()
-    return PLATFORM_ALIASES.get(raw, raw if raw in PLATFORM_TO_JOB else "android")
+    if not raw:
+        raise ValueError("平台不能为空")
+    if raw in PLATFORM_ALIASES:
+        return PLATFORM_ALIASES[raw]
+    if raw in PLATFORM_TO_JOB:
+        return raw
+    raise ValueError(f"不支持的构建平台：{value}")
 
 
 def resolve_jenkins_job_for_platform(platform: str, explicit_job: str = "") -> str:
     job = str(explicit_job or "").strip()
     if job:
         return job
-    return PLATFORM_TO_JOB.get(normalize_build_platform(platform), "Android")
+    plat = normalize_build_platform(platform)
+    resolved = PLATFORM_TO_JOB.get(plat)
+    if not resolved:
+        raise ValueError(f"平台 {plat} 没有可构建的 Jenkins Job")
+    return resolved
 
 
 def resolve_build_role_for_platform(platform: str) -> str:
-    return PLATFORM_TO_ROLE.get(normalize_build_platform(platform), BUILD_ROLE_ANDROID)
+    plat = normalize_build_platform(platform)
+    role = PLATFORM_TO_ROLE.get(plat)
+    if not role:
+        raise ValueError(f"平台 {plat} 没有构建角色")
+    return role
 
 
 def resolve_gameserver_job() -> Dict[str, str]:
@@ -113,8 +133,11 @@ def resolve_gameserver_job() -> Dict[str, str]:
 
 def resolve_pipeline_script(platform: str) -> str:
     role = resolve_build_role_for_platform(platform)
-    meta = BUILD_ROLES.get(role) or BUILD_ROLES[BUILD_ROLE_ANDROID]
-    return str(meta.get("pipeline_script") or "commercial_android_pipeline.sh")
+    meta = BUILD_ROLES.get(role) or {}
+    script = str(meta.get("pipeline_script") or "").strip()
+    if not script:
+        raise ValueError(f"平台 {platform} 没有管线脚本")
+    return script
 
 
 def resolve_assigned_node(platform: str) -> str:
@@ -141,4 +164,8 @@ def list_build_roles() -> List[Dict[str, Any]]:
 
 
 def artifact_type_for_platform(platform: str) -> str:
-    return ARTIFACT_TYPES.get(normalize_build_platform(platform), "apk")
+    plat = normalize_build_platform(platform)
+    art = ARTIFACT_TYPES.get(plat)
+    if not art:
+        raise ValueError(f"平台 {plat} 没有产物类型")
+    return art

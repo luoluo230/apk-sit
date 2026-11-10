@@ -2,6 +2,7 @@
 """Shared helpers for admin view modules."""
 
 from models.data import can_view_project, projects_db, products_db
+from services.ops.encoding import text_has_mojibake
 from services.player_content import forum_posts_db, player_news_db, player_welfare_db
 
 
@@ -10,7 +11,7 @@ def clean_display_text(value, fallback=""):
     if not text:
         return fallback
     question_ratio = text.count("?") / max(len(text), 1)
-    if question_ratio >= 0.35 or "锟" in text or "�" in text:
+    if question_ratio >= 0.35 or text_has_mojibake(text):
         return fallback or text.replace("?", "").strip() or fallback
     return text
 

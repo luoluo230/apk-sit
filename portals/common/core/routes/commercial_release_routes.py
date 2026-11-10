@@ -38,9 +38,10 @@ def trigger_commercial_release():
     if not project_id or not version_id:
         return jsonify({
             "success": False,
-            "error": "legacy trigger 需 _project_id 与 _version_id；请改用 POST /api/projects/{id}/versions/{vid}/quick-build",
+            "error": "legacy commercial-release/trigger 已停用；请改用 POST /api/projects/{id}/versions/{vid}/quick-build",
             "deprecated": True,
-        }), 400
+            "gone": True,
+        }), 410
 
     try:
         from services.release.release_order_service import ensure_draft_release_order, request_build as ro_request_build

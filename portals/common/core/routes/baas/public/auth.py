@@ -19,6 +19,16 @@ def register(target):
                 display_name=str(body.get("display_name") or ""),
                 guest_id=str(body.get("guest_id") or ""),
             )
+            realm_id = str(body.get("realm_id") or request.headers.get("X-Baas-Realm-Id") or "").strip()
+            if realm_id and data.get("player_id"):
+                from services.baas import realm_service
+
+                realm_service.assign_player_realm(service_id, str(data["player_id"]), realm_id)
+                data["realm_id"] = realm_id
+            elif data.get("player_id"):
+                from services.baas import realm_service
+
+                data["realm_id"] = realm_service.get_player_realm(service_id, str(data["player_id"]))
             return jsonify({"ok": True, "data": data})
         except ValueError as exc:
             return baas_fail_exc(exc)

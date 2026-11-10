@@ -8,7 +8,7 @@ from flask import redirect, render_template, url_for
 from services.authz import admin_required
 from services.ops.helpers import _render_ops_page
 
-_NODES_CSS = '<link rel="stylesheet" href="/static/tailwind.css">'
+_NODES_CSS = '<link rel="stylesheet" href="/static/admin/infra_nodes.css?v=20261110-bn1">'
 
 
 def _nodes_page(title: str):

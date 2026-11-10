@@ -72,6 +72,20 @@ def pause_gray_rollout_for_order(
             {"bundle_id": bundle_id, "reason": pause_reason},
         )
     try:
+        from services.release.gray_metrics_service import append_gray_metrics_snapshot
+
+        pct = int(plan.get("gray_ratio") or plan.get("rollout_percentage") or 0)
+        append_gray_metrics_snapshot(
+            project_id,
+            order_id,
+            rollout_percentage=pct,
+            bootstrap_ok=None,
+            note=f"paused:{pause_reason}",
+            actor=actor,
+        )
+    except Exception:
+        pass
+    try:
         from services.notify.outbound_webhook import EVENT_GRAY_ROLLOUT_PAUSED, notify_release_event
 
         notify_release_event(
@@ -101,6 +115,20 @@ def expand_gray_rollout(
         raise ValueError("发布单不存在")
     if str(order.get("status") or "") != "published":
         raise ValueError("仅已发布订单可扩大灰度")
+    try:
+        from services.release.client_server_alignment import (
+            assert_alignment_allows_action,
+            assess_client_server_alignment,
+        )
+        from services.release.server_release_service import get_server_release
+
+        plan0 = dict(order.get("payload") or {})
+        sid = str(plan0.get("linked_server_release_id") or plan0.get("server_release_id") or "").strip()
+        server = get_server_release(project_id, sid) if sid else {}
+        alignment = assess_client_server_alignment(order, server or {}, env_key=str(order.get("env_key") or ""))
+        assert_alignment_allows_action(alignment, action="expand_gray")
+    except ImportError:
+        pass
     bundle_id = str(order.get("bundle_id") or "").strip()
     if not bundle_id:
         raise ValueError("发布单缺少 bundle")
@@ -141,6 +169,19 @@ def expand_gray_rollout(
             (_json(plan), now, project_id, order_id),
         )
         _event(cur, order_id, "gray_expanded", actor, "published", "published", {"bundle_id": bundle_id, "rollout_percentage": ratio})
+    try:
+        from services.release.gray_metrics_service import append_gray_metrics_snapshot
+
+        append_gray_metrics_snapshot(
+            project_id,
+            order_id,
+            rollout_percentage=ratio,
+            bootstrap_ok=None,
+            note="expanded",
+            actor=actor,
+        )
+    except Exception:
+        pass
     return _order_crud().get_release_order(project_id, order_id)
 
 

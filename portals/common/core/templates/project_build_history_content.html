@@ -12,6 +12,9 @@
       <a class="build-btn release" href="/admin/projects/{{ project_id }}/versions?env_key={{ env_key or 'development' }}">
         <img src="/static/project_ui/svg/nav_version_code.svg" alt="">返回版本与管线
       </a>
+      <a class="build-btn neutral" id="buildJourneyEntryLink" href="/admin/projects/{{ project_id }}/environments/{{ scope_env_key or env_key or 'development' }}/channels/{{ scope_channel_id or '1001' }}/build{% if scope_platform or scope_version_id %}?{% if scope_platform %}platform={{ scope_platform }}{% endif %}{% if scope_platform and scope_version_id %}&{% endif %}{% if scope_version_id %}version_id={{ scope_version_id }}{% endif %}{% endif %}">
+        <img src="/static/project_ui/svg/kpi_build.svg" alt="">构建流程 / 步骤检测
+      </a>
       <button class="build-btn neutral" type="button" data-refresh>
         <img src="/static/project_ui/svg/action_refresh.svg" alt="">刷新
       </button>
@@ -129,4 +132,4 @@
 
 <div class="build-toast" data-toast hidden></div>
 
-<script src="/static/project_build_history.js?v=20260708-bh9"></script>
+<script src="/static/project_build_history.js?v=20261102-pipe-entry"></script>
